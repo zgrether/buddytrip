@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
-import { PickemMatchCard } from "./PickemMatchCard";
+import { PickemMatchCard, h2hNote } from "./PickemMatchCard";
+import { PickemHeadToHead } from "./PickemHeadToHead";
 import { placementPointsByTeam } from "@/lib/placementGroups";
 import { fmtPoints } from "@/lib/rackNStack";
-import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
 import {
   buildBoardRows,
   matchStanding,
@@ -16,7 +16,6 @@ import {
   tiedWithPrevious,
   matchesWonByTeam,
   type BoardRow,
-  type ZeroKind,
 } from "@/lib/pickemBoard";
 import { resolvedCount, type ScoredPick, type ScoredSlateGame } from "@/lib/pickemScoring";
 
@@ -57,166 +56,6 @@ export interface BoardMatch {
   sideBId: string | null;
 }
 
-/** The three kinds of zero, said as three different things. A dash for all of
- *  them would tell the reader a cancelled game was played. */
-const ZERO_LABEL: Record<ZeroKind, string> = {
-  both: "Both right",
-  neither: "Both wrong",
-  push: "Push",
-  cancelled: "Cancelled",
-};
-
-function ResultChip({ row }: { row: BoardRow }) {
-  if (row.result == null) {
-    return (
-      <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-planning)", fontWeight: 600 }}>
-        {/* Unplayed rows carry what each side stands to gain. Same pick means
-            only the DIFFERENCE is in play, which `upsideFor` already resolved. */}
-        +{row.upsideA} / +{row.upsideB}
-      </span>
-    );
-  }
-  if (row.swing === 0) {
-    return (
-      <span
-        data-testid={`pickem-zero-${row.zeroKind}`}
-        style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", fontWeight: 600 }}
-      >
-        {ZERO_LABEL[row.zeroKind as ZeroKind]}
-      </span>
-    );
-  }
-  return (
-    <span
-      style={{
-        fontSize: TYPE_SCALE.bodyDense,
-        fontWeight: 800,
-        fontVariantNumeric: "tabular-nums",
-        color: row.swing > 0 ? "var(--color-bt-accent)" : "var(--color-bt-owner)",
-      }}
-    >
-      {row.swing > 0 ? "+" : ""}
-      {row.swing}
-    </span>
-  );
-}
-
-/** Level 2 — one row per slate game, with the swing that shows where the match
- *  is being won. */
-function MatchDetail({
-  slate,
-  rows,
-  aName,
-  bName,
-  onBack,
-}: {
-  slate: BoardSlateGame[];
-  rows: BoardRow[];
-  aName: string;
-  bName: string;
-  onBack: () => void;
-}) {
-  const byId = new Map(slate.map((g) => [g.id, g]));
-  const s = matchStanding(rows);
-
-  return (
-    <div className="flex flex-col gap-2" data-testid="pickem-board-detail">
-      <button
-        type="button"
-        onClick={onBack}
-        data-testid="pickem-board-back"
-        className="self-start px-1 py-1"
-        style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600, color: "var(--color-bt-accent)" }}
-      >
-        ← All matches
-      </button>
-
-      <div
-        className="mx-1 flex items-center gap-3 rounded-xl px-3 py-3"
-        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      >
-        <span className="min-w-0 flex-1 text-center">
-          <span className="block truncate" style={{ fontSize: TYPE_SCALE.caption, fontWeight: 600 }}>
-            {aName}
-          </span>
-          <span style={{ fontSize: 26, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-            {s.aTotal}
-          </span>
-        </span>
-        <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>VS</span>
-        <span className="min-w-0 flex-1 text-center">
-          <span className="block truncate" style={{ fontSize: TYPE_SCALE.caption, fontWeight: 600 }}>
-            {bName}
-          </span>
-          <span style={{ fontSize: 26, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-            {s.bTotal}
-          </span>
-        </span>
-      </div>
-
-      <div className="px-1" style={EYEBROW}>
-        Game by game
-      </div>
-
-      {rows.map((r) => {
-        const g = byId.get(r.slateGameId);
-        if (!g) return null;
-        return (
-          <div
-            key={r.slateGameId}
-            data-testid="pickem-board-row"
-            className="mx-1 flex flex-col gap-1.5 rounded-xl px-3 py-2.5"
-            style={pickemRowSurface({ weighted: r.multiplier > 1 })}
-          >
-            <MatchupLine
-              game={{
-                awayTeam: g.awayTeam,
-                homeTeam: g.homeTeam,
-                spread: g.spread,
-                kickoff: r.result == null ? (g.kickoff ?? "TBD") : null,
-                note: null,
-                multiplier: r.multiplier,
-              }}
-            />
-            <div className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate" style={{ fontSize: TYPE_SCALE.caption }}>
-                <Conf value={r.aConfidence} hit={r.aPoints > 0} />{" "}
-                {r.aPick === "away" ? g.awayTeam : g.homeTeam}
-              </span>
-              <ResultChip row={r} />
-              <span
-                className="min-w-0 flex-1 truncate text-right"
-                style={{ fontSize: TYPE_SCALE.caption }}
-              >
-                {r.bPick === "away" ? g.awayTeam : g.homeTeam}{" "}
-                <Conf value={r.bConfidence} hit={r.bPoints > 0} />
-              </span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function Conf({ value, hit }: { value: number | null; hit: boolean }) {
-  if (value == null) return null;
-  return (
-    <span
-      className="rounded px-1.5"
-      style={{
-        fontSize: TYPE_SCALE.caption,
-        fontWeight: 700,
-        fontVariantNumeric: "tabular-nums",
-        background: hit ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-        color: hit ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-      }}
-    >
-      {value}
-    </span>
-  );
-}
-
 export function PickemBoard({
   slate,
   sheets,
@@ -227,6 +66,7 @@ export function PickemBoard({
   nameOf,
   teams,
   teamOf,
+  avatarFor,
   pointsMode = false,
   distribution,
 }: {
@@ -240,6 +80,12 @@ export function PickemBoard({
   nameOf: (userId: string) => string;
   teams: { id: string; name: string }[];
   teamOf: (userId: string) => string | null;
+  /**
+   * Identity for the head-to-head header, where the two people are the whole
+   * subject. An accessor like `nameOf`/`teamOf` rather than a table, so the board
+   * stays free of how a person is looked up.
+   */
+  avatarFor: (userId: string) => { avatarIcon: string | null; teamColor: string | null };
   /**
    * The COMPETITION is a points cup (Phase 7): N teams ordered, placement pays.
    *
@@ -324,15 +170,39 @@ export function PickemBoard({
       : null;
 
   if (rollUp === "individual_matches" && openMatch) {
-    const m = matches.find((x) => x.id === openMatch);
+    const idx = matches.findIndex((x) => x.id === openMatch);
+    const m = idx >= 0 ? matches[idx] : undefined;
     const rows = matchRows.get(openMatch);
     if (m && rows && m.sideAId && m.sideBId) {
+      const aName = nameOf(m.sideAId);
+      const bName = nameOf(m.sideBId);
+      const pickedSides = {
+        a: (sheets[m.sideAId] ?? []).length > 0,
+        b: (sheets[m.sideBId] ?? []).length > 0,
+      };
+      const st = matchStanding(rows);
       return (
-        <MatchDetail
+        <PickemHeadToHead
           slate={slate}
           rows={rows}
-          aName={nameOf(m.sideAId)}
-          bName={nameOf(m.sideBId)}
+          aName={aName}
+          bName={bName}
+          aUserId={m.sideAId}
+          bUserId={m.sideBId}
+          avatarFor={avatarFor}
+          /* 1-based, and over the WHOLE match list rather than the paired
+             subset — "Match 3 of 8" has to agree with the list the reader just
+             came back from. */
+          matchIndex={idx + 1}
+          matchCount={matches.length}
+          resolved={resolved}
+          picked={pickedSides}
+          /* Shared with the card for every state but the mid-match one, so the
+             two screens cannot disagree about a clinch or a final. */
+          note={h2hNote(st, resolved, st.margin > 0 ? aName : bName, pickedSides, {
+            a: aName,
+            b: bName,
+          })}
           onBack={() => setOpenMatch(null)}
         />
       );

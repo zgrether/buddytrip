@@ -66,6 +66,7 @@ const render = (
       meId={null}
       nameOf={(id) => NAMES[id] ?? "Unknown"}
       teams={over.teams ?? [team("A", "Aces"), team("B", "Bears"), team("C", "Cubs"), team("D", "Dogs")]}
+      avatarFor={() => ({ avatarIcon: null, teamColor: null })}
       teamOf={(id) => TEAM_OF[id] ?? null}
       pointsMode={over.pointsMode ?? true}
       distribution={over.distribution ?? [2, 1.5, 0.5, 0]}

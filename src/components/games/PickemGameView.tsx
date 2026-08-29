@@ -374,6 +374,35 @@ export function PickemGameView() {
     [nameByUser]
   );
 
+  /**
+   * Identity for the head-to-head header: the person's chosen icon, and the
+   * colour of the team they are ON.
+   *
+   * Both come from sources already on the page — `tripMembers.list` for the
+   * icon, the competition's teams for the colour — rather than a new query. The
+   * colour is the PLAYER's roster team, never the side of the match they
+   * occupy: a side is a slot, a team is a roster, and an unassigned player
+   * correctly shows neutral.
+   */
+  const iconByUser = useMemo(() => {
+    const rows = (membersQ.data ?? []) as {
+      memberId?: string;
+      user?: { avatar_icon?: string | null } | null;
+    }[];
+    return new Map(rows.map((m) => [m.memberId ?? "", m.user?.avatar_icon ?? null]));
+  }, [membersQ.data]);
+
+  const colorByTeam = useMemo(
+    () =>
+      new Map(
+        ((q.data?.teams ?? []) as { id: string; color?: string | null }[]).map((t) => [
+          t.id,
+          t.color ?? null,
+        ])
+      ),
+    [q.data?.teams]
+  );
+
   /** Everyone the viewer may act for, EXCLUDING themselves — this panel is
    *  about other people, and their own sheet is the surface right below it. */
   const proxyTargets = useMemo<ProxyTarget[]>(() => {
@@ -644,6 +673,17 @@ export function PickemGameView() {
     (userId: string) =>
       (q.data?.teams ?? []).find((t) => t.memberIds.includes(userId))?.id ?? null,
     [q.data?.teams]
+  );
+
+  const avatarFor = useCallback(
+    (userId: string) => {
+      const teamId = teamOf(userId);
+      return {
+        avatarIcon: iconByUser.get(userId) ?? null,
+        teamColor: teamId ? (colorByTeam.get(teamId) ?? null) : null,
+      };
+    },
+    [iconByUser, colorByTeam, teamOf]
   );
 
   const settings = useGameSettingsOverlay({
@@ -946,6 +986,7 @@ export function PickemGameView() {
               nameOf={nameOf}
               teams={q.data.teams}
               teamOf={teamOf}
+              avatarFor={avatarFor}
               pointsMode={pointsMode}
               /* The SHARED accessor, not a fourth hand-rolled
                  `isPlacement(d) ? d.values : []` — its own comment records that

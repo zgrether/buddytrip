@@ -46,11 +46,30 @@ export function pickemRowSurface(opts: {
   active?: boolean;
   /** Override the resting background (the sheet's read-only rows sit flatter). */
   background?: string;
+  /**
+   * No fill, subtle edge — a row for something that has not happened yet.
+   *
+   * Two changes rather than one because they say the same thing twice: an
+   * unplayed row should not read as a record. The weighted stripe survives, so
+   * a 2x game still announces itself before it is played, which is when that
+   * matters most.
+   */
+  quiet?: boolean;
 }): CSSProperties {
-  const { weighted, active = false, background } = opts;
-  const edge = active ? "var(--color-bt-accent-border)" : "var(--color-bt-border)";
+  const { weighted, active = false, background, quiet = false } = opts;
+  const edge = active
+    ? "var(--color-bt-accent-border)"
+    : quiet
+      ? "var(--color-bt-subtle-border)"
+      : "var(--color-bt-border)";
   return {
-    background: background ?? (active ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)"),
+    background:
+      background ??
+      (active
+        ? "var(--color-bt-accent-faint)"
+        : quiet
+          ? "transparent"
+          : "var(--color-bt-card)"),
     borderStyle: "solid",
     borderTopWidth: 1,
     borderRightWidth: 1,
