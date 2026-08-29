@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PhaseBody, SlateSettingsRows } from "./PickemGameView";
+import { PhaseBody, PickemSlateRow } from "./PickemGameView";
+import { PickemScoringRows } from "./pickem/PickemScoringRows";
 import { PickemPhaseStrip } from "./pickem/PickemPhaseStrip";
 
 /**
@@ -36,15 +37,23 @@ const phaseBody = (over: Partial<Parameters<typeof PhaseBody>[0]> = {}) =>
     />
   );
 
-const settingsRows = (over: Partial<Parameters<typeof SlateSettingsRows>[0]> = {}) =>
+/** The settings page's own rows, assembled the way the page assembles them. */
+const settingsRows = (over: { slateCount?: number } = {}) =>
   renderToStaticMarkup(
-    <SlateSettingsRows
-      slateCount={2}
-      useConfidence
-      canEdit
-      scoringRows={<div data-testid="scoring-rows-slot" />}
-      onOpenSlate={noop}
-      {...over}
+    <PickemScoringRows
+      settings={{ rollUp: "team_totals", useConfidence: true }}
+      editable
+      frozenReason={null}
+      showRollUp
+      onChange={() => {}}
+      slateRow={
+        <PickemSlateRow
+          slateCount={over.slateCount ?? 2}
+          weightedCount={0}
+          useConfidence
+          onOpenSlate={() => {}}
+        />
+      }
     />
   );
 
@@ -137,9 +146,9 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
 
   it("SETTINGS renders no phase command and no deadline", () => {
     // Asserted on ONE render rather than a loop over phases, because the
-    // stronger fact is structural: `SlateSettingsRows` no longer takes a
-    // `phase` at all. It cannot render a command for a state it cannot be told
-    // about — the compiler enforces what this used to check at runtime.
+    // stronger fact is structural: the settings rows take no `phase` at all.
+    // They cannot render a command for a state they cannot be told about — the
+    // compiler enforces what this used to check at runtime.
     //
     // Kept anyway as the regression guard for someone re-adding a button here,
     // which is the change worth catching.
@@ -151,8 +160,8 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     expect(html).not.toContain("Deadline");
     // ...and it still renders the things that ARE settings, so this is not
     // passing by rendering nothing.
-    expect(html).toContain('data-testid="pickem-open-slate"');
-    expect(html).toContain('data-testid="scoring-rows-slot"');
+    expect(html).toContain('data-testid="row-the-picks"');
+    expect(html).toContain('data-testid="row-confidence"');
   });
 
   it("building with a slate offers OPEN, and only that", () => {
