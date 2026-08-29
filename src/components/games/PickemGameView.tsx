@@ -27,6 +27,7 @@ import { showToast } from "@/lib/toast";
 import { PickemSlateModal, type SlateDraftGame } from "@/components/games/pickem/PickemSlateModal";
 import {
   PickemScoringRows,
+  PickemTotalPointsRow,
   type PickemSettingsDraft,
 } from "@/components/games/pickem/PickemScoringRows";
 import { PickemSheet, PickemClosedBanner } from "@/components/games/pickem/PickemSheet";
@@ -50,7 +51,8 @@ import {
   PickemSheetsButton,
 } from "@/components/games/pickem/PickemSheetsList";
 import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
-import { ZoneHeader } from "@/components/games/ZoneHeader";
+import { ChecklistRow } from "@/components/games/ChecklistRow";
+import { ListChecks } from "lucide-react";
 import {
   msUntilDeadline,
   picksEverOpened,
@@ -1243,14 +1245,22 @@ export function PickemGameView() {
             pending: false,
             staged: false,
           }}
+          totalPointsRow={
+            <PickemTotalPointsRow
+              pointsTotal={configDraft.pointsTotal}
+              // Points share the ONE freeze point (migration 157): the first
+              // result, not the slate's lock. 152's carve-out existed because
+              // the two used to disagree.
+              canEditPoints={canEdit && scoringSettingsEditable(q.data.hasResults)}
+              matches={q.data.matches}
+              rollUp={settingsDraft.rollUp}
+              onPointsChange={setPointsTotalDraft}
+            />
+          }
           onDeleted={exitToBoard}
           onScoresReset={() => utils.pickem.get.invalidate({ tripId: tripId!, gameId })}
           settingsRows={
-            <SlateSettingsRows
-              slateCount={q.data.slate.length}
-              useConfidence={q.data.settings.useConfidence}
-              canEdit={canEdit}
-              scoringRows={
+            canEdit && (
                 <PickemScoringRows
                   settings={settingsDraft}
                   editable={canEdit && scoringSettingsEditable(q.data.hasResults)}
@@ -1260,20 +1270,31 @@ export function PickemGameView() {
                   // inert control is the state Phase 7 rejected a third roll_up
                   // CHECK value for — it reads as configured and is not.
                   showRollUp={q.data.game.competition_id != null && !pointsMode}
-                  pointsTotal={configDraft.pointsTotal}
-                  // Points share the ONE freeze point now (migration 157): the
-                  // first result, not the slate's lock. 152's carve-out existed
-                  // because the two used to disagree.
-                  canEditPoints={canEdit && scoringSettingsEditable(q.data.hasResults)}
-                  matches={q.data.matches}
-                  onPointsChange={setPointsTotalDraft}
                   onChange={(next) => {
                     setRollUpDraft(next.rollUp);
                     setUseConfidenceDraft(next.useConfidence);
                   }}
-                />
-              }
-              matchesRow={
+                  slateRow={
+                    <PickemSlateRow
+                      slateCount={q.data.slate.length}
+                      weightedCount={q.data.slate.filter((g) => (g.multiplier ?? 1) > 1).length}
+                      useConfidence={q.data.settings.useConfidence}
+                      // Opens the slate ON TOP of settings rather than closing
+                      // settings first. Closing first looked tidier and was
+                      // broken: on the `?settings=1` DEEP-LINK path the
+                      // overlay's open-ness is derived from the URL, so
+                      // `closeConfig` navigates — and the navigation discarded
+                      // the `setSlateOpen(true)` that had just run. Settings
+                      // closed, the slate never appeared, and nothing errored.
+                      //
+                      // The Sheet it opens portals to body (#1091) — rendered
+                      // inline it was capped inside the game panel's `z-30`
+                      // stacking context and opened UNDERNEATH this overlay,
+                      // which is what made "The slate" look like a dead button.
+                      onOpenSlate={() => setSlateOpen(true)}
+                    />
+                  }
+                  matchesRow={
                 individualMatchesStaged && q.data.teams.length >= 2 ? (
                   <PickemMatchBuilder
                     draft={configDraft.matches}
@@ -1293,21 +1314,8 @@ export function PickemGameView() {
                   />
                 ) : null
               }
-              // Opens the slate ON TOP of settings rather than closing settings
-              // first. Closing first looked tidier and was broken: on the
-              // `?settings=1` DEEP-LINK path the overlay's open-ness is derived
-              // from the URL, so `closeConfig` navigates — and the navigation
-              // discarded the `setSlateOpen(true)` that had just run. Settings
-              // closed, the slate never appeared, and nothing errored.
-              // (Related to the known deep-link gap in `useGameSettingsOverlay`:
-              // the gear path and the deep-link path do not close the same way.)
-              //
-              // The Sheet it opens now portals to body (#1091) — rendered inline
-              // it was capped inside the game panel's `z-30` stacking context and
-              // opened UNDERNEATH this very overlay, which is what made "The
-              // slate" look like a dead button.
-              onOpenSlate={() => setSlateOpen(true)}
-            />
+                />
+            )
           }
           onChanged={() => utils.pickem.get.invalidate({ tripId: tripId!, gameId })}
         />
@@ -1408,74 +1416,44 @@ export function PhaseBody({
  * A setting drafts. A command executes. Everything left in here drafts, which
  * is what makes the footer's promise true.
  */
-export function SlateSettingsRows({
+/**
+ * The Picks — the way into the slate builder.
+ *
+ * Built here rather than inside `PickemScoringRows` because it opens a modal
+ * this file owns; passed in as a slot so the rows component keeps the order.
+ */
+export function PickemSlateRow({
   slateCount,
+  weightedCount,
   useConfidence,
-  canEdit,
-  scoringRows,
-  matchesRow,
   onOpenSlate,
 }: {
   slateCount: number;
-  /** Drives the COPY, not just the sheet. A confidence-off game has no ranking,
-   *  so "confidence 1–N" is a falsehood on it. */
+  weightedCount: number;
   useConfidence: boolean;
-  canEdit: boolean;
-  /** The two scoring settings, rendered by `PickemScoringRows`. Passed in
-   *  rather than built here so this component stays free of tRPC. */
-  scoringRows: React.ReactNode;
-  /** The pairing grid, under the roll-up that turns it on. Null unless the game
-   *  actually pairs — a settings page does not carry a section for something
-   *  the current configuration has no use for. */
-  matchesRow?: React.ReactNode;
   onOpenSlate: () => void;
 }) {
-  if (!canEdit) return null;
-
-  /** The transitions available RIGHT NOW. One row of buttons, not three stacked
-   *  cards — they are alternatives on one axis, and stacking them made the
-   *  settings page read as a list of unrelated features. */
-
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onOpenSlate}
-          data-testid="pickem-open-slate"
-          className="flex items-center justify-between rounded-xl px-3 py-2.5 text-left"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-        >
-          <span>
-            <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>The slate</span>
-            <span
-              className="block"
-              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 2 }}
-            >
-              {slateCount === 0
-                ? "No games yet — this is what people pick from"
-                : useConfidence
-                  ? `${slateCount} games · confidence 1–${slateCount}`
-                  : `${slateCount} games`}
-            </span>
-          </span>
-          <span style={{ color: "var(--color-bt-text-dim)" }}>›</span>
-        </button>
-      </div>
-
-      {/* ── Scoring, one level up ─────────────────────────────────────────
-          These were buried inside the slate modal behind sixteen rows of games
-          and that modal's Save. They are settings; they live with settings. */}
-      <div className="flex flex-col gap-2">
-        <ZoneHeader>How scoring works</ZoneHeader>
-        {scoringRows}
-      {matchesRow}
-      </div>
-
-    </div>
+    <ChecklistRow
+      icon={ListChecks}
+      title="The Picks"
+      testId="row-the-picks"
+      state={slateCount === 0 ? "empty" : "resolved"}
+      subtitle={
+        slateCount === 0
+          ? "No games yet — this is what people pick from"
+          : [
+              `${slateCount} game${slateCount === 1 ? "" : "s"}`,
+              weightedCount > 0 ? `${weightedCount} weighted` : null,
+              useConfidence ? `confidence ${slateCount}–1` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+      }
+      onClick={onOpenSlate}
+    />
   );
 }
-
 
 
 function Empty({
