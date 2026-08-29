@@ -101,7 +101,7 @@ export function PickemMismatchNote({
   return (
     <div
       data-testid="pickem-pairing-mismatch"
-      className="mx-1 flex flex-col gap-1 rounded-xl px-3 py-2.5"
+      className="flex flex-col gap-1 rounded-xl px-3 py-2.5"
       style={{
         fontSize: TYPE_SCALE.caption,
         lineHeight: 1.5,

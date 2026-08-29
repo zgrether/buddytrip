@@ -156,7 +156,7 @@ describe("h2hNote — the trailer's question, not the leader's", () => {
     expect(h2hNote(st({ remaining: 3 }), 5, "Zach", BOTH, NAMES)).toBe("Level with 3 to play");
     expect(
       h2hNote(st({ remaining: 9, margin: -17 }), 7, "Ty", { a: false, b: true }, NAMES)
-    ).toBe("Zach hasn't picked — Ty takes it unless that changes");
+    ).toBe("Zach didn't submit a sheet — it scores nothing, so Ty takes the match");
   });
 });
 
@@ -172,6 +172,6 @@ describe("h2hPill", () => {
     expect(h2hPill(decided, 1, BOTH)).toBe("Final");
     expect(h2hPill(decided, 1, { a: true, b: false })).toBe("Final");
     const live = [row({ result: "home", swing: 40 }), row({ upsideA: 0, upsideB: 1 })];
-    expect(h2hPill(live, 1, { a: true, b: false })).toBe("No picks");
+    expect(h2hPill(live, 1, { a: true, b: false })).toBe("Didn’t pick");
   });
 });

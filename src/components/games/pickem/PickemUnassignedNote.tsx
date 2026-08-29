@@ -1,5 +1,6 @@
 "use client";
 
+import { Info } from "lucide-react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 
 /**
@@ -15,6 +16,19 @@ import { TYPE_SCALE } from "@/lib/typeScale";
  * Rendering nothing is the empty-versus-unknown pattern: fifteen rows where
  * there are seventeen people reads as "there are fifteen people", and the
  * reader has no way to tell a short field from a dropped one.
+ *
+ * ── A FOOTNOTE, and it now looks like one ──────────────────────────────────
+ *
+ * It used to sit above the match list, so the first thing on a board about
+ * eight matches was a paragraph about people who are in none of them. Below
+ * the list is where a note that qualifies a list belongs, and the gap above it
+ * is what stops it reading as a ninth card.
+ *
+ * The icon is the other half of that move. Detached from the content it
+ * qualifies, a bare grey paragraph is ambiguous — it could be a status, an
+ * error, or a caption — and `Info` is the app's mark for "context, no action
+ * required", which is exactly what this is once the note is no longer adjacent
+ * to anything.
  */
 export function PickemUnassignedNote({
   names: list,
@@ -32,22 +46,32 @@ export function PickemUnassignedNote({
 }) {
   if (list.length === 0) return null;
   return (
-    <p
+    <div
       data-testid="pickem-board-unassigned"
-      className="mx-1 rounded-xl px-3 py-2.5"
+      className="mt-3 flex items-start gap-2.5 rounded-xl px-3 py-2.5"
       style={{
-        fontSize: TYPE_SCALE.caption,
-        lineHeight: 1.5,
-        color: "var(--color-bt-text-dim)",
         background: "var(--color-bt-card)",
         border: "1px solid var(--color-bt-border)",
       }}
     >
-      <b style={{ color: "var(--color-bt-text)" }}>{names(list)}</b>{" "}
-      {list.length === 1 ? "isn't" : "aren't"} in the scoring —{" "}
-      {list.length === 1 ? "their sheet doesn't" : "their sheets don't"} count toward{" "}
-      {teamCount > 2 ? "any team" : "either side"}.
-    </p>
+      <Info
+        size={15}
+        aria-hidden
+        style={{ color: "var(--color-bt-text-dim)", flexShrink: 0, marginTop: 1 }}
+      />
+      <p
+        style={{
+          fontSize: TYPE_SCALE.caption,
+          lineHeight: 1.5,
+          color: "var(--color-bt-text-dim)",
+        }}
+      >
+        <b style={{ color: "var(--color-bt-text)" }}>{names(list)}</b>{" "}
+        {list.length === 1 ? "isn't" : "aren't"} in the scoring —{" "}
+        {list.length === 1 ? "their sheet doesn't" : "their sheets don't"} count toward{" "}
+        {teamCount > 2 ? "any team" : "either side"}.
+      </p>
+    </div>
   );
 }
 

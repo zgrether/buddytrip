@@ -1,53 +1,52 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 
 /**
- * The two-up row — the locked page's whole navigation.
+ * The locked page's tab bar.
  *
- * ── Why the page changes shape at the lock ─────────────────────────────────
+ * ── Three tabs, and the first one is the page ──────────────────────────────
  *
- * While picks are open the page IS the sheet: one job, no navigation. The
- * moment it locks the sheet stops being a task and becomes a record, and the
- * question changes to "how am I doing" — which the matches answer. So the two
- * things that were the page collapse into two buttons and the matches take
- * their place.
+ * This began as two buttons that expanded panels underneath, with the matches
+ * always rendered below them. That gave the screen two navigation models at
+ * once: the matches were a permanent backdrop, and the two buttons were
+ * drawers over it — so the thing most people came to see had no control of its
+ * own, while the two things they came for less often had one each.
  *
- * Both buttons carry a DERIVED subtitle rather than a label. "Your picks" alone
- * is a place; "Your picks · 34 pts · 3 of 16" is an answer, and often the only
- * one somebody wanted — which is the point of putting it on the button rather
- * than behind it.
+ * Matches is a TAB now, first and selected by default. One row, three
+ * destinations, one showing at a time. The chevrons went with the drawers: a
+ * tab bar selects, it does not disclose.
  *
- * ── ...which is also what made them read as a readout ──────────────────────
+ * ── The subtitles are derived, and each says ONE thing ────────────────────
  *
- * A stat under a heading is a stat card, and the first look said so. The fix is
- * a chevron rather than quieter numbers, because the numbers are the reason the
- * row is worth its space — and it points DOWN when the panel is open, which is
- * more honest than a navigation arrow: these expand in place, they do not take
- * you anywhere.
+ * "Your picks" alone is a place; "34 pts" is an answer, and often the only one
+ * somebody wanted. Keeping the number on the control rather than behind it is
+ * what makes a tab worth its width here.
  *
- * ── The runner's half is amber, and only when there is something to do ─────
+ * The picks tab used to read "30 pts · 4 of 12" — a total and a RANK among the
+ * sheets, unlabelled and jammed against each other. Read on a page whose other
+ * two tabs count games, "4 of 12" reads as four games of twelve, and there is
+ * nothing in ten characters to say otherwise.
  *
- * A runner with unmarked games is the one person this page needs something
- * from, so their right-hand button says "Enter results" in amber. Once
- * everything is marked they are a reader like everyone else and it goes back to
- * "Game results" — an amber "0 to mark" would be a standing instruction to do
- * nothing.
+ * Dropped rather than labelled, because in `individual_matches` a rank across
+ * every sheet is not the question this page is about: the reader's standing is
+ * their MATCH, which the first tab shows in full. A field of twelve is a
+ * team-totals idea, and the roll-up says it there with a heading and a column.
  */
 
-export type PickemPanel = "picks" | "results";
+export type PickemPanel = "matches" | "picks" | "results";
 
 export function PickemTwoUp({
+  matchesLabel,
   myPoints,
-  myRank,
-  sheetCount,
   resolved,
   total,
   canEdit,
   open,
   onOpen,
 }: {
+  /** What the first tab counts — "7 matches", or the standings' own word. */
+  matchesLabel: string;
   /**
    * My running total, or null when I have no sheet at all.
    *
@@ -57,38 +56,50 @@ export function PickemTwoUp({
    * as a bad result rather than as an absence.
    */
   myPoints: number | null;
-  /** 1-based, ties sharing a place. Null exactly when `myPoints` is. */
-  myRank: number | null;
-  /** How many sheets are being ranked — not the roster, which is a different
-   *  number the moment somebody does not pick. */
-  sheetCount: number;
   resolved: number;
   total: number;
   canEdit: boolean;
-  open: PickemPanel | null;
+  /** Never null: one tab is always selected, and Matches is the default. */
+  open: PickemPanel;
   onOpen: (panel: PickemPanel) => void;
 }) {
   const toMark = total - resolved;
   const runnerHasWork = canEdit && toMark > 0;
 
   return (
-    <div className="mx-1 flex gap-2" data-testid="pickem-two-up">
-      <Half
+    <div
+      className="flex gap-1"
+      data-testid="pickem-two-up"
+      role="tablist"
+      style={{ background: "var(--color-bt-card-raised)", borderRadius: 12, padding: 3 }}
+    >
+      <Tab
+        testId="pickem-two-up-matches"
+        title="Matches"
+        sub={matchesLabel}
+        selected={open === "matches"}
+        onClick={() => onOpen("matches")}
+      />
+      <Tab
         testId="pickem-two-up-picks"
-        title="Your picks"
-        sub={
-          myPoints == null
-            ? "You didn’t pick"
-            : `${myPoints} pts · ${myRank} of ${sheetCount}`
-        }
+        /* "Picks", not "Your picks": the tab now holds everybody’s, and the
+           sub-tab under it is what says whose. */
+        title="Picks"
+        sub={myPoints == null ? "You didn’t pick" : `${myPoints} pts`}
         selected={open === "picks"}
         onClick={() => onOpen("picks")}
       />
-      <Half
+      <Tab
         testId="pickem-two-up-results"
-        title={runnerHasWork ? "Enter results" : "Game results"}
-        sub={runnerHasWork ? `${toMark} to mark` : `${resolved} of ${total} in`}
+        title={runnerHasWork ? "Enter results" : "Results"}
+        sub={runnerHasWork ? `${toMark} still to play` : `${resolved} of ${total} in`}
         selected={open === "results"}
+        /**
+         * A runner with unmarked games is the one person this page needs
+         * something from, so their tab says "Enter results" in amber. Once
+         * everything is marked they are a reader like everyone else and it goes
+         * back — an amber "0 to mark" is a standing instruction to do nothing.
+         */
         warn={runnerHasWork}
         onClick={() => onOpen("results")}
       />
@@ -96,7 +107,7 @@ export function PickemTwoUp({
   );
 }
 
-function Half({
+function Tab({
   testId,
   title,
   sub,
@@ -111,69 +122,48 @@ function Half({
   warn?: boolean;
   onClick: () => void;
 }) {
-  // Selection reads as accent whatever the button's resting colour, so the open
-  // panel is visibly attached to the button that opened it. The amber survives
-  // in the title, because "there is work here" does not stop being true because
-  // the panel is on screen.
-  const border = selected
-    ? "var(--color-bt-accent-border)"
-    : warn
-      ? "var(--color-bt-warning-border)"
-      : "var(--color-bt-border)";
-  const background = selected
-    ? "var(--color-bt-accent-faint)"
-    : warn
-      ? "var(--color-bt-warning-faint)"
-      : "var(--color-bt-card)";
-
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={selected}
       onClick={onClick}
       data-testid={testId}
       data-selected={selected ? "true" : "false"}
-      className="flex flex-1 items-center gap-1.5 px-3 text-left active:scale-[0.98]"
+      className="flex flex-1 flex-col justify-center px-2 py-1.5 text-center"
       style={{
-        minHeight: 46,
-        borderRadius: 12,
-        paddingTop: 6,
-        paddingBottom: 6,
-        background,
-        border: `1px solid ${border}`,
+        minWidth: 0,
+        minHeight: 44,
+        borderRadius: 9,
+        // The selected tab is a RAISED surface on the track, which is how this
+        // app's other segmented controls read. No border: a border on one tab
+        // of three makes the other two look disabled.
+        background: selected ? "var(--color-bt-base)" : "transparent",
       }}
     >
-      <span className="min-w-0 flex-1">
-        <span
-          className="block truncate"
-          style={{
-            fontSize: TYPE_SCALE.body,
-            fontWeight: 600,
-            color: warn ? "var(--color-bt-owner)" : "var(--color-bt-text)",
-          }}
-        >
-          {title}
-        </span>
-        <span
-          className="block truncate"
-          style={{ fontSize: 10.5, color: "var(--color-bt-text-dim)" }}
-        >
-          {sub}
-        </span>
+      <span
+        className="truncate"
+        style={{
+          fontSize: TYPE_SCALE.bodyDense,
+          fontWeight: selected ? 700 : 600,
+          color: warn
+            ? "var(--color-bt-owner)"
+            : selected
+              ? "var(--color-bt-text)"
+              : "var(--color-bt-text-dim)",
+        }}
+      >
+        {title}
       </span>
-      {/* Down when open, right when closed — the shape of the interaction, not
-          a decoration. Accent while open so the button and the panel it
-          revealed read as one thing. */}
-      {selected ? (
-        <ChevronDown
-          size={14}
-          style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
-        />
-      ) : (
-        <ChevronRight
-          size={14}
-          style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }}
-        />
-      )}
+      <span
+        className="truncate"
+        style={{
+          fontSize: 10.5,
+          color: warn ? "var(--color-bt-owner)" : "var(--color-bt-text-dim)",
+        }}
+      >
+        {sub}
+      </span>
     </button>
   );
 }

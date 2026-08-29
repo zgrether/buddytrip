@@ -53,7 +53,7 @@ export interface RunSlateGame extends ScoredSlateGame {
 const RESULT_LABEL: Record<SlateResult, string> = {
   away: "Away won",
   home: "Home won",
-  push: "Push — nobody covered",
+  push: "Pushed",
   cancelled: "Cancelled — never played",
 };
 
@@ -110,29 +110,13 @@ export function PickemRunView({
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-run">
-      <div className="mx-1 flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
           <span style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 700 }}>Game results</span>
-          {/* Only for somebody who can act. A member reading the same screen is
-              not a runner, and a badge saying otherwise would be the start of
-              them looking for controls that are not there. */}
-          {canEdit && (
-            <span
-              data-testid="pickem-run-runner-pill"
-              className="shrink-0 rounded-full"
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                padding: "2px 7px",
-                color: "var(--color-bt-owner)",
-                background: "var(--color-bt-warning-faint)",
-              }}
-            >
-              Runner
-            </span>
-          )}
+          {/* The RUNNER badge is gone. It labelled the READER on a screen the
+              reader had chosen to open, and it did it under a tab that already
+              said "Enter results" — a person who can act arrives here knowing
+              they can, and the controls under every row say so again. */}
           <span className="flex-1" />
           <span
             data-testid="pickem-run-count"
@@ -164,15 +148,27 @@ export function PickemRunView({
           />
         </span>
 
+        {/* WHAT THE CONTROL DOES, in place of a count of what is left.
+            The line here used to read "9 games still to mark · 4 matches hang
+            on them" — both halves already on screen. The count is the 7/16 to
+            its right and the progress bar under it, and the unmarked games are
+            the rows themselves; a sentence restating two things the reader is
+            looking at is the third instance in this feature of copy labelling
+            content that announces itself.
+            What was NOT on screen is the meaning of the four segments — that
+            Push and Void are different facts, and which one removes a game
+            from the scoring. So the space says that instead. */}
         {canEdit && pending.length > 0 && (
           <span
-            data-testid="pickem-run-hangs"
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+            data-testid="pickem-run-howto"
+            style={{
+              fontSize: TYPE_SCALE.caption,
+              lineHeight: 1.5,
+              color: "var(--color-bt-text-dim)",
+            }}
           >
-            {pending.length} game{pending.length === 1 ? "" : "s"} still to mark
-            {matchesPending != null && matchesPending > 0 && (
-              <> · {matchesPending} match{matchesPending === 1 ? "" : "es"} hang on them</>
-            )}
+            Mark the winner of the game, or if it resulted in a push. If a game
+            needs to be removed from the scoring, mark it as void.
           </span>
         )}
       </div>
@@ -180,7 +176,7 @@ export function PickemRunView({
       {blockedReason && (
         <p
           data-testid="pickem-run-blocked"
-          className="mx-1 rounded-xl px-3 py-2.5"
+          className="rounded-xl px-3 py-2.5"
           style={{
             fontSize: TYPE_SCALE.caption,
             lineHeight: 1.5,
@@ -194,11 +190,14 @@ export function PickemRunView({
         </p>
       )}
 
+      {/* NO eyebrow over the first group. A card with four unpressed buttons
+          on it is a game needing a result, and the count was the same number
+          the header carries. "Entered" keeps its eyebrow because that group IS
+          a change of subject: it is the same slate, already dealt with, and
+          without a heading the two groups read as one list where the rows
+          inexplicably change shape half way down. */}
       {pending.length > 0 && (
         <>
-          <div className="px-1" style={EYEBROW}>
-            Needs a result · {pending.length}
-          </div>
           {pending.map((g) => (
             <PendingCard
               key={g.id}
@@ -254,24 +253,31 @@ function PendingCard({
 }) {
   const mult = g.multiplier ?? 1;
   /**
-   * Said only where it DIFFERS from the header.
+   * Said only where it DIFFERS from every other row.
    *
    * Measured on the live slate: nine unmarked games, four live matches, and
-   * every single game read "4 matches are still riding on this" — the same
-   * number the header had already given, nine times.
+   * every single game read "4 matches are still riding on this" — nine
+   * identical sentences carrying no information between them.
    *
    * That is the normal case rather than a fluke. A game's count drops below
    * `matchesPending` only when some live match has no stake on it at all, which
    * needs both sides to have taken the same team at the same rank; with
    * distinct confidence ranks across sixteen games that is rare. So the line
-   * earns its place exactly when it is surprising, and repeating the header
-   * beside every row is noise that makes the surprising one harder to see.
+   * earns its place exactly when it is surprising, and printing the common
+   * number beside every row is what makes the surprising one hard to see.
+   *
+   * NOTE — the comparison used to be against the HEADER, which said
+   * `matchesPending` out loud. The header line is gone, so the justification
+   * is no longer "the header already said it": it is that the other eight rows
+   * say it. Same test, same number, different reason — and the reason matters,
+   * because it is what decides that removing the header does not oblige this
+   * line to start repeating.
    */
   const ridingWorthSaying = riding > 0 && riding !== matchesPending;
   return (
     <div
       data-testid="pickem-run-row"
-      className="mx-1 flex flex-col gap-2"
+      className="flex flex-col gap-2"
       style={{
         ...pickemRowSurface({ weighted: mult > 1 }),
         borderRadius: 13,
@@ -484,7 +490,7 @@ function EnteredRow({
   return (
     <div
       data-testid="pickem-run-entered"
-      className="mx-1 flex flex-col"
+      className="flex flex-col"
       style={{
         ...pickemRowSurface({ weighted: (g.multiplier ?? 1) > 1, quiet: !open }),
         borderRadius: 11,

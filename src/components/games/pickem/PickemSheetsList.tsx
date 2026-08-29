@@ -100,7 +100,7 @@ export function PickemSheetsList({
             type="button"
             onClick={() => onPick(t)}
             data-testid={`pickem-proxy-target-${t.userId}`}
-            className="mx-1 flex items-center gap-2.5 px-3 text-left active:scale-[0.99]"
+            className="flex items-center gap-2.5 px-3 text-left active:scale-[0.99]"
             style={{
               minHeight: 52,
               borderRadius: 12,
@@ -177,7 +177,7 @@ export function PickemSheetsButton({
 }) {
   if (count === 0) return null;
   return (
-    <div className="mx-1 flex justify-end">
+    <div className="flex justify-end">
       <button
         type="button"
         onClick={onOpen}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Clock } from "lucide-react";
+import { AlertTriangle, Clock } from "lucide-react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { toLocalInputValue, fromLocalInputValue, formatDeadline } from "./PickemDeadlineRow";
 import { formatLeadTime, type PickemPhase } from "@/lib/pickemLifecycle";
@@ -50,18 +50,28 @@ import { formatLeadTime, type PickemPhase } from "@/lib/pickemLifecycle";
  * there.
  */
 
-const PHASE_LABEL: Record<PickemPhase, string> = {
-  building: "Building the slate",
-  picks_open: "Picks are open",
-  locked: "Picks are locked",
-};
-
-/** One line per phase, saying what is true for everyone else right now — not
- *  what the runner can do next, which the buttons already say. */
-const PHASE_DETAIL: Record<PickemPhase, string> = {
-  building: "Nobody can pick yet. The trip sees “picks open soon”.",
-  picks_open: "Everyone is filling in their sheet. Nobody can see anyone else’s.",
-  locked: "Every sheet is closed and revealed to the trip.",
+/**
+ * ── ONE panel, and it does not restate the phase ──────────────────────────
+ *
+ * The building screen used to carry THREE calls to action for one job: this
+ * strip titled "Building the slate" with a full-width Open picks, a separate
+ * "You're in charge" banner with its own Configure, and a floating
+ * "Open picks · N games" under a paragraph explaining what pressing it would
+ * do. Three buttons, two of them the same button.
+ *
+ * What replaced them is one panel that persists across every phase, with a
+ * header that never changes and a single right-justified action whose LABEL is
+ * the whole explanation. "Building the slate" was a status, not a call to act,
+ * and a subtitle restating the phase is a sentence the button already said.
+ *
+ * The helper is a FACT the runner can use — how many games are on the slate —
+ * rather than a description of the state they can already see.
+ */
+const ACTION_LABEL: Record<PickemPhase, string> = {
+  building: "Start",
+  picks_open: "Stop",
+  // Reopening after a lock. Absent once anything is scored — see `hasResults`.
+  locked: "Start",
 };
 
 /** Said once results exist, in place of the unlock move — so the absence of the
@@ -85,6 +95,15 @@ export interface PickemPhaseStripProps {
    * refused is the shape this project keeps rejecting.
    */
   hasResults: boolean;
+  /**
+   * Would Start alone leave picks closed — i.e. has the deadline already gone?
+   *
+   * Passed in from `deadlineBlocksReopen` rather than derived from the
+   * `deadline` prop here, because the VIEW has to act on the same answer: its
+   * Start handler clears the spent deadline before unlocking. Two derivations
+   * of one comparison is how the button and the thing the button does drift.
+   */
+  deadlinePassed: boolean;
   onOpenPicks: () => void;
   onLock: () => void;
   onUnlock: () => void;
@@ -107,6 +126,7 @@ export function PickemPhaseStrip({
   deadline,
   busy,
   hasResults,
+  deadlinePassed,
   onOpenPicks,
   onLock,
   onUnlock,
@@ -124,80 +144,92 @@ export function PickemPhaseStrip({
    * "Not live — scoring disabled" line Phase 2's look removed. Absent, not
    * disabled.
    */
-  const moves: { label: string; onClick: () => void; testId: string; consequence: string }[] = [];
-  if (phase === "building" && slateCount > 0) {
-    moves.push({
-      label: "Open picks",
-      onClick: onOpenPicks,
-      testId: "pickem-strip-open",
-      consequence: "Everyone can start filling in their sheet, and the slate freezes.",
-    });
-  }
-  if (phase === "picks_open") {
-    moves.push({
-      label: "Lock now",
-      onClick: onLock,
-      testId: "pickem-strip-lock",
-      consequence: "Closes every sheet immediately and reveals them to the trip.",
-    });
-  }
-  // Unlock disappears once anything has been scored. The old consequence text
-  // said "Nothing is lost", which was true of the SHEETS and false of the game:
-  // reopening after a result lets someone re-pick a contest they have watched.
-  if (phase === "locked" && !hasResults) {
-    moves.push({
-      label: "Unlock",
-      onClick: onUnlock,
-      testId: "pickem-strip-unlock",
-      consequence: "Reopens every sheet for editing and hides them again. Nothing is lost.",
-    });
-  }
-
-  // A deadline only means something once picks can close against it. Offering
-  // it while building would let a runner schedule a close for a game nobody can
-  // pick in yet.
-  const showDeadline = phase !== "building";
+  /**
+   * The ONE move available from here, or none.
+   *
+   * The consequence sentences that used to sit under each button are gone: the
+   * label is the explanation, and "Everyone can start filling in their sheet,
+   * and the slate freezes" under a button called Start is the button saying
+   * itself twice.
+   *
+   * Start in the LOCKED phase is the slate-editing path, and it is the whole
+   * of it — `slateEditable` is `!picksOpen`, so Stop already makes the slate
+   * editable and Start puts it back. No separate edit control is needed, which
+   * is why none was added.
+   */
+  const move: { label: string; onClick: () => void; testId: string } | null =
+    phase === "building" && slateCount > 0
+      ? { label: ACTION_LABEL.building, onClick: onOpenPicks, testId: "pickem-strip-open" }
+      : phase === "picks_open"
+        ? { label: ACTION_LABEL.picks_open, onClick: onLock, testId: "pickem-strip-lock" }
+        : // Absent once anything is scored: reopening after a result lets
+          // somebody re-pick a contest they have already watched, and migration
+          // 165 refuses it server-side.
+          phase === "locked" && !hasResults
+          ? { label: ACTION_LABEL.locked, onClick: onUnlock, testId: "pickem-strip-unlock" }
+          : null;
 
   /**
-   * ── Why the deadline outranks the button ──────────────────────────────────
+   * HIDDEN UNTIL START IS PRESSED.
    *
-   * Auto-lock is the workflow. A runner sets a time on Wednesday and does
-   * nothing on Saturday; locking by hand is the exception, for the day a
-   * kickoff moves. The old strip had that backwards — an accent-filled "Lock
-   * picks" was the loudest thing on the card and the deadline was small text
-   * underneath, which reads as "you are expected to press this".
+   * A deadline only means something once picks can close against it: offering
+   * it while building would let a runner schedule a close for a game nobody
+   * can pick in yet, and puts a second control on the one screen whose whole
+   * job is Start.
    *
-   * So the deadline block takes the fill and the manual move drops below a
-   * divider as a ghost. DEMOTION IS VISUAL WEIGHT ONLY — the tap target stays
-   * 44, because a rarely-used control on a phone is precisely the one you
-   * cannot afford to make small.
+ * `building` is exactly "Start has not been pressed", so the phase IS the
+   * condition — no separate flag, and nothing to keep in sync.
    *
-   * ── ...but only while there IS one ────────────────────────────────────────
+   * ── ...and HIDDEN AGAIN once results exist ───────────────────────────────
    *
-   * With no deadline set, "Lock now" is the only way this game ever closes, and
-   * demoting the sole exit is the same mistake pointed the other way. So the
-   * ghost treatment is conditioned on a deadline EXISTING, not on the phase.
+   * A deadline is a scheduled close for picks that can reopen. Once anything is
+   * scored they cannot: `set_pickem_phase('unlock')` refuses outright
+   * (migration 165), which is why no Start button is offered either. The block
+   * went on rendering through all of that, with a Set/Change control and two
+   * sentences about unlocking — offering a setting whose only effect is on a
+   * transition the server has closed, one line under a panel saying so.
+   *
+   * Same shape as the two bugs already recorded in `DeadlineBlock` below: a
+   * sentence written for the state its author had in mind, rendered on a
+   * condition covering more states than that one. This is the third, and it is
+   * the widest — every locked-with-results game showed it.
    */
-  const scheduled = showDeadline && deadline != null;
+  const showDeadline = phase !== "building" && !hasResults;
+
+  /**
+   * ── The deadline stays IN this panel ─────────────────────────────────────
+   *
+   * It is not a second call to action — it is the runner's other control, and
+   * the only escape from the past-deadline trap its own copy describes.
+   * Keeping it here is what makes this ONE panel rather than two.
+   *
+   * The button-demotion logic that used to live here went with the buttons:
+   * there is one action now, right-justified and sized to its label, so there
+   * is nothing left to demote it against.
+   */
 
   return (
     <div
       data-testid="pickem-phase-strip"
-      className="mx-1 flex flex-col gap-2.5 rounded-xl px-3 py-3"
+      className="flex flex-col gap-2.5 rounded-xl px-3 py-3"
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
-      <div className="flex items-start justify-between gap-3">
-        {/* No "You're running this" eyebrow. The strip only renders for people
-            who ARE running it (`canEdit`), so it told them something they
-            already knew — in the tightest space on the screen. The phase and
-            the action are the content. */}
+      <div className="flex items-center gap-3">
+        {/* The owner-attention marker the rest of the app uses — amber, and on
+            the panel rather than on the button, because what needs attention is
+            that this game has a runner and the runner is you. */}
+        <AlertTriangle
+          size={16}
+          style={{ color: "var(--color-bt-owner)", flexShrink: 0 }}
+          aria-hidden
+        />
         <span className="min-w-0 flex-1">
           <span
             className="block"
             style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 700 }}
             data-testid="pickem-strip-phase"
           >
-            {PHASE_LABEL[phase]}
+            You&rsquo;re in charge of pick&rsquo;em
           </span>
           <span
             className="mt-0.5 block"
@@ -207,14 +239,84 @@ export function PickemPhaseStrip({
               lineHeight: 1.45,
             }}
           >
-            {phase === "building" && slateCount === 0
-              ? "Add some games to the slate before you can open picks."
-              : phase === "locked" && hasResults
-                ? LOCKED_WITH_RESULTS
-                : PHASE_DETAIL[phase]}
+            Current pick&rsquo;em slate: {slateCount} game{slateCount === 1 ? "" : "s"}
           </span>
         </span>
+
+        {/* RIGHT-JUSTIFIED and sized to its label, not full width. A full-width
+            primary is what made this panel read as a call to action rather than
+            as the runner's standing controls. */}
+        {move && (
+          <button
+            type="button"
+            onClick={move.onClick}
+            disabled={busy}
+            data-testid={move.testId}
+            className="shrink-0 rounded-lg px-4 disabled:opacity-40"
+            style={{
+              minHeight: 40,
+              fontSize: TYPE_SCALE.bodyDense,
+              fontWeight: 700,
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
+            }}
+          >
+            {busy ? "…" : move.label}
+          </button>
+        )}
       </div>
+
+      {/* The one sentence that is NOT a phase restatement: it says why an
+          action a runner expects to find is missing, which the button cannot. */}
+      {phase === "locked" && hasResults && (
+        <span
+          style={{
+            fontSize: TYPE_SCALE.caption,
+            color: "var(--color-bt-text-dim)",
+            lineHeight: 1.45,
+          }}
+        >
+          {LOCKED_WITH_RESULTS}
+        </span>
+      )}
+      {/* NAMES WHERE, because "add some games" without it is an instruction
+          whose object is on another screen. The settings gear is the route on
+          all five formats and it is in this game's own header — so the sentence
+          points at something the reader can see from where they are standing,
+          which is the whole of the refusal rule. */}
+      {phase === "building" && slateCount === 0 && (
+        <span
+          data-testid="pickem-strip-empty-slate"
+          style={{
+            fontSize: TYPE_SCALE.caption,
+            color: "var(--color-bt-text-dim)",
+            lineHeight: 1.45,
+          }}
+        >
+          Add games to the slate first — the gear at the top of this page, then
+          The Picks.
+        </span>
+      )}
+
+      {/* Says what Start is about to do that its label cannot.
+          Unlocking clears the hand lock and nothing else, so on a game whose
+          deadline has gone it would achieve nothing on its own — the button
+          therefore clears the spent deadline as part of the same press, and
+          this is the one sentence saying so. Without it a runner presses Start,
+          watches a deadline they set disappear, and has no idea why. */}
+      {phase === "locked" && !hasResults && deadlinePassed && (
+        <span
+          data-testid="pickem-strip-clears-deadline"
+          style={{
+            fontSize: TYPE_SCALE.caption,
+            color: "var(--color-bt-text-dim)",
+            lineHeight: 1.45,
+          }}
+        >
+          The deadline has passed, so Start clears it — picks stay open until you
+          press Stop.
+        </span>
+      )}
 
       {showDeadline && (
         <div data-testid="pickem-strip-deadline">
@@ -307,75 +409,6 @@ export function PickemPhaseStrip({
         </div>
       )}
 
-      {moves.map((m) => (
-        <span
-          key={m.testId}
-          className={scheduled ? "flex items-center gap-3 pt-2.5" : "flex flex-col gap-1"}
-          style={scheduled ? { borderTop: "1px solid var(--color-bt-border)" } : undefined}
-        >
-          {/* Two-word labels are not enough for actions that change what sixteen
-              other people can see, so each available move carries its own
-              consequence rather than the row carrying one generic caption.
-
-              Beside the ghost once demoted, under the primary otherwise — the
-              consequence is what earns the button its weight, so it travels with
-              the button rather than staying in a fixed slot. */}
-          {scheduled && (
-            <span
-              className="min-w-0 flex-1"
-              style={{
-                fontSize: TYPE_SCALE.caption,
-                color: "var(--color-bt-text-dim)",
-                lineHeight: 1.45,
-              }}
-            >
-              {m.consequence}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={m.onClick}
-            disabled={busy}
-            data-testid={m.testId}
-            className={
-              scheduled
-                ? "shrink-0 rounded-xl px-4 py-2 disabled:opacity-40"
-                : "rounded-xl px-4 py-2.5 disabled:opacity-40"
-            }
-            style={
-              scheduled
-                ? {
-                    background: "transparent",
-                    border: "1px solid var(--color-bt-border)",
-                    color: "var(--color-bt-text-dim)",
-                    fontSize: TYPE_SCALE.bodyDense,
-                    fontWeight: 600,
-                    minHeight: 44,
-                  }
-                : {
-                    background: "var(--color-bt-accent)",
-                    color: "var(--color-bt-base)",
-                    fontSize: TYPE_SCALE.bodyDense,
-                    fontWeight: 700,
-                    minHeight: 44,
-                  }
-            }
-          >
-            {busy ? "Working…" : m.label}
-          </button>
-          {!scheduled && (
-            <span
-              style={{
-                fontSize: TYPE_SCALE.caption,
-                color: "var(--color-bt-text-dim)",
-                lineHeight: 1.45,
-              }}
-            >
-              {m.consequence}
-            </span>
-          )}
-        </span>
-      ))}
     </div>
   );
 }

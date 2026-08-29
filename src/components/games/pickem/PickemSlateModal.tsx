@@ -491,7 +491,12 @@ export function PickemSlateModal({
 
         {/* The ADD panel, at the end of the list — where a new game goes, and
             independent of any edit that may be open above it. */}
-        {formsUsable && (
+        {/* Visible in reorder mode too. Hiding it produced a "where did the
+            form go" moment for a mode people enter and leave constantly — and
+            the add form is not what reordering is about, so there was never a
+            conflict to avoid. Row EDITING stays gated: a row cannot sensibly
+            be draggable and tap-to-edit at once. */}
+        {editable && (
           <SlateForm
             form={addForm}
             editing={false}
@@ -541,9 +546,11 @@ export function PickemSlateModal({
           <div
             data-testid="pickem-slate-footer"
             className="sticky bottom-0 z-10 -mx-4 mt-1 flex items-center gap-3 px-4 pb-2 pt-3"
+            // Matches the picks save bar and the settings footer: one
+            // treatment for every anchored footer in the app.
             style={{
-              background:
-                "linear-gradient(to top, var(--color-bt-base) 72%, color-mix(in srgb, var(--color-bt-base) 0%, transparent))",
+              background: "var(--color-bt-base)",
+              borderTop: "1px solid var(--color-bt-border)",
             }}
           >
             <span

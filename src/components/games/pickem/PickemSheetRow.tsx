@@ -39,6 +39,16 @@ export interface SheetRowGame extends MatchupLineGame {
 }
 
 /**
+ * What became of this pick, once the game has been played.
+ *
+ * Null while nothing is known — and null is the ONLY value that means that.
+ * "void" is a decided outcome that paid nobody (a push, or a game pulled from
+ * the scoring), which looks identical to "not played yet" in every number on
+ * this row and means the opposite thing about what is left to come.
+ */
+export type PickOutcome = "won" | "lost" | "void";
+
+/**
  * "Sun" over "4:25p" — the two-line kickoff stack that fills the right side.
  *
  * Parsed and re-rendered rather than printed: the stored `kickoff` is free text
@@ -71,15 +81,42 @@ function Kickoff({ kickoff }: { kickoff: string }) {
 }
 
 /**
- * The points this game carries, from its POSITION.
+ * The points this game carries, from its POSITION — and, once it has been
+ * played, what became of them.
  *
  * The rank is the position — never stored beside it — so the chip renumbers as
  * the list moves and confidence cannot drift out of step with order.
+ *
+ * ── ONE number, three fates ────────────────────────────────────────────────
+ *
+ * The chip always shows the STAKE: what this position was worth, multiplier
+ * included. What changes is the treatment — accent for points banked, struck
+ * through for points missed, dim for a game that paid nobody.
+ *
+ * Showing the stake rather than the EARNED value is what makes the three
+ * readable as one column. Earned would print 0 on both a miss and a push,
+ * which is the same number for opposite facts, and it would make the wrong
+ * picks vanish into a column of zeroes — the exact thing a person scanning a
+ * finished sheet wants to find.
+ *
+ * The strike-through is the one that carries meaning without colour: a number
+ * crossed out is a number that did not count, in any theme and at any size.
  */
-function RankChip({ points, picked }: { points: number; picked: boolean }) {
+function RankChip({
+  points,
+  picked,
+  outcome,
+}: {
+  points: number;
+  picked: boolean;
+  outcome: PickOutcome | null;
+}) {
+  const banked = outcome === "won";
+  const missed = outcome === "lost";
   return (
     <span
       data-testid="pickem-row-rank"
+      data-outcome={outcome ?? "open"}
       className="flex shrink-0 items-center justify-center"
       style={{
         width: 28,
@@ -88,11 +125,30 @@ function RankChip({ points, picked }: { points: number; picked: boolean }) {
         fontSize: 13,
         fontWeight: 700,
         fontVariantNumeric: "tabular-nums",
-        background: picked ? "var(--color-bt-accent-faint)" : "transparent",
-        border: picked
-          ? "1px solid var(--color-bt-accent-border)"
-          : "1px dashed var(--color-bt-border)",
-        color: picked ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+        // A banked stake takes the SOLID accent — the only filled chip on the
+        // sheet, so a scan down a played slate reads as the points that landed.
+        background: banked
+          ? "var(--color-bt-accent)"
+          : outcome != null
+            ? "transparent"
+            : picked
+              ? "var(--color-bt-accent-faint)"
+              : "transparent",
+        border: banked
+          ? "1px solid var(--color-bt-accent)"
+          : outcome != null
+            ? "1px solid var(--color-bt-border)"
+            : picked
+              ? "1px solid var(--color-bt-accent-border)"
+              : "1px dashed var(--color-bt-border)",
+        color: banked
+          ? "var(--color-bt-base)"
+          : outcome != null
+            ? "var(--color-bt-text-dim)"
+            : picked
+              ? "var(--color-bt-accent)"
+              : "var(--color-bt-text-dim)",
+        textDecoration: missed ? "line-through" : undefined,
       }}
     >
       {points}
@@ -164,15 +220,29 @@ export function PickemSheetRow({
   game,
   pick,
   points,
+  outcome = null,
   editable,
   onPick,
 }: {
   game: SheetRowGame;
   /** The chosen side, or null while nobody has been taken. */
   pick: "away" | "home" | null;
-  /** What this position is worth — null when confidence is off, and then the
-   *  chip is ABSENT rather than showing a 1 nobody chose. */
+  /**
+   * What this position is worth.
+   *
+   * Null when confidence is off AND the game is unplayed — the chip is then
+   * ABSENT rather than showing a 1 nobody chose. Once a game HAS been played
+   * the caller passes the stake either way, because with confidence off the
+   * stake is still 1 times the multiplier and "what became of it" is the
+   * question this row has stopped being able to answer without it.
+   */
   points: number | null;
+  /**
+   * What became of the pick. Null while the game is unplayed, which is also
+   * what the editable sheet always passes: dimming a row that can still be
+   * tapped would read as disabled, and it is not.
+   */
+  outcome?: PickOutcome | null;
   editable: boolean;
   onPick: (side: "away" | "home") => void;
 }) {
@@ -189,9 +259,26 @@ export function PickemSheetRow({
         borderRadius: 11,
         padding: "5px 10px 5px 12px",
         minHeight: 52,
+        /**
+         * ONE dim, on the whole row, chip included.
+         *
+         * The first version faded the content BESIDE the chip and left the chip
+         * at full strength, on the reasoning that the stake is the reason to
+         * look at a played row. On screen that made the chip a third kind of
+         * bright number — beside the live rows' accent chips and the unplayed
+         * rows' outlined ones — so a finished slate had three brightnesses
+         * competing and the settled rows read as the loudest thing on it.
+         *
+         * The chip does not need brightness to stay legible, because its three
+         * fates are carried by SHAPE: a filled disc, a strike-through, a plain
+         * outline. Those survive the fade; a brightness contest does not.
+         */
+        opacity: outcome != null ? 0.38 : 1,
       }}
     >
-      {points != null && <RankChip points={points} picked={pick !== null} />}
+      {points != null && (
+        <RankChip points={points} picked={pick !== null} outcome={outcome} />
+      )}
 
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-1 gap-y-1">

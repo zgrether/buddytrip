@@ -86,7 +86,7 @@ export function PickemProxyBanner({
   return (
     <div
       data-testid="pickem-proxy-banner"
-      className="mx-1 flex flex-col gap-1.5 rounded-xl px-3 py-2.5"
+      className="flex flex-col gap-1.5 rounded-xl px-3 py-2.5"
       style={{
         background: "var(--color-bt-accent-faint)",
         border: "1px solid var(--color-bt-accent-border)",

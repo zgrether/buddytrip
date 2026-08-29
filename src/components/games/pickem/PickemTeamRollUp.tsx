@@ -275,7 +275,7 @@ function SideCard({
   return (
     <div
       data-testid="pickem-board-side"
-      className="mx-1 flex flex-col gap-1.5 px-3 py-2.5"
+      className="flex flex-col gap-1.5 px-3 py-2.5"
       style={{
         borderRadius: 13,
         background: "var(--color-bt-card)",
@@ -376,7 +376,7 @@ function Contributions({
         <div
           key={p.uid}
           data-testid="pickem-board-participant"
-          className="mx-1 flex items-center gap-2 px-3"
+          className="flex items-center gap-2 px-3"
           style={{
             minHeight: 38,
             borderRadius: 11,

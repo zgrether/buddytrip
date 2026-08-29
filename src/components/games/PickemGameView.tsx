@@ -44,6 +44,14 @@ import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { PickemMatchBuilder } from "@/components/games/pickem/PickemMatchBuilder";
 import type { DraftMatchConfig } from "@/lib/configDraft";
 import { PickemTwoUp, type PickemPanel } from "@/components/games/pickem/PickemTwoUp";
+import {
+  PickemOtherPicks,
+  PickemPicksSubTabs,
+  PickemReadingHeader,
+  sortOtherSheets,
+  type OtherSheet,
+  type PicksSub,
+} from "@/components/games/pickem/PickemOtherPicks";
 import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
 import { PickemProxyBanner, type ProxyTarget } from "@/components/games/pickem/PickemProxyPanel";
 import {
@@ -54,6 +62,7 @@ import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { ListChecks, Swords } from "lucide-react";
 import {
+  deadlineBlocksReopen,
   msUntilDeadline,
   picksEverOpened,
   picksOpen,
@@ -219,13 +228,25 @@ export function PickemGameView() {
    * CLAUDE.md #15).
    */
   /**
-   * Which of the two-up row's panels is open on a locked page, or neither.
+   * Which TAB is showing on a locked page. Never null — one is always selected,
+   * and Matches is the default because it is what most people opened the game
+   * to see.
    *
    * ONE value rather than a boolean each: they are alternatives, and two
    * booleans that must never both be true is how a screen ends up showing two
    * things stacked that were each designed to be the only one.
    */
-  const [openPanel, setOpenPanel] = useState<PickemPanel | null>(null);
+  const [openPanel, setOpenPanel] = useState<PickemPanel>("matches");
+  /**
+   * Which half of the PICKS tab is showing, and whose sheet is open under it.
+   *
+   * Two pieces of state rather than one three-valued one, because they answer
+   * different questions and only one of them survives a tab change: leaving
+   * Picks and coming back should land where you were, but not still inside
+   * somebody else's sheet.
+   */
+  const [picksSub, setPicksSub] = useState<PicksSub>("your");
+  const [readingSheetOf, setReadingSheetOf] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savePicks = trpc.pickem.savePicks.useMutation({
     onSuccess: async () => {
@@ -877,16 +898,58 @@ export function PickemGameView() {
     total: sheetPoints(q.data!.slate, picks, q.data!.settings.useConfidence),
   }));
   const mySheet = me?.id ? (sheetTotals.find((s) => s.userId === me.id) ?? null) : null;
+
   /**
-   * Competition ranking: everyone strictly above me, plus one. Ties SHARE a
-   * place (two on 41 are both 2nd, and the next is 4th), which is the only
-   * reading that does not have to pick a winner between two identical sheets.
+   * Everyone else in this game, for the Picks tab's second half.
+   *
+   * ── The FIELD, not the sheets ──────────────────────────────────────────────
+   *
+   * Built from the union of three sources rather than from `sheets` alone:
+   * whoever has a visible sheet, whoever is on a team, and whoever is a side of
+   * a match. Sheets alone would render fifteen rows where there are seventeen
+   * people, and the reader has no way to tell a short field from a dropped one
+   * — the empty-versus-unknown rule, in a list.
+   *
+   * The three overlap almost entirely in practice. They are unioned anyway
+   * because each is the only source for one real case: a person on no team who
+   * submitted (sheets), an unpaired person who did not (teams), and a match
+   * side belonging to somebody the roster read missed.
+   *
+   * `points` is null — never 0 — for a person with no sheet. Zero-because-they
+   * -missed and zero-because-they-never-picked are the same number and opposite
+   * facts, and the row copy branches on exactly this.
    */
-  const myRank = mySheet ? 1 + sheetTotals.filter((s) => s.total > mySheet.total).length : null;
+  const otherSheets: OtherSheet[] = (() => {
+    const field = new Set<string>(Object.keys(q.data.sheets));
+    for (const t of q.data.teams) for (const uid of t.memberIds) field.add(uid);
+    for (const m of q.data.matches) {
+      if (m.sideAId) field.add(m.sideAId);
+      if (m.sideBId) field.add(m.sideBId);
+    }
+    if (me?.id) field.delete(me.id);
+    return sortOtherSheets(
+      [...field].map((userId) => {
+        const picks = q.data!.sheets[userId] ?? [];
+        return {
+          userId,
+          name: nameOf(userId),
+          team: teamNameOf(userId),
+          points: picks.length
+            ? sheetPoints(q.data!.slate, picks, q.data!.settings.useConfidence)
+            : null,
+        };
+      })
+    );
+  })();
 
   return (
     <div
-      className="flex flex-col gap-3"
+      /* px-4 is the gutter Match, Rack and Stroke all use. Pick'em was
+         inset by `mx-1` on each child — 4px, so its cards ran to the edges
+         while every other game page sat 16px in. The shell only pads at lg+,
+         so the mobile gutter is the view's own job and this is the answer the
+         rest of the app already gave. */
+      className="flex flex-col gap-3 px-4"
       style={{
         /**
          * Clear the bottom nav ourselves.
@@ -946,9 +1009,38 @@ export function PickemGameView() {
           slateCount={q.data.slate.length}
           deadline={clock.picksDeadline ?? null}
           busy={setPhase.isPending || setDeadline.isPending}
+          /* The strip SAYS what Start will do; this DOES it. One answer, from
+             `deadlineBlocksReopen`, so the sentence and the behaviour cannot
+             disagree about where the boundary is. */
+          deadlinePassed={deadlineBlocksReopen(clock, now)}
           onOpenPicks={() => setPhase.mutate({ tripId: tripId!, gameId, action: "open" })}
           onLock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "lock" })}
-          onUnlock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "unlock" })}
+          onUnlock={async () => {
+            /**
+             * START, on a game whose deadline has already gone.
+             *
+             * `unlock` clears `picks_locked_at` and NOTHING else — three
+             * migrations say so in as many words. So on a past-deadline game it
+             * writes a column, the page re-reads, and `picksOpen` still fails
+             * on `now <= deadline`: the runner presses the only action they
+             * have and watches nothing happen.
+             *
+             * Clearing the spent deadline is the honest completion of the
+             * intent, not an extra: a deadline in the past is no longer a
+             * schedule, it is a record of when picks shut, and "reopen picks"
+             * cannot mean anything else while it stands.
+             *
+             * Sequenced with `mutateAsync` and the deadline FIRST, so the two
+             * writes cannot land in an order that leaves the game momentarily
+             * open against a stale deadline — and so a failure to clear it
+             * aborts before the unlock rather than after, leaving the game
+             * exactly as it was instead of half-moved.
+             */
+            if (deadlineBlocksReopen(clock, now)) {
+              await setDeadline.mutateAsync({ tripId: tripId!, gameId, deadline: null });
+            }
+            setPhase.mutate({ tripId: tripId!, gameId, action: "unlock" });
+          }}
           onDeadlineChange={(deadline) => setDeadline.mutate({ tripId: tripId!, gameId, deadline })}
         />
       )}
@@ -984,35 +1076,113 @@ export function PickemGameView() {
           {!runnerStrip && <PickemClosedBanner closure={pickemClosure(clock, now)} />}
 
           <PickemTwoUp
+            /* The first tab's own count. Under team totals there are no
+               matches to count, so it says what that shape has instead. */
+            matchesLabel={
+              individualMatches
+                ? `${matchPairs.length} match${matchPairs.length === 1 ? "" : "es"}`
+                : `${q.data.teams.length} teams`
+            }
             /* Null, not zero, for somebody with no sheet: "0 pts · 16 of 16"
                reads as a bad weekend rather than as an absence. */
             myPoints={mySheet?.total ?? null}
-            myRank={myRank}
-            sheetCount={sheetTotals.length}
             resolved={resolvedGames}
             total={totalGames}
             canEdit={canEdit}
             open={openPanel}
-            onOpen={(p) => setOpenPanel((cur) => (cur === p ? null : p))}
+            /* A tab bar SELECTS. Tapping the open one again is not a close —
+               there is no closed state for a page to be in. */
+            onOpen={setOpenPanel}
           />
 
           {/* Their own sheet, read-only and one tap away. They spent time on it
               and should not have to hunt for what they submitted (§5). */}
+          {/* PICKS — the viewer's own sheet, and everybody else's.
+              Reading another sheet used to be reachable only from the
+              picks-OPEN page, through the proxy button. So the one phase where
+              every sheet is deliberately readable was the one phase with
+              nowhere to read them. */}
           {openPanel === "picks" && (
-            <PickemSheet
-              gameId={gameId}
-              slate={q.data.slate}
-              settings={q.data.settings}
-              picks={q.data.myPicks}
-              subject={{ userId: me?.id ?? "", name: "You", isSelf: true, isGuest: false }}
-              editable={false}
-              saving={false}
-              saveError={null}
-              deadlineMs={null}
-              closedBannerHoisted
-              closure={pickemClosure(clock, now)}
-              onSave={() => {}}
-            />
+            <>
+              <PickemPicksSubTabs
+                open={picksSub}
+                onOpen={(sub) => {
+                  setPicksSub(sub);
+                  // Leaving the list closes whoever was open in it. Coming back
+                  // to a sheet you did not choose this time is the same
+                  // stale-subject bug the proxy sheet's remount key exists for.
+                  setReadingSheetOf(null);
+                }}
+              />
+
+              {picksSub === "your" && (
+                <PickemSheet
+                  gameId={gameId}
+                  slate={q.data.slate}
+                  settings={q.data.settings}
+                  picks={q.data.myPicks}
+                  subject={{ userId: me?.id ?? "", name: "You", isSelf: true, isGuest: false }}
+                  editable={false}
+                  saving={false}
+                  saveError={null}
+                  deadlineMs={null}
+                  closedBannerHoisted
+                  closure={pickemClosure(clock, now)}
+                  onSave={() => {}}
+                />
+              )}
+
+              {picksSub === "other" && readingSheetOf == null && (
+                <PickemOtherPicks
+                  sheets={otherSheets}
+                  avatarFor={avatarFor}
+                  onOpen={setReadingSheetOf}
+                />
+              )}
+
+              {picksSub === "other" && readingSheetOf != null && (
+                <>
+                  {/* NOT `PickemProxyBanner`. That band says "You are
+                      entering Charlie’s sheet · saving replaces it" over a
+                      surface that cannot be entered or saved — every clause
+                      false, in the loudest treatment on the page. The two
+                      headers answer the same question for opposite reasons: one
+                      is a warning about the only way proxy entry goes badly,
+                      this is a title. */}
+                  <PickemReadingHeader
+                    name={nameOf(readingSheetOf)}
+                    onBack={() => setReadingSheetOf(null)}
+                  />
+                  <PickemSheet
+                    /* Keyed on the SUBJECT. The sheet holds a draft stamped
+                       with a fingerprint of the server picks, and two people
+                       who have not submitted fingerprint identically — so
+                       without this, switching subjects can carry one person's
+                       sheet into another's. Read-only here, but the key costs
+                       nothing and the failure it prevents is the one this
+                       feature must never have. */
+                    key={readingSheetOf}
+                    gameId={gameId}
+                    slate={q.data.slate}
+                    settings={q.data.settings}
+                    picks={q.data.sheets[readingSheetOf] ?? []}
+                    subject={{
+                      userId: readingSheetOf,
+                      name: nameOf(readingSheetOf),
+                      isSelf: false,
+                      isGuest: false,
+                    }}
+                    editable={false}
+                    saving={false}
+                    saveError={null}
+                    deadlineMs={null}
+                    closedBannerHoisted
+                    closure={pickemClosure(clock, now)}
+                    onSave={() => {}}
+                  />
+                </>
+              )}
+            </>
           )}
 
           {/* Results are visible to everyone as they land — no embargo, since
@@ -1033,16 +1203,13 @@ export function PickemGameView() {
             />
           )}
 
-          {/* Never an empty grid: §12 forbids it, and a runner is under no
-              pressure to pair before the deadline (§5), so "locked, unpaired"
-              is a normal state that must read as waiting rather than broken. */}
-          {individualMatches && matchPairs.length === 0 ? (
-            <PickemNoMatches
-              canEdit={canEdit}
-              // The same opener the chrome gear uses, so the card cannot send a
-              // runner somewhere the gear would not.
-              onOpenSettings={settings.openConfig}
-            />
+          {/* Behind the first TAB now, not under the other two. Never an empty
+              grid: §12 forbids it, and a runner is under no pressure to pair
+              before the deadline (§5), so "locked, unpaired" is a normal state
+              that must read as waiting rather than broken. */}
+          {openPanel === "matches" &&
+            (individualMatches && matchPairs.length === 0 ? (
+            <PickemNoMatches />
           ) : (
             <PickemBoard
               slate={q.data.slate}
@@ -1068,18 +1235,12 @@ export function PickemGameView() {
                 pointsTotal
               )}
             />
-          )}
+          ))}
         </>
       ) : phase === "building" ? (
-        <PhaseBody
-          slateCount={q.data.slate.length}
-          canEdit={canEdit}
-          onOpenSlate={() => setSlateOpen(true)}
-          onOpenPicks={() =>
-            setPhase.mutate({ tripId: tripId!, gameId, action: "open" })
-          }
-          opening={setPhase.isPending}
-        />
+        /* No props left: it takes no viewer and no counts because it says the
+           same thing to everybody. The runner's half moved to the one panel. */
+        <PhaseBody />
       ) : sheetsOpen && !proxyTarget ? (
         /**
          * The list COVERS the page rather than sitting under the sheet. It is
@@ -1394,96 +1555,23 @@ export function PickemGameView() {
  * "nothing added yet" and "a finished slate, unpublished" must be
  * indistinguishable from outside.
  */
-export function PhaseBody({
-  slateCount,
-  canEdit,
-  onOpenSlate,
-  onOpenPicks,
-  opening,
-}: {
-  slateCount: number;
-  canEdit: boolean;
-  onOpenSlate: () => void;
-  onOpenPicks: () => void;
-  opening: boolean;
-}) {
+export function PhaseBody() {
   /**
-   * ── The runner gets a BANNER, not the member's screen plus a door ─────────
+   * ── The runner sees the MEMBER's screen, and their panel above it ─────────
    *
-   * A member reads "Picks open soon" because that is the whole truth for them.
-   * The runner reading the same words plus a button underneath was being told
-   * to wait and then handed the thing they are waiting on — the words describe
-   * somebody else's position.
+   * This used to branch: a runner got their own banner with Configure, and
+   * under it a full-width "Open picks · N games" with a paragraph explaining
+   * what pressing it would do. Together with the phase strip that made THREE
+   * calls to action for one job, two of them the same action.
    *
-   * So the runner's version says whose job it is and puts the action IN the
-   * banner. The member's stays exactly as it was.
+   * All of it is now the one panel in `PickemPhaseStrip`, so there is no
+   * branch left here. The runner sees what everyone else sees — because that
+   * is what everyone else sees — plus their controls above it.
+   *
+   * Configure went entirely rather than moving into the panel: the header gear
+   * is the way to settings on all five formats, and a second right-justified
+   * action would have put a detour beside the phase action.
    */
-  if (canEdit) {
-    return (
-      <div className="flex flex-col gap-3">
-        <div
-          data-testid="pickem-runner-banner"
-          className="mx-1 flex items-center gap-3 px-3 py-3"
-          style={{
-            borderRadius: 13,
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block" style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 700 }}>
-              You&rsquo;re in charge of pick&rsquo;em
-            </span>
-            <span
-              className="mt-0.5 block"
-              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-            >
-              Add the games for everyone to pick.
-            </span>
-          </span>
-          <button
-            type="button"
-            onClick={onOpenSlate}
-            data-testid="pickem-configure"
-            className="shrink-0 rounded-lg px-3"
-            style={{
-              minHeight: 36,
-              fontSize: TYPE_SCALE.bodyDense,
-              fontWeight: 600,
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-            }}
-          >
-            Configure
-          </button>
-        </div>
-
-        {/* The transition sixteen people are waiting on. It is not the
-            banner's action — the banner is about building — so it keeps its
-            own place, and its consequence copy with it. */}
-        {slateCount > 0 && (
-          <div className="mx-1 flex flex-col items-center gap-2">
-            <Primary onClick={onOpenPicks} disabled={opening} testId="pickem-open-picks">
-              {opening ? "Opening…" : `Open picks · ${slateCount} games`}
-            </Primary>
-            <p
-              style={{
-                fontSize: TYPE_SCALE.caption,
-                color: "var(--color-bt-text-dim)",
-                maxWidth: 260,
-                lineHeight: 1.5,
-                textAlign: "center",
-              }}
-            >
-              Everyone can start filling in their sheet. The slate freezes —
-              you can still reopen it from settings.
-            </p>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <Empty
       icon="◷"
@@ -1581,36 +1669,3 @@ function Empty({
 
 /** Names an unbuilt phase rather than leaving blank space — an empty area reads
  *  as broken, and a person looking at this early needs to know which. */
-
-function Primary({
-  onClick,
-  children,
-  disabled = false,
-  testId = "pickem-build-slate",
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  disabled?: boolean;
-  /** The primary slot changes job with the state (build → open), so the id
-   *  travels with the ACTION rather than being fixed to the slot. */
-  testId?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      data-testid={testId}
-      className="rounded-xl px-4 py-2.5 disabled:opacity-40"
-      style={{
-        background: "var(--color-bt-accent)",
-        color: "var(--color-bt-base)",
-        fontSize: TYPE_SCALE.bodyDense,
-        fontWeight: 700,
-        minHeight: 44,
-      }}
-    >
-      {children}
-    </button>
-  );
-}
