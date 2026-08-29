@@ -1,10 +1,15 @@
 "use client";
 
-import { UserPlus, Check, ChevronLeft } from "lucide-react";
-import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { ChevronLeft } from "lucide-react";
+import { TYPE_SCALE } from "@/lib/typeScale";
 
 /**
  * Entering a sheet for someone who cannot, or did not.
+ *
+ * The LIST itself is `PickemSheetsList` (Screen I), reached from the Sheets
+ * button rather than from a block at the bottom of the page. What stays here is
+ * the vocabulary both surfaces share — who needs chasing, and what their row
+ * says — plus the banner that sits over a proxy sheet.
  *
  * ── Why it is here and not in the phase strip ──────────────────────────────
  *
@@ -28,6 +33,8 @@ export interface ProxyTarget {
   name: string;
   submitted: boolean;
   isGuest: boolean;
+  /** Their team, for the row's second line. Null when they are on none. */
+  side?: string | null;
 }
 
 /**
@@ -50,65 +57,7 @@ export function sortTargets(targets: ProxyTarget[]): ProxyTarget[] {
 /** What a row says about someone's state. Guests read differently on purpose. */
 export function targetStatusLabel(t: ProxyTarget): string {
   if (t.submitted) return "Sheet in";
-  return t.isGuest ? "Hasn't signed up" : "No sheet yet";
-}
-
-export function PickemProxyPanel({
-  targets,
-  onPick,
-}: {
-  /** Already excludes the viewer — see `PickemGameView`. */
-  targets: ProxyTarget[];
-  onPick: (t: ProxyTarget) => void;
-}) {
-  if (targets.length === 0) return null;
-  const sorted = sortTargets(targets);
-  const waiting = sorted.filter((t) => !t.submitted).length;
-
-  return (
-    <div className="mx-1 flex flex-col gap-2" data-testid="pickem-proxy-panel">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <span style={EYEBROW}>Enter for someone else</span>
-        <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>
-          {waiting === 0 ? "Everyone's in" : `${waiting} still to come`}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        {sorted.map((t) => (
-          <button
-            key={t.userId}
-            type="button"
-            onClick={() => onPick(t)}
-            data-testid={`pickem-proxy-target-${t.userId}`}
-            className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "1px solid var(--color-bt-border)",
-              minHeight: 48,
-            }}
-          >
-            <span
-              className="min-w-0 flex-1 truncate"
-              style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}
-            >
-              {t.name}
-            </span>
-            <span
-              className="flex shrink-0 items-center gap-1"
-              style={{
-                fontSize: TYPE_SCALE.caption,
-                color: t.submitted ? "var(--color-bt-text-dim)" : "var(--color-bt-text)",
-              }}
-            >
-              {t.submitted ? <Check size={13} /> : <UserPlus size={13} />}
-              {targetStatusLabel(t)}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  return t.isGuest ? "Hasn’t signed up" : "No sheet yet";
 }
 
 /**

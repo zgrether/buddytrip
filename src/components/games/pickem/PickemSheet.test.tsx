@@ -320,3 +320,29 @@ describe("the countdown", () => {
     expect(render({ deadlineMs: null })).not.toContain('data-testid="pickem-countdown"');
   });
 });
+
+describe("the footer names whose sheet this is", () => {
+  /**
+   * The only way proxy entry goes badly is somebody editing what they think is
+   * their own sheet, and the sheet is POPULATED in proxy mode — it looks
+   * exactly like a filled-in sheet, because it is one.
+   *
+   * So the last line under the thumb that is about to press Save says whose it
+   * is, in every state. Nothing is lost by giving that line up: the BUTTON
+   * already carries the save state.
+   */
+  it("says who it belongs to when it is not yours", () => {
+    const html = render({
+      subject: { userId: "ty", name: "Ty", isSelf: false, isGuest: false },
+    });
+    expect(html).toContain("Entering for Ty · not your sheet");
+  });
+
+  it("keeps the ordinary status on your own sheet", () => {
+    // The pair is the assertion — a bar that always said "Entering for" would
+    // satisfy the case above on its own.
+    const html = render();
+    expect(html).not.toContain("Entering for");
+    expect(html).toContain("picked");
+  });
+});

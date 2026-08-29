@@ -44,11 +44,11 @@ import { PickemMatchBuilder } from "@/components/games/pickem/PickemMatchBuilder
 import type { DraftMatchConfig } from "@/lib/configDraft";
 import { PickemTwoUp, type PickemPanel } from "@/components/games/pickem/PickemTwoUp";
 import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
+import { PickemProxyBanner, type ProxyTarget } from "@/components/games/pickem/PickemProxyPanel";
 import {
-  PickemProxyPanel,
-  PickemProxyBanner,
-  type ProxyTarget,
-} from "@/components/games/pickem/PickemProxyPanel";
+  PickemSheetsList,
+  PickemSheetsButton,
+} from "@/components/games/pickem/PickemSheetsList";
 import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import {
@@ -225,6 +225,8 @@ export function PickemGameView() {
    * banner is the one thing that must never be wrong.
    */
   const [proxyFor, setProxyFor] = useState<string | null>(null);
+  /** Is the Sheets list covering the page. Never a permission — see the list. */
+  const [sheetsOpen, setSheetsOpen] = useState(false);
   /** The subject's name as it was when Save was pressed — the toast reports a
    *  past action, so it must not follow a later rename or refetch. */
   const proxyTargetName = useRef<string | null>(null);
@@ -375,6 +377,13 @@ export function PickemGameView() {
     [nameByUser]
   );
 
+  /** The team's NAME, for a row a person reads — `teamOf` gives the id. */
+  const teamNameOf = useCallback(
+    (userId: string) =>
+      (q.data?.teams ?? []).find((t) => t.memberIds.includes(userId))?.name ?? null,
+    [q.data?.teams]
+  );
+
   /**
    * Identity for the head-to-head header: the person's chosen icon, and the
    * colour of the team they are ON.
@@ -420,8 +429,11 @@ export function PickemGameView() {
         name: byId.get(r.userId)?.displayName ?? "Unknown",
         submitted: r.submitted,
         isGuest: byId.get(r.userId)?.isGuest ?? false,
+        // The row's second line. Resolved here because the list takes people,
+        // not rosters — and a name is what a reader recognises, not a team id.
+        side: teamNameOf(r.userId),
       }));
-  }, [sheetStatusQ.data, membersQ.data, me?.id]);
+  }, [sheetStatusQ.data, membersQ.data, me?.id, teamNameOf]);
 
   /** Resolved from the list each render rather than stored, so a name edit or a
    *  submitted-state change reaches the banner without a stale copy. */
@@ -883,7 +895,12 @@ export function PickemGameView() {
           below reads the SAME fact from the other side — it renders only when
           this does not. Two conditions that must always disagree drift exactly
           like two that must always agree (#13), so there is one of them. */}
-      {runnerStrip && (
+      {/* ...but not while the Sheets list is up. That is a SCREEN — its own
+          back chevron, its own title — and the strip above it made two headers
+          for one surface, the second of them about a different subject. Same
+          shape as the STANDINGS-over-TEAM-TOTALS pair, which no test could see
+          because both halves were correct. */}
+      {runnerStrip && !sheetsOpen && (
         <PickemPhaseStrip
           // Migration 165 refuses unlock once anything is scored; this is why
           // the move is not offered. Same predicate the server uses, mirrored
@@ -1030,6 +1047,29 @@ export function PickemGameView() {
           }
           opening={setPhase.isPending}
         />
+      ) : sheetsOpen && !proxyTarget ? (
+        /**
+         * The list COVERS the page rather than sitting under the sheet. It is
+         * one job — pick a person — and the sheet behind it is not that job.
+         *
+         * `targets` is exactly what `pickem_sheet_status` returned, minus the
+         * viewer. Nothing filters it here and nothing may: the list IS the
+         * permission, and a client-side role check would be a second copy of a
+         * policy that already exists in one place.
+         */
+        <PickemSheetsList
+          targets={proxyTargets}
+          /* A LABEL, not a gate — it names the list and admits nobody. */
+          runner={canEdit}
+          scopeName={me?.id ? teamNameOf(me.id) : null}
+          avatarFor={avatarFor}
+          onBack={() => setSheetsOpen(false)}
+          onPick={(t) => {
+            setProxyFor(t.userId);
+            setSheetsOpen(false);
+            setSaveError(null);
+          }}
+        />
       ) : (
         <>
           {/* ONE component for both states. `editable` comes from the CLOCK —
@@ -1046,6 +1086,16 @@ export function PickemGameView() {
               in the same breath: a banner over second-person text is a mixed
               message, and mixed is how somebody edits what they think is their
               own sheet. That is the only way this feature goes badly. */}
+          {/* The way in, above the sheet rather than below sixteen rows of the
+              viewer's own picks. Gated on the server having given them somebody
+              to act for — the row count, never a role. */}
+          {!proxyTarget && picksOpen(clock, now) && (
+            <PickemSheetsButton
+              count={proxyTargets.length}
+              waiting={proxyTargets.filter((t) => !t.submitted).length}
+              onOpen={() => setSheetsOpen(true)}
+            />
+          )}
           {proxyTarget && (
             <PickemProxyBanner
               name={proxyTarget.name}
@@ -1088,21 +1138,7 @@ export function PickemGameView() {
               }
             }}
           />
-          {/* Under the sheet, where a captain already is ten minutes before the
-              deadline. NOT the phase strip — that carries commands, and this is
-              not one. Renders only when the server says there is somebody to
-              act for, so a plain participant never sees it. */}
-          {!proxyTarget && picksOpen(clock, now) && (
-            <div className="mt-3">
-              <PickemProxyPanel
-                targets={proxyTargets}
-                onPick={(t) => {
-                  setProxyFor(t.userId);
-                  setSaveError(null);
-                }}
-              />
-            </div>
-          )}
+
           {/* The builder used to sit HERE, on the game page, writing straight
               through on its own Save. It is in settings now (critique r1 §2):
               pairing is setup, not something you do while the game runs, and
