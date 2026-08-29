@@ -59,17 +59,53 @@ export const createTRPCContext = async (): Promise<TRPCContext> => {
   const supabase = await createClient();
 
   let user: AuthUser | null = null;
-  try {
-    const { data } = await supabase.auth.getClaims();
-    const claims = data?.claims;
+  /**
+   * ── RACED TOO, and leaving it unraced was the previous fix's blind spot ───
+   *
+   * `getClaims()` verifies the token LOCALLY, which is why it is preferred — but
+   * "locally" is only true once the JWKS is in hand, and the first call in a
+   * cold isolate fetches the signing keys over the network. Same host, same
+   * stall. A `try/catch` handles a rejection; it does nothing about a promise
+   * that never settles.
+   *
+   * That is exactly what the second incident looked like: 300-second
+   * invocations on `games.configHash` and `pickem.get` with NOT ONE
+   * `surface: "trpc"` line in the logs. The guarded call below was never
+   * reached, because the unguarded one here never returned — the absence of
+   * the timeout log is what located the hang.
+   *
+   * The lesson is narrower than "add a timeout": ONE FUNCTION HELD TWO CALLS
+   * to the stalling dependency and only one was guarded, so the fix held for
+   * the path being looked at and not for the one that was not. The sweep that
+   * found the invite page needed running INSIDE this function too.
+   *
+   * `.catch(() => null)` keeps a rejection meaning what it meant before — JWKS
+   * unavailable or token malformed, fall through to the network path — rather
+   * than letting the race reject and take the request with it.
+   */
+  const claimed = await resolveWithTimeout(
+    () => supabase.auth.getClaims().catch(() => null),
+    AUTH_TIMEOUT_MS
+  );
+  if (claimed.timedOut) {
+    console.warn(
+      authProbeLine({
+        cookieNames: (await cookies()).getAll().map((c) => c.name),
+        surface: "trpc",
+        pathname: "/api/trpc",
+        method: "POST",
+        elapsedMs: claimed.elapsedMs,
+        outcome: "timeout",
+      })
+    );
+  } else {
+    const claims = claimed.value?.data?.claims;
     if (claims && typeof claims.sub === "string") {
       user = {
         id: claims.sub,
         email: typeof claims.email === "string" ? claims.email : null,
       };
     }
-  } catch {
-    // JWKS unavailable or token malformed — fall through to the network path.
   }
   if (!user) {
     /**
