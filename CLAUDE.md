@@ -307,6 +307,46 @@ seam, never on a calendar.
   not, the display has to separate them — and the check has to distinguish empty from
   missing before the display can.
 
+- **AN EXTRACTION MOVES THE CONTROL AND LEAVES THE MESSAGE BEHIND.** Twice in
+  three PRs, and the cause is the same both times: an extraction is scoped by
+  *what code sits here*, while a message's correct home is decided by *who needs
+  to see it and where they can act* — a different question that the mechanical
+  move never asks.
+
+  - **`PickemMismatchNote`.** Moving the match BUILDER onto the shared
+    `MatchSetup` left its warning on the read-only post-lock display, where it is
+    too late to act on, and removed it from the surface where the runner
+    actually pairs. Two surfaces disagreeing about the same person, and the one
+    that kept the message was the wrong one to be right on.
+  - **`PickemUnassignedNote`.** Extracting the team roll-up out of the board took
+    the branch that rendered the note with it, so the shape that still needed it
+    silently stopped saying anybody was unassigned. Caught before merge; the fix
+    was a third file both shapes import, because the board cannot import a
+    component out of the thing it renders.
+
+  **How to apply:** before an extraction, list every NOTE, BANNER, WARNING and
+  empty-state the old code rendered, and for each ask who it is for and what
+  they can do about it. Then check that reader still gets it afterwards. A
+  message whose new home cannot act on it has moved to the wrong place even
+  though the code compiles and the component it moved into is correct.
+
+- **A COMPOSITION BUG IS INVISIBLE TO TESTS WHEN BOTH HALVES ARE RIGHT.** The
+  roll-up printed `TEAM TOTALS` and the board printed `STANDINGS` directly above
+  it: two headings, nothing in the first. Every test passed, because each
+  component's header is correct in isolation and no test renders the pair.
+
+  Same shape as the locked page saying three things twice in R2 (two `MATCHES`
+  eyebrows, two "7 of 16 in", a pairing grid duplicating the match cards), and
+  as the runner reading the deadline twice within 100px. None of those is a
+  broken component; each is a screen with one fact on it twice.
+
+  **How to apply:** a per-component test cannot see a duplicate, so this class
+  is only ever found by rendering the assembled screen — which is what the
+  Verification Cadence rule below is for. When a component gains a header, a
+  count or a status line, check what its PARENT already prints in that slot
+  before adding one. And when a look finds one, the fix belongs to whichever
+  half is the weaker statement, not to whichever was written last.
+
 - **MEASURE THE THING, NOT THE REGION AROUND IT.** A grep counts matches in a
   RANGE; a decision needs the count for a COMPONENT. When the two are conflated
   the number comes out too big, and it comes out too big in whichever direction
