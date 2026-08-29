@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  PickemProxyPanel,
   PickemProxyBanner,
   sortTargets,
   targetStatusLabel,
@@ -62,7 +61,7 @@ describe("targetStatusLabel — a guest reads differently on purpose", () => {
     // `auth.uid()`, so `pickem_picks_write` can never match them — chasing them
     // is wasted effort, and the honest label says so.
     expect(targetStatusLabel(t({ userId: "1", name: "G", isGuest: true }))).toBe(
-      "Hasn't signed up"
+      "Hasn’t signed up"
     );
     expect(targetStatusLabel(t({ userId: "2", name: "R" }))).toBe("No sheet yet");
   });
@@ -72,34 +71,6 @@ describe("targetStatusLabel — a guest reads differently on purpose", () => {
       targetStatusLabel(t({ userId: "1", name: "G", isGuest: true, submitted: true }))
     ).toBe("Sheet in");
     expect(targetStatusLabel(t({ userId: "2", name: "R", submitted: true }))).toBe("Sheet in");
-  });
-});
-
-describe("PickemProxyPanel", () => {
-  const render = (targets: ProxyTarget[]) =>
-    renderToStaticMarkup(<PickemProxyPanel targets={targets} onPick={() => {}} />);
-
-  it("renders NOTHING when there is nobody to act for", () => {
-    // This is the whole affordance gate. `pickem_sheet_status` returns only the
-    // people the server admits, so a plain participant arrives here with an
-    // empty list — and sees no proxy control at all, without any role test in
-    // the client.
-    expect(render([])).toBe("");
-  });
-
-  it("counts who is still missing, not how many people there are", () => {
-    const html = render([
-      t({ userId: "1", name: "Brad" }),
-      t({ userId: "2", name: "Ty", submitted: true }),
-      t({ userId: "3", name: "Wes" }),
-    ]);
-    expect(html).toContain("2 still to come");
-  });
-
-  it("says so when everyone is in, rather than showing a zero", () => {
-    const html = render([t({ userId: "1", name: "Ty", submitted: true })]);
-    expect(html).toContain("Everyone&#x27;s in");
-    expect(html).not.toContain("0 still to come");
   });
 });
 

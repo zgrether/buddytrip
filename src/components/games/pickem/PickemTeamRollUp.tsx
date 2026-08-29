@@ -36,6 +36,12 @@ import type { ScoredPick, ScoredSlateGame } from "@/lib/pickemScoring";
  * two teams a standings card that does not sort by the standing is simply a
  * scoreboard with the rows in an arbitrary order.
  *
+ * THIS CHANGED BEHAVIOUR for a two-team match-play game, which used to hold
+ * roster order — so the two cards can now swap places mid-game as the lead
+ * changes. That is intended: the order IS the standing. It is written down
+ * because "my team moved" reads as a bug to somebody who does not know it was
+ * a decision.
+ *
  * ── Ties are resolved by the PAYOUT, never by the sort ─────────────────────
  *
  * Two teams level for first share the first and second awards between them.

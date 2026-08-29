@@ -545,13 +545,24 @@ function SaveBar({
       ? "all chalk, nothing off the home teams yet"
       : `${roadCount} road team${roadCount === 1 ? "" : "s"} taken`;
 
-  const status = rankingReset
-    ? "Ranking cleared — save to confirm"
-    : dirty
-      ? `${roads} · unsaved changes`
-      : submitted
-        ? `Saved · ${roads}`
-        : `All ${count} picked · ${roads}`;
+  /**
+   * On somebody else's sheet the footer says WHOSE, and says it in every state.
+   *
+   * This is the last thing under the thumb that is about to press Save, and the
+   * only way this feature goes badly is a person editing what they think is
+   * their own sheet. The save STATE is not lost by giving the line up: the
+   * button already carries it ("Save picks" / "Save changes" / "Saved" /
+   * "Saving…"), so the one line with no other job takes the warning.
+   */
+  const status = !subject.isSelf
+    ? `Entering for ${subject.name} · not your sheet`
+    : rankingReset
+      ? "Ranking cleared — save to confirm"
+      : dirty
+        ? `${roads} · unsaved changes`
+        : submitted
+          ? `Saved · ${roads}`
+          : `All ${count} picked · ${roads}`;
 
   return (
     <div
