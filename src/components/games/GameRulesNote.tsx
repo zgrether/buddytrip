@@ -77,7 +77,11 @@ export function GameRulesNote({
           value={displayed}
           onChange={(e) => onChange?.(e.target.value)}
           readOnly={!canEdit}
-          rows={showingStarter ? 4 : 3}
+          // Eight lines. Three scrolled a rules note almost immediately —
+          // this is prose somebody writes in one sitting and then re-reads,
+          // and a box that scrolls at three lines hides most of it while it is
+          // being written.
+          rows={8}
           maxLength={2000}
           placeholder="Tap out the rules of the day — formats, gimmes, mulligans, tiebreakers…"
           className="w-full resize-none bg-transparent text-sm outline-none"

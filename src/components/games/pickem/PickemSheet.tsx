@@ -569,14 +569,18 @@ function SaveBar({
       // Negative margins cancel the sheet's own side inset so the gradient
       // reaches the panel edges — the bar should look like it belongs to the
       // viewport, while the rows it floats over stay inset.
-      className="sticky bottom-0 z-10 -mx-4 -mb-1 mt-1 px-4 pb-3 pt-2 lg:-mx-1 lg:px-1"
+      className="sticky bottom-0 z-10 -mx-4 -mb-1 mt-1 px-4 pb-3 pt-2 lg:-lg:px-1"
       data-testid="pickem-save-bar"
       style={{
         // Anchored to the bottom of the scroller rather than sitting at the end
         // of the content (CLAUDE.md #14): with sixteen games the end of the
         // content is a long way below the fold.
-        background:
-          "linear-gradient(to top, var(--color-bt-base) 70%, color-mix(in srgb, var(--color-bt-base) 0%, transparent))",
+        // The SAME treatment as the settings slide-over's footer — solid
+        // base with a hairline above it — checked against that component
+        // rather than guessed. The gradient here was pick'em's own invention
+        // and read as a different surface from every other sticky footer.
+        background: "var(--color-bt-base)",
+        borderTop: "1px solid var(--color-bt-border)",
       }}
     >
       {error && (

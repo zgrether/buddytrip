@@ -32,7 +32,7 @@ export function PickemNoMatches({
   onOpenSettings?: () => void;
 }) {
   return (
-    <div className="mx-1 flex flex-col gap-2" data-testid="pickem-no-matches">
+    <div className="flex flex-col gap-2" data-testid="pickem-no-matches">
       <div
         className="flex flex-col items-center gap-1.5 text-center"
         style={{

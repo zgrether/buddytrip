@@ -34,7 +34,7 @@ export function PickemUnassignedNote({
   return (
     <p
       data-testid="pickem-board-unassigned"
-      className="mx-1 rounded-xl px-3 py-2.5"
+      className="rounded-xl px-3 py-2.5"
       style={{
         fontSize: TYPE_SCALE.caption,
         lineHeight: 1.5,

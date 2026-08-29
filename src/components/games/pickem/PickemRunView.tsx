@@ -110,7 +110,7 @@ export function PickemRunView({
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-run">
-      <div className="mx-1 flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
           <span style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 700 }}>Game results</span>
           {/* Only for somebody who can act. A member reading the same screen is
@@ -180,7 +180,7 @@ export function PickemRunView({
       {blockedReason && (
         <p
           data-testid="pickem-run-blocked"
-          className="mx-1 rounded-xl px-3 py-2.5"
+          className="rounded-xl px-3 py-2.5"
           style={{
             fontSize: TYPE_SCALE.caption,
             lineHeight: 1.5,
@@ -271,7 +271,7 @@ function PendingCard({
   return (
     <div
       data-testid="pickem-run-row"
-      className="mx-1 flex flex-col gap-2"
+      className="flex flex-col gap-2"
       style={{
         ...pickemRowSurface({ weighted: mult > 1 }),
         borderRadius: 13,
@@ -484,7 +484,7 @@ function EnteredRow({
   return (
     <div
       data-testid="pickem-run-entered"
-      className="mx-1 flex flex-col"
+      className="flex flex-col"
       style={{
         ...pickemRowSurface({ weighted: (g.multiplier ?? 1) > 1, quiet: !open }),
         borderRadius: 11,

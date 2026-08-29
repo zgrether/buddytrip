@@ -72,7 +72,7 @@ export function PickemTwoUp({
   const runnerHasWork = canEdit && toMark > 0;
 
   return (
-    <div className="mx-1 flex gap-2" data-testid="pickem-two-up">
+    <div className="flex gap-2" data-testid="pickem-two-up">
       <Half
         testId="pickem-two-up-picks"
         title="Your picks"

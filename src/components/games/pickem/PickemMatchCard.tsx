@@ -272,7 +272,7 @@ export function PickemMatchCard({
       type="button"
       onClick={onOpen}
       data-testid={mine ? "pickem-board-match-mine" : "pickem-board-match"}
-      className="mx-1 flex flex-col gap-1.5 px-3 py-2.5 text-left active:scale-[0.98]"
+      className="flex flex-col gap-1.5 px-3 py-2.5 text-left active:scale-[0.98]"
       style={{
         borderRadius: 13,
         background: selected ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",

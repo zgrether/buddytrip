@@ -183,7 +183,7 @@ export function PickemPhaseStrip({
   return (
     <div
       data-testid="pickem-phase-strip"
-      className="mx-1 flex flex-col gap-2.5 rounded-xl px-3 py-3"
+      className="flex flex-col gap-2.5 rounded-xl px-3 py-3"
       style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
     >
       <div className="flex items-start justify-between gap-3">

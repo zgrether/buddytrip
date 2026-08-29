@@ -886,7 +886,12 @@ export function PickemGameView() {
 
   return (
     <div
-      className="flex flex-col gap-3"
+      /* px-4 is the gutter Match, Rack and Stroke all use. Pick'em was
+         inset by `mx-1` on each child — 4px, so its cards ran to the edges
+         while every other game page sat 16px in. The shell only pads at lg+,
+         so the mobile gutter is the view's own job and this is the answer the
+         rest of the app already gave. */
+      className="flex flex-col gap-3 px-4"
       style={{
         /**
          * Clear the bottom nav ourselves.
@@ -1423,7 +1428,7 @@ export function PhaseBody({
       <div className="flex flex-col gap-3">
         <div
           data-testid="pickem-runner-banner"
-          className="mx-1 flex items-center gap-3 px-3 py-3"
+          className="flex items-center gap-3 px-3 py-3"
           style={{
             borderRadius: 13,
             background: "var(--color-bt-card)",
@@ -1462,7 +1467,7 @@ export function PhaseBody({
             banner's action — the banner is about building — so it keeps its
             own place, and its consequence copy with it. */}
         {slateCount > 0 && (
-          <div className="mx-1 flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-2">
             <Primary onClick={onOpenPicks} disabled={opening} testId="pickem-open-picks">
               {opening ? "Opening…" : `Open picks · ${slateCount} games`}
             </Primary>

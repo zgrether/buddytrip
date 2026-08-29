@@ -161,7 +161,7 @@ export function PickemHeadToHead({
       </div>
 
       <div
-        className="mx-1 flex items-center gap-3 rounded-xl px-3 py-3"
+        className="flex items-center gap-3 rounded-xl px-3 py-3"
         style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
       >
         <Side
@@ -218,7 +218,7 @@ export function PickemHeadToHead({
           <div
             key={r.slateGameId}
             data-testid="pickem-board-row"
-            className="mx-1 flex flex-col gap-1.5"
+            className="flex flex-col gap-1.5"
             style={{
               ...pickemRowSurface({ weighted: r.multiplier > 1, quiet: !played }),
               borderRadius: 11,
