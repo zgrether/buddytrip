@@ -199,8 +199,20 @@ export function MatchupSearch({
               border: "1px solid var(--color-bt-border)",
               borderRadius: 11,
               color: "var(--color-bt-text)",
-              // 16 stays. The design asks for 13.5 here, and the shared rule
-              // wins: below 16 iOS zooms the page on focus (#1062).
+              /**
+               * 16, NOT the design's 13.5 — and this is the one measurement on
+               * the screen that deliberately ignores the spec.
+               *
+               * Below 16px iOS Safari zooms the page on focus, so the layout
+               * jumps the moment somebody taps the box. #1062 fixed exactly
+               * that for the chat composer. The design could not have known —
+               * it is a platform behaviour rather than a taste call — and the
+               * handoff's own rule is that the app's existing answer wins.
+               *
+               * Reading the spec and setting this to 13.5 reintroduces a fixed
+               * bug. The slate form's shared `field` style carries the same
+               * note for the same reason.
+               */
               fontSize: 16,
               height: 42,
               padding: "0 12px 0 32px",

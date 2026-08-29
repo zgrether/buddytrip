@@ -666,15 +666,31 @@ function SlateForm({
    *  untouched form, so the control does not appear until there is. */
   dirty?: boolean;
 }) {
-  // 16px deliberately — anything smaller and iOS Safari zooms the page on focus
-  // (the fix #1062 made for the chat composer).
+  /**
+   * The form's fields: 42px tall, radius 11 — the slate design's metrics, so
+   * these and the team-search field above them read as one form.
+   *
+   * ── fontSize 16 is NOT the design's 13.5, and must not be 'corrected' ───
+   *
+   * The design package specifies 13.5px text for every field on this screen.
+   * It is the one measurement here that is not followed, because below 16px
+   * iOS Safari ZOOMS THE PAGE on focus — the whole layout jumps as soon as
+   * somebody taps a box — which #1062 already fixed once for the chat
+   * composer.
+   *
+   * The design could not have known that; it is a platform behaviour, not a
+   * taste question, and the handoff's own rule is that where a measurement
+   * differs from what the app already does, the app wins. Reading the spec
+   * and setting this to 13.5 would reintroduce a fixed bug.
+   */
   const field: React.CSSProperties = {
     background: "var(--color-bt-card-raised)",
     border: "1px solid var(--color-bt-border)",
-    borderRadius: 8,
+    borderRadius: 11,
     color: "var(--color-bt-text)",
     fontSize: 16,
-    padding: "8px 10px",
+    height: 42,
+    padding: "0 12px",
     width: "100%",
     minWidth: 0,
   };
