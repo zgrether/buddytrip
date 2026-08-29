@@ -2,6 +2,7 @@
 
 import { Shuffle } from "lucide-react";
 import { MatchSetup, PlayerSelector } from "@/components/games/matchSetup/MatchSetup";
+import { PickemMismatchNote } from "./PickemMismatchNote";
 import type { DraftMatchConfig } from "@/lib/configDraft";
 import { liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
@@ -175,6 +176,19 @@ export function PickemMatchBuilder({
           </button>
         </div>
       )}
+
+      {/*
+        WHERE THE RUNNER CAN ACT. This was absent here for two PRs: moving the
+        builder to the shared `MatchSetup` left the note behind on the
+        read-only post-lock display, so the warning rendered where nothing could
+        be done about it and not where the pairing happens.
+      */}
+      <PickemMismatchNote
+        pairs={draft.map((m) => ({ a: m.a[0] ?? null, b: m.b[0] ?? null }))}
+        teams={[a, b]}
+        nameOf={(id) => nameMap.get(id) ?? "Unknown"}
+        actionable
+      />
 
       <MatchSetup
         draft={draft}

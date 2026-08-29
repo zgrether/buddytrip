@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { PickemMatchCard } from "./PickemMatchCard";
 import { placementPointsByTeam } from "@/lib/placementGroups";
+import { fmtPoints } from "@/lib/rackNStack";
 import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
 import {
   buildBoardRows,
@@ -12,6 +14,7 @@ import {
   leaderClinched,
   orderByTotal,
   tiedWithPrevious,
+  matchesWonByTeam,
   type BoardRow,
   type ZeroKind,
 } from "@/lib/pickemBoard";
@@ -294,6 +297,32 @@ export function PickemBoard({
     return out;
   }, [matches, slate, sheets, useConfidence]);
 
+  /**
+   * Two teams, or none. A tally between three sides is not a thing this shape
+   * has — `individual_matches` is match play — so rather than render something
+   * meaningless the tally is simply absent, which is also what happens on a
+   * game with no points on it.
+   */
+  const tally =
+    rollUp === "individual_matches" && teams.length === 2
+      ? matchesWonByTeam(
+          matches.flatMap((m) => {
+            const rows = matchRows.get(m.id);
+            if (!rows || !m.sideAId || !m.sideBId) return [];
+            const st = matchStanding(rows);
+            return [
+              {
+                aTeamId: teamOf(m.sideAId),
+                bTeamId: teamOf(m.sideBId),
+                margin: st.margin,
+                remaining: st.remaining,
+                clinched: st.clinched,
+              },
+            ];
+          })
+        )
+      : null;
+
   if (rollUp === "individual_matches" && openMatch) {
     const m = matches.find((x) => x.id === openMatch);
     const rows = matchRows.get(openMatch);
@@ -312,14 +341,23 @@ export function PickemBoard({
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-board">
+      {/* The count that used to sit here moved to the results button above —
+          it is a fact about the RESULTS, and it was being stated twice on one
+          screen. What belongs beside MATCHES is what the matches have paid. */}
       <div className="flex items-baseline justify-between px-1" style={EYEBROW}>
         <span>{rollUp === "individual_matches" ? "Matches" : "Standings"}</span>
-        <span
-          data-testid="pickem-board-count"
-          style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600 }}
-        >
-          {resolved} of {total} in
-        </span>
+        {tally && (
+          <span
+            data-testid="pickem-board-tally"
+            className="flex items-baseline gap-1.5"
+            style={{ textTransform: "none", letterSpacing: 0 }}
+          >
+            <span style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+              {fmtPoints(tally.get(teams[0].id) ?? 0)} – {fmtPoints(tally.get(teams[1].id) ?? 0)}
+            </span>
+            <span style={{ fontSize: TYPE_SCALE.caption, fontWeight: 400 }}>matches won</span>
+          </span>
+        )}
       </div>
 
       {/* The same state on the match side: a sheet with no opponent scores
@@ -330,71 +368,27 @@ export function PickemBoard({
         ? matches.map((m) => {
             const rows = matchRows.get(m.id);
             if (!rows || !m.sideAId || !m.sideBId) return null;
-            const s = matchStanding(rows);
-            const aLead = s.margin > 0;
-            const mine = meId != null && (m.sideAId === meId || m.sideBId === meId);
-            const leader = aLead ? nameOf(m.sideAId) : nameOf(m.sideBId);
-
-            // Margin reads faster than two numbers you subtract, and what is
-            // LEFT is the question mid-event.
-            const status =
-              s.remaining === 0
-                ? s.margin === 0
-                  ? "Halved"
-                  : `${leader} wins by ${Math.abs(s.margin)}`
-                : s.clinched
-                  ? `${leader} has clinched`
-                  : s.margin === 0
-                    ? "All square"
-                    : `${leader} up ${Math.abs(s.margin)}`;
-
             return (
-              <button
+              <PickemMatchCard
                 key={m.id}
-                type="button"
-                onClick={() => setOpenMatch(m.id)}
-                data-testid={mine ? "pickem-board-match-mine" : "pickem-board-match"}
-                className="mx-1 flex flex-col gap-1.5 rounded-xl px-3 py-2.5 text-left"
-                style={{
-                  background: "var(--color-bt-card)",
-                  // Your own match findable at a glance in a list of eight.
-                  border: mine
-                    ? "1px solid var(--color-bt-accent-border)"
-                    : "1px solid var(--color-bt-border)",
+                aName={nameOf(m.sideAId)}
+                bName={nameOf(m.sideBId)}
+                standing={matchStanding(rows)}
+                // Separates "level" from "nothing played" — two states that both
+                // show 0-0 and mean opposite things about what is left.
+                resolvedCount={resolved}
+                // A sheet is all-or-nothing, so presence in `sheets` IS "picked".
+                picked={{
+                  a: (sheets[m.sideAId] ?? []).length > 0,
+                  b: (sheets[m.sideBId] ?? []).length > 0,
                 }}
-              >
-                <span className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
-                    {nameOf(m.sideAId)}
-                    {mine && m.sideAId === meId && <YouTag />}
-                  </span>
-                  <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-                    {s.aTotal}
-                  </span>
-                  <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>–</span>
-                  <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>
-                    {s.bTotal}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-right" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
-                    {nameOf(m.sideBId)}
-                    {mine && m.sideBId === meId && <YouTag />}
-                  </span>
-                </span>
-                <span className="flex items-baseline justify-between gap-2">
-                  <span
-                    style={{
-                      fontSize: TYPE_SCALE.caption,
-                      fontWeight: 600,
-                      color: s.clinched ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                    }}
-                  >
-                    {status}
-                  </span>
-                  <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>
-                    {s.remaining === 0 ? "Final" : `${s.remaining} left`}
-                  </span>
-                </span>
-              </button>
+                mine={meId != null && (m.sideAId === meId || m.sideBId === meId)}
+                youSide={
+                  meId == null ? null : m.sideAId === meId ? "a" : m.sideBId === meId ? "b" : null
+                }
+                selected={openMatch === m.id}
+                onOpen={() => setOpenMatch(m.id)}
+              />
             );
           })
         : (() => {

@@ -268,7 +268,7 @@ seam, never on a calendar.
   if the fix requires a surface the reader's role or format cannot reach, the refusal
   itself is the bug.
 
-- **EMPTY IS NOT UNKNOWN, AND JAVASCRIPT WILL NOT HELP YOU.** Four instances in one
+- **EMPTY IS NOT UNKNOWN, AND JAVASCRIPT WILL NOT HELP YOU.** Five instances in one
   feature, each a different disguise on one mistake — a value that means "resolved to
   nothing" rendering identically to one that means "nothing yet":
   - a **push / cancelled** slate game scores 0 for everyone, so a board reading 0-0 was
@@ -280,12 +280,26 @@ seam, never on a calendar.
     column existed", which is what NULL genuinely means for every existing row;
   - an **empty placement schedule** (`effectiveDistribution` returns `[]` for an
     unconfigured game) paid everyone "0 pts", because `[]` is truthy — a decided prize of
-    nothing rather than a game nobody has configured.
+    nothing rather than a game nobody has configured;
+  - a side with **no sheet at all** has zero upside, so the clinch predicate correctly
+    reported the opponent's lead as beyond reach — and the card said **CLINCHED** with
+    nine games still to play, which reads as a broken app rather than as an opponent who
+    never picked.
 
   The fourth is the one to watch for, because it arrived through the LANGUAGE rather than
   through a display decision. `if (x)` admits `[]` and `{}`; `if (x.length)` and an
   explicit `!= null` are the difference between "there is a schedule" and "there is a
   schedule with something in it".
+
+  **The fifth is a different half of the same mistake, and the more interesting one: the
+  VALUE was right and the WORD was wrong.** Nothing computed incorrectly — the lead
+  genuinely was beyond reach — but "clinched" means a contest won, and beating an empty
+  sheet is not a contest. The two states differ in what a reader can DO: a clinch is
+  decided, while this one is decided only because nobody entered, and a captain can
+  undecide it by proxying before the lock. So the label has to carry the distinction that
+  the number cannot, and the fix was a new state (`no-picks`) ranked above clinch and
+  below final — not a change to any maths. Watch for it wherever a derived predicate is
+  named for the ordinary case and then reused for the degenerate one.
 
   **How to apply:** whenever a value can be absent, ask what ELSE renders the same way,
   and whether those two states should lead the reader to the same action. If they should

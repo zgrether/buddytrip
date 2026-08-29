@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { Clock } from "lucide-react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { toLocalInputValue, fromLocalInputValue, formatDeadline } from "./PickemDeadlineRow";
-import type { PickemPhase } from "@/lib/pickemLifecycle";
+import { formatLeadTime, type PickemPhase } from "@/lib/pickemLifecycle";
 
 /**
  * The runner's control: where this game IS, and the moves available from here.
@@ -88,6 +89,16 @@ export interface PickemPhaseStripProps {
   onLock: () => void;
   onUnlock: () => void;
   onDeadlineChange: (isoOrNull: string | null) => void;
+  /**
+   * The page's ticking clock, passed in rather than read here.
+   *
+   * REQUIRED, and not because of the tests. `Date.now()` in a render body is
+   * impure — the same props would paint two different lead times — and the game
+   * page already owns a `useNow` that every other derivation on the screen
+   * reads. Sharing it means the strip's "4h 33m from now" and the countdown
+   * below it cannot disagree, which two independent clocks eventually would.
+   */
+  now: number;
 }
 
 export function PickemPhaseStrip({
@@ -100,6 +111,7 @@ export function PickemPhaseStrip({
   onLock,
   onUnlock,
   onDeadlineChange,
+  now,
 }: PickemPhaseStripProps) {
   const [editingDeadline, setEditingDeadline] = useState(false);
   const [draft, setDraft] = useState("");
@@ -123,7 +135,7 @@ export function PickemPhaseStrip({
   }
   if (phase === "picks_open") {
     moves.push({
-      label: "Lock picks",
+      label: "Lock now",
       onClick: onLock,
       testId: "pickem-strip-lock",
       consequence: "Closes every sheet immediately and reveals them to the trip.",
@@ -134,7 +146,7 @@ export function PickemPhaseStrip({
   // reopening after a result lets someone re-pick a contest they have watched.
   if (phase === "locked" && !hasResults) {
     moves.push({
-      label: "Unlock picks",
+      label: "Unlock",
       onClick: onUnlock,
       testId: "pickem-strip-unlock",
       consequence: "Reopens every sheet for editing and hides them again. Nothing is lost.",
@@ -145,6 +157,28 @@ export function PickemPhaseStrip({
   // it while building would let a runner schedule a close for a game nobody can
   // pick in yet.
   const showDeadline = phase !== "building";
+
+  /**
+   * ── Why the deadline outranks the button ──────────────────────────────────
+   *
+   * Auto-lock is the workflow. A runner sets a time on Wednesday and does
+   * nothing on Saturday; locking by hand is the exception, for the day a
+   * kickoff moves. The old strip had that backwards — an accent-filled "Lock
+   * picks" was the loudest thing on the card and the deadline was small text
+   * underneath, which reads as "you are expected to press this".
+   *
+   * So the deadline block takes the fill and the manual move drops below a
+   * divider as a ghost. DEMOTION IS VISUAL WEIGHT ONLY — the tap target stays
+   * 44, because a rarely-used control on a phone is precisely the one you
+   * cannot afford to make small.
+   *
+   * ── ...but only while there IS one ────────────────────────────────────────
+   *
+   * With no deadline set, "Lock now" is the only way this game ever closes, and
+   * demoting the sole exit is the same mistake pointed the other way. So the
+   * ghost treatment is conditioned on a deadline EXISTING, not on the phase.
+   */
+  const scheduled = showDeadline && deadline != null;
 
   return (
     <div
@@ -160,14 +194,18 @@ export function PickemPhaseStrip({
         <span className="min-w-0 flex-1">
           <span
             className="block"
-            style={{ fontSize: TYPE_SCALE.body, fontWeight: 700 }}
+            style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 700 }}
             data-testid="pickem-strip-phase"
           >
             {PHASE_LABEL[phase]}
           </span>
           <span
             className="mt-0.5 block"
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}
+            style={{
+              fontSize: TYPE_SCALE.caption,
+              color: "var(--color-bt-text-dim)",
+              lineHeight: 1.45,
+            }}
           >
             {phase === "building" && slateCount === 0
               ? "Add some games to the slate before you can open picks."
@@ -178,81 +216,20 @@ export function PickemPhaseStrip({
         </span>
       </div>
 
-      {moves.map((m) => (
-        <span key={m.testId} className="flex flex-col gap-1">
-          <button
-            type="button"
-            onClick={m.onClick}
-            disabled={busy}
-            data-testid={m.testId}
-            className="rounded-xl px-4 py-2.5 disabled:opacity-40"
-            style={{
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-              fontSize: TYPE_SCALE.bodyDense,
-              fontWeight: 700,
-              minHeight: 44,
-            }}
-          >
-            {busy ? "Working…" : m.label}
-          </button>
-          {/* Two-word labels are not enough for actions that change what sixteen
-              other people can see, so each available move carries its own
-              consequence rather than the row carrying one generic caption. */}
-          <span
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}
-          >
-            {m.consequence}
-          </span>
-        </span>
-      ))}
-
       {showDeadline && (
-        <div
-          className="flex flex-col gap-1.5 pt-1"
-          style={{ borderTop: "1px solid var(--color-bt-border)" }}
-          data-testid="pickem-strip-deadline"
-        >
+        <div data-testid="pickem-strip-deadline">
           {!editingDeadline ? (
-            <div className="flex items-center gap-3 pt-1.5">
-              <span className="min-w-0 flex-1">
-                <span
-                  className="block"
-                  style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}
-                >
-                  {deadline ? `Closes ${formatDeadline(deadline)}` : "No deadline set"}
-                </span>
-                <span
-                  className="mt-0.5 block"
-                  style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-                >
-                  {deadline
-                    ? "Picks close on their own then."
-                    : "Picks stay open until you lock them."}
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setDraft(toLocalInputValue(deadline));
-                  setEditingDeadline(true);
-                }}
-                data-testid="pickem-strip-deadline-edit"
-                className="shrink-0 rounded-lg px-3 py-1.5"
-                style={{
-                  fontSize: TYPE_SCALE.caption,
-                  fontWeight: 600,
-                  background: "transparent",
-                  border: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                  minHeight: 36,
-                }}
-              >
-                {deadline ? "Change" : "Set"}
-              </button>
-            </div>
+            <DeadlineBlock
+              deadline={deadline}
+              phase={phase}
+              now={now}
+              onEdit={() => {
+                setDraft(toLocalInputValue(deadline));
+                setEditingDeadline(true);
+              }}
+            />
           ) : (
-            <div className="flex flex-col gap-2 pt-1.5">
+            <div className="flex flex-col gap-2">
               <input
                 type="datetime-local"
                 value={draft}
@@ -329,6 +306,198 @@ export function PickemPhaseStrip({
           )}
         </div>
       )}
+
+      {moves.map((m) => (
+        <span
+          key={m.testId}
+          className={scheduled ? "flex items-center gap-3 pt-2.5" : "flex flex-col gap-1"}
+          style={scheduled ? { borderTop: "1px solid var(--color-bt-border)" } : undefined}
+        >
+          {/* Two-word labels are not enough for actions that change what sixteen
+              other people can see, so each available move carries its own
+              consequence rather than the row carrying one generic caption.
+
+              Beside the ghost once demoted, under the primary otherwise — the
+              consequence is what earns the button its weight, so it travels with
+              the button rather than staying in a fixed slot. */}
+          {scheduled && (
+            <span
+              className="min-w-0 flex-1"
+              style={{
+                fontSize: TYPE_SCALE.caption,
+                color: "var(--color-bt-text-dim)",
+                lineHeight: 1.45,
+              }}
+            >
+              {m.consequence}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={m.onClick}
+            disabled={busy}
+            data-testid={m.testId}
+            className={
+              scheduled
+                ? "shrink-0 rounded-xl px-4 py-2 disabled:opacity-40"
+                : "rounded-xl px-4 py-2.5 disabled:opacity-40"
+            }
+            style={
+              scheduled
+                ? {
+                    background: "transparent",
+                    border: "1px solid var(--color-bt-border)",
+                    color: "var(--color-bt-text-dim)",
+                    fontSize: TYPE_SCALE.bodyDense,
+                    fontWeight: 600,
+                    minHeight: 44,
+                  }
+                : {
+                    background: "var(--color-bt-accent)",
+                    color: "var(--color-bt-base)",
+                    fontSize: TYPE_SCALE.bodyDense,
+                    fontWeight: 700,
+                    minHeight: 44,
+                  }
+            }
+          >
+            {busy ? "Working…" : m.label}
+          </button>
+          {!scheduled && (
+            <span
+              style={{
+                fontSize: TYPE_SCALE.caption,
+                color: "var(--color-bt-text-dim)",
+                lineHeight: 1.45,
+              }}
+            >
+              {m.consequence}
+            </span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The deadline, as the strip's primary element.
+ *
+ * Amber when something is SCHEDULED and neutral when nothing is — the fill says
+ * "this will happen on its own", which is the fact a runner is checking. An
+ * unset deadline in amber would dress the absence of an event up as an event,
+ * and the empty-versus-unknown rule cuts the same way in colour as in copy.
+ */
+function DeadlineBlock({
+  deadline,
+  phase,
+  now,
+  onEdit,
+}: {
+  deadline: string | null;
+  phase: PickemPhase;
+  now: number;
+  onEdit: () => void;
+}) {
+  const set = deadline != null;
+  /**
+   * `formatDeadline` is `toLocaleString` — the VIEWER's own timezone, which is
+   * the only correct rendering when the schema stores no timezone anywhere.
+   * Never format this server-side: the server's zone is not the reader's, and a
+   * lock time an hour out is worse than no lock time.
+   */
+  const lead = set ? new Date(deadline).getTime() - now : 0;
+
+  /**
+   * PENDING is not the same as SET, and the strip said it was.
+   *
+   * On a locked game the block read "Auto-locks Fri 11:35 PM · 4h 22m from now"
+   * — a future event on a game whose picks had already closed by hand. Nothing
+   * will auto-lock; there is nothing left to lock.
+   *
+   * ── ...and the control still has to be here ────────────────────────────────
+   *
+   * The tempting fix is to hide the block once locked. It would strand the
+   * runner: `unlock` clears `picks_locked_at` and nothing else, so a game past its
+   * deadline is NOT reopened by unlocking (migration 151, restated in 156 and
+   * 159). The deadline is the thing keeping picks closed, editing it is the
+   * only way out, and hiding it would leave a runner pressing Unlock and
+   * watching nothing happen.
+   *
+   * So the block stays and the COPY changes, which is also where the amber
+   * goes: amber means "this will happen on its own", and on a locked game it
+   * will not.
+   */
+  const pending = set && phase === "picks_open";
+  const passed = set && lead <= 0;
+
+  return (
+    <div
+      className="flex items-center gap-2.5 px-3 py-2.5"
+      style={{
+        borderRadius: 11,
+        background: pending ? "var(--color-bt-warning-faint)" : "var(--color-bt-card-raised)",
+        border: `1px solid ${pending ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
+      }}
+    >
+      <Clock
+        size={15}
+        style={{
+          color: pending ? "var(--color-bt-owner)" : "var(--color-bt-text-dim)",
+          flexShrink: 0,
+        }}
+      />
+      <span className="min-w-0 flex-1">
+        <span
+          className="block"
+          data-testid="pickem-strip-deadline-when"
+          style={{
+            fontSize: TYPE_SCALE.body,
+            fontWeight: 700,
+            color: pending ? "var(--color-bt-owner)" : "var(--color-bt-text)",
+          }}
+        >
+          {!set
+            ? "No deadline set"
+            : pending
+              ? `Auto-locks ${formatDeadline(deadline)}`
+              : passed
+                ? `Deadline passed ${formatDeadline(deadline)}`
+                : `Deadline ${formatDeadline(deadline)}`}
+        </span>
+        <span
+          className="mt-0.5 block"
+          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+        >
+          {!set
+            ? "Picks stay open until you lock them."
+            : pending
+              ? lead > 0
+                ? `${formatLeadTime(lead)} from now. Nobody has to do anything.`
+                : "Any moment now. Nobody has to do anything."
+              : passed
+                ? /* The trap, named. Unlocking a game past its deadline does
+                     nothing at all, and the runner has no other way to tell. */
+                  "Unlocking won’t reopen picks until this moves."
+                : "Picks are already closed. Unlocking reopens them until then."}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onEdit}
+        data-testid="pickem-strip-deadline-edit"
+        className="shrink-0 rounded-lg px-3"
+        style={{
+          fontSize: TYPE_SCALE.caption,
+          fontWeight: 600,
+          background: "transparent",
+          border: `1px solid ${pending ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
+          color: pending ? "var(--color-bt-owner)" : "var(--color-bt-text)",
+          minHeight: 36,
+        }}
+      >
+        {set ? "Change" : "Set"}
+      </button>
     </div>
   );
 }

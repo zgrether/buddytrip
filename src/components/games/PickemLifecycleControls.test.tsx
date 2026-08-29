@@ -116,6 +116,7 @@ const strip = (over: Partial<Parameters<typeof PickemPhaseStrip>[0]> = {}) =>
       onLock={noop}
       onUnlock={noop}
       onDeadlineChange={noop}
+      now={Date.parse("2026-09-03T13:00:00.000Z")}
       {...over}
     />
   );
@@ -242,8 +243,100 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     expect(none).toContain("No deadline set");
     expect(none).toContain("Picks stay open until you lock them");
 
-    const set = strip({ phase: "picks_open", deadline: "2026-09-05T17:00:00.000Z" });
-    expect(set).toContain("Closes ");
-    expect(set).toContain("Picks close on their own then");
+    const set = strip({
+      phase: "picks_open",
+      deadline: "2026-09-05T17:00:00.000Z",
+      now: Date.parse("2026-09-03T13:00:00.000Z"),
+    });
+    expect(set).toContain("Auto-locks ");
+    // The lead time, and the sentence that is the whole point of the redesign:
+    // the runner does not have to be holding the phone when this fires.
+    expect(set).toContain("2d 4h from now");
+    expect(set).toContain("Nobody has to do anything");
+  });
+
+  it("stops promising an auto-lock on a game that is already locked", () => {
+    /**
+     * Live, a hand-locked game read "Auto-locks Fri, Aug 28, 11:35 PM · 4h 22m
+     * from now" with its picks already closed — a future event on a game where
+     * there is nothing left to lock.
+     *
+     * PENDING is not the same as SET, and the strip had them as one condition.
+     */
+    const html = strip({
+      phase: "locked",
+      deadline: "2026-09-05T17:00:00.000Z",
+      now: Date.parse("2026-09-03T13:00:00.000Z"),
+    });
+    expect(html).not.toContain("Auto-locks");
+    expect(html).not.toContain("from now");
+    expect(html).not.toContain("--color-bt-warning-faint");
+    expect(html).toContain("Picks are already closed");
+  });
+
+  it("names the UNLOCK TRAP when the deadline has passed", () => {
+    /**
+     * `unlock` clears `picks_locked_at` and nothing else, so a game past its
+     * deadline is not reopened by pressing it (migration 151, restated in 156
+     * and 159). Editing the deadline is the only way out.
+     *
+     * Which is why the block cannot be hidden on a locked game — the tempting
+     * simplification would leave a runner pressing Unlock and watching nothing
+     * happen, with the one control that would help removed from the screen.
+     */
+    const html = strip({
+      phase: "locked",
+      deadline: "2026-09-01T17:00:00.000Z",
+      now: Date.parse("2026-09-03T13:00:00.000Z"),
+    });
+    expect(html).toContain("Deadline passed");
+    expect(html).toContain("Unlocking won’t reopen picks until this moves.");
+    // The way out is still on screen.
+    expect(html).toContain('data-testid="pickem-strip-deadline-edit"');
+  });
+
+  it("paints the deadline block amber only when something is SCHEDULED", () => {
+    /**
+     * Amber says "this will happen on its own". On an UNSET deadline it would
+     * dress the absence of an event up as an event — empty-versus-unknown, in
+     * colour rather than in copy.
+     *
+     * The pair is the assertion: a strip that never used amber would satisfy
+     * the negative half on its own.
+     */
+    expect(strip({ phase: "picks_open", deadline: "2026-09-05T17:00:00.000Z" })).toContain(
+      "--color-bt-warning-faint"
+    );
+    expect(strip({ phase: "picks_open", deadline: null })).not.toContain(
+      "--color-bt-warning-faint"
+    );
+  });
+
+  it("demotes the manual move to a ghost ONLY while a deadline exists", () => {
+    /**
+     * Auto-lock is the workflow, so the deadline outranks the button — but with
+     * no deadline set, "Lock now" is the only way this game ever closes, and
+     * demoting the sole exit is the same mistake pointed the other way.
+     *
+     * Asserted as a DIFFERENCE between the two, because "renders a lock button"
+     * is true of every build including the wrong ones.
+     */
+    const scheduled = strip({ phase: "picks_open", deadline: "2026-09-05T17:00:00.000Z" });
+    const manual = strip({ phase: "picks_open", deadline: null });
+
+    const btn = (html: string) => {
+      const at = html.indexOf('data-testid="pickem-strip-lock"');
+      expect(at, "lock button missing").toBeGreaterThan(-1);
+      // The button's own style attribute, which precedes its testid.
+      return html.slice(html.lastIndexOf("<button", at), at + 400);
+    };
+
+    expect(btn(manual)).toContain("background:var(--color-bt-accent)");
+    expect(btn(scheduled)).toContain("background:transparent");
+
+    // Demotion is visual weight ONLY. A control a runner reaches for on the one
+    // day the kickoff moves is exactly the one that must not shrink.
+    expect(btn(manual)).toContain("min-height:44px");
+    expect(btn(scheduled)).toContain("min-height:44px");
   });
 });

@@ -354,3 +354,79 @@ export function tiedWithPrevious(ordered: readonly TeamStanding[]): Set<string> 
   }
   return tied;
 }
+
+/**
+ * One match's contribution to the cup, in the shape the tally needs.
+ *
+ * Team ids rather than user ids: a match is between two PEOPLE, but the points
+ * it pays go to the teams they are on, and a side belonging to nobody's team
+ * pays nobody.
+ */
+export interface MatchTallyRow {
+  aTeamId: string | null;
+  bTeamId: string | null;
+  /** From `matchStanding` — positive means side A leads. */
+  margin: number;
+  remaining: number;
+  clinched: boolean;
+}
+
+/**
+ * The running tally under `individual_matches`: matches each team has WON.
+ *
+ * ── Settled, not finished ──────────────────────────────────────────────────
+ *
+ * A match counts once its winner can no longer change — `remaining === 0` OR
+ * `clinched`. Those are two ways of saying the same thing and `matchStanding`
+ * deliberately reports them separately (`clinched` is false at zero remaining,
+ * because a finished match is DECIDED rather than clinched), so the tally has
+ * to ask for both or it would drop every completed match.
+ *
+ * Counting only finished matches would leave the tally at 0 – 0 for most of a
+ * Saturday and then jump at the end, which is the opposite of what a live board
+ * is for. Counting UNFINISHED ones would be a projection, and projections do
+ * not belong in a figure labelled as points earned.
+ *
+ * ── Matches, not points — and that is the second version of this ──────────
+ *
+ * It first returned CUP POINTS, multiplying each settled match by the shared
+ * divisor. With a 6-point game over 7 matches that renders "0 – 2.57", which is
+ * 18/7: an artifact of the divisor rather than a number anybody thinks in, and
+ * two decimal places of precision nobody uses.
+ *
+ * Counting MATCHES fixes it at the source rather than by rounding. It is exact,
+ * it is the unit match play is actually scored in, and a halved match makes it
+ * "3½ – 2½" — a scoreline a golfer reads without translating.
+ *
+ * It also removes a derivation rather than relocating one. The cup points are
+ * this × `liveMatchPointsPerMatch`, which is the divisor the pairing surface
+ * already states; so "what did this game pay" is now two existing shared
+ * functions composed, and there is no bespoke payment maths here for a future
+ * server-side finalize to disagree with.
+ *
+ * A halved match gives each side ½, which is why the return is fractional
+ * despite being a count.
+ */
+export function matchesWonByTeam(rows: readonly MatchTallyRow[]): Map<string, number> {
+  const out = new Map<string, number>();
+  const add = (teamId: string | null, amount: number) => {
+    if (teamId == null) return;
+    out.set(teamId, (out.get(teamId) ?? 0) + amount);
+  };
+
+  for (const r of rows) {
+    const settled = r.remaining === 0 || r.clinched;
+    if (!settled) continue;
+    // A side off both rosters banks nothing, and its opponent still wins the
+    // match — the win comes from the game, not from the loser's roster.
+    if (r.margin === 0) {
+      add(r.aTeamId, 0.5);
+      add(r.bTeamId, 0.5);
+    } else if (r.margin > 0) {
+      add(r.aTeamId, 1);
+    } else {
+      add(r.bTeamId, 1);
+    }
+  }
+  return out;
+}

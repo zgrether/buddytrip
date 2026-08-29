@@ -9,6 +9,7 @@ import {
   slateEditable,
   type PickemClock,
   pickemClosure,
+  formatLeadTime,
 } from "./pickemLifecycle";
 
 /**
@@ -223,5 +224,31 @@ describe("pickemClosure — §8.4's one sentence", () => {
       const closure = pickemClosure(c, NOW);
       expect(closure == null, JSON.stringify(c)).toBe(open);
     }
+  });
+});
+
+describe("formatLeadTime — how far off, said coarsely", () => {
+  const h = 3600_000;
+  const d = 24 * h;
+
+  it("leads with DAYS once there are any", () => {
+    // `formatCountdown` would say "52h 05m" here. That is a worse answer to
+    // "is this soon", which is the only question the strip's sub-line asks.
+    expect(formatLeadTime(2 * d + 4 * h)).toBe("2d 4h");
+    expect(formatLeadTime(2 * d)).toBe("2d");
+  });
+
+  it("drops to hours, then minutes", () => {
+    expect(formatLeadTime(4 * h + 20 * 60_000)).toBe("4h 20m");
+    expect(formatLeadTime(4 * h)).toBe("4h");
+    expect(formatLeadTime(12 * 60_000)).toBe("12m");
+  });
+
+  it("never says 0m — that reads as a deadline already passed", () => {
+    // The floor is a WORD, not a number, because a number here would be a claim
+    // about a quantity the reader would then act on.
+    expect(formatLeadTime(30_000)).toBe("under a minute");
+    expect(formatLeadTime(0)).toBe("under a minute");
+    expect(formatLeadTime(-5_000)).toBe("under a minute");
   });
 });

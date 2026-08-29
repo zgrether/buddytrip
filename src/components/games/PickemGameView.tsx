@@ -37,10 +37,12 @@ import { PickemBoard } from "@/components/games/pickem/PickemBoard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { matchesComplete, type PickemPair } from "@/lib/pickemPairing";
 import { effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
+import { resolvedCount, sheetPoints } from "@/lib/pickemScoring";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { PickemMatchBuilder } from "@/components/games/pickem/PickemMatchBuilder";
 import type { DraftMatchConfig } from "@/lib/configDraft";
-import { PickemMatchesPanel } from "@/components/games/pickem/PickemMatchesPanel";
+import { PickemTwoUp, type PickemPanel } from "@/components/games/pickem/PickemTwoUp";
+import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
 import {
   PickemProxyPanel,
   PickemProxyBanner,
@@ -52,7 +54,6 @@ import {
   msUntilDeadline,
   picksEverOpened,
   picksOpen,
-  picksRevealed,
   pickemClosure,
   pickemPhase,
   scoringSettingsEditable,
@@ -197,7 +198,14 @@ export function PickemGameView() {
    * a person looking at unsaved picks with nothing on screen saying so (§7.4,
    * CLAUDE.md #15).
    */
-  const [sheetOpen, setSheetOpen] = useState(false);
+  /**
+   * Which of the two-up row's panels is open on a locked page, or neither.
+   *
+   * ONE value rather than a boolean each: they are alternatives, and two
+   * booleans that must never both be true is how a screen ends up showing two
+   * things stacked that were each designed to be the only one.
+   */
+  const [openPanel, setOpenPanel] = useState<PickemPanel | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savePicks = trpc.pickem.savePicks.useMutation({
     onSuccess: async () => {
@@ -344,7 +352,6 @@ export function PickemGameView() {
    */
   const individualMatches =
     !pointsMode && q.data?.settings.rollUp === "individual_matches";
-  const revealed = picksRevealed(clock, now);
   const pointsTotal =
     (q.data?.game as { points_total?: number | null } | undefined)?.points_total ?? null;
   const matchPairs = useMemo(
@@ -748,8 +755,55 @@ export function PickemGameView() {
   }
   if (!q.data) return null;
 
+  /**
+   * What the two-up row says. Derived here rather than inside the row, which
+   * takes numbers and knows nothing about sheets — the persistence-agnostic
+   * split every game component in this directory follows.
+   *
+   * Presence in `sheets` IS having picked: a sheet is written whole or not at
+   * all (`_pickem_write_sheet` refuses an incomplete one), so there is no state
+   * where a row exists and the person has not submitted.
+   */
+  const { resolved: resolvedGames, total: totalGames } = resolvedCount(q.data.slate);
+  const sheetTotals = Object.entries(q.data.sheets).map(([userId, picks]) => ({
+    userId,
+    total: sheetPoints(q.data!.slate, picks, q.data!.settings.useConfidence),
+  }));
+  const mySheet = me?.id ? (sheetTotals.find((s) => s.userId === me.id) ?? null) : null;
+  /**
+   * Competition ranking: everyone strictly above me, plus one. Ties SHARE a
+   * place (two on 41 are both 2nd, and the next is 4th), which is the only
+   * reading that does not have to pick a winner between two identical sheets.
+   */
+  const myRank = mySheet ? 1 + sheetTotals.filter((s) => s.total > mySheet.total).length : null;
+
   return (
-    <div className="flex flex-col gap-3">
+    <div
+      className="flex flex-col gap-3"
+      style={{
+        /**
+         * Clear the bottom nav ourselves.
+         *
+         * The panel already sets this exact padding (CompetitionFace's
+         * `navUnderPanel`) and it does not reach us. That padding shrinks the
+         * panel's content box, which is what the golf formats' `absolute
+         * inset-0` surfaces resolve against — so it works for them. In-flow
+         * content OVERFLOWS that box instead, and a scroll container's end
+         * padding is not re-applied after an overflowing descendant: the
+         * scrollable region is the union of descendant border boxes, and it
+         * stops at the last card.
+         *
+         * Measured rather than reasoned: at max scroll the last match card's
+         * bottom sat at 843.9 in an 844px viewport, under a nav occupying the
+         * last ~58px. With this padding it sits at 779.9.
+         *
+         * Pick'em is the first long in-flow game view, so it is the first to
+         * meet it. The shell-level fix is #1131 — this goes at the source when
+         * the stroke spine can be run against it.
+         */
+        paddingBottom: "calc(64px + env(safe-area-inset-bottom))",
+      }}
+    >
       {standaloneHeader && (
         <GameStandaloneHeader
           title="Pick'em"
@@ -769,6 +823,9 @@ export function PickemGameView() {
           // in TypeScript the way `pickemLifecycle` mirrors the clock.
           hasResults={q.data.hasResults}
           phase={phase}
+          // The SAME ticking clock every other derivation on this page reads,
+          // so the strip's lead time and the countdown under it cannot drift.
+          now={now}
           slateCount={q.data.slate.length}
           deadline={clock.picksDeadline ?? null}
           busy={setPhase.isPending || setDeadline.isPending}
@@ -779,143 +836,45 @@ export function PickemGameView() {
         />
       )}
 
-      {/* THE BOARD (Phase 6) — "am I winning, and is it still live."
-          Everything on it derives from the sheets and the results; nothing is
-          stored, so a result landing anywhere recomputes every total, margin
-          and clinch on the next render.
-
-          ABOVE the phase branch, for the same reason Run is: it first went
-          inside the sheet branch, so a game on INDIVIDUAL MATCHES — which takes
-          the other branch once revealed — showed no board at all. The branch
-          exists to swap the sheet for the pairing grid; what the board reads is
-          the same either way, and it renders its own two shapes off `rollUp`.
-          Second time that branch has swallowed a surface, which is why the
-          board is out here rather than duplicated into both arms.
-
-          Rendered for everyone: the reveal happened at the lock, and what a
-          member may SEE is decided by RLS on `pickem_picks` rather than by a
-          condition here. */}
-      {phase === "locked" && (
-        <PickemBoard
-          slate={q.data.slate}
-          sheets={q.data.sheets}
-          matches={q.data.matches}
-          rollUp={q.data.settings.rollUp}
-          useConfidence={q.data.settings.useConfidence}
-          meId={me?.id ?? null}
-          nameOf={nameOf}
-          teams={q.data.teams}
-          teamOf={teamOf}
-          pointsMode={pointsMode}
-          /* The SHARED accessor, not a fourth hand-rolled `isPlacement(d) ? d.values : []`
-             — its own comment records that three call sites had already written
-             that line before it existed. Falls back to the points total as a
-             winner-takes-all schedule, so a points game with no authored split
-             still pays rather than showing nothing. */
-          distribution={effectiveDistribution(
-            (q.data.game as { points_distribution?: PointsDistribution | null })
-              .points_distribution,
-            pointsTotal
-          )}
-        />
-      )}
-
-      {/* RUN — every revealed game, BOTH roll-ups.
-          It first went inside the `revealed && individualMatches` branch,
-          which meant a TEAM TOTALS game showed no Run surface at all: that
-          branch exists to swap the sheet for the pairing grid, and team totals
-          has no grid, so it correctly falls through to the sheet — taking Run
-          with it. Caught by looking at a team-totals game, which is exactly the
-          kind of thing only a render shows.
-          Results have no roll-up of their own: a slate game finished or it did
-          not, and how the points are then shared out is a different question.
-
-          Rendered for everyone, not only the runner: results are visible as
-          they land — no embargo, since the whole point is watching it resolve
-          (§7). `canEdit` decides whether the BUTTONS are there, not whether
-          the outcomes are. */}
-      {revealed && (
-        <PickemRunView
-          slate={q.data.slate}
-          canEdit={canEdit}
-          busyId={busyResultId}
-          blockedReason={runBlockedReason}
-          onSetResult={(slateGameId, result) => {
-            setBusyResultId(slateGameId);
-            setResult.mutate({ tripId: tripId!, gameId, slateGameId, result });
-          }}
-        />
-      )}
-
-      {phase === "building" ? (
-        <PhaseBody
-          slateCount={q.data.slate.length}
-          canEdit={canEdit}
-          onOpenSlate={() => setSlateOpen(true)}
-          onOpenPicks={() =>
-            setPhase.mutate({ tripId: tripId!, gameId, action: "open" })
-          }
-          opening={setPhase.isPending}
-        />
-      ) : revealed && individualMatches ? (
+      {phase === "locked" ? (
         /**
-         * §5/§6 — ONE PAGE, TWO STATES. Not a restructure: the sheet does not
-         * become a sub-view, the PAGE changes what it renders at the lock,
-         * keyed on `picksRevealed` — the same predicate the policy uses, so the
-         * screen cannot reveal something the API would refuse.
+         * ── The locked page IS the matches ────────────────────────────────
          *
-         * Matches when set; the coming-soon note when not. Never an empty grid:
-         * §12 forbids it, and a runner is under no pressure to pair before the
-         * deadline (§5), so "locked, unpaired" is a normal state that must read
-         * as waiting rather than broken.
+         * While picks are open the page is the sheet and nothing else: one job,
+         * no navigation. At the lock the sheet stops being a task and becomes a
+         * record, and the question changes to "how am I doing" — which the
+         * matches answer. So the two things that WERE the page collapse into
+         * the two-up row and the board takes their place.
+         *
+         * ONE arm for both roll-up shapes, which is the simplification this
+         * composition buys. The board previously sat above the phase branch
+         * precisely BECAUSE the branch swallowed it: a `team_totals` game took
+         * the sheet arm and showed no board, and Run took the same fall. There
+         * is no longer a shape-keyed branch here to fall through, so the board
+         * can live where it is read.
          */
         <>
-          {/* FIRST on the page, because this branch is what a person lands in
-              the instant their countdown reaches zero — and until this was
-              hoisted out of the sheet, that transition was silent. The sheet
-              collapses behind a button here, so a banner inside it explains the
-              change only to someone who already went looking for it. */}
+          {/* FIRST, because this is what a person lands in the instant their
+              countdown reaches zero — and until it was hoisted out of the sheet
+              that transition was silent. */}
           <PickemClosedBanner closure={pickemClosure(clock, now)} />
 
-          {matchPairs.length > 0 ? (
-            /* READ-ONLY. This is the post-lock matchups DISPLAY — who plays
-               whom, for the people playing. Editing moved to settings (critique
-               r1 §2), so a runner landing here after the lock sees the same
-               thing everyone else does rather than an editable grid that writes
-               on its own Save. */
-            <PickemMatchesPanel
-              teams={q.data.teams}
-              nameOf={nameOf}
-              pairs={matchPairs}
-              pointsTotal={pointsTotal}
-              canEdit={false}
-              saving={false}
-              onSave={() => {}}
-            />
-          ) : (
-            <Empty
-              icon="◷"
-              heading="Matches coming soon"
-              body="Picks are locked. Whoever's running it hasn't set the matchups yet — they'll appear here."
-            />
-          )}
+          <PickemTwoUp
+            /* Null, not zero, for somebody with no sheet: "0 pts · 16 of 16"
+               reads as a bad weekend rather than as an absence. */
+            myPoints={mySheet?.total ?? null}
+            myRank={myRank}
+            sheetCount={sheetTotals.length}
+            resolved={resolvedGames}
+            total={totalGames}
+            canEdit={canEdit}
+            open={openPanel}
+            onOpen={(p) => setOpenPanel((cur) => (cur === p ? null : p))}
+          />
+
           {/* Their own sheet, read-only and one tap away. They spent time on it
               and should not have to hunt for what they submitted (§5). */}
-          <button
-            type="button"
-            onClick={() => setSheetOpen((v) => !v)}
-            data-testid="pickem-view-my-sheet"
-            className="mx-1 rounded-xl px-3 py-2.5 text-left"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "1px solid var(--color-bt-border)",
-              fontSize: TYPE_SCALE.body,
-              fontWeight: 600,
-            }}
-          >
-            {sheetOpen ? "Hide my picks" : "See my picks"}
-          </button>
-          {sheetOpen && (
+          {openPanel === "picks" && (
             <PickemSheet
               gameId={gameId}
               slate={q.data.slate}
@@ -931,7 +890,69 @@ export function PickemGameView() {
               onSave={() => {}}
             />
           )}
+
+          {/* Results are visible to everyone as they land — no embargo, since
+              the whole point is watching it resolve (§7). `canEdit` decides
+              whether the BUTTONS are there, not whether the outcomes are. */}
+          {openPanel === "results" && (
+            <PickemRunView
+              slate={q.data.slate}
+              canEdit={canEdit}
+              busyId={busyResultId}
+              blockedReason={runBlockedReason}
+              onSetResult={(slateGameId, result) => {
+                setBusyResultId(slateGameId);
+                setResult.mutate({ tripId: tripId!, gameId, slateGameId, result });
+              }}
+            />
+          )}
+
+          {/* Never an empty grid: §12 forbids it, and a runner is under no
+              pressure to pair before the deadline (§5), so "locked, unpaired"
+              is a normal state that must read as waiting rather than broken. */}
+          {individualMatches && matchPairs.length === 0 ? (
+            <PickemNoMatches
+              canEdit={canEdit}
+              // The same opener the chrome gear uses, so the card cannot send a
+              // runner somewhere the gear would not.
+              onOpenSettings={settings.openConfig}
+            />
+          ) : (
+            <PickemBoard
+              slate={q.data.slate}
+              sheets={q.data.sheets}
+              matches={q.data.matches}
+              rollUp={q.data.settings.rollUp}
+              useConfidence={q.data.settings.useConfidence}
+              meId={me?.id ?? null}
+              nameOf={nameOf}
+              teams={q.data.teams}
+              teamOf={teamOf}
+              pointsMode={pointsMode}
+              /* The SHARED accessor, not a fourth hand-rolled
+                 `isPlacement(d) ? d.values : []` — its own comment records that
+                 three call sites had already written that line before it
+                 existed. Falls back to the points total as a winner-takes-all
+                 schedule, so a points game with no authored split still pays
+                 rather than showing nothing. */
+              distribution={effectiveDistribution(
+                (q.data.game as { points_distribution?: PointsDistribution | null })
+                  .points_distribution,
+                pointsTotal
+              )}
+            />
+          )}
         </>
+      ) : phase === "building" ? (
+        <PhaseBody
+          slateCount={q.data.slate.length}
+          canEdit={canEdit}
+          onOpenSlate={() => setSlateOpen(true)}
+          onOpenPicks={() =>
+            setPhase.mutate({ tripId: tripId!, gameId, action: "open" })
+          }
+          opening={setPhase.isPending}
+        />
       ) : (
         <>
           {/* ONE component for both states. `editable` comes from the CLOCK —
