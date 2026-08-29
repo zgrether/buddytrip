@@ -307,7 +307,7 @@ describe("leagues are config", () => {
 
   it("the schedule URL encodes the team id", () => {
     expect(scheduleUrl(leagueById("nfl")!, "22")).toBe(
-      "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/22/schedule"
+      "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/22/schedule?seasontype=2"
     );
   });
 });

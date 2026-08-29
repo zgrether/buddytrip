@@ -54,13 +54,14 @@ const render = (
     pointsMode?: boolean;
     distribution?: number[];
     rollUp?: "team_totals" | "individual_matches";
+    matches?: { id: string; sideAId: string | null; sideBId: string | null }[];
   } = {}
 ) =>
   renderToStaticMarkup(
     <PickemBoard
       slate={SLATE}
       sheets={over.sheets ?? { a1: sheet(4), b1: sheet(3), c1: sheet(2), d1: sheet(1) }}
-      matches={[]}
+      matches={over.matches ?? []}
       rollUp={over.rollUp ?? "team_totals"}
       useConfidence
       meId={null}
@@ -158,10 +159,31 @@ describe("PickemBoard — points mode", () => {
   });
 
   it("still renders a MATCH LIST under match play with individual_matches", () => {
-    // The control: without it, a board that showed standings unconditionally
-    // passes the case above and breaks the match-play surface.
-    const html = render({ pointsMode: false, rollUp: "individual_matches" });
-    expect(html).toContain("Matches");
+    /**
+     * The control: without it, a board that showed standings unconditionally
+     * passes the case above and breaks the match-play surface.
+     *
+     * ── It was not a control, and removing a heading proved it ─────────────
+     *
+     * This passed for as long as it existed by finding the word "Matches" in
+     * the eyebrow — with `matches={[]}`, so not one card ever rendered. Both
+     * branches print that eyebrow, so the assertion held whichever branch ran.
+     * Dropping the header (§7) is the only reason it ever failed.
+     *
+     * It now passes REAL pairings and asserts the cards, which is the thing it
+     * always claimed to check.
+     */
+    const html = render({
+      pointsMode: false,
+      rollUp: "individual_matches",
+      matches: [
+        { id: "m1", sideAId: "a1", sideBId: "b1" },
+        { id: "m2", sideAId: "c1", sideBId: "d1" },
+      ],
+    });
+    expect(html.split('data-testid="pickem-board-match').length - 1).toBe(2);
+    // ...and it is the match surface, not the standings one.
+    expect(html).not.toContain('data-testid="pickem-board-side"');
   });
 
   it("lists every participant under their team", () => {

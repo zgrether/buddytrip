@@ -1407,58 +1407,89 @@ export function PhaseBody({
   onOpenPicks: () => void;
   opening: boolean;
 }) {
+  /**
+   * ── The runner gets a BANNER, not the member's screen plus a door ─────────
+   *
+   * A member reads "Picks open soon" because that is the whole truth for them.
+   * The runner reading the same words plus a button underneath was being told
+   * to wait and then handed the thing they are waiting on — the words describe
+   * somebody else's position.
+   *
+   * So the runner's version says whose job it is and puts the action IN the
+   * banner. The member's stays exactly as it was.
+   */
+  if (canEdit) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div
+          data-testid="pickem-runner-banner"
+          className="mx-1 flex items-center gap-3 px-3 py-3"
+          style={{
+            borderRadius: 13,
+            background: "var(--color-bt-card)",
+            border: "1px solid var(--color-bt-border)",
+          }}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block" style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 700 }}>
+              You&rsquo;re in charge of pick&rsquo;em
+            </span>
+            <span
+              className="mt-0.5 block"
+              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+            >
+              Add the games for everyone to pick.
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={onOpenSlate}
+            data-testid="pickem-configure"
+            className="shrink-0 rounded-lg px-3"
+            style={{
+              minHeight: 36,
+              fontSize: TYPE_SCALE.bodyDense,
+              fontWeight: 600,
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
+            }}
+          >
+            Configure
+          </button>
+        </div>
+
+        {/* The transition sixteen people are waiting on. It is not the
+            banner's action — the banner is about building — so it keeps its
+            own place, and its consequence copy with it. */}
+        {slateCount > 0 && (
+          <div className="mx-1 flex flex-col items-center gap-2">
+            <Primary onClick={onOpenPicks} disabled={opening} testId="pickem-open-picks">
+              {opening ? "Opening…" : `Open picks · ${slateCount} games`}
+            </Primary>
+            <p
+              style={{
+                fontSize: TYPE_SCALE.caption,
+                color: "var(--color-bt-text-dim)",
+                maxWidth: 260,
+                lineHeight: 1.5,
+                textAlign: "center",
+              }}
+            >
+              Everyone can start filling in their sheet. The slate freezes —
+              you can still reopen it from settings.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <Empty
       icon="◷"
       heading="Picks open soon"
-      body="The slate is still being put together. You'll get a countdown to the deadline once picks are open."
-    >
-        {/* The runner's controls sit UNDER the same words a member reads, rather
-            than replacing them — so what he sees is what they see, plus a door.
-
-            THE PRIMARY ACTION FOLLOWS THE STATE, and getting that backwards is
-            what made this screen look like it had no way forward. With no slate
-            there is one job: build it. With a slate, the job is to OPEN PICKS —
-            that is the transition sixteen people are waiting on, and editing the
-            slate again is the lesser action.
-
-            It was the other way round: "Edit the slate · N games" took the
-            filled primary and "Open picks" was bare accent text under it, at
-            12px with no background, border or padding. It read as a caption, and
-            was reported as the switch not existing. It existed and had been
-            styled as a label. */}
-        {canEdit && (
-          <div className="mt-4 flex flex-col items-center gap-2">
-            {slateCount === 0 ? (
-              <Primary onClick={onOpenSlate}>Build the slate</Primary>
-            ) : (
-              <>
-                <Primary onClick={onOpenPicks} disabled={opening} testId="pickem-open-picks">
-                  {opening ? "Opening…" : `Open picks · ${slateCount} games`}
-                </Primary>
-                {/* Says what the button DOES before it is pressed. Opening picks
-                    is reversible (Reopen the slate), but it is the moment the
-                    game becomes visible to everyone, so it should not be a
-                    surprise. */}
-                <p
-                  style={{
-                    fontSize: TYPE_SCALE.caption,
-                    color: "var(--color-bt-text-dim)",
-                    maxWidth: 260,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Everyone can start filling in their sheet. The slate freezes —
-                  you can still reopen it from settings.
-                </p>
-                <Secondary onClick={onOpenSlate} testId="pickem-edit-slate">
-                  Edit the slate
-                </Secondary>
-              </>
-            )}
-          </div>
-        )}
-      </Empty>
+      body="The slate of games is still being put together. Check back later."
+    />
   );
 }
 
@@ -1577,38 +1608,6 @@ function Primary({
         fontSize: TYPE_SCALE.bodyDense,
         fontWeight: 700,
         minHeight: 44,
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** The lesser action beside a Primary — outlined, never a bare text link. A
- *  bordered control reads as a control at a glance; that distinction is the
- *  whole reason this pair exists. */
-function Secondary({
-  onClick,
-  children,
-  testId,
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  testId?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      data-testid={testId}
-      className="rounded-xl px-4 py-2"
-      style={{
-        background: "transparent",
-        color: "var(--color-bt-text-dim)",
-        border: "1px solid var(--color-bt-border)",
-        fontSize: TYPE_SCALE.bodyDense,
-        fontWeight: 600,
-        minHeight: 40,
       }}
     >
       {children}

@@ -207,18 +207,17 @@ export function PickemBoard({
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-board">
-      {/* MATCHES only. The roll-up brings its own TEAM TOTALS header with the
-          count of what is left to play, so a shared eyebrow here put two of
-          them on one screen — "STANDINGS" directly above "TEAM TOTALS", which
-          reads as two sections with nothing in the first.
+      {/* NO "MATCHES" word any more — a list of match cards says it is a list
+          of match cards, and this is the THIRD header on this feature that was
+          labelling content which already announced itself (STANDINGS over TEAM
+          TOTALS, the duplicated GAME MANAGEMENT, and this).
 
-          The count that used to sit beside this moved to the results button
-          above; it is a fact about the RESULTS and was being said twice. What
-          belongs beside MATCHES is what the matches have paid. */}
-      {rollUp === "individual_matches" && (
-      <div className="flex items-baseline justify-between px-1" style={EYEBROW}>
-        <span>Matches</span>
-        {tally && (
+          The tally stays: what the matches have PAID is not visible from the
+          cards, so it is the one thing this row was carrying that the content
+          does not say for itself. */}
+      {rollUp === "individual_matches" && tally && (
+      <div className="flex items-baseline justify-end px-1" style={EYEBROW}>
+        {(
           <span
             data-testid="pickem-board-tally"
             className="flex items-baseline gap-1.5"

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
-import { gameHref, isGolfFormat, opensAsPanel } from "@/lib/gameRoutes";
+import { gameHref, isGolfFormat, isPickemFormat, opensAsPanel } from "@/lib/gameRoutes";
 import { pushMarker } from "@/lib/historyMarker";
 import { categoryIcon } from "@/lib/gameCategoryIcon";
 import { gameLockState, isPreScoring } from "@/lib/gameLifecycle";
@@ -297,7 +297,11 @@ export function GameRow({
         ? "Projected results" // the cells now carry projections → the subtitle says so
         : "Underway · scoring"
       : section === "ready"
-      ? "Ready to play"
+      ? // Pick'em has no "play" to be ready for — the next thing that happens
+        // is people filling in sheets, so the row says that instead.
+        isPickemFormat(game.gameTypeId)
+        ? "Open for pick selection"
+        : "Ready to play"
       : section === "preparing"
       ? // Configuring now spans "setup has begun" through "everything is set,
         // just not enabled" — the section is no longer gated on `configured`, so
@@ -307,7 +311,13 @@ export function GameRow({
         // `configured` keeps its exact meaning here; it just stopped deciding the
         // section.
         game.configured
-        ? "Ready — enable scoring"
+        ? // "enable scoring" names a step pick'em does not have: there is no
+          // scoring_enabled flip for it, and migration 135's CHECK forbids the
+          // state that copy describes. What it is actually doing at this point
+          // is building the slate.
+          isPickemFormat(game.gameTypeId)
+          ? "Building the slate"
+          : "Ready — enable scoring"
         : tappable
         ? "Tap to keep setting up"
         : "Setup in progress"

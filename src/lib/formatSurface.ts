@@ -137,7 +137,10 @@ export const FORMAT_SURFACE = {
     // predicted, and it lives behind its own modal so the game page stays
     // identical for everyone (spec §5.1). What this zone holds is the pair of
     // settings that change what a pick is WORTH.
-    settingsZoneLabel: "Pick'em Settings",
+    // "Settings", like every other format. The label was carrying a
+    // distinction that does not exist — these are the game's settings, and
+    // naming them after the format only said which page you were already on.
+    settingsZoneLabel: "Settings",
     // No course: no holes, no stroke index, nothing to allocate against.
     course: false,
     // No modifiers: pick'em's weighting is the per-slate-game MULTIPLIER, which

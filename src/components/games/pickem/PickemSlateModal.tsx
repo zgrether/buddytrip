@@ -5,9 +5,13 @@ import { ArrowUpDown, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
 import { slateSetChanged } from "@/lib/pickemSheet";
 import { ReorderableList } from "@/components/ReorderableList";
-import { groupSlateByDay, splitKickoffDay } from "@/lib/pickemSlateDays";
+import {
+  compareSlateKickoffs,
+  groupSlateByDay,
+  slateCrossesNewYear,
+  splitKickoffDay,
+} from "@/lib/pickemSlateDays";
 import { Stepper } from "@/components/games/Stepper";
-import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { MatchupSearch } from "@/components/matchup/MatchupSearch";
 import { formatKickoff } from "@/lib/matchupApi";
@@ -157,6 +161,19 @@ export function PickemSlateModal({
   const [draft, setDraft] = useState<SlateDraftGame[]>(slate);
   const [touched, setTouched] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
+  /**
+   * Has the runner put the list in an order of their own?
+   *
+   * Until they do, a new game lands where its kickoff says it belongs, which is
+   * what people expect and what stops sixteen additions needing sixteen drags.
+   * The moment they drag anything, the order is THEIRS — re-sorting after that
+   * would silently undo the thing they just did — so new games append and they
+   * move them.
+   *
+   * Deliberately NOT explained on screen. It behaves the way people expect;
+   * describing it would be noise.
+   */
+  const [manuallyOrdered, setManuallyOrdered] = useState(false);
 
   /**
    * Will saving this draft clear everyone's ranking?
@@ -245,7 +262,21 @@ export function PickemSlateModal({
 
   function submitAdd() {
     if (!isValid(addForm)) return;
-    mutate((prev) => [...prev, clean(addForm)]);
+    const next = clean(addForm);
+    mutate((prev) => {
+      const appended = [...prev, next];
+      if (manuallyOrdered) return appended;
+      const januaryIsLater = slateCrossesNewYear(appended.map((g) => g.kickoff));
+      // A stable sort, so games this cannot read a date from keep their
+      // positions instead of being shuffled to an end they did not ask for.
+      return appended
+        .map((g, i) => ({ g, i }))
+        .sort(
+          (a, b) =>
+            compareSlateKickoffs(a.g.kickoff, b.g.kickoff, januaryIsLater) || a.i - b.i
+        )
+        .map((x) => x.g);
+    });
     setAddForm(blank());
   }
 
@@ -330,7 +361,7 @@ export function PickemSlateModal({
   const dayGroups = reorderMode ? null : groupSlateByDay(draft);
 
   return (
-    <Sheet onClose={onClose} title="The slate" testId="pickem-slate-sheet">
+    <Sheet onClose={onClose} title="The Picks" testId="pickem-slate-sheet">
       <div className="flex flex-col gap-3 pb-4">
         {!editable && (
           <div
@@ -349,7 +380,6 @@ export function PickemSlateModal({
 
         {/* ── the games ───────────────────────────────────────────────── */}
         <section>
-          <ZoneHeader>Games</ZoneHeader>
           <div className="mb-2 mt-1 flex items-center gap-2">
             {/* Just the count. "confidence 1–16" used to ride along here and
                 said nothing useful in setup — it showed whether or not
@@ -405,7 +435,11 @@ export function PickemSlateModal({
               controlsSide="trailing"
               listClassName="flex flex-col gap-1.5"
               labelOf={(id) => label(byId.get(id)!)}
-              onReorder={(next) => mutate(() => next.map((id) => byId.get(id)!).filter(Boolean))}
+              onReorder={(next) => {
+                // From here the order is the runner's, and new games append.
+                setManuallyOrdered(true);
+                mutate(() => next.map((id) => byId.get(id)!).filter(Boolean));
+              }}
               renderRow={(id, i) => (
                 <SlateRow index={i} game={byId.get(id)!} editable={false} beingEdited={false} />
               )}
@@ -434,6 +468,7 @@ export function PickemSlateModal({
                         }}
                       >
                         {group.day}
+                        {group.date ? ` ${group.date}` : ""}
                       </span>
                       <span className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
                       <span
@@ -443,7 +478,7 @@ export function PickemSlateModal({
                       </span>
                     </div>
                     {group.games.map((g, i) =>
-                      rowFor(g, before + i, splitKickoffDay(g.kickoff)?.rest ?? null)
+                      rowFor(g, before + i, splitKickoffDay(g.kickoff)?.time ?? null)
                     )}
                   </div>
                 );
@@ -489,7 +524,28 @@ export function PickemSlateModal({
         )}
 
         {editable && (
-          <div className="flex items-center gap-3 pt-1">
+          /**
+           * ANCHORED to the bottom of the scroller, not placed at the end of
+           * the content (CLAUDE.md #14).
+           *
+           * With sixteen games the end of the content is a long way below the
+           * fold, so the save state and the button scrolled out of reach — the
+           * runner could not see whether their work was saved without going to
+           * find out. The gradient lets the list slide under it rather than
+           * stopping at a hard edge.
+           *
+           * Negative side margins cancel the sheet's own inset so the gradient
+           * reaches the edges, while the rows above stay inset — the same
+           * treatment the picks sheet's save bar uses.
+           */
+          <div
+            data-testid="pickem-slate-footer"
+            className="sticky bottom-0 z-10 -mx-4 mt-1 flex items-center gap-3 px-4 pb-2 pt-3"
+            style={{
+              background:
+                "linear-gradient(to top, var(--color-bt-base) 72%, color-mix(in srgb, var(--color-bt-base) 0%, transparent))",
+            }}
+          >
             <span
               style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", flex: 1 }}
             >
@@ -710,14 +766,21 @@ function SlateForm({
           immediately denied. */}
       <div className="mt-3 flex items-center justify-between">
         <span className="min-w-0 pr-3">
-          <span className="block" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
-            Multiplier
-          </span>
-          <span
-            className="block"
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", marginTop: 1 }}
-          >
-            {multiplierHelper(form.multiplier)}
+          {/* The explanation sits INLINE with the label rather than stacked
+              under it, which is what was forcing "Multiplier" down to 12px to
+              keep the row short. On one line it can read at the row size the
+              rest of the form uses. */}
+          <span style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 600 }}>
+            Multiplier{" "}
+            <span
+              style={{
+                fontSize: TYPE_SCALE.caption,
+                fontWeight: 400,
+                color: "var(--color-bt-text-dim)",
+              }}
+            >
+              · {multiplierHelper(form.multiplier)}
+            </span>
           </span>
         </span>
         <Stepper

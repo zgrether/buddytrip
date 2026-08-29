@@ -57,8 +57,40 @@ export function teamsUrl(league: MatchupLeague): string {
   return `${ESPN_BASE}/${league.espnPath}/teams?limit=1000`;
 }
 
+/**
+ * One team's schedule — REGULAR SEASON, explicitly.
+ *
+ * ── Why `seasontype=2` is not optional ────────────────────────────────────
+ *
+ * Without it ESPN picks the default for the league, and for the NFL in
+ * August that default is the PRESEASON. Measured 2026-08-29:
+ *
+ *   NFL, no param      -> seasontype 1, 3 events, 0 in the future
+ *                         (Aug 15 - Aug 29, all played)
+ *   NFL, seasontype=2  -> 17 events, all 17 in the future
+ *                         (Sep 15 2026 - Jan 10 2027)
+ *   CFB, either        -> 12 events, all in the future
+ *
+ * That is the whole of the reported bug: selecting an NFL team returned only
+ * games in the past, because the preseason it was being handed had finished.
+ * College football was unaffected, which is why it read as intermittent
+ * rather than broken.
+ *
+ * ── And why the SEASON YEAR is deliberately NOT pinned ────────────────────
+ *
+ * The obvious companion fix — send `season=<current year>` — is the one that
+ * breaks the season boundary. The NFL's 2026 regular season runs to
+ * 2027-01-10 and ESPN still labels those January games season 2026, so a
+ * slate built in January for games that same week would ask for season 2027
+ * and get nothing. ESPN's own default already resolves the year correctly
+ * across the boundary; only the TYPE is wrong. Fix the wrong thing, leave
+ * the right thing alone.
+ *
+ * Postseason is `seasontype=3` and is not requested: a slate is built from
+ * scheduled fixtures, and playoff pairings do not exist until they are set.
+ */
 export function scheduleUrl(league: MatchupLeague, teamId: string): string {
-  return `${ESPN_BASE}/${league.espnPath}/teams/${encodeURIComponent(teamId)}/schedule`;
+  return `${ESPN_BASE}/${league.espnPath}/teams/${encodeURIComponent(teamId)}/schedule?seasontype=2`;
 }
 
 // ── the normalized contract ────────────────────────────────────────────────
