@@ -118,7 +118,24 @@ export function PickemGameView() {
    */
   const q = trpc.pickem.get.useQuery(
     { tripId: tripId!, gameId: gameId! },
-    { enabled: !!tripId && !!gameId, refetchInterval: 60_000 }
+    {
+      enabled: !!tripId && !!gameId,
+      refetchInterval: 60_000,
+      // PAUSED while the tab is backgrounded — which all four other game
+      // views already do, and the fifth format did not.
+      //
+      // It matters more than a saved request. A backgrounded tab is exactly
+      // where an access token expires, and an expired token is what routes
+      // `createTRPCContext` into the NETWORK `getUser()` — the call that
+      // stalled in production on 2026-08-27 and again on 2026-08-29. So the
+      // one view that kept polling in the background was also the one
+      // generating token-refresh attempts from every sleeping device.
+      //
+      // Not claimed as the trigger; neither incident has one. It is a real
+      // difference in call volume that this format alone introduced, which
+      // is what made it worth checking rather than reasoning about.
+      refetchIntervalInBackground: false,
+    }
   );
   useRealtimeGame(tripId, gameId);
 

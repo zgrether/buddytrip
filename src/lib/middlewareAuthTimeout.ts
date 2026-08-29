@@ -106,9 +106,24 @@ export async function resolveWithTimeout<T>(
   }
 }
 
+/**
+ * WHERE the stall happened.
+ *
+ * Every unguarded `getUser()` is its own hang with its own blast radius, and
+ * after two incidents with no identified trigger the question that matters on
+ * a third is whether it is the SAME SHAPE — same duration, same endpoint, same
+ * token state, same place in the request. That is only answerable if each
+ * timeout is recorded as its own event rather than folded into a generic
+ * error, and if the events are directly comparable.
+ *
+ * So one line shape, one tag, and a field naming the caller.
+ */
+export type AuthSurface = "middleware" | "home" | "invite" | "trpc";
+
 export interface AuthProbe {
   /** Names of the request's cookies. VALUES ARE NEVER READ — see below. */
   cookieNames: string[];
+  surface: AuthSurface;
   pathname: string;
   method: string;
   elapsedMs: number;
@@ -144,6 +159,7 @@ export function authProbeLine(probe: AuthProbe): string {
   return JSON.stringify({
     tag: "auth-probe",
     outcome: probe.outcome,
+    surface: probe.surface,
     path: probe.pathname,
     method: probe.method,
     elapsedMs: probe.elapsedMs,
