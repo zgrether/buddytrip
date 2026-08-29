@@ -139,7 +139,17 @@ describe("the two-instance gate", () => {
   });
 });
 
+/**
+ * The opening of Bill's engraved path — the golfer the default cup carries in
+ * place of the old star. Only the real artwork produces it.
+ */
+const BILL_ENGRAVING = "M258 12.2C249.8 12.4";
+
 describe("the trophy is a swappable slot", () => {
+  it("the default cup is the one engraved with Bill", () => {
+    expect(hero({ clincher: teams[1], cupComplete: true })).toContain(BILL_ENGRAVING);
+  });
+
   it("a replacement shape renders in place of the cup, with the animation intact", () => {
     // The demonstration the spec asks for: one prop, no other change.
     const Placeholder = ({ opacity, tint }: TrophySlotProps) => (
@@ -154,8 +164,11 @@ describe("the trophy is a swappable slot", () => {
       trophy: Placeholder,
     });
     expect(html).toContain('data-testid="placeholder-trophy"');
-    // The default cup's engraved-star path is gone…
-    expect(html).not.toContain("M150,132 L157.6,151.5");
+    // The default cup's engraved Bill is gone. Paired with the positive
+    // assertion above, so this cannot quietly become a check for a string the
+    // default trophy stopped containing (which is what the retired star's path
+    // literal turned into the moment Bill replaced it).
+    expect(html).not.toContain(BILL_ENGRAVING);
     // …and the celebration around the slot is untouched.
     expect(html).toMatch(SPARKS);
     expect(html).toMatch(GLOW);
