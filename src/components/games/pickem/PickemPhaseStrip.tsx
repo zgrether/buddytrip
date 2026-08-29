@@ -427,6 +427,17 @@ function DeadlineBlock({
    * So the block stays and the COPY changes, which is also where the amber
    * goes: amber means "this will happen on its own", and on a locked game it
    * will not.
+   *
+   * ── The same mistake had a second home, and the first fix missed it ───────
+   *
+   * Every branch here that mentions a SET deadline was made phase-aware, and
+   * the UNSET one was left alone — so a hand-locked game with no deadline went
+   * on saying "Picks stay open until you lock them" with its picks locked. One
+   * screen, two sentences, opposite claims.
+   *
+   * That is why the guard below it is a RULE rather than three more cases: no
+   * render in the locked phase may contain a sentence that says picks are open.
+   * A per-case assertion would have passed the first fix and missed this.
    */
   const pending = set && phase === "picks_open";
   const passed = set && lead <= 0;
@@ -470,7 +481,12 @@ function DeadlineBlock({
           style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
         >
           {!set
-            ? "Picks stay open until you lock them."
+            ? phase === "locked"
+              ? /* Says why the SET button is here at all on a closed game: a
+                   deadline is what would hold picks shut after an unlock, so on
+                   this screen it is a setting for later rather than a clock. */
+                "Picks are already closed. A deadline would only matter if you unlock them."
+              : "Picks stay open until you lock them."
             : pending
               ? lead > 0
                 ? `${formatLeadTime(lead)} from now. Nobody has to do anything.`
