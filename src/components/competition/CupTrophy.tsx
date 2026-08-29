@@ -47,15 +47,32 @@ const BILL_W = 1188;
 const BILL_H = 1870;
 
 /**
- * Engraved height in trophy units. The star he replaces stood 54 tall and 57
- * wide; Bill is a narrow upright figure, so matching the star's height would
- * read as a shrink. 66 is a touch larger than the star in the dimension that
- * carries -- and lands at ~42 wide, still well clear of the bowl's walls.
+ * Engraved height in trophy units, against the 54-tall star he replaces. Bill
+ * is a narrow upright figure, so matching the star's height reads as a shrink;
+ * 82.5 lands him ~52 wide, still clear of the bowl's walls at this height.
  */
-const BILL_H_UNITS = 66;
+const BILL_H_UNITS = 82.5;
 const BILL_SCALE = BILL_H_UNITS / BILL_H;
-/** Centred on the star's own centre, so nothing else in the bowl moves. */
-const BILL_X = 150 - (BILL_W * BILL_SCALE) / 2;
+
+/**
+ * Bill's INK centroid in his own coordinates — the x his mass actually sits on,
+ * computed by flattening his path and taking the signed-area centroid of the
+ * outline minus its two holes.
+ *
+ * **Not his bounding-box centre, which is 594.** The club extends ~380 units
+ * past his hands with almost no ink on it, so a bbox-centred Bill hangs his
+ * body ~11 units left of the axis the eye reads the trophy on: the figure looks
+ * off-centre while the geometry insists it is centred. Centring on the centroid
+ * puts the BODY on the trophy's spine and lets the club overhang to the right,
+ * which is what the shape is doing anyway.
+ *
+ * Recompute this if the artwork is ever replaced — it is a property of the
+ * path, not a nudge, and it is the reason the offset survives a size change.
+ */
+const BILL_INK_CX = 354.2;
+
+/** Body on the trophy's spine; vertical centre still the star's own. */
+const BILL_X = 150 - BILL_INK_CX * BILL_SCALE;
 const BILL_Y = 159.1 - BILL_H_UNITS / 2;
 
 /**
