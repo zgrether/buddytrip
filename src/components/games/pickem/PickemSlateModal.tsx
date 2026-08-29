@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ArrowUpDown, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
 import { slateSetChanged } from "@/lib/pickemSheet";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ReorderableList } from "@/components/ReorderableList";
 import {
   compareSlateKickoffs,
@@ -158,6 +159,16 @@ export function PickemSlateModal({
   saving: boolean;
   onSave: (next: { slate: SlateDraftGame[] }) => void;
 }) {
+  /**
+   * The shared `Sheet` primitive has NO back handling of its own — it closes on
+   * the scrim and the cross and nothing else — so every Sheet in the app eats a
+   * back-press by letting it fall through to whatever is underneath. Registered
+   * here rather than in `Sheet`, because fixing it there would change the
+   * behaviour of the golf scorecard overlay in the same breath, which is not
+   * this change. Filed separately.
+   */
+  useModalBackButton(onClose, open);
+
   const [draft, setDraft] = useState<SlateDraftGame[]>(slate);
   const [touched, setTouched] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
@@ -372,9 +383,19 @@ export function PickemSlateModal({
               fontSize: TYPE_SCALE.bodyDense,
             }}
           >
-            <b>Picks are open, so the slate is frozen.</b> Everyone has already ranked these
-            games. Reopen the slate from settings if you have to change it — everyone will
-            have to re-rank.
+            {/* IT NAMED A CONTROL THAT DOES NOT EXIST. This read "Reopen the
+                slate from settings" — `reopen` was retired in migration 156,
+                and the only way back is Stop on the game page, which is where
+                the runner already is.
+
+                And it overstated the cost. Rankings clear when the slate's ID
+                SET changes, not when it is unfrozen: `save_pickem_config`
+                compares before and after, so reordering, re-pricing or renaming
+                every game on the slate costs nobody a re-rank. Saying otherwise
+                deters a runner from a fix that is free. */}
+            <b>Picks are open, so the slate is frozen.</b> Press Stop on the game
+            page to change it. Nothing is lost unless you add or remove a game —
+            that is what clears everyone&rsquo;s ranking.
           </div>
         )}
 

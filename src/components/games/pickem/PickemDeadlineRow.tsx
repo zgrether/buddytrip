@@ -69,113 +69,18 @@ export function formatDeadline(iso: string | null): string {
   });
 }
 
-export function PickemDeadlineRow({
-  deadline,
-  editable,
-  busy,
-  onChange,
-}: {
-  /** `pickem_games.picks_deadline`, or null for "lock by hand". */
-  deadline: string | null;
-  /**
-   * Any phase, for anyone who can edit the game.
-   *
-   * This was once "only while picks are open", because the deadline was written
-   * by `set_pickem_phase('open')` — which also coalesces `picks_opened_at` and
-   * clears `picks_locked_at`, so using it here would have published a building
-   * game or silently unlocked a locked one. That restriction was a defence
-   * standing in for a fix. Migration 153 split `set_pickem_deadline` out to
-   * write ONE column, and the question disappeared rather than being guarded.
-   */
-  editable: boolean;
-  busy: boolean;
-  onChange: (isoOrNull: string | null) => void;
-}) {
-  const [draft, setDraft] = useState<string>(() => toLocalInputValue(deadline));
-  const stored = toLocalInputValue(deadline);
-  const dirty = draft !== stored;
-
-  return (
-    <div
-      className="rounded-xl px-3 py-2.5"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      data-testid="pickem-deadline-row"
-    >
-      <div style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>Picks deadline</div>
-      <div
-        style={{
-          fontSize: TYPE_SCALE.caption,
-          color: "var(--color-bt-text-dim)",
-          margin: "2px 0 8px",
-          lineHeight: 1.5,
-        }}
-      >
-        {deadline
-          ? `Sheets lock automatically at ${formatDeadline(deadline)}.`
-          : "No deadline — sheets stay open until you lock them by hand."}
-        {editable && " Nobody is notified, so the countdown on their sheet is the only warning."}
-      </div>
-
-      {editable ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="datetime-local"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            data-testid="pickem-deadline-input"
-            aria-label="Picks deadline"
-            style={{
-              background: "var(--color-bt-card-raised)",
-              border: "1px solid var(--color-bt-border)",
-              borderRadius: 8,
-              color: "var(--color-bt-text)",
-              // 16px or iOS zooms the page on focus.
-              fontSize: 16,
-              padding: "8px 10px",
-              minWidth: 0,
-              flex: "1 1 200px",
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => onChange(fromLocalInputValue(draft))}
-            disabled={busy || !dirty}
-            data-testid="pickem-deadline-save"
-            className="rounded-lg px-3 disabled:opacity-40"
-            style={{
-              minHeight: 40,
-              fontSize: TYPE_SCALE.bodyDense,
-              fontWeight: 700,
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-            }}
-          >
-            {busy ? "Saving…" : "Set"}
-          </button>
-          {deadline && (
-            <button
-              type="button"
-              onClick={() => {
-                setDraft("");
-                onChange(null);
-              }}
-              disabled={busy}
-              data-testid="pickem-deadline-clear"
-              className="rounded-lg px-3 disabled:opacity-40"
-              style={{
-                minHeight: 40,
-                fontSize: TYPE_SCALE.bodyDense,
-                fontWeight: 600,
-                background: "transparent",
-                color: "var(--color-bt-text-dim)",
-                border: "1px solid var(--color-bt-border)",
-              }}
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
+/**
+ * DELETED: `PickemDeadlineRow`.
+ *
+ * The settings-page row for the deadline, superseded by the block inside
+ * `PickemPhaseStrip` when the lifecycle controls left settings — and rendered
+ * NOWHERE since (issue #1128). The three helpers above are the only live
+ * exports, which is why the file stays.
+ *
+ * Removed in the Start/Stop vocabulary sweep rather than as tidying. Its copy
+ * said "Sheets lock automatically at…" and "no deadline — sheets stay open
+ * until you lock them by hand", which is the word the panel no longer uses. A
+ * dead component cannot mislead a reader, but it can mislead the next author:
+ * this is the file the strip imports its formatting from, so this wording is
+ * the first thing anyone editing that copy would meet.
+ */
