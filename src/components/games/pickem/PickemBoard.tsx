@@ -4,16 +4,12 @@ import { useMemo, useState } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { PickemMatchCard, h2hNote } from "./PickemMatchCard";
 import { PickemHeadToHead } from "./PickemHeadToHead";
-import { placementPointsByTeam } from "@/lib/placementGroups";
+import { PickemTeamRollUp } from "./PickemTeamRollUp";
+import { PickemUnassignedNote } from "./PickemUnassignedNote";
 import { fmtPoints } from "@/lib/rackNStack";
 import {
   buildBoardRows,
   matchStanding,
-  sideStanding,
-  leaderId,
-  leaderClinched,
-  orderByTotal,
-  tiedWithPrevious,
   matchesWonByTeam,
   type BoardRow,
 } from "@/lib/pickemBoard";
@@ -211,11 +207,17 @@ export function PickemBoard({
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-board">
-      {/* The count that used to sit here moved to the results button above —
-          it is a fact about the RESULTS, and it was being stated twice on one
-          screen. What belongs beside MATCHES is what the matches have paid. */}
+      {/* MATCHES only. The roll-up brings its own TEAM TOTALS header with the
+          count of what is left to play, so a shared eyebrow here put two of
+          them on one screen — "STANDINGS" directly above "TEAM TOTALS", which
+          reads as two sections with nothing in the first.
+
+          The count that used to sit beside this moved to the results button
+          above; it is a fact about the RESULTS and was being said twice. What
+          belongs beside MATCHES is what the matches have paid. */}
+      {rollUp === "individual_matches" && (
       <div className="flex items-baseline justify-between px-1" style={EYEBROW}>
-        <span>{rollUp === "individual_matches" ? "Matches" : "Standings"}</span>
+        <span>Matches</span>
         {tally && (
           <span
             data-testid="pickem-board-tally"
@@ -229,10 +231,11 @@ export function PickemBoard({
           </span>
         )}
       </div>
+      )}
 
       {/* The same state on the match side: a sheet with no opponent scores
           nowhere either, and the match list would simply not mention them. */}
-      {rollUp === "individual_matches" && <UnassignedNote names={unmatched} />}
+      {rollUp === "individual_matches" && <PickemUnassignedNote names={unmatched} />}
 
       {rollUp === "individual_matches"
         ? matches.map((m) => {
@@ -261,246 +264,21 @@ export function PickemBoard({
               />
             );
           })
-        : (() => {
-            const bySide = teams.map((t) => ({
-              team: t,
-              sheets: Object.entries(sheets)
-                .filter(([uid]) => teamOf(uid) === t.id)
-                .map(([uid, picks]) => ({ uid, picks })),
-            }));
-            const standings = bySide.map((s) => ({
-              ...s,
-              standing: sideStanding(slate, s.sheets.map((x) => x.picks), useConfidence),
-            }));
-            const remaining = total - resolved;
-
-            /**
-             * ORDERED in points mode, roster order otherwise.
-             *
-             * Points PAYS by position, so the order is the result rather than a
-             * presentation choice. Roster order is invisible at two teams —
-             * two cards side by side read as a comparison — and wrong the
-             * moment a third makes the row a ranking.
-             */
-            const ranked = pointsMode ? orderByTotal(standings) : standings;
-
-            /**
-             * The clinch, over N.
-             *
-             * This replaced `const [x, y] = standings` — a destructure that is
-             * correct at two teams and silently drops every team after the
-             * second. `leaderClinched` asks whether the leader is beyond ALL of
-             * them, because clinching against the runner-up says nothing about
-             * a third team whose upside may be larger from further back.
-             */
-            const asTeamStandings = ranked.map((r) => ({
-              id: r.team.id,
-              standing: r.standing,
-            }));
-            const clinched = leaderClinched(asTeamStandings, remaining);
-            const leadId = leaderId(asTeamStandings);
-
-            /**
-             * What each place pays. Shared with every other points-mode surface
-             * via `placementPointsByTeam` — the authored `values[]` schedule, no
-             * divisor and nothing derived (#1068). The tie handling lives in
-             * that function, which is why the sort above deliberately does not
-             * pre-empt it.
-             */
-            const payout =
-              // `length` checked, not just presence: `effectiveDistribution` returns
-              // an EMPTY array for a game with no authored split and no points
-              // total, and an empty array is truthy — so the bare check paid
-              // everyone "0 pts", which reads as a decided prize of nothing
-              // rather than as an unconfigured game.
-              pointsMode && distribution && distribution.length > 0
-                ? placementPointsByTeam(
-                    asTeamStandings.map((t) => t.id),
-                    tiedWithPrevious(asTeamStandings),
-                    distribution
-                  )
-                : null;
-
-            const unplaced = Object.keys(sheets)
-              .filter((uid) => teamOf(uid) == null)
-              .map(nameOf)
-              .sort();
-
-            return (
-              <>
-                {/* `flex-wrap` for N: two cards fill a row, four wrap to two
-                    rows rather than squeezing to unreadable columns on a
-                    phone. `basis` keeps a wrapped row balanced. */}
-                <div className="mx-1 flex flex-wrap gap-2">
-                  {ranked.map((s) => (
-                    <div
-                      key={s.team.id}
-                      data-testid="pickem-board-side"
-                      className="flex-1 rounded-xl px-3 py-3 text-center"
-                      style={{
-                        background: "var(--color-bt-card)",
-                        border:
-                          s.team.id === leadId
-                            ? "1px solid var(--color-bt-accent-border)"
-                            : "1px solid var(--color-bt-border)",
-                      }}
-                    >
-                      <span className="block truncate" style={EYEBROW}>
-                        {s.team.name}
-                      </span>
-                      <span
-                        className="mt-0.5 block"
-                        style={{ fontSize: 28, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}
-                      >
-                        {s.standing.total}
-                      </span>
-                      {payout && (
-                        /* What finishing here is WORTH, on the card rather than
-                           behind a tap. The Cadence question for this phase is
-                           whether you can tell what second place pays without
-                           opening anything, and a payout you have to go and
-                           find is the same as one that is not shown. */
-                        <span
-                          data-testid="pickem-board-payout"
-                          className="mt-1 block"
-                          style={{
-                            fontSize: TYPE_SCALE.caption,
-                            color: "var(--color-bt-text-dim)",
-                          }}
-                        >
-                          {formatPayout(payout.get(s.team.id) ?? 0)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {clinched && (
-                  <p
-                    data-testid="pickem-board-side-clinch"
-                    className="px-1"
-                    style={{ fontSize: TYPE_SCALE.caption, fontWeight: 600, color: "var(--color-bt-accent)" }}
-                  >
-                    {standings.find((s) => s.team.id === leadId)?.team.name} has clinched —{" "}
-                    {remaining} still to play.
-                  </p>
-                )}
-                <UnassignedNote names={unplaced} teamCount={teams.length} />
-                {ranked.map((s) => (
-                  <div key={s.team.id} className="flex flex-col gap-1.5">
-                    <div className="mt-1 flex items-baseline justify-between px-1" style={EYEBROW}>
-                      <span>{s.team.name}</span>
-                      <span style={{ textTransform: "none", letterSpacing: 0 }}>
-                        {s.standing.total} pts
-                      </span>
-                    </div>
-                    {s.sheets.map(({ uid, picks }) => (
-                      <div
-                        key={uid}
-                        data-testid="pickem-board-participant"
-                        className="mx-1 flex items-center gap-3 rounded-xl px-3 py-2"
-                        style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-                      >
-                        <span className="min-w-0 flex-1 truncate" style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600 }}>
-                          {nameOf(uid)}
-                          {uid === meId && <YouTag />}
-                        </span>
-                        <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-                          {sideStanding(slate, [picks], useConfidence).total}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </>
-            );
-          })()}
+        : (
+            <PickemTeamRollUp
+              slate={slate}
+              sheets={sheets}
+              teams={teams}
+              teamOf={teamOf}
+              nameOf={nameOf}
+              meId={meId}
+              useConfidence={useConfidence}
+              resolved={resolved}
+              total={total}
+              distribution={distribution}
+              pointsMode={pointsMode}
+            />
+          )}
     </div>
-  );
-}
-
-/**
- * A payout as it reads on a card: "2 pts", "1.5 pts", "0 pts".
- *
- * Trailing zeros trimmed, because the historical BBMI schedule is 2 / 1.5 / 0.5
- * / 0 and rendering "2.0" beside "1.5" makes the whole column look like a
- * measurement rather than a prize.
- */
-function formatPayout(v: number): string {
-  const n = Math.round(v * 100) / 100;
-  return `${n} pt${n === 1 ? "" : "s"}`;
-}
-
-/** "Bill", "Bill and Ty", "Bill, Ty and Frank" — an Oxford-less join, because
- *  this reads as a sentence rather than a list. */
-function names(list: string[]): string {
-  if (list.length === 1) return list[0];
-  if (list.length === 2) return `${list[0]} and ${list[1]}`;
-  return `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
-}
-
-/**
- * People who filled in a sheet that counts for nothing.
- *
- * ── Not a cosmetic gap ─────────────────────────────────────────────────────
- *
- * Someone with a sheet and no side — or no opponent — did the work and it
- * scores nowhere. That is a real state and two people need it visible: the
- * PERSON, who otherwise opens a board they are simply absent from, and the
- * RUNNER, for whom it is usually a setup error they would want to fix.
- *
- * Rendering nothing is the empty-versus-unknown pattern: fifteen rows where
- * there are seventeen people reads as "there are fifteen people", and the
- * reader has no way to tell a short field from a dropped one.
- */
-function UnassignedNote({
-  names: list,
-  teamCount = 2,
-}: {
-  names: string[];
-  /**
-   * "Either side" is TWO-TEAM language, and this is the tenth instance in this
-   * feature of copy naming a mechanic that is not in play. With four teams the
-   * sentence has to be about the scoring, not about a pair.
-   *
-   * Defaulted to 2 so the match-play call sites read exactly as they did.
-   */
-  teamCount?: number;
-}) {
-  if (list.length === 0) return null;
-  return (
-    <p
-      data-testid="pickem-board-unassigned"
-      className="mx-1 rounded-xl px-3 py-2.5"
-      style={{
-        fontSize: TYPE_SCALE.caption,
-        lineHeight: 1.5,
-        color: "var(--color-bt-text-dim)",
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-    >
-      <b style={{ color: "var(--color-bt-text)" }}>{names(list)}</b>{" "}
-      {list.length === 1 ? "isn't" : "aren't"} in the scoring —{" "}
-      {list.length === 1 ? "their sheet doesn't" : "their sheets don't"} count toward{" "}
-      {teamCount > 2 ? "any team" : "either side"}.
-    </p>
-  );
-}
-
-function YouTag() {
-  return (
-    <span
-      className="ml-1.5 rounded px-1.5"
-      style={{
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: "0.08em",
-        color: "var(--color-bt-accent)",
-        background: "var(--color-bt-accent-faint)",
-        border: "1px solid var(--color-bt-accent-border)",
-      }}
-    >
-      YOU
-    </span>
   );
 }
