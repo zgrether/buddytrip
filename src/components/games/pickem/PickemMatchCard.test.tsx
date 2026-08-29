@@ -90,23 +90,43 @@ describe("a side that never picked — NOT a clinch", () => {
    *
    * A clinch is a contest won. Beating an empty sheet is not a contest, and the
    * difference is actionable rather than pedantic: a clinched match is decided,
-   * while this one is decided only because nobody entered — and a captain can
-   * undecide it by proxying before the lock.
+   * while this one is decided because nobody entered.
    *
    * Live, this read "CLINCHED · Merling is safe — only 0 in play against a 17
    * lead" with nine games still to play, which reads as a broken app rather than
    * an opponent who never picked.
+   *
+   * ── The word changed twice, and the second time for a different reason ────
+   *
+   * CLINCHED became NO PICKS, and NO PICKS became DIDN'T PICK. "No picks"
+   * suggests a sheet whose picks are missing; what is missing is the SHEET.
+   * That matters because of what a reader assumes fills the gap — the picking
+   * screen opens on every home team, so a missing sheet feels like it ought to
+   * score the chalk. It scores nothing: verified on the live game, where three
+   * people hold zero rows in `pickem_picks` and zero points while every
+   * submitted sheet holds sixteen.
    */
   const empty = { a: false, b: true } as const;
 
-  it("takes the NO PICKS pill rather than CLINCHED", () => {
+  it("takes the DIDN'T PICK pill rather than CLINCHED", () => {
     const s = st({ remaining: 9, margin: -17, clinched: true, trailingUpside: 0 });
-    expect(matchPill(s, 7, empty)).toBe("no-picks");
+    expect(matchPill(s, 7, empty)).toBe("no-sheet");
     // ...and the same standing IS a clinch when both sides actually played.
     expect(matchPill(s, 7, BOTH)).toBe("clinched");
   });
 
-  it("names who has not picked, and says it is still reversible", () => {
+  it("names who did not submit, and states the CONSEQUENCE rather than a way out", () => {
+    /**
+     * It used to end "unless that changes". Nothing can change it: this
+     * surface renders on a LOCKED game and nowhere else, and
+     * `pickem_picks_write` gates on `pickem_picks_open` — so neither the
+     * person nor a captain proxying for them can add a sheet. The sentence was
+     * the refusal rule pointing the other way, an invitation nobody can accept.
+     *
+     * What replaces it is the part a reader cannot derive: that an absent sheet
+     * scores nothing. On a screen whose picking half defaults every game to the
+     * home team, that is genuinely not obvious.
+     */
     const note = matchNote(
       st({ remaining: 9, margin: -17, clinched: true, trailingUpside: 0 }),
       7,
@@ -114,8 +134,12 @@ describe("a side that never picked — NOT a clinch", () => {
       empty,
       NAMES
     );
-    expect(note).toBe("Zach hasn't picked — Ty takes it unless that changes");
-    // The old line is gone: "only 0 in play" is true and explains nothing.
+    expect(note).toBe(
+      "Zach didn't submit a sheet — it scores nothing, so Ty takes the match"
+    );
+    expect(note).not.toContain("unless that changes");
+    // The line before that one is gone too: "only 0 in play" is true and
+    // explains nothing.
     expect(note).not.toContain("in play");
     expect(note).not.toContain("safe");
   });
@@ -123,12 +147,13 @@ describe("a side that never picked — NOT a clinch", () => {
   it("says NEITHER when both are empty — no leader to name", () => {
     // Two guests paired together. Naming one as taking it would invent a winner.
     const note = matchNote(st({ remaining: 9 }), 7, "Zach", { a: false, b: false }, NAMES);
-    expect(note).toBe("Neither has picked yet");
+    expect(note).toBe("Neither submitted a sheet — nothing scores");
+    expect(note).not.toContain("yet");
   });
 
-  it("is FINAL once nothing is left, not NO PICKS", () => {
-    // The state stops being reversible when the games are gone, and at that
-    // point "hasn't picked yet" would be an instruction nobody can follow.
+  it("is FINAL once nothing is left, not DIDN'T PICK", () => {
+    // Once the games are gone the reason the margin was built stops mattering,
+    // and the match is simply the result.
     const s = st({ remaining: 0, margin: -17 });
     expect(matchPill(s, 16, empty)).toBe("final");
     expect(matchNote(s, 16, "Ty", empty, NAMES)).toBe("Ty takes it by 17");

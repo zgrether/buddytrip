@@ -879,12 +879,6 @@ export function PickemGameView() {
     total: sheetPoints(q.data!.slate, picks, q.data!.settings.useConfidence),
   }));
   const mySheet = me?.id ? (sheetTotals.find((s) => s.userId === me.id) ?? null) : null;
-  /**
-   * Competition ranking: everyone strictly above me, plus one. Ties SHARE a
-   * place (two on 41 are both 2nd, and the next is 4th), which is the only
-   * reading that does not have to pick a winner between two identical sheets.
-   */
-  const myRank = mySheet ? 1 + sheetTotals.filter((s) => s.total > mySheet.total).length : null;
 
   return (
     <div
@@ -1001,8 +995,6 @@ export function PickemGameView() {
             /* Null, not zero, for somebody with no sheet: "0 pts · 16 of 16"
                reads as a bad weekend rather than as an absence. */
             myPoints={mySheet?.total ?? null}
-            myRank={myRank}
-            sheetCount={sheetTotals.length}
             resolved={resolvedGames}
             total={totalGames}
             canEdit={canEdit}

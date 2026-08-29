@@ -1,18 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { PickemMatchCard, h2hNote } from "./PickemMatchCard";
 import { PickemHeadToHead } from "./PickemHeadToHead";
 import { PickemTeamRollUp } from "./PickemTeamRollUp";
 import { PickemUnassignedNote } from "./PickemUnassignedNote";
-import { fmtPoints } from "@/lib/rackNStack";
-import {
-  buildBoardRows,
-  matchStanding,
-  matchesWonByTeam,
-  type BoardRow,
-} from "@/lib/pickemBoard";
+import { buildBoardRows, matchStanding, type BoardRow } from "@/lib/pickemBoard";
 import { resolvedCount, type ScoredPick, type ScoredSlateGame } from "@/lib/pickemScoring";
 
 /**
@@ -139,32 +132,6 @@ export function PickemBoard({
     return out;
   }, [matches, slate, sheets, useConfidence]);
 
-  /**
-   * Two teams, or none. A tally between three sides is not a thing this shape
-   * has — `individual_matches` is match play — so rather than render something
-   * meaningless the tally is simply absent, which is also what happens on a
-   * game with no points on it.
-   */
-  const tally =
-    rollUp === "individual_matches" && teams.length === 2
-      ? matchesWonByTeam(
-          matches.flatMap((m) => {
-            const rows = matchRows.get(m.id);
-            if (!rows || !m.sideAId || !m.sideBId) return [];
-            const st = matchStanding(rows);
-            return [
-              {
-                aTeamId: teamOf(m.sideAId),
-                bTeamId: teamOf(m.sideBId),
-                margin: st.margin,
-                remaining: st.remaining,
-                clinched: st.clinched,
-              },
-            ];
-          })
-        )
-      : null;
-
   if (rollUp === "individual_matches" && openMatch) {
     const idx = matches.findIndex((x) => x.id === openMatch);
     const m = idx >= 0 ? matches[idx] : undefined;
@@ -207,37 +174,19 @@ export function PickemBoard({
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-board">
-      {/* NO "MATCHES" word any more — a list of match cards says it is a list
-          of match cards, and this is the THIRD header on this feature that was
-          labelling content which already announced itself (STANDINGS over TEAM
-          TOTALS, the duplicated GAME MANAGEMENT, and this).
+      {/* NEITHER a header NOR a tally over the list.
+          The header went first — a list of match cards says it is a list of
+          match cards, the third instance of copy labelling content that
+          announces itself. The tally went after: "0 – 3 matches won", floated
+          right above eight cards with no eyebrow left to attach it to, read as
+          a score for a contest that is not on this screen. The cards each carry
+          their own score, so a second pair of numbers over them is a second
+          subject with no label — and the one thing it added, who is winning the
+          CUP, belongs where the cup is. */}
 
-          The tally stays: what the matches have PAID is not visible from the
-          cards, so it is the one thing this row was carrying that the content
-          does not say for itself. */}
-      {rollUp === "individual_matches" && tally && (
-      <div className="flex items-baseline justify-end px-1" style={EYEBROW}>
-        {(
-          <span
-            data-testid="pickem-board-tally"
-            className="flex items-baseline gap-1.5"
-            style={{ textTransform: "none", letterSpacing: 0 }}
-          >
-            <span style={{ fontSize: TYPE_SCALE.bodyDense, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-              {fmtPoints(tally.get(teams[0].id) ?? 0)} – {fmtPoints(tally.get(teams[1].id) ?? 0)}
-            </span>
-            <span style={{ fontSize: TYPE_SCALE.caption, fontWeight: 400 }}>matches won</span>
-          </span>
-        )}
-      </div>
-      )}
-
-      {/* The same state on the match side: a sheet with no opponent scores
-          nowhere either, and the match list would simply not mention them. */}
-      {rollUp === "individual_matches" && <PickemUnassignedNote names={unmatched} />}
-
-      {rollUp === "individual_matches"
-        ? matches.map((m) => {
+      {rollUp === "individual_matches" ? (
+        <>
+          {matches.map((m) => {
             const rows = matchRows.get(m.id);
             if (!rows || !m.sideAId || !m.sideBId) return null;
             return (
@@ -254,6 +203,8 @@ export function PickemBoard({
                   a: (sheets[m.sideAId] ?? []).length > 0,
                   b: (sheets[m.sideBId] ?? []).length > 0,
                 }}
+                aAvatar={avatarFor(m.sideAId)}
+                bAvatar={avatarFor(m.sideBId)}
                 mine={meId != null && (m.sideAId === meId || m.sideBId === meId)}
                 youSide={
                   meId == null ? null : m.sideAId === meId ? "a" : m.sideBId === meId ? "b" : null
@@ -262,8 +213,17 @@ export function PickemBoard({
                 onOpen={() => setOpenMatch(m.id)}
               />
             );
-          })
-        : (
+          })}
+
+          {/* AFTER the matches, not before them.
+              It sat at the top, where a grey paragraph about people who are not
+              in the scoring was the first thing on a screen whose subject is
+              the eight matches that are. Nothing about it is urgent — nobody
+              can act on it from here, and once picks are locked nobody can act
+              on it at all — so it belongs where a footnote belongs. */}
+          <PickemUnassignedNote names={unmatched} />
+        </>
+      ) : (
             <PickemTeamRollUp
               slate={slate}
               sheets={sheets}
@@ -277,7 +237,7 @@ export function PickemBoard({
               distribution={distribution}
               pointsMode={pointsMode}
             />
-          )}
+      )}
     </div>
   );
 }

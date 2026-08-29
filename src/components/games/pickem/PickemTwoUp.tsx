@@ -17,11 +17,21 @@ import { TYPE_SCALE } from "@/lib/typeScale";
  * destinations, one showing at a time. The chevrons went with the drawers: a
  * tab bar selects, it does not disclose.
  *
- * ── The subtitles are still derived, and still answer the question ─────────
+ * ── The subtitles are derived, and each says ONE thing ────────────────────
  *
- * "Your picks" alone is a place; "34 pts · 3 of 16" is an answer, and often the
- * only one somebody wanted. Keeping the numbers on the control rather than
- * behind it is what makes a tab worth its width here.
+ * "Your picks" alone is a place; "34 pts" is an answer, and often the only one
+ * somebody wanted. Keeping the number on the control rather than behind it is
+ * what makes a tab worth its width here.
+ *
+ * The picks tab used to read "30 pts · 4 of 12" — a total and a RANK among the
+ * sheets, unlabelled and jammed against each other. Read on a page whose other
+ * two tabs count games, "4 of 12" reads as four games of twelve, and there is
+ * nothing in ten characters to say otherwise.
+ *
+ * Dropped rather than labelled, because in `individual_matches` a rank across
+ * every sheet is not the question this page is about: the reader's standing is
+ * their MATCH, which the first tab shows in full. A field of twelve is a
+ * team-totals idea, and the roll-up says it there with a heading and a column.
  */
 
 export type PickemPanel = "matches" | "picks" | "results";
@@ -29,8 +39,6 @@ export type PickemPanel = "matches" | "picks" | "results";
 export function PickemTwoUp({
   matchesLabel,
   myPoints,
-  myRank,
-  sheetCount,
   resolved,
   total,
   canEdit,
@@ -48,11 +56,6 @@ export function PickemTwoUp({
    * as a bad result rather than as an absence.
    */
   myPoints: number | null;
-  /** 1-based, ties sharing a place. Null exactly when `myPoints` is. */
-  myRank: number | null;
-  /** How many sheets are being ranked — not the roster, which is a different
-   *  number the moment somebody does not pick. */
-  sheetCount: number;
   resolved: number;
   total: number;
   canEdit: boolean;
@@ -80,16 +83,14 @@ export function PickemTwoUp({
       <Tab
         testId="pickem-two-up-picks"
         title="Your picks"
-        sub={
-          myPoints == null ? "You didn’t pick" : `${myPoints} pts · ${myRank} of ${sheetCount}`
-        }
+        sub={myPoints == null ? "You didn’t pick" : `${myPoints} pts`}
         selected={open === "picks"}
         onClick={() => onOpen("picks")}
       />
       <Tab
         testId="pickem-two-up-results"
         title={runnerHasWork ? "Enter results" : "Results"}
-        sub={runnerHasWork ? `${toMark} to mark` : `${resolved} of ${total} in`}
+        sub={runnerHasWork ? `${toMark} still to play` : `${resolved} of ${total} in`}
         selected={open === "results"}
         /**
          * A runner with unmarked games is the one person this page needs

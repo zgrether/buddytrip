@@ -16,6 +16,8 @@ import {
   type SheetSettings,
 } from "@/lib/pickemSheet";
 import { draftLostToLock, formatCountdown, type PickemClosure } from "@/lib/pickemLifecycle";
+import { paysOut, type SlateResult } from "@/lib/pickemScoring";
+import type { PickOutcome } from "./PickemSheetRow";
 
 /** "Sat 11:00 AM" — a weekday and a clock time, because a deadline people are
  *  told about is spoken that way. No year: a sheet is read within days of it. */
@@ -108,6 +110,33 @@ export interface PickemSheetGame {
   kickoff: string | null;
   note: string | null;
   multiplier: number;
+  /**
+   * The outcome, once there is one.
+   *
+   * Optional because the EDITABLE sheet has no use for it — every caller
+   * already passes the slate row that carries it, and the type simply did not
+   * admit it. Absent and null both mean "not played", which is safe here for
+   * once: this field only ever ADDS a treatment, so a caller that omits it
+   * renders exactly the sheet that existed before.
+   */
+  result?: SlateResult | null;
+}
+
+/**
+ * What became of one pick — null while the game is unplayed.
+ *
+ * A push or a cancellation is `void`: DECIDED, and paid nobody. Folding it in
+ * with "not played yet" would put the two states that look identical in every
+ * number on the row under the same treatment, which is the mistake this
+ * feature has now made five times.
+ */
+export function pickOutcome(
+  result: SlateResult | null | undefined,
+  pick: "away" | "home" | null
+): PickOutcome | null {
+  if (result == null) return null;
+  if (!paysOut(result)) return "void";
+  return pick === result ? "won" : "lost";
 }
 
 /**
@@ -441,6 +470,31 @@ export function PickemSheet({
           const g = gameById.get(id);
           if (!g) return null;
           const p = picks.find((x) => x.slateGameId === id);
+          /**
+           * Only on the READ-ONLY sheet.
+           *
+           * The dimming says "this is settled". On a sheet that can still be
+           * edited that reads as disabled, and the row is not — a resolved game
+           * is still tappable while picks are open, because nothing stops a
+           * runner entering a Thursday result on a Wednesday-opened slate.
+           */
+          const outcome = editable ? null : pickOutcome(g.result, p?.pick ?? null);
+          /**
+           * The RANK, and deliberately not the rank times the multiplier.
+           *
+           * A weighted game at the top of a sixteen-game slate is worth 32, and
+           * printing 32 here was the first version of this. It was wrong twice
+           * over: the hint line one screen up promises "the top of the list is
+           * worth 16", and the chip renumbers as you DRAG — so the number that
+           * moves with the row has to be the thing the drag changes. The ×2 is
+           * already on the row, in the badge whose whole job that is.
+           *
+           * Confidence off gives every game 1, and with the game unplayed the
+           * chip stays absent — a "1" nobody chose is noise. Once it HAS been
+           * played the chip appears either way, because it is carrying the
+           * outcome and there is nowhere else on the row for that to go.
+           */
+          const stake = settings.useConfidence ? slate.length - index : 1;
           return (
             <PickemSheetRow
               game={{
@@ -455,7 +509,8 @@ export function PickemSheet({
               pick={p?.pick ?? null}
               // The chip shows what THIS POSITION is worth, derived from the
               // index — never a stored confidence beside the order.
-              points={settings.useConfidence ? slate.length - index : null}
+              points={settings.useConfidence || outcome != null ? stake : null}
+              outcome={outcome}
               editable={editable}
               onPick={(side) => editPicks((prev) => setPick(prev, id, side))}
             />

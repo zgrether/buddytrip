@@ -1,7 +1,14 @@
 "use client";
 
+import { Avatar } from "@/components/Avatar";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import type { MatchStanding } from "@/lib/pickemBoard";
+
+/** Identity for one side, in the shape `avatarFor` already returns. */
+export interface SideAvatar {
+  avatarIcon: string | null;
+  teamColor: string | null;
+}
 
 /**
  * One head-to-head match, as a card.
@@ -27,7 +34,7 @@ import type { MatchStanding } from "@/lib/pickemBoard";
  * implementation.
  */
 
-export type MatchPill = "not-started" | "live" | "clinched" | "final" | "no-picks";
+export type MatchPill = "not-started" | "live" | "clinched" | "final" | "no-sheet";
 
 /**
  * Whether each side actually submitted. Not a count — a sheet is all-or-nothing
@@ -42,22 +49,32 @@ export interface SidesPicked {
 /**
  * Which pill this standing earns.
  *
- * ── NO PICKS is not a clinch, and calling it one was wrong ─────────────────
+ * ── A missing sheet is not a clinch, and calling it one was wrong ──────────
  *
  * Someone with no sheet has zero upside, so `matchStanding` correctly reports
  * the opponent's lead as beyond reach from the first result. The maths is
- * right; CLINCHED was the wrong WORD for it.
+ * right; CLINCHED was the wrong WORD for it. A clinch is a contest won, and
+ * beating an empty sheet is not a contest.
  *
- * A clinch is a contest won. Beating an empty sheet is not a contest, and the
- * difference is not pedantry: a clinched match is DECIDED, while this one is
- * decided only because nobody entered — and it can be undecided by the person
- * picking, or by a captain proxying for them, any time before the lock.
+ * ── ...and NO PICKS was the wrong word for it too ──────────────────────────
  *
- * Reading "CLINCHED · only 0 in play" with nine games left, a person concludes
- * the app is broken rather than that their opponent never picked.
+ * Read on the board, "No picks" invites the reading that this person's picks
+ * are missing from a sheet that exists. What is missing is the SHEET — they
+ * never submitted one, and a sheet that was never written scores nothing.
  *
- * Ranked above clinch and below final: once nothing is left it stops being
- * reversible and is simply the result.
+ * The distinction matters because of what people assume fills the gap. The
+ * picking screen opens on every home team, so "I didn't pick" feels like it
+ * should mean "I took the chalk". It does not: nothing is stored until Save is
+ * pressed, and `sheetPoints` over an absent sheet is 0, not the chalk's score.
+ * Verified against the live game rather than reasoned — three people show 0
+ * rows in `pickem_picks` and 0 points, while every submitted sheet has 16.
+ *
+ * So the pill names the absent thing. If a missing sheet should one day BE the
+ * chalk, that is a scoring change (a migration that materialises defaults at
+ * the lock) and this state stops existing — it is not a relabelling.
+ *
+ * Ranked above clinch and below final: once nothing is left it stops mattering
+ * how the margin was built and the match is simply the result.
  */
 export function matchPill(
   s: MatchStanding,
@@ -65,7 +82,7 @@ export function matchPill(
   picked: SidesPicked
 ): MatchPill {
   if (s.remaining === 0) return "final";
-  if (!picked.a || !picked.b) return "no-picks";
+  if (!picked.a || !picked.b) return "no-sheet";
   if (resolvedCount === 0) return "not-started";
   return s.clinched ? "clinched" : "live";
 }
@@ -75,7 +92,7 @@ const PILL_LABEL: Record<MatchPill, string> = {
   live: "Live",
   clinched: "Clinched",
   final: "Final",
-  "no-picks": "No picks",
+  "no-sheet": "Didn’t pick",
 };
 
 /**
@@ -100,14 +117,27 @@ export function matchNote(
       : `${leaderName} takes it by ${lead}`;
   }
 
-  // Said BEFORE anything about margins, because a missing sheet explains the
-  // numbers rather than being explained by them — and it is the one state here
-  // that somebody can still act on.
+  /**
+   * Said BEFORE anything about margins, because a missing sheet explains the
+   * numbers rather than being explained by them.
+   *
+   * ── It no longer says "unless that changes" ──────────────────────────────
+   *
+   * It cannot change. This surface renders on a LOCKED game and nowhere else,
+   * and `pickem_picks_write` gates on `pickem_picks_open` — so neither the
+   * person nor a captain proxying for them can add a sheet from here. The
+   * sentence offered a way out that the policy refuses, which is the refusal
+   * rule pointing the other way: an INVITATION nobody can accept.
+   *
+   * What it says instead is the consequence, because that is the part a reader
+   * cannot work out. An empty sheet scoring nothing is not obvious on a screen
+   * whose picking half defaults every game to the home team.
+   */
   if (!picked.a || !picked.b) {
-    if (!picked.a && !picked.b) return "Neither has picked yet";
+    if (!picked.a && !picked.b) return "Neither submitted a sheet — nothing scores";
     const missing = picked.a ? names.b : names.a;
     const other = picked.a ? names.a : names.b;
-    return `${missing} hasn't picked — ${other} takes it unless that changes`;
+    return `${missing} didn't submit a sheet — it scores nothing, so ${other} takes the match`;
   }
 
   if (resolvedCount === 0) return "No games in yet";
@@ -158,8 +188,8 @@ export function h2hNote(
 }
 
 function Pill({ kind }: { kind: MatchPill }) {
-  // "No picks" is not good news for anyone, so it does not take the accent that
-  // Live and Clinched use to mean "something is happening here".
+  // A missing sheet is not good news for anyone, so it does not take the accent
+  // that Live and Clinched use to mean "something is happening here".
   const accent = kind === "live" || kind === "clinched";
   return (
     <span
@@ -233,6 +263,8 @@ function MarginBar({ margin, live }: { margin: number; live: boolean }) {
 export function PickemMatchCard({
   aName,
   bName,
+  aAvatar,
+  bAvatar,
   standing,
   resolvedCount,
   picked,
@@ -244,6 +276,18 @@ export function PickemMatchCard({
 }: {
   aName: string;
   bName: string;
+  /**
+   * Whose faces these are — the SAME `avatarFor` accessor the head-to-head
+   * takes, so a person wears one identity on both screens.
+   *
+   * Optional, and absent renders exactly as this card did before. `Avatar`
+   * already handles every case behind that: an icon or initials, a team colour
+   * or the neutral surface, and `teamTextColor` picking the foreground. None of
+   * that is re-decided here — the point of passing the raw pair is that the
+   * card holds no identity logic at all.
+   */
+  aAvatar?: SideAvatar;
+  bAvatar?: SideAvatar;
   standing: MatchStanding;
   /** Slate games with a result — separates "level" from "nothing played". */
   resolvedCount: number;
@@ -282,19 +326,38 @@ export function PickemMatchCard({
             : "1px solid var(--color-bt-border)",
       }}
     >
-      {/* Line 1 — names either side of the score. The LEADER is white and bold,
-          the trailer dim: the weight says who is ahead before the numbers do. */}
+      {/* Line 1 — faces and names either side of the score. The LEADER is white
+          and bold, the trailer dim: the weight says who is ahead before the
+          numbers do.
+
+          Each side is its own `@container`, which is what arms `Avatar`'s
+          `collapse`: as the name column narrows the disk becomes a team-colour
+          dot and then drops, so the NAME is never the thing that truncates
+          first. The card does not choose between disk and dot — the avatar
+          does, from the width it is actually given. */}
       <span className="flex items-center gap-2">
         <span
-          className="min-w-0 flex-1 truncate"
+          className="@container flex min-w-0 flex-1 items-center gap-1.5"
           style={{
             fontSize: TYPE_SCALE.bodyDense,
             fontWeight: aLead ? 700 : 500,
             color: aLead ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
           }}
         >
-          {aName}
-          {youSide === "a" && <YouTag />}
+          {aAvatar && (
+            <Avatar
+              name={aName}
+              avatarIcon={aAvatar.avatarIcon}
+              teamColor={aAvatar.teamColor}
+              sizePx={22}
+              collapse
+              collapseAt="chip"
+            />
+          )}
+          <span className="min-w-0 truncate">
+            {aName}
+            {youSide === "a" && <YouTag />}
+          </span>
         </span>
         <span
           className="shrink-0"
@@ -307,16 +370,30 @@ export function PickemMatchCard({
         >
           {s.aTotal} – {s.bTotal}
         </span>
+        {/* Mirrored: name then face, so the two avatars sit at the card's
+            outer edges and the names meet the score in the middle. */}
         <span
-          className="min-w-0 flex-1 truncate text-right"
+          className="@container flex min-w-0 flex-1 items-center justify-end gap-1.5"
           style={{
             fontSize: TYPE_SCALE.bodyDense,
             fontWeight: !aLead && s.margin !== 0 ? 700 : 500,
             color: !aLead && s.margin !== 0 ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
           }}
         >
-          {bName}
-          {youSide === "b" && <YouTag />}
+          <span className="min-w-0 truncate text-right">
+            {bName}
+            {youSide === "b" && <YouTag />}
+          </span>
+          {bAvatar && (
+            <Avatar
+              name={bName}
+              avatarIcon={bAvatar.avatarIcon}
+              teamColor={bAvatar.teamColor}
+              sizePx={22}
+              collapse
+              collapseAt="chip"
+            />
+          )}
         </span>
       </span>
 
