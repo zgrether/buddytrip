@@ -259,22 +259,28 @@ export function PickemSheetRow({
         borderRadius: 11,
         padding: "5px 10px 5px 12px",
         minHeight: 52,
+        /**
+         * ONE dim, on the whole row, chip included.
+         *
+         * The first version faded the content BESIDE the chip and left the chip
+         * at full strength, on the reasoning that the stake is the reason to
+         * look at a played row. On screen that made the chip a third kind of
+         * bright number — beside the live rows' accent chips and the unplayed
+         * rows' outlined ones — so a finished slate had three brightnesses
+         * competing and the settled rows read as the loudest thing on it.
+         *
+         * The chip does not need brightness to stay legible, because its three
+         * fates are carried by SHAPE: a filled disc, a strike-through, a plain
+         * outline. Those survive the fade; a brightness contest does not.
+         */
+        opacity: outcome != null ? 0.38 : 1,
       }}
     >
       {points != null && (
         <RankChip points={points} picked={pick !== null} outcome={outcome} />
       )}
 
-      {/* THE CHIP STAYS LIT, the rest dims.
-          A played game is settled, so the matchup, the line and the kickoff are
-          history — but what it was worth is the reason to look at this row at
-          all. Dimming the row wholesale would bury the one live number in it,
-          so the fade is applied to the content BESIDE the chip rather than to
-          the row, which is what puts the stake on top of the dimmed card. */}
-      <span
-        className="min-w-0 flex-1"
-        style={{ opacity: outcome != null ? 0.45 : 1 }}
-      >
+      <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-1 gap-y-1">
           <TeamTarget
             name={game.awayTeam}
@@ -313,11 +319,7 @@ export function PickemSheetRow({
         )}
       </span>
 
-      {game.kickoff && (
-        <span style={{ opacity: outcome != null ? 0.45 : 1 }} className="flex shrink-0">
-          <Kickoff kickoff={game.kickoff} />
-        </span>
-      )}
+      {game.kickoff && <Kickoff kickoff={game.kickoff} />}
     </div>
   );
 }

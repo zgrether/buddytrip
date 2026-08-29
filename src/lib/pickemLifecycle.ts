@@ -150,6 +150,40 @@ export function pickemClosure(
   return null;
 }
 
+/**
+ * Would clearing the hand lock leave picks CLOSED anyway?
+ *
+ * ── The hole this closes ───────────────────────────────────────────────────
+ *
+ * `unlock` clears `picks_locked_at` and nothing else — migration 151 said so,
+ * 156 restated it and 165's body says it again. So on a game whose deadline has
+ * already passed, pressing the runner's one action does nothing observable:
+ * `picksOpen` still fails on `now <= deadline`, the phase stays `locked`, and
+ * the page comes back looking exactly as it did.
+ *
+ * That is the refusal rule inverted. A refusal that names an impossible action
+ * is bad; an ACTION that silently performs nothing is worse, because there is
+ * no message to disbelieve — the runner concludes the app is broken, and they
+ * are not wrong about the symptom.
+ *
+ * The deadline block underneath has always said this ("Unlocking won't reopen
+ * picks until this moves"), which is honest and still not enough: the sentence
+ * is below the button, in smaller type, and describes a second control the
+ * reader has to connect to the first.
+ *
+ * ── Why it lives HERE ──────────────────────────────────────────────────────
+ *
+ * Two callers need it and they must not disagree: the strip, to say what Start
+ * is about to do, and the view, to actually do it. The version where each
+ * derives `deadline != null && now > deadline` for itself is the version where
+ * one of them gets the boundary wrong — and this module already owns every
+ * other reading of that comparison.
+ */
+export function deadlineBlocksReopen(clock: PickemClock, now: number = Date.now()): boolean {
+  const deadline = at(clock.picksDeadline);
+  return deadline != null && now > deadline;
+}
+
 /** The clock phase — what every surface should branch on. */
 export function pickemPhase(clock: PickemClock, now: number = Date.now()): PickemPhase {
   if (!picksEverOpened(clock)) return "building";

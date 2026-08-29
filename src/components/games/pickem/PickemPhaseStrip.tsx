@@ -95,6 +95,15 @@ export interface PickemPhaseStripProps {
    * refused is the shape this project keeps rejecting.
    */
   hasResults: boolean;
+  /**
+   * Would Start alone leave picks closed — i.e. has the deadline already gone?
+   *
+   * Passed in from `deadlineBlocksReopen` rather than derived from the
+   * `deadline` prop here, because the VIEW has to act on the same answer: its
+   * Start handler clears the spent deadline before unlocking. Two derivations
+   * of one comparison is how the button and the thing the button does drift.
+   */
+  deadlinePassed: boolean;
   onOpenPicks: () => void;
   onLock: () => void;
   onUnlock: () => void;
@@ -117,6 +126,7 @@ export function PickemPhaseStrip({
   deadline,
   busy,
   hasResults,
+  deadlinePassed,
   onOpenPicks,
   onLock,
   onUnlock,
@@ -167,10 +177,24 @@ export function PickemPhaseStrip({
    * can pick in yet, and puts a second control on the one screen whose whole
    * job is Start.
    *
-   * `building` is exactly "Start has not been pressed", so the phase IS the
+ * `building` is exactly "Start has not been pressed", so the phase IS the
    * condition — no separate flag, and nothing to keep in sync.
+   *
+   * ── ...and HIDDEN AGAIN once results exist ───────────────────────────────
+   *
+   * A deadline is a scheduled close for picks that can reopen. Once anything is
+   * scored they cannot: `set_pickem_phase('unlock')` refuses outright
+   * (migration 165), which is why no Start button is offered either. The block
+   * went on rendering through all of that, with a Set/Change control and two
+   * sentences about unlocking — offering a setting whose only effect is on a
+   * transition the server has closed, one line under a panel saying so.
+   *
+   * Same shape as the two bugs already recorded in `DeadlineBlock` below: a
+   * sentence written for the state its author had in mind, rendered on a
+   * condition covering more states than that one. This is the third, and it is
+   * the widest — every locked-with-results game showed it.
    */
-  const showDeadline = phase !== "building";
+  const showDeadline = phase !== "building" && !hasResults;
 
   /**
    * ── The deadline stays IN this panel ─────────────────────────────────────
@@ -255,15 +279,42 @@ export function PickemPhaseStrip({
           {LOCKED_WITH_RESULTS}
         </span>
       )}
+      {/* NAMES WHERE, because "add some games" without it is an instruction
+          whose object is on another screen. The settings gear is the route on
+          all five formats and it is in this game's own header — so the sentence
+          points at something the reader can see from where they are standing,
+          which is the whole of the refusal rule. */}
       {phase === "building" && slateCount === 0 && (
         <span
+          data-testid="pickem-strip-empty-slate"
           style={{
             fontSize: TYPE_SCALE.caption,
             color: "var(--color-bt-text-dim)",
             lineHeight: 1.45,
           }}
         >
-          Add some games to the slate before you can start.
+          Add games to the slate first — the gear at the top of this page, then
+          The Picks.
+        </span>
+      )}
+
+      {/* Says what Start is about to do that its label cannot.
+          Unlocking clears the hand lock and nothing else, so on a game whose
+          deadline has gone it would achieve nothing on its own — the button
+          therefore clears the spent deadline as part of the same press, and
+          this is the one sentence saying so. Without it a runner presses Start,
+          watches a deadline they set disappear, and has no idea why. */}
+      {phase === "locked" && !hasResults && deadlinePassed && (
+        <span
+          data-testid="pickem-strip-clears-deadline"
+          style={{
+            fontSize: TYPE_SCALE.caption,
+            color: "var(--color-bt-text-dim)",
+            lineHeight: 1.45,
+          }}
+        >
+          The deadline has passed, so Start clears it — picks stay open until you
+          press Stop.
         </span>
       )}
 

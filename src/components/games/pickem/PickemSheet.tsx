@@ -480,21 +480,33 @@ export function PickemSheet({
            */
           const outcome = editable ? null : pickOutcome(g.result, p?.pick ?? null);
           /**
-           * The RANK, and deliberately not the rank times the multiplier.
+           * ── The chip answers a different question either side of the result ──
            *
-           * A weighted game at the top of a sixteen-game slate is worth 32, and
-           * printing 32 here was the first version of this. It was wrong twice
-           * over: the hint line one screen up promises "the top of the list is
-           * worth 16", and the chip renumbers as you DRAG — so the number that
-           * moves with the row has to be the thing the drag changes. The ×2 is
-           * already on the row, in the badge whose whole job that is.
+           * UNPLAYED, it is the RANK: what this position is worth, renumbering
+           * as the row is dragged. It must not carry the multiplier there — the
+           * hint line one screen up promises "the top of the list is worth 16",
+           * and a number that moves with the drag has to be the thing the drag
+           * changes.
+           *
+           * PLAYED, the drag is over and the question becomes what the game was
+           * worth, which is the rank TIMES the multiplier. A 2× game at the top
+           * of a sixteen-game slate was worth 32, and 32 is the number a person
+           * reading a finished sheet is looking for.
+           *
+           * Applied to every resolved row rather than only the correct ones. The
+           * stake does not depend on how it went — a 2× game missed cost 32, not
+           * 16 — and gating the multiplier on correctness would print two
+           * different numbers for the same position depending on the outcome,
+           * which stops the column being readable as a column. The ×2 badge
+           * stays on the row either way, because it is what explains the 32.
            *
            * Confidence off gives every game 1, and with the game unplayed the
            * chip stays absent — a "1" nobody chose is noise. Once it HAS been
            * played the chip appears either way, because it is carrying the
            * outcome and there is nowhere else on the row for that to go.
            */
-          const stake = settings.useConfidence ? slate.length - index : 1;
+          const rank = settings.useConfidence ? slate.length - index : 1;
+          const stake = outcome != null ? rank * (g.multiplier ?? 1) : rank;
           return (
             <PickemSheetRow
               game={{

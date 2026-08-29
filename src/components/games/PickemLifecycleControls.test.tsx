@@ -110,7 +110,7 @@ describe("ONE runner panel, persisting across every phase", () => {
   it("offers no Start with an empty slate, and says why", () => {
     const html = strip({ phase: "building", slateCount: 0 });
     expect(html).not.toContain('data-testid="pickem-strip-open"');
-    expect(html).toContain("Add some games to the slate before you can start.");
+    expect(html).toContain("Add games to the slate first");
   });
 
   it("hides the deadline until Start has been pressed", () => {
@@ -129,6 +129,66 @@ describe("ONE runner panel, persisting across every phase", () => {
     // ...and it appears the moment Start has been.
     expect(strip({ phase: "picks_open" })).toContain('data-testid="pickem-strip-deadline"');
     expect(strip({ phase: "locked" })).toContain('data-testid="pickem-strip-deadline"');
+  });
+
+  it("hides the deadline once results exist, where it can change nothing", () => {
+    /**
+     * A deadline is a scheduled close for picks that can REOPEN. Once anything
+     * is scored they cannot — `set_pickem_phase('unlock')` refuses outright
+     * (migration 165), which is why no Start is offered either.
+     *
+     * The block went on rendering through all of that: a Set/Change control,
+     * and two sentences about unlocking, one line under a panel explaining that
+     * unlocking is unavailable. Third instance in this component of copy
+     * written for one state and rendered on a condition covering more, and the
+     * widest of the three — it showed on every locked-with-results game.
+     *
+     * The pair is the assertion: same phase, same everything, results the only
+     * difference.
+     */
+    expect(strip({ phase: "locked", hasResults: false })).toContain(
+      'data-testid="pickem-strip-deadline"'
+    );
+    expect(strip({ phase: "locked", hasResults: true })).not.toContain(
+      'data-testid="pickem-strip-deadline"'
+    );
+  });
+
+  it("warns that Start will clear a deadline that has already gone", () => {
+    /**
+     * `unlock` clears the hand lock and nothing else, so on a past-deadline
+     * game it achieves nothing on its own. The view therefore clears the spent
+     * deadline in the same press — and a button that silently deletes a setting
+     * the runner chose is only acceptable if it says so first.
+     *
+     * The pair is the assertion: the same locked phase with the deadline still
+     * ahead must NOT carry the sentence, because there Start reopens picks and
+     * leaves the schedule alone.
+     */
+    expect(
+      strip({ phase: "locked", deadlinePassed: true, deadline: "2026-08-01T12:00:00.000Z" })
+    ).toContain("Start clears it");
+    expect(
+      strip({ phase: "locked", deadlinePassed: false, deadline: "2027-08-01T12:00:00.000Z" })
+    ).not.toContain("Start clears it");
+    // ...and never where there is no Start to qualify.
+    expect(strip({ phase: "locked", hasResults: true, deadlinePassed: true })).not.toContain(
+      "Start clears it"
+    );
+  });
+
+  it("names WHERE to add games, not just that games are missing", () => {
+    /**
+     * "Add some games to the slate before you can start" is an instruction
+     * whose object lives on another screen, with nothing saying which. The gear
+     * is in this game's own header, so the sentence can point at something the
+     * reader can see from where they are standing.
+     */
+    const html = strip({ phase: "building", slateCount: 0 });
+    expect(html).toContain("gear");
+    expect(html).toContain("The Picks");
+    // ...and it is absent the moment there is a slate to start.
+    expect(strip({ phase: "building", slateCount: 2 })).not.toContain("gear");
   });
 
   it("carries the owner-attention marker", () => {
@@ -164,6 +224,7 @@ const strip = (over: Partial<Parameters<typeof PickemPhaseStrip>[0]> = {}) =>
       deadline={null}
       busy={false}
       hasResults={false}
+      deadlinePassed={false}
       onOpenPicks={noop}
       onLock={noop}
       onUnlock={noop}
@@ -220,7 +281,7 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     // reason, or it reads as a broken page.
     const html = strip({ phase: "building", slateCount: 0 });
     expect(html).not.toContain('data-testid="pickem-strip-open"');
-    expect(html).toContain("Add some games to the slate");
+    expect(html).toContain("Add games to the slate first");
   });
 
   it("picks open offers LOCK; locked offers UNLOCK; never both", () => {

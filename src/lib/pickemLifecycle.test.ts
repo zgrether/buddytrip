@@ -10,6 +10,7 @@ import {
   type PickemClock,
   pickemClosure,
   formatLeadTime,
+  deadlineBlocksReopen,
 } from "./pickemLifecycle";
 
 /**
@@ -250,5 +251,55 @@ describe("formatLeadTime — how far off, said coarsely", () => {
     expect(formatLeadTime(30_000)).toBe("under a minute");
     expect(formatLeadTime(0)).toBe("under a minute");
     expect(formatLeadTime(-5_000)).toBe("under a minute");
+  });
+});
+
+describe("deadlineBlocksReopen — would Start alone leave picks shut?", () => {
+  const T = Date.parse("2026-09-05T17:00:00.000Z");
+  const clock = (picksDeadline: string | null) => ({
+    picksOpenedAt: "2026-09-01T00:00:00.000Z",
+    picksDeadline,
+    picksLockedAt: "2026-09-05T10:00:00.000Z",
+  });
+
+  it("is true once the deadline is behind us, and false while it is ahead", () => {
+    /**
+     * The hole this closes: `unlock` clears `picks_locked_at` and nothing else
+     * (migrations 151, 156, 165 all say so). Past the deadline that leaves
+     * `picksOpen` still false, so the runner presses their one action and
+     * nothing observable happens.
+     */
+    expect(deadlineBlocksReopen(clock("2026-09-05T16:00:00.000Z"), T)).toBe(true);
+    expect(deadlineBlocksReopen(clock("2026-09-05T18:00:00.000Z"), T)).toBe(false);
+  });
+
+  it("is false with NO deadline — the hand lock is then the whole of it", () => {
+    // The case Start has always worked correctly for, and the reason this
+    // cannot simply be "is the game locked".
+    expect(deadlineBlocksReopen(clock(null), T)).toBe(false);
+  });
+
+  it("agrees with picksOpen at the exact instant", () => {
+    /**
+     * The boundary is the part worth pinning, because the two predicates have
+     * to hand over cleanly: `picksOpen` admits `now <= deadline`, so AT the
+     * instant picks are still open and nothing is blocking a reopen.
+     *
+     * Asserted as the RELATIONSHIP rather than as two literals — a test that
+     * hardcoded both answers would keep passing if one moved and the other did
+     * not, which is precisely the drift it exists to catch.
+     */
+    const at = clock(new Date(T).toISOString());
+    expect(deadlineBlocksReopen(at, T)).toBe(false);
+    expect(deadlineBlocksReopen(at, T + 1)).toBe(true);
+    expect(picksOpen({ ...at, picksLockedAt: null }, T)).toBe(true);
+    expect(picksOpen({ ...at, picksLockedAt: null }, T + 1)).toBe(false);
+  });
+
+  it("does not care whether the game is locked — it is a fact about the CLOCK", () => {
+    // It answers "would clearing the lock be enough", so it must be readable
+    // on a game that is not locked yet without changing its answer.
+    const past = "2026-09-05T16:00:00.000Z";
+    expect(deadlineBlocksReopen({ ...clock(past), picksLockedAt: null }, T)).toBe(true);
   });
 });
