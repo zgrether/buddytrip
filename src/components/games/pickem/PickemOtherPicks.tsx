@@ -121,7 +121,14 @@ export function PickemOtherPicks({
                 className="mt-0.5 block truncate"
                 style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
               >
-                {missing ? "Didn’t pick — no sheet to show" : (s.team ?? "No team")}
+                {/* The team survives the second fact rather than being replaced
+                    by it. Every other row carries it, so dropping it here would
+                    make the non-submitters read as people who are not on the
+                    trip — which is the opposite of the point: they ARE in the
+                    game, on a side, and their side is carrying a blank. */}
+                {missing
+                  ? [s.team, "Didn’t pick"].filter(Boolean).join(" · ")
+                  : (s.team ?? "No team")}
               </span>
             </span>
             {!missing && (
