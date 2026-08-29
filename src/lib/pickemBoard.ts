@@ -430,3 +430,62 @@ export function matchesWonByTeam(rows: readonly MatchTallyRow[]): Map<string, nu
   }
   return out;
 }
+
+/** What the results screen needs to say what is at stake. */
+export interface RidingCounts {
+  /** Unresolved slate game id -> how many live matches it can still move. */
+  byGame: Map<string, number>;
+  /** Distinct matches with something still riding on an unmarked game. */
+  matchesPending: number;
+}
+
+/**
+ * How much hangs on each game still to be marked.
+ *
+ * ── Two exclusions, and the second is not in the design ────────────────────
+ *
+ * A FINISHED or CLINCHED match is excluded, which is the design's own rule:
+ * points are still being scored inside a clinched match, and none of them are
+ * riding on anything — the match is over in every sense a reader cares about.
+ *
+ * A match with NO STAKE on the game is excluded too, and that is an extension.
+ * If both sides took the same team at the same rank, this game cannot move that
+ * match by a single point, so "3 matches are riding on this" would be counting
+ * one that is not. Same reasoning as the clinch exclusion, applied per game
+ * rather than per match — and `upsideFor` already collapses agreement to a
+ * one-sided number, so the check is just "can anybody gain".
+ *
+ * ── A count of MATCHES, not of stakes ──────────────────────────────────────
+ *
+ * `matchesPending` is the union rather than the sum: a match riding on six
+ * unmarked games is one match hanging, not six. The header says "{m} matches
+ * hang on them", and a runner reads that as how many people are still waiting.
+ */
+export function ridingOn(
+  slate: ScoredSlateGame[],
+  matches: readonly { id: string; sideAId: string | null; sideBId: string | null }[],
+  sheets: Record<string, ScoredPick[]>,
+  useConfidence: boolean
+): RidingCounts {
+  const byGame = new Map<string, number>();
+  let matchesPending = 0;
+
+  for (const m of matches) {
+    if (!m.sideAId || !m.sideBId) continue;
+    const rows = buildBoardRows(slate, sheets[m.sideAId] ?? [], sheets[m.sideBId] ?? [], useConfidence);
+    const standing = matchStanding(rows);
+    // Over, or over in all but name.
+    if (standing.remaining === 0 || standing.clinched) continue;
+
+    let contributes = false;
+    for (const r of rows) {
+      if (r.result != null) continue;
+      if (r.upsideA === 0 && r.upsideB === 0) continue;
+      byGame.set(r.slateGameId, (byGame.get(r.slateGameId) ?? 0) + 1);
+      contributes = true;
+    }
+    if (contributes) matchesPending += 1;
+  }
+
+  return { byGame, matchesPending };
+}

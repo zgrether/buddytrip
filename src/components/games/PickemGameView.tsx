@@ -38,6 +38,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { matchesComplete, type PickemPair } from "@/lib/pickemPairing";
 import { effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import { resolvedCount, sheetPoints } from "@/lib/pickemScoring";
+import { ridingOn } from "@/lib/pickemBoard";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { PickemMatchBuilder } from "@/components/games/pickem/PickemMatchBuilder";
 import type { DraftMatchConfig } from "@/lib/configDraft";
@@ -811,6 +812,21 @@ export function PickemGameView() {
   const runnerStrip = canEdit;
 
   const { resolved: resolvedGames, total: totalGames } = resolvedCount(q.data.slate);
+
+  /**
+   * What hangs on each unmarked game. Derived here and handed down as numbers,
+   * so the results screen stays free of matches, sheets and scoring — the
+   * persistence-agnostic split every component in this directory follows.
+   *
+   * Empty on a team-totals game, which has no matches at all, and the line is
+   * then absent rather than reading zero.
+   */
+  const riding = ridingOn(
+    q.data.slate,
+    q.data.matches,
+    q.data.sheets,
+    q.data.settings.useConfidence
+  );
   const sheetTotals = Object.entries(q.data.sheets).map(([userId, picks]) => ({
     userId,
     total: sheetPoints(q.data!.slate, picks, q.data!.settings.useConfidence),
@@ -958,6 +974,8 @@ export function PickemGameView() {
               canEdit={canEdit}
               busyId={busyResultId}
               blockedReason={runBlockedReason}
+              ridingOn={riding.byGame}
+              matchesPending={riding.matchesPending}
               onSetResult={(slateGameId, result) => {
                 setBusyResultId(slateGameId);
                 setResult.mutate({ tripId: tripId!, gameId, slateGameId, result });
