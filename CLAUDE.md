@@ -424,6 +424,7 @@ seam, never on a calendar.
 | How should it look? | `STYLE_GUIDE.md` |
 | What shape is the data? | `supabase/migrations/` (migrations are authoritative) |
 | How does Realtime work? | Hooks in `src/hooks/useRealtime*.ts` (code is authoritative) |
+| How does pick'em work? | `PICKEM-SPEC.md` — RECONSTRUCTED FROM THE CODE, and it says so at the top. It lived outside the repo for weeks and was wrong about scoring defaults the whole time, which nobody could see because only one of the two was here. Keep it in step in the same PR that changes the code. |
 | How are the domain + email configured (and how to migrate domains)? | `DOMAIN_AND_EMAIL.md` |
 | What patterns must CC follow? | This file (`CLAUDE.md`) |
 
