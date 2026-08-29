@@ -206,6 +206,7 @@ export function PickemRunView({
               busy={busyId === g.id}
               canEdit={canEdit}
               riding={ridingOn?.get(g.id) ?? 0}
+              matchesPending={matchesPending ?? 0}
               onSetResult={onSetResult}
             />
           ))}
@@ -240,15 +241,33 @@ function PendingCard({
   busy,
   canEdit,
   riding,
+  matchesPending,
   onSetResult,
 }: {
   game: RunSlateGame;
   busy: boolean;
   canEdit: boolean;
   riding: number;
+  /** What the header already said, so this line can decline to repeat it. */
+  matchesPending: number;
   onSetResult: (slateGameId: string, result: SlateResult | null) => void;
 }) {
   const mult = g.multiplier ?? 1;
+  /**
+   * Said only where it DIFFERS from the header.
+   *
+   * Measured on the live slate: nine unmarked games, four live matches, and
+   * every single game read "4 matches are still riding on this" — the same
+   * number the header had already given, nine times.
+   *
+   * That is the normal case rather than a fluke. A game's count drops below
+   * `matchesPending` only when some live match has no stake on it at all, which
+   * needs both sides to have taken the same team at the same rank; with
+   * distinct confidence ranks across sixteen games that is rare. So the line
+   * earns its place exactly when it is surprising, and repeating the header
+   * beside every row is noise that makes the surprising one harder to see.
+   */
+  const ridingWorthSaying = riding > 0 && riding !== matchesPending;
   return (
     <div
       data-testid="pickem-run-row"
@@ -285,7 +304,7 @@ function PendingCard({
 
       {canEdit && <ResultSegments game={g} busy={busy} onSetResult={onSetResult} />}
 
-      {riding > 0 && (
+      {ridingWorthSaying && (
         <span
           data-testid="pickem-run-riding"
           style={{ fontSize: 10.5, color: "var(--color-bt-text-dim)" }}
