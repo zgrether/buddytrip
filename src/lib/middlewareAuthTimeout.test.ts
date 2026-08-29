@@ -90,7 +90,12 @@ describe("the thresholds are set against measurement", () => {
 });
 
 describe("authProbeLine", () => {
-  const base = { pathname: "/api/trpc/pickem.savePicks", method: "POST", elapsedMs: 2503 };
+  const base = {
+    surface: "trpc" as const,
+    pathname: "/api/trpc/pickem.savePicks",
+    method: "POST",
+    elapsedMs: 2503,
+  };
 
   it("NEVER carries a cookie value — only names go in, counts come out", () => {
     // The line is written to be safe to paste into an issue. If it could carry

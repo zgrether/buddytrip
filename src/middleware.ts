@@ -80,6 +80,7 @@ export async function middleware(request: NextRequest) {
     console.warn(
       authProbeLine({
         cookieNames: request.cookies.getAll().map((c) => c.name),
+        surface: "middleware",
         pathname: request.nextUrl.pathname,
         method: request.method,
         elapsedMs: resolved.elapsedMs,
@@ -96,6 +97,7 @@ export async function middleware(request: NextRequest) {
     console.warn(
       authProbeLine({
         cookieNames: request.cookies.getAll().map((c) => c.name),
+        surface: "middleware",
         pathname: request.nextUrl.pathname,
         method: request.method,
         elapsedMs: resolved.elapsedMs,

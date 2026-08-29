@@ -1,6 +1,12 @@
 export const dynamic = "force-dynamic";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import {
+  AUTH_TIMEOUT_MS,
+  authProbeLine,
+  resolveWithTimeout,
+} from "@/lib/middlewareAuthTimeout";
 import { createClient } from "@/lib/supabase-server";
 import { resolveAccessRoute } from "@/lib/accessRoute";
 import { resolveInviteLink, viewerCanSeeTrip } from "@/server/lib/inviteLink";
@@ -44,9 +50,38 @@ export default async function InvitePage({
   const invite = await resolveInviteLink(token);
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  /**
+   * Guarded for the same reason the home page is, and found by sweeping every
+   * `getUser()` rather than by it failing: two were fixed because two were
+   * looked at, and this was the third.
+   *
+   * A stall here is the worst-placed of the four — this is the page somebody
+   * lands on from an invite email, so the hang would greet a person who has
+   * never used the app.
+   *
+   * On timeout they are treated as a signed-out viewer, which is what
+   * `resolveAccessRoute` already handles: they are offered the sign-in path
+   * instead of the "you already have access" path. Nobody is signed out, and
+   * the worst case is one extra hop for someone who was already logged in —
+   * the same trade the home page documents.
+   */
+  const resolved = await resolveWithTimeout(
+    () => supabase.auth.getUser(),
+    AUTH_TIMEOUT_MS
+  );
+  if (resolved.timedOut) {
+    console.warn(
+      authProbeLine({
+        cookieNames: (await cookies()).getAll().map((c) => c.name),
+        surface: "invite",
+        pathname: "/invite",
+        method: "GET",
+        elapsedMs: resolved.elapsedMs,
+        outcome: "timeout",
+      })
+    );
+  }
+  const user = resolved.timedOut ? null : resolved.value.data.user;
 
   const viewer = user ? { id: user.id, email: user.email ?? null } : null;
   const viewerCanSeeTarget =

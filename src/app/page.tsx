@@ -81,6 +81,7 @@ export default async function HomePage() {
     console.warn(
       authProbeLine({
         cookieNames: cookieStore.getAll().map((c) => c.name),
+        surface: "home",
         pathname: "/",
         method: "GET",
         elapsedMs: resolved.elapsedMs,
