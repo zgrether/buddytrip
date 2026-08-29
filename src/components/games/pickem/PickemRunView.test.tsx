@@ -148,6 +148,28 @@ describe("what hangs on an unmarked game", () => {
     expect(one).not.toContain("1 matches");
   });
 
+  it("declines to repeat the header when the count is the same", () => {
+    /**
+     * Measured on the live slate: nine unmarked games, four live matches, and
+     * every game read the same "4" the header had already given. A game drops
+     * below `matchesPending` only when some live match has no stake on it —
+     * both sides on the same team at the same rank — which is rare with
+     * distinct ranks across sixteen games.
+     *
+     * So the line earns its place when it is SURPRISING, and repeating the
+     * header beside every row makes the surprising one harder to find.
+     *
+     * The pair is the assertion: same inputs but for the header's number.
+     */
+    const uniform = render({ ridingOn: new Map([["g1", 4]]), matchesPending: 4 });
+    expect(uniform).not.toContain("riding on this");
+    // ...and it is still saying the number once, up top.
+    expect(uniform).toContain("4 matches hang on them");
+
+    const differs = render({ ridingOn: new Map([["g1", 2]]), matchesPending: 4 });
+    expect(differs).toContain("2 matches are still riding on this");
+  });
+
   it("summarises the runner's remaining work in the header", () => {
     const html = render();
     expect(html).toContain("2 games still to mark");

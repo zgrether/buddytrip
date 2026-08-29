@@ -149,7 +149,9 @@ describe("PickemBoard — points mode", () => {
      * site, because a fifth site is inevitable.
      */
     const html = render({ rollUp: "individual_matches" });
-    expect(html).toContain("Standings");
+    // The roll-up brings its own header now; the board no longer prints one
+    // over it, which is why this reads "Team totals" rather than "Standings".
+    expect(html).toContain("Team totals");
     expect(html).not.toContain(">Matches<");
     // ...and it is really the ORDERING, not just the heading.
     expect(orderOf(html, ["Aces", "Bears", "Cubs", "Dogs"])).toEqual(["Aces", "Bears", "Cubs", "Dogs"]);
