@@ -175,8 +175,17 @@ export function MatchupSearch({
       ) : (
         <div className="relative">
           <Search
-            size={14}
-            style={{ position: "absolute", left: 9, top: 11, color: "var(--color-bt-text-dim)" }}
+            size={15}
+            /* Centred against the field's real height instead of a hardcoded
+               `top: 11`, which only lined up at one padding and drifted the
+               moment the field grew. */
+            style={{
+              position: "absolute",
+              left: 11,
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--color-bt-text-dim)",
+            }}
           />
           <input
             aria-label="Search for a team"
@@ -188,10 +197,25 @@ export function MatchupSearch({
             style={{
               background: "var(--color-bt-card-raised)",
               border: "1px solid var(--color-bt-border)",
-              borderRadius: 8,
+              borderRadius: 11,
               color: "var(--color-bt-text)",
-              fontSize: 16, // iOS zooms on focus below 16 (#1062)
-              padding: "8px 10px 8px 28px",
+              /**
+               * 16, NOT the design's 13.5 — and this is the one measurement on
+               * the screen that deliberately ignores the spec.
+               *
+               * Below 16px iOS Safari zooms the page on focus, so the layout
+               * jumps the moment somebody taps the box. #1062 fixed exactly
+               * that for the chat composer. The design could not have known —
+               * it is a platform behaviour rather than a taste call — and the
+               * handoff's own rule is that the app's existing answer wins.
+               *
+               * Reading the spec and setting this to 13.5 reintroduces a fixed
+               * bug. The slate form's shared `field` style carries the same
+               * note for the same reason.
+               */
+              fontSize: 16,
+              height: 42,
+              padding: "0 12px 0 32px",
               width: "100%",
             }}
           />

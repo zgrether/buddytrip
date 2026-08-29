@@ -174,16 +174,21 @@ export function PickemTotalPointsRow({
   return (
     <ChecklistRow
       icon={Hash}
-      /* "Total Points" implies a division that team totals does not do, so
-         the label changes with the format — but the design's "Points for this
-         game" is 20 characters and truncated to "Points for this ga…" beside an
-         inline stepper at 390. Shorter, same distinction. */
-      title={individual ? "Total Points" : "Game Points"}
+      /* ALWAYS "Total Points". The label was renamed per format twice — once
+         to "Points for this game", then to "Game Points" when that truncated —
+         and both were solving the wrong problem: the row is the same control
+         doing the same thing on every format in the app, so a name that moves
+         is a name that says the control changed when it did not.
+
+         The SUBTEXT carries the format difference, which is what removes the
+         reason to rename anything. */
+      title="Total Points"
       testId="row-total-points"
       state={pointsTotal ? "resolved" : "empty"}
       subtitle={
         <PointsSubtitle
           individual={individual}
+          total={pointsTotal}
           validMatches={assigned.length}
           perMatch={perMatch}
           hasOverrides={assigned.some((m) => m.pointValue != null)}
@@ -215,21 +220,34 @@ export function PickemTotalPointsRow({
  */
 function PointsSubtitle({
   individual,
+  total,
   validMatches,
   perMatch,
   hasOverrides,
   worthNothing,
 }: {
   individual: boolean;
+  /** The whole pool, for the team-totals reading. */
+  total: number | null;
   validMatches: number;
   perMatch: number;
   hasOverrides: boolean;
   worthNothing: boolean;
 }) {
-  // Team totals awards the whole total to one side and points mode splits it
-  // across places, so a per-match figure there would be a number about a
-  // mechanic neither of them has.
-  if (!individual) return <>Higher total takes them all</>;
+  /**
+   * Team totals awards the whole total to the higher side, so a per-match
+   * figure would be a number about a mechanic it does not have. It reads the
+   * way non-golf's simple formats read — what a win is worth, and what a draw
+   * splits — because that is the same shape.
+   */
+  if (!individual) {
+    const win = total ?? 0;
+    return (
+      <>
+        Win {win} · Draw {win / 2} each
+      </>
+    );
+  }
 
   if (validMatches === 0) {
     return <>Set the matches and each one&rsquo;s share appears here.</>;
@@ -273,12 +291,12 @@ function FormatCards({
     {
       key: "individual_matches" as const,
       title: "Individual matches",
-      body: "One person per side. Points split across the matches.",
+      body: "Head to head matches across teams.",
     },
     {
       key: "team_totals" as const,
       title: "Team totals",
-      body: "Every sheet sums into its side. Higher total takes the points.",
+      body: "One score submitted for the entire team",
     },
   ];
 

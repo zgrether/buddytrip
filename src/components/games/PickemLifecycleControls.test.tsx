@@ -79,10 +79,19 @@ describe("the game page's primary action follows the state", () => {
     expect(isFilledPrimary(html, "pickem-edit-slate")).toBe(false);
   });
 
-  it("...and Edit the slate is still a real, bordered control", () => {
-    // Demoting it must not turn it into the bare text link the other one was.
-    const tag = tagOf(phaseBody({ slateCount: 2 }), "pickem-edit-slate");
-    expect(tag).toContain("border:1px solid");
+  it("puts the runner's action IN the banner, not under a member's words", () => {
+    /**
+     * The runner used to read "Picks open soon" — a member's sentence, about
+     * waiting — with the thing they were waiting on as a button underneath.
+     * The banner now says whose job it is and carries Configure itself.
+     */
+    const html = phaseBody({ slateCount: 2 });
+    expect(html).toContain('data-testid="pickem-runner-banner"');
+    expect(html).toContain("You’re in charge of pick’em");
+    expect(html).toContain("Add the games for everyone to pick.");
+    expect(html).toContain('data-testid="pickem-configure"');
+    // ...and the member's waiting copy is NOT what the runner is shown.
+    expect(html).not.toContain("Picks open soon");
   });
 
   it("names the count, so the button says what it will open", () => {
@@ -95,12 +104,12 @@ describe("the game page's primary action follows the state", () => {
     expect(html).toContain("reopen it from settings");
   });
 
-  it("WITH NO SLATE, the one job is building it — and Open picks is absent", () => {
+  it("WITH NO SLATE, Open picks is absent — there is nothing to open", () => {
     const html = phaseBody({ slateCount: 0 });
-    expect(isFilledPrimary(html, "pickem-build-slate")).toBe(true);
-    // Absent, not disabled: there is nothing to open.
+    // Configure is the whole job at this point, and it is in the banner.
+    expect(html).toContain('data-testid="pickem-configure"');
+    // Absent, not disabled.
     expect(html).not.toContain('data-testid="pickem-open-picks"');
-    expect(html).not.toContain('data-testid="pickem-edit-slate"');
   });
 
   it("a plain member sees the words and none of the controls", () => {

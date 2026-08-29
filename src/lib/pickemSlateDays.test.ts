@@ -13,13 +13,28 @@ const g = (kickoff: string | null) => ({ kickoff });
 
 describe("splitKickoffDay", () => {
   it("takes the day off the front and leaves the time", () => {
-    expect(splitKickoffDay("Thu 8:15p")).toEqual({ day: "Thu", key: "thursday", rest: "8:15p" });
-    expect(splitKickoffDay("Saturday 3:30p")).toEqual({
-      day: "Saturday",
-      key: "saturday",
-      rest: "3:30p",
+    // Hand-typed: a day and a time, no date.
+    expect(splitKickoffDay("Thu 8:15p")).toEqual({
+      day: "Thu",
+      key: "thursday",
+      date: null,
+      time: "8:15p",
     });
-    expect(splitKickoffDay("Sat. 12:00p")).toEqual({ day: "Sat", key: "saturday", rest: "12:00p" });
+    expect(splitKickoffDay("Sat. 12:00p")).toEqual({
+      day: "Sat",
+      key: "saturday",
+      date: null,
+      time: "12:00p",
+    });
+
+    // From the search: `formatKickoff` emits "Fri Aug 28, 8:00p", and the date
+    // is what the day HEADING carries so the row does not repeat it.
+    expect(splitKickoffDay("Fri Aug 28, 8:00p")).toEqual({
+      day: "Fri",
+      key: "friday|Aug 28",
+      date: "Aug 28",
+      time: "8:00p",
+    });
   });
 
   it("keeps the runner's own spelling, and still knows which day it is", () => {
@@ -29,6 +44,9 @@ describe("splitKickoffDay", () => {
     expect(splitKickoffDay("Thursday 8:15p")?.day).toBe("Thursday");
     expect(splitKickoffDay("Thursday 8:15p")?.key).toBe("thursday");
     expect(splitKickoffDay("Thu 8:15p")?.key).toBe("thursday");
+    // ...and with a date, the same day on the same date is still one key.
+    expect(splitKickoffDay("Thursday Aug 27, 8:15p")?.key).toBe("thursday|Aug 27");
+    expect(splitKickoffDay("Thu Aug 27, 8:15p")?.key).toBe("thursday|Aug 27");
   });
 
   it("says NO to anything that is not a day", () => {
@@ -117,5 +135,36 @@ describe("groupSlateByDay", () => {
     ]);
     expect(groups?.map((x) => x.day)).toEqual(["Sat", "Sun", "Saturday"]);
     expect(groups?.map((x) => x.games.length)).toEqual([1, 1, 1]);
+  });
+});
+
+describe("two different Saturdays are two days", () => {
+  it("does not merge them onto one heading", () => {
+    /**
+     * Keyed on the weekday alone — which is what shipped first — a slate
+     * spanning more than one week folds every Saturday into a single group,
+     * and a pick'em slate spanning weeks is the ordinary case rather than an
+     * edge one. The date is what tells them apart.
+     */
+    const groups = groupSlateByDay([
+      { kickoff: "Sat Aug 29, 12:00p" },
+      { kickoff: "Sat Sep 5, 3:30p" },
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups?.map((g) => g.date)).toEqual(["Aug 29", "Sep 5"]);
+  });
+
+  it("still groups the same Saturday together", () => {
+    // The control: without it, a build that never grouped anything would pass
+    // the case above.
+    const groups = groupSlateByDay([
+      { kickoff: "Sat Aug 29, 12:00p" },
+      { kickoff: "Sat Aug 29, 3:30p" },
+      { kickoff: "Sun Aug 30, 1:00p" },
+    ]);
+    expect(groups?.map((g) => [g.day, g.date, g.games.length])).toEqual([
+      ["Sat", "Aug 29", 2],
+      ["Sun", "Aug 30", 1],
+    ]);
   });
 });
