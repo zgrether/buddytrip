@@ -118,6 +118,45 @@ export function matchNote(
   return `${leaderName} by ${lead} · ${s.trailingUpside} still in play`;
 }
 
+/**
+ * The same line, for the head-to-head screen.
+ *
+ * ── Delegates rather than duplicates, except in one branch ────────────────
+ *
+ * Every state but the ordinary mid-match one reads identically on both screens
+ * — a clinch is a clinch, a final is a final — and two sentences that must
+ * always agree are two sentences that eventually will not. So this calls
+ * `matchNote` for all of them and overrides exactly one case.
+ *
+ * That case flips the SUBJECT. The card is scanned in a list of eight and
+ * answers "who is winning this one", so it names the leader. The head-to-head
+ * is opened deliberately by somebody who already knows the score and is asking
+ * what it would take, so it names the TRAILER and what they need: the reader
+ * has changed, and the sentence follows them.
+ */
+export function h2hNote(
+  s: MatchStanding,
+  resolvedCount: number,
+  leaderName: string,
+  picked: SidesPicked,
+  names: { a: string; b: string }
+): string {
+  const ordinary =
+    s.remaining > 0 &&
+    picked.a &&
+    picked.b &&
+    resolvedCount > 0 &&
+    s.margin !== 0 &&
+    !s.clinched;
+
+  if (!ordinary) return matchNote(s, resolvedCount, leaderName, picked, names);
+
+  const trailer = s.margin > 0 ? names.b : names.a;
+  const needs = Math.abs(s.margin) + 1;
+  const games = `${s.remaining} game${s.remaining === 1 ? "" : "s"}`;
+  return `${trailer} needs ${needs} from ${games} · ${s.trailingUpside} in play`;
+}
+
 function Pill({ kind }: { kind: MatchPill }) {
   // "No picks" is not good news for anyone, so it does not take the accent that
   // Live and Clinched use to mean "something is happening here".

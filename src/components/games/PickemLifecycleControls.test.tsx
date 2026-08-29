@@ -255,6 +255,52 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     expect(set).toContain("Nobody has to do anything");
   });
 
+  it("never says picks are OPEN on a locked game — every combination", () => {
+    /**
+     * A RULE over the whole matrix, not another case, and that is the point.
+     *
+     * The first pass made every branch mentioning a SET deadline phase-aware
+     * and left the UNSET one alone, so a hand-locked game with no deadline went
+     * on reading "Picks stay open until you lock them" with its picks locked.
+     * One screen, two sentences, opposite claims — and a per-case assertion
+     * would have passed the fix that caused it.
+     *
+     * Stated as "no locked render may claim picks are open", it also catches
+     * the next phase-blind sentence somebody adds.
+     */
+    const OPEN_CLAIMS = ["Picks stay open", "stay open until you lock"];
+    for (const deadline of [null, "2026-09-05T17:00:00.000Z", "2026-09-01T17:00:00.000Z"]) {
+      for (const hasResults of [false, true]) {
+        const html = strip({
+          phase: "locked",
+          deadline,
+          hasResults,
+          now: Date.parse("2026-09-03T13:00:00.000Z"),
+        });
+        for (const claim of OPEN_CLAIMS) {
+          expect(html, `locked / deadline=${deadline} / results=${hasResults}`).not.toContain(
+            claim
+          );
+        }
+      }
+    }
+
+    // Non-vacuous: the sentence is real, and it is correct in the phase it
+    // belongs to. Without this the loop would pass against a strip that says
+    // nothing at all.
+    expect(strip({ phase: "picks_open", deadline: null })).toContain("Picks stay open");
+  });
+
+  it("explains why SET is offered on a game that is already closed", () => {
+    // The block is the runner's only way out of the past-deadline trap, so it
+    // stays on a locked game — which leaves the button needing a reason. A
+    // deadline there is a setting for after an unlock, not a clock.
+    const html = strip({ phase: "locked", deadline: null });
+    expect(html).toContain("Picks are already closed");
+    expect(html).toContain("would only matter if you unlock them");
+    expect(html).toContain('data-testid="pickem-strip-deadline-edit"');
+  });
+
   it("stops promising an auto-lock on a game that is already locked", () => {
     /**
      * Live, a hand-locked game read "Auto-locks Fri, Aug 28, 11:35 PM · 4h 22m
