@@ -244,7 +244,9 @@ export function PickemSheetRow({
    */
   outcome?: PickOutcome | null;
   editable: boolean;
-  onPick: (side: "away" | "home") => void;
+  /** Null means "clear this game" — the row calls it when the SELECTED side is
+   *  tapped again. */
+  onPick: (side: "away" | "home" | null) => void;
 }) {
   const weighted = (game.multiplier ?? 1) > 1;
   const sideState = (side: "away" | "home") =>
@@ -282,12 +284,16 @@ export function PickemSheetRow({
 
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-1 gap-y-1">
+          {/* Tapping the side you already took CLEARS it. Without that the
+              first tap on a row is irreversible, which is a strange thing to be
+              true of a sheet whose whole premise is that nothing is decided
+              until you decide it. */}
           <TeamTarget
             name={game.awayTeam}
             side="away"
             state={sideState("away")}
             editable={editable}
-            onPick={() => onPick("away")}
+            onPick={() => onPick(pick === "away" ? null : "away")}
           />
           {/* Not a tap target — a preposition between two of them. */}
           <span style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>at</span>
@@ -296,7 +302,7 @@ export function PickemSheetRow({
             side="home"
             state={sideState("home")}
             editable={editable}
-            onPick={() => onPick("home")}
+            onPick={() => onPick(pick === "home" ? null : "home")}
           />
           {/* The line is the HOME team's, which is why it sits WITH the home
               team rather than in a column of its own — but it is a badge beside

@@ -9,11 +9,16 @@ import { draftOutboxRecover } from "@/lib/draftOutbox";
 import {
   reconcileSheet,
   applyOrder,
+  completedPicks,
+  fillAll,
   rankedOrder,
   setPick,
   sheetsEqual,
+  unpickedCount,
+  type PickSide,
   type SheetPick,
   type SheetSettings,
+  type SubmittedPick,
 } from "@/lib/pickemSheet";
 import { draftLostToLock, formatCountdown, type PickemClosure } from "@/lib/pickemLifecycle";
 import { paysOut, type SlateResult } from "@/lib/pickemScoring";
@@ -206,7 +211,15 @@ export function PickemSheet({
   closedBannerHoisted?: boolean;
   /** Why and when picks closed, for §8.4's message. Null while open. */
   closure: PickemClosure | null;
-  onSave: (picks: SheetPick[]) => void;
+  /**
+   * Takes `SubmittedPick[]`, not `SheetPick[]` — the COMPLETE shape.
+   *
+   * That is the enforcement, not the disabled button. `completedPicks` returns
+   * null for a sheet with a hole in it, so an incomplete sheet cannot be turned
+   * into an argument for this callback at all; a caller cannot forget the rule
+   * because `tsc` will not let them express breaking it.
+   */
+  onSave: (picks: SubmittedPick[]) => void;
 }) {
   const server = useMemo(
     () => reconcileSheet(slate, serverPicks, settings),
@@ -353,7 +366,17 @@ export function PickemSheet({
   const order = useMemo(() => rankedOrder(picks), [picks]);
 
 
-  const needsSave = editable && (!server.submitted || server.rankingReset || dirty);
+  /**
+   * The sheet as a PAYLOAD, or null while any game is still uncalled.
+   *
+   * Computed once and threaded to both the gate and the handler, so "can I
+   * save" and "what do I save" cannot answer differently — which is the shape
+   * of every one-of-two-checks bug in this file's history.
+   */
+  const ready = completedPicks(picks);
+  const remaining = unpickedCount(picks);
+  const needsSave =
+    editable && ready != null && (!server.submitted || server.rankingReset || dirty);
 
   return (
     /**
@@ -384,6 +407,7 @@ export function PickemSheet({
       className="flex flex-col gap-3 px-4 lg:px-0"
       style={{ overscrollBehaviorX: "contain" }}
     >
+
       {/* §8.4 — a control that stopped working with no explanation is the
           falsehood pattern. A silently read-only sheet reads as a broken app;
           naming the moment reads as a rule. */}
@@ -426,20 +450,154 @@ export function PickemSheet({
 
 
 
-      {/* The hint line — what the controls DO, said once at the top rather
-          than discovered. Different sentence per variant, because with
-          confidence off there is nothing to drag and no top of the list to be
-          worth anything. */}
+      {saveError && (
+        <p
+          className="rounded-lg px-3 py-2"
+          data-testid="pickem-save-error"
+          style={{
+            fontSize: TYPE_SCALE.caption,
+            background: "var(--color-bt-danger-faint)",
+            border: "1px solid var(--color-bt-danger-border)",
+            color: "var(--color-bt-danger)",
+          }}
+        >
+          {saveError} {subject.isSelf ? "Your sheet is" : "The sheet is"} still here — try
+          again.
+        </p>
+      )}
+
+      {/*
+        ── THE SAVE BUTTON SITS ON THE HINT LINE ────────────────────────────
+
+        It had a band of its own — a sticky bar with a hairline, its own
+        padding and a status sentence — which is a lot of screen for one button
+        on a page whose entire job is a list. Two rows already existed above the
+        list with room to their right, so the two things that bar carried moved
+        onto them: the BUTTON here, the COUNT on the shortcuts row.
+
+        Nothing was lost with the status line. It said four things and three had
+        somewhere better: whose sheet it is, which the proxy banner says in a
+        treatment this could not compete with; that the ranking was cleared,
+        which has its own banner; and that there are unsaved changes, which is
+        the button reading "Save changes" rather than "Saved". The fourth was
+        the count, which is now beside the shortcuts.
+
+        The hint WRAPS and the button does not — `min-w-0` on the text, `shrink-0`
+        on the control. A wrapped sentence is fine; a Save button that has lost
+        half its label is not.
+      */}
       {editable && (
-      <p
-        data-testid="pickem-sheet-hint"
-        className="px-1"
-        style={{ fontSize: 11, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}
-      >
-        {settings.useConfidence
-          ? `Tap a team to pick it · drag to reorder — the top of the list is worth ${slate.length} · line shown is the home team's`
-          : "Tap a team to pick it · every game is worth 1 · line shown is the home team's"}
-      </p>
+        <div className="flex items-start gap-2.5 px-1">
+          <p
+            data-testid="pickem-sheet-hint"
+            className="min-w-0 flex-1"
+            style={{ fontSize: 11, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}
+          >
+            {settings.useConfidence
+              ? `Tap a team to pick it · drag to reorder — the top of the list is worth ${slate.length} · line shown is the home team's`
+              : "Tap a team to pick it · every game is worth 1 · line shown is the home team's"}
+          </p>
+          <button
+            type="button"
+            onClick={() => ready && onSave(ready)}
+            disabled={saving || !needsSave}
+            data-testid="pickem-submit"
+            className="shrink-0 rounded-xl px-4 disabled:opacity-40"
+            style={{
+              height: 36,
+              fontSize: TYPE_SCALE.bodyDense,
+              fontWeight: 700,
+              background: "var(--color-bt-accent)",
+              color: "var(--color-bt-base)",
+            }}
+          >
+            {/*
+              UNFINISHED IS NOT SAVED, and the first build of this said it was.
+
+              `needsSave` is false for two opposite reasons — there is nothing
+              to save, and there is something to save that cannot be sent yet —
+              so a label keyed on it alone read "Saved" over an empty sheet.
+              That is the falsehood pattern in three letters: the one word on
+              screen a person would take as confirmation, on a sheet holding
+              nothing at all.
+
+              `ready` separates them, and it is checked FIRST for that reason.
+            */}
+            {saving
+              ? "Saving…"
+              : ready == null
+                ? "Save picks"
+                : !needsSave
+                  ? "Saved"
+                  : server.submitted
+                    ? "Save changes"
+                    : "Save picks"}
+          </button>
+        </div>
+      )}
+
+      {/*
+        THE SHORTCUTS, and they are what makes removing the default safe.
+
+        The old sheet opened on every home team, which is a real position — a
+        sheet of favourites — and taking it away would have made the honest
+        version cost sixteen taps. These put it back at one, with the difference
+        that somebody chose it: "All home, then Save" reproduces the old default
+        sheet exactly, ranking included.
+
+        They set PICKS ONLY. Re-ordering the list as a side effect would be a
+        second decision nobody asked for, and it is also what keeps that
+        equivalence exact.
+
+        Quiet, and deliberately not primary: the sheet is sixteen decisions and
+        these are the way to skip them, which is a legitimate move and not the
+        one to advertise. They sit ABOVE the list, where they are read before
+        the work rather than offered after it.
+
+        The COUNT rides the far end of this row, directly over the top-right of
+        the games it is counting. It reads "9 of 16 picked" and stops there —
+        "7 to go" was the same fact subtracted, printed beside itself.
+      */}
+      {editable && (
+        <div className="flex items-center gap-2 px-1" data-testid="pickem-sheet-shortcuts">
+          <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>Or take</span>
+          {(
+            [
+              ["home", "All home"],
+              ["away", "All away"],
+            ] as const
+          ).map(([side, label]) => (
+            <button
+              key={side}
+              type="button"
+              data-testid={`pickem-sheet-all-${side}`}
+              onClick={() => editPicks((prev) => fillAll(prev, side as PickSide))}
+              className="rounded-lg px-2.5"
+              style={{
+                minHeight: 30,
+                fontSize: 11.5,
+                fontWeight: 600,
+                background: "transparent",
+                border: "1px solid var(--color-bt-border)",
+                color: "var(--color-bt-text)",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          <span className="flex-1" />
+          <span
+            data-testid="pickem-sheet-progress"
+            style={{
+              fontSize: 11.5,
+              fontWeight: remaining > 0 ? 600 : 400,
+              fontVariantNumeric: "tabular-nums",
+              color: remaining > 0 ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+            }}
+          >
+            {slate.length - remaining} of {slate.length} picked
+          </span>
+        </div>
       )}
 
       {/*
@@ -530,29 +688,6 @@ export function PickemSheet({
         }}
       />
 
-      {/* Clearance for the sticky save bar.
-          `position: sticky` pins the bar inside the scroller's padding box and
-          the list scrolls UNDER it, so at the very bottom of a sixteen-game
-          sheet the bar covered the last row — measured at 40px of overlap on the
-          final game, which is the one you scrolled all that way to reach. The
-          bar's own height plus a little air, reserved so nothing can sit
-          beneath it. */}
-      {editable && <div aria-hidden style={{ height: 68 }} />}
-
-      {editable && (
-        <SaveBar
-          subject={subject}
-          needsSave={needsSave}
-          submitted={server.submitted}
-          rankingReset={server.rankingReset}
-          dirty={dirty}
-          saving={saving}
-          error={saveError}
-          count={slate.length}
-          roadCount={picks.filter((p) => p.pick === "away").length}
-          onSave={() => onSave(picks)}
-        />
-      )}
     </div>
   );
 }
@@ -563,142 +698,20 @@ export function PickemSheet({
 
 // ── chrome ─────────────────────────────────────────────────────────────────
 
-function SaveBar({
-  subject,
-  needsSave,
-  submitted,
-  rankingReset,
-  dirty,
-  saving,
-  error,
-  count,
-  roadCount,
-  onSave,
-}: {
-  subject: SheetSubject;
-  needsSave: boolean;
-  submitted: boolean;
-  rankingReset: boolean;
-  dirty: boolean;
-  saving: boolean;
-  error: string | null;
-  count: number;
-  /**
-   * How many ROAD teams have been taken — the one number that says whether a
-   * sheet has actually been thought about.
-   *
-   * A sheet opens on all-home by default (derived, never stored), so "16 of 16
-   * picked" is true the instant it renders and measures nothing. That is why
-   * there is no progress bar, and why this counts the picks that DEPART from
-   * the default instead.
-   */
-  roadCount: number;
-  onSave: () => void;
-}) {
-  /**
-   * What the sheet SAYS about itself, not how many boxes are ticked.
-   *
-   * The two-pass nudge is gone with the two passes — there is one list now, so
-   * there is nowhere to advance to. What replaces it is a description of the
-   * sheet: how far it has departed from all-home, which is the only reading
-   * that distinguishes a considered sheet from an untouched one.
-   *
-   * "all chalk" is the phrase for taking every home team. It is the honest
-   * default state and reads as a position rather than an omission, because it
-   * IS one — a sheet of favourites is a legitimate sheet.
-   */
-  const roads =
-    roadCount === 0
-      ? "all chalk, nothing off the home teams yet"
-      : `${roadCount} road team${roadCount === 1 ? "" : "s"} taken`;
-
-  /**
-   * On somebody else's sheet the footer says WHOSE, and says it in every state.
-   *
-   * This is the last thing under the thumb that is about to press Save, and the
-   * only way this feature goes badly is a person editing what they think is
-   * their own sheet. The save STATE is not lost by giving the line up: the
-   * button already carries it ("Save picks" / "Save changes" / "Saved" /
-   * "Saving…"), so the one line with no other job takes the warning.
-   */
-  const status = !subject.isSelf
-    ? `Entering for ${subject.name} · not your sheet`
-    : rankingReset
-      ? "Ranking cleared — save to confirm"
-      : dirty
-        ? `${roads} · unsaved changes`
-        : submitted
-          ? `Saved · ${roads}`
-          : `All ${count} picked · ${roads}`;
-
-  return (
-    <div
-      // Negative margins cancel the sheet's own side inset so the gradient
-      // reaches the panel edges — the bar should look like it belongs to the
-      // viewport, while the rows it floats over stay inset.
-      className="sticky bottom-0 z-10 -mx-4 -mb-1 mt-1 px-4 pb-3 pt-2 lg:-lg:px-1"
-      data-testid="pickem-save-bar"
-      style={{
-        // Anchored to the bottom of the scroller rather than sitting at the end
-        // of the content (CLAUDE.md #14): with sixteen games the end of the
-        // content is a long way below the fold.
-        // The SAME treatment as the settings slide-over's footer — solid
-        // base with a hairline above it — checked against that component
-        // rather than guessed. The gradient here was pick'em's own invention
-        // and read as a different surface from every other sticky footer.
-        background: "var(--color-bt-base)",
-        borderTop: "1px solid var(--color-bt-border)",
-      }}
-    >
-      {error && (
-        <p
-          className="mb-2 rounded-lg px-3 py-2"
-          data-testid="pickem-save-error"
-          style={{
-            fontSize: TYPE_SCALE.caption,
-            background: "var(--color-bt-danger-faint)",
-            border: "1px solid var(--color-bt-danger-border)",
-            color: "var(--color-bt-danger)",
-          }}
-        >
-          {error} {subject.isSelf ? "Your sheet is" : "The sheet is"} still here — try again.
-        </p>
-      )}
-      <div className="flex items-center gap-2.5">
-        <span
-          className="min-w-0 flex-1 truncate"
-          data-testid="pickem-save-status"
-          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-        >
-          {status}
-        </span>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={saving || !needsSave}
-          data-testid="pickem-submit"
-          className="flex-none rounded-xl px-4 disabled:opacity-40"
-          style={{
-            height: 40,
-            fontSize: TYPE_SCALE.bodyDense,
-            fontWeight: 700,
-            background: "var(--color-bt-accent)",
-            color: "var(--color-bt-base)",
-          }}
-        >
-          {saving
-            ? "Saving…"
-            : !needsSave
-              ? "Saved"
-              : submitted
-                ? "Save changes"
-                : "Save picks"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
+/**
+ * DELETED: `SaveBar`.
+ *
+ * A sticky band with a hairline, its own padding, a status sentence and the
+ * button. That is a lot of screen for one control on a page whose entire job is
+ * a list of sixteen rows — and with the band gone the two rows above the list
+ * had room for both things it carried.
+ *
+ * Its "all chalk / N road teams taken" line went with it, and its reason went
+ * first: it existed because the sheet opened pre-filled, so "16 of 16 picked"
+ * was true the instant it rendered and counting DEPARTURES from the default was
+ * the only honest measure of whether a sheet had been thought about. Nothing is
+ * pre-filled now, so the plain count means what it says.
+ */
 function Countdown({
   ms,
   submitted,

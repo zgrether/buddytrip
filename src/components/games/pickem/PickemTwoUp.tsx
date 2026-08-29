@@ -86,7 +86,7 @@ export function PickemTwoUp({
         /* "Picks", not "Your picks": the tab now holds everybody’s, and the
            sub-tab under it is what says whose. */
         title="Picks"
-        sub={myPoints == null ? "You didn’t pick" : `${myPoints} pts`}
+        sub={myPoints == null ? "Nothing submitted" : `${myPoints} pts`}
         selected={open === "picks"}
         onClick={() => onOpen("picks")}
       />

@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  defaultSheet,
+  completedPicks,
+  emptySheet,
+  fillAll,
+  unpickedCount,
   reconcileSheet,
   isCompleteRanking,
   rankedOrder,
@@ -17,23 +20,130 @@ import {
 const slate = (n: number, over: Partial<SheetSlateGame>[] = []): SheetSlateGame[] =>
   Array.from({ length: n }, (_, i) => ({ id: `g${i + 1}`, multiplier: 1, ...(over[i] ?? {}) }));
 
+/**
+ * The old default sheet — all home, slate order — as a FIXTURE.
+ *
+ * The cases below are about ordering, equality and reconciliation, and they
+ * need a complete sheet to be about anything. They used to get one from
+ * `defaultSheet`, which is gone; building it from the two functions that
+ * replaced it keeps them testing what they were written to test, and makes the
+ * equivalence those functions promise load-bearing here as well as asserted
+ * once above.
+ */
+const filledSheet = (games: SheetSlateGame[], useConfidence = true): SheetPick[] =>
+  fillAll(emptySheet(games, useConfidence), "home");
+
 const ON: SheetSettings = { useConfidence: true, rollUp: "individual_matches" };
 const OFF: SheetSettings = { useConfidence: false, rollUp: "individual_matches" };
 const TEAM: SheetSettings = { useConfidence: true, rollUp: "team_totals" };
 
-describe("defaultSheet", () => {
-  it("is complete and valid on arrival — home team, slate order, N..1", () => {
-    // Spec §4's whole premise. If this is ever allowed to return something
-    // partial, every downstream surface grows a "no picks" branch.
-    const s = defaultSheet(slate(4));
-    expect(s.map((p) => p.pick)).toEqual(["home", "home", "home", "home"]);
+describe("emptySheet — nobody has picks until they submit", () => {
+  it("arrives with NOTHING picked, and a ranking anyway", () => {
+    /**
+     * The two halves are different kinds of thing, which is why one keeps a
+     * default and the other loses it. A ranking is an ORDER, and every order is
+     * as valid as the next, so the runner's slate order costs nobody an opinion
+     * they did not hold. A pick is a CLAIM about a contest, and there is no
+     * neutral one — "home" was an opinion the person had not formed, put on
+     * their sheet and then scored.
+     */
+    const s = emptySheet(slate(4));
+    expect(s.map((p) => p.pick)).toEqual([null, null, null, null]);
     expect(s.map((p) => p.confidence)).toEqual([4, 3, 2, 1]);
     expect(isCompleteRanking(s.map((p) => p.confidence), 4)).toBe(true);
   });
 
   it("stores NULL confidence when the game runs with confidence off", () => {
     // Not 1. Sixteen rows storing 1 collide under uq_pickem_picks_confidence.
-    expect(defaultSheet(slate(3), false).map((p) => p.confidence)).toEqual([null, null, null]);
+    expect(emptySheet(slate(3), false).map((p) => p.confidence)).toEqual([null, null, null]);
+  });
+});
+
+describe("the shortcuts", () => {
+  it("ALL HOME reproduces the old default sheet exactly, ranking included", () => {
+    /**
+     * THE DECISIVE CASE for this whole change being safe. Taking the pre-fill
+     * away only costs somebody sixteen taps if the position it represented —
+     * a sheet of favourites — is no longer reachable in one. It is, and this
+     * asserts the result is identical rather than merely similar: same picks,
+     * same ranks, in the same order.
+     *
+     * Which makes the difference exactly the one intended: somebody chose it.
+     */
+    const filled = fillAll(emptySheet(slate(4)), "home");
+    expect(filled).toEqual([
+      { slateGameId: "g1", pick: "home", confidence: 4 },
+      { slateGameId: "g2", pick: "home", confidence: 3 },
+      { slateGameId: "g3", pick: "home", confidence: 2 },
+      { slateGameId: "g4", pick: "home", confidence: 1 },
+    ]);
+  });
+
+  it("ALL AWAY is the same function, the other way", () => {
+    const filled = fillAll(emptySheet(slate(3)), "away");
+    expect(filled.map((p) => p.pick)).toEqual(["away", "away", "away"]);
+  });
+
+  it("leaves the RANKING alone — including one the person has dragged", () => {
+    /**
+     * The shortcut is for somebody who does not want to make sixteen calls.
+     * Re-ordering their list as a side effect would be a second decision they
+     * did not ask for, and it would destroy a ranking they may have spent
+     * longer on than the picks.
+     *
+     * Asserted against a REORDERED sheet, not a fresh one: on a fresh sheet the
+     * ranking is already slate order, so a shortcut that reset it would pass.
+     */
+    const dragged = applyOrder(emptySheet(slate(3)), ["g3", "g1", "g2"]);
+    expect(fillAll(dragged, "home").map((p) => p.confidence)).toEqual(
+      dragged.map((p) => p.confidence)
+    );
+  });
+
+  it("overwrites picks already made — it is a shortcut, not a fill-the-gaps", () => {
+    // "All home" means all home. Filling only the blanks would leave a sheet
+    // that is neither what they had nor what they asked for.
+    const half = setPick(emptySheet(slate(3)), "g1", "away");
+    expect(fillAll(half, "home").map((p) => p.pick)).toEqual(["home", "home", "home"]);
+  });
+});
+
+describe("completedPicks — a partial sheet cannot become a payload", () => {
+  it("returns null while ANY game is uncalled", () => {
+    /**
+     * The narrowing is the enforcement, not the disabled button. A disabled
+     * button is a promise a caller can forget to keep; this one `tsc` holds
+     * them to at the only place a payload is built.
+     *
+     * One hole is enough, and it is asserted at the END of the sheet — a
+     * short-circuit that only checked the first row would pass otherwise.
+     */
+    const nearly = fillAll(emptySheet(slate(3)), "home");
+    expect(completedPicks(nearly)).not.toBe(null);
+    expect(completedPicks(setPick(nearly, "g3", null))).toBe(null);
+    expect(completedPicks(emptySheet(slate(3)))).toBe(null);
+  });
+
+  it("carries the ranking through untouched", () => {
+    const done = fillAll(emptySheet(slate(3)), "away");
+    expect(completedPicks(done)).toEqual([
+      { slateGameId: "g1", pick: "away", confidence: 3 },
+      { slateGameId: "g2", pick: "away", confidence: 2 },
+      { slateGameId: "g3", pick: "away", confidence: 1 },
+    ]);
+  });
+});
+
+describe("unpickedCount", () => {
+  it("counts what is left, and can go DOWN as well as up", () => {
+    // Down matters: a pick can be cleared by tapping it again, so a count that
+    // only ever fell would go stale the first time somebody changed their mind.
+    const s = emptySheet(slate(4));
+    expect(unpickedCount(s)).toBe(4);
+    const one = setPick(s, "g1", "home");
+    expect(unpickedCount(one)).toBe(3);
+    expect(unpickedCount(setPick(one, "g1", null))).toBe(4);
+    expect(unpickedCount(fillAll(s, "home"))).toBe(0);
   });
 });
 
@@ -92,7 +202,17 @@ describe("reconcileSheet", () => {
     expect(r.submitted).toBe(true);
   });
 
-  it("a GROWN slate keeps the old picks, defaults the new game, resets the ranking", () => {
+  it("a GROWN slate keeps the old picks, leaves the NEW game uncalled, resets the ranking", () => {
+    /**
+     * This is where the removed default did real harm rather than merely
+     * misleading. A runner adding a seventeenth game silently answered it for
+     * everybody — the sheet came back reading "home" on a contest nobody had
+     * been shown — and the next Save submitted that opinion as theirs.
+     *
+     * Null now, so the sheet is incomplete, Save is refused, and the person is
+     * told how many are left. Which is the honest description of what happened
+     * to them: the slate changed and they have one more call to make.
+     */
     const stored: SheetPick[] = [
       { slateGameId: "g1", pick: "away", confidence: 2 },
       { slateGameId: "g2", pick: "away", confidence: 1 },
@@ -101,9 +221,12 @@ describe("reconcileSheet", () => {
     expect(r.picks.map((p) => [p.slateGameId, p.pick])).toEqual([
       ["g1", "away"],
       ["g2", "away"],
-      ["g3", "home"],
+      ["g3", null],
     ]);
     expect(r.rankingReset).toBe(true);
+    // ...and it cannot be sent until they answer it.
+    expect(completedPicks(r.picks)).toBe(null);
+    expect(unpickedCount(r.picks)).toBe(1);
   });
 
   it("does NOT compact a partial ranking into a plausible one", () => {
@@ -153,13 +276,13 @@ describe("reconcileSheet", () => {
 
 describe("rankedOrder / applyOrder", () => {
   it("round-trips: order out, order back in, same ranks", () => {
-    const s = defaultSheet(slate(4));
+    const s = filledSheet(slate(4));
     expect(rankedOrder(s)).toEqual(["g1", "g2", "g3", "g4"]);
     expect(applyOrder(s, rankedOrder(s))).toEqual(s);
   });
 
   it("a reorder rewrites the ranks by POSITION", () => {
-    const s = defaultSheet(slate(3));
+    const s = filledSheet(slate(3));
     const moved = applyOrder(s, ["g3", "g1", "g2"]);
     const byId = new Map(moved.map((p) => [p.slateGameId, p.confidence]));
     expect(byId.get("g3")).toBe(3);
@@ -170,7 +293,7 @@ describe("rankedOrder / applyOrder", () => {
   });
 
   it("setPick changes the winner and NOTHING about the ranking", () => {
-    const s = defaultSheet(slate(3));
+    const s = filledSheet(slate(3));
     const after = setPick(s, "g2", "away");
     expect(after.find((p) => p.slateGameId === "g2")).toEqual({
       slateGameId: "g2",
@@ -183,12 +306,12 @@ describe("rankedOrder / applyOrder", () => {
 
 describe("sheetsEqual", () => {
   it("is insensitive to array order — the drag list reorders without editing", () => {
-    const a = defaultSheet(slate(3));
+    const a = filledSheet(slate(3));
     expect(sheetsEqual(a, [...a].reverse())).toBe(true);
   });
 
   it("sees a changed winner and a changed rank", () => {
-    const a = defaultSheet(slate(3));
+    const a = filledSheet(slate(3));
     expect(sheetsEqual(a, setPick(a, "g1", "away"))).toBe(false);
     expect(sheetsEqual(a, applyOrder(a, ["g2", "g1", "g3"]))).toBe(false);
   });

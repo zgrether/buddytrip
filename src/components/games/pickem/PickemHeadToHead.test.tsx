@@ -172,6 +172,6 @@ describe("h2hPill", () => {
     expect(h2hPill(decided, 1, BOTH)).toBe("Final");
     expect(h2hPill(decided, 1, { a: true, b: false })).toBe("Final");
     const live = [row({ result: "home", swing: 40 }), row({ upsideA: 0, upsideB: 1 })];
-    expect(h2hPill(live, 1, { a: true, b: false })).toBe("Didn’t pick");
+    expect(h2hPill(live, 1, { a: true, b: false })).toBe("Nothing submitted");
   });
 });
