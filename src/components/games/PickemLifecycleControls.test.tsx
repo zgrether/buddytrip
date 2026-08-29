@@ -45,6 +45,7 @@ const settingsRows = (over: { slateCount?: number } = {}) =>
       editable
       frozenReason={null}
       showRollUp
+      slateCount={16}
       onChange={() => {}}
       slateRow={
         <PickemSlateRow
