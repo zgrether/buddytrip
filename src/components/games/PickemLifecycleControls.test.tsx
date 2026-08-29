@@ -25,18 +25,6 @@ import { PickemPhaseStrip } from "./pickem/PickemPhaseStrip";
 
 const noop = () => {};
 
-const phaseBody = (over: Partial<Parameters<typeof PhaseBody>[0]> = {}) =>
-  renderToStaticMarkup(
-    <PhaseBody
-      slateCount={2}
-      canEdit
-      onOpenSlate={noop}
-      onOpenPicks={noop}
-      opening={false}
-      {...over}
-    />
-  );
-
 /** The settings page's own rows, assembled the way the page assembles them. */
 const settingsRows = (over: { slateCount?: number } = {}) =>
   renderToStaticMarkup(
@@ -58,68 +46,113 @@ const settingsRows = (over: { slateCount?: number } = {}) =>
     />
   );
 
-/** The opening tag of the element carrying a testid — so a style assertion is
- *  about THAT control and not about anything nested inside it. */
-const tagOf = (html: string, testId: string): string => {
-  const at = html.indexOf(`data-testid="${testId}"`);
-  if (at < 0) return "";
-  return html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
-};
-
 /** The accent fill is what makes a control read as THE action. */
-const isFilledPrimary = (html: string, testId: string) =>
-  tagOf(html, testId).includes("background:var(--color-bt-accent)");
-
-describe("the game page's primary action follows the state", () => {
-  it("WITH A SLATE, the filled button is OPEN PICKS — not Edit the slate", () => {
-    // The regression. Both controls render in both builds; only the emphasis
-    // differs, so presence assertions cannot tell them apart.
-    const html = phaseBody({ slateCount: 2 });
-    expect(isFilledPrimary(html, "pickem-open-picks")).toBe(true);
-    expect(isFilledPrimary(html, "pickem-edit-slate")).toBe(false);
+describe("ONE runner panel, persisting across every phase", () => {
+  /**
+   * The building screen carried THREE calls to action for one job: this panel
+   * titled "Building the slate" with a full-width Open picks, a separate
+   * "You're in charge" banner with Configure, and a floating
+   * "Open picks · N games" under a paragraph explaining it. Two of the three
+   * were the same action.
+   */
+  it("says the same header and helper in every phase", () => {
+    for (const phase of ["building", "picks_open", "locked"] as const) {
+      const html = strip({ phase, slateCount: 16 });
+      expect(html, phase).toContain("You’re in charge of pick’em");
+      expect(html, phase).toContain("Current pick’em slate: 16 games");
+    }
   });
 
-  it("puts the runner's action IN the banner, not under a member's words", () => {
+  it("counts one game as a game", () => {
+    expect(strip({ phase: "building", slateCount: 1 })).toContain("slate: 1 game");
+    expect(strip({ phase: "building", slateCount: 1 })).not.toContain("1 games");
+  });
+
+  it("START becomes STOP when picks open, and back again", () => {
+    // One control in two states — which is why the label is the whole
+    // explanation and there is no consequence line under it.
+    const building = strip({ phase: "building", slateCount: 2 });
+    expect(building).toContain('data-testid="pickem-strip-open"');
+    expect(building).toContain(">Start<");
+
+    const open = strip({ phase: "picks_open" });
+    expect(open).toContain('data-testid="pickem-strip-lock"');
+    expect(open).toContain(">Stop<");
+
+    const locked = strip({ phase: "locked", hasResults: false });
+    expect(locked).toContain('data-testid="pickem-strip-unlock"');
+    expect(locked).toContain(">Start<");
+  });
+
+  it("stops restating the phase, and drops the consequence copy", () => {
     /**
-     * The runner used to read "Picks open soon" — a member's sentence, about
-     * waiting — with the thing they were waiting on as a button underneath.
-     * The banner now says whose job it is and carries Configure itself.
+     * "Building the slate" is a status, not a call to act, and
+     * "Everyone can start filling in their sheet, and the slate freezes" under
+     * a button called Start is the button saying itself twice.
      */
-    const html = phaseBody({ slateCount: 2 });
-    expect(html).toContain('data-testid="pickem-runner-banner"');
-    expect(html).toContain("You’re in charge of pick’em");
-    expect(html).toContain("Add the games for everyone to pick.");
-    expect(html).toContain('data-testid="pickem-configure"');
-    // ...and the member's waiting copy is NOT what the runner is shown.
-    expect(html).not.toContain("Picks open soon");
+    for (const phase of ["building", "picks_open", "locked"] as const) {
+      const html = strip({ phase, slateCount: 2 });
+      expect(html, phase).not.toContain("Building the slate");
+      expect(html, phase).not.toContain("Everyone can start filling in their sheet");
+      expect(html, phase).not.toContain("Nobody can pick yet");
+      expect(html, phase).not.toContain("Closes every sheet immediately");
+    }
   });
 
-  it("names the count, so the button says what it will open", () => {
-    expect(phaseBody({ slateCount: 16 })).toContain("Open picks · 16 games");
+  it("keeps the ONE sentence that is not a phase restatement", () => {
+    // Why an action a runner expects to find is missing — which the button
+    // cannot say, because the button is not there.
+    const html = strip({ phase: "locked", hasResults: true });
+    expect(html).toContain("Results are in");
+    expect(html).not.toContain('data-testid="pickem-strip-unlock"');
   });
 
-  it("explains what pressing it does BEFORE it is pressed", () => {
-    const html = phaseBody({ slateCount: 2 });
-    expect(html).toContain("Everyone can start filling in their sheet");
-    expect(html).toContain("reopen it from settings");
+  it("offers no Start with an empty slate, and says why", () => {
+    const html = strip({ phase: "building", slateCount: 0 });
+    expect(html).not.toContain('data-testid="pickem-strip-open"');
+    expect(html).toContain("Add some games to the slate before you can start.");
   });
 
-  it("WITH NO SLATE, Open picks is absent — there is nothing to open", () => {
-    const html = phaseBody({ slateCount: 0 });
-    // Configure is the whole job at this point, and it is in the banner.
-    expect(html).toContain('data-testid="pickem-configure"');
-    // Absent, not disabled.
-    expect(html).not.toContain('data-testid="pickem-open-picks"');
+  it("hides the deadline until Start has been pressed", () => {
+    /**
+     * A deadline is a close scheduled against picks that are open, so offering
+     * one while building would schedule a close for a game nobody can pick in
+     * — and it would put a second control on the one screen whose whole job is
+     * Start.
+     *
+     * `building` IS "Start has not been pressed", so the phase is the
+     * condition and there is no flag to keep in sync.
+     */
+    expect(strip({ phase: "building", slateCount: 2 })).not.toContain(
+      'data-testid="pickem-strip-deadline"'
+    );
+    // ...and it appears the moment Start has been.
+    expect(strip({ phase: "picks_open" })).toContain('data-testid="pickem-strip-deadline"');
+    expect(strip({ phase: "locked" })).toContain('data-testid="pickem-strip-deadline"');
   });
 
-  it("a plain member sees the words and none of the controls", () => {
-    // Spec §3.1: a member cannot tell an empty slate from a finished one, so
-    // what leaks must be nothing — including the shape of the runner's buttons.
-    const html = phaseBody({ canEdit: false, slateCount: 2 });
+  it("carries the owner-attention marker", () => {
+    // The amber treatment the rest of the app uses when something is the
+    // owner's to act on.
+    expect(strip({ phase: "building", slateCount: 2 })).toContain("--color-bt-owner");
+  });
+});
+
+describe("the member's words render for everyone, runner included", () => {
+  it("says the same thing to a member and to the runner", () => {
+    /**
+     * Spec §3.1's fairness rule: "nothing added yet" and "a finished slate,
+     * unpublished" must be indistinguishable from outside. `PhaseBody` now
+     * takes NO props at all, which is the strongest form of that — it has
+     * nothing to branch on.
+     */
+    const html = renderToStaticMarkup(<PhaseBody />);
     expect(html).toContain("Picks open soon");
-    expect(html).not.toContain("data-testid=\"pickem-open-picks\"");
-    expect(html).not.toContain("data-testid=\"pickem-edit-slate\"");
-    expect(html).not.toContain("2 games");
+    expect(html).not.toContain('data-testid="pickem-open-picks"');
+    expect(html).not.toContain('data-testid="pickem-configure"');
+    // No COUNT leaks — the member copy says "slate of games", so asserting the
+    // bare word "games" would have failed against correct output.
+    expect(html).not.toMatch(/\d+ games/);
   });
 });
 
@@ -227,24 +260,13 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     const html = strip({ phase: "locked", hasResults: true });
     expect(html).toContain("Results are in");
     expect(html).toContain("Reset scores");
-    // ...and the ordinary locked line is unchanged when nothing is scored.
-    expect(strip({ phase: "locked", hasResults: false })).toContain("revealed to the trip");
-  });
-
-  it("says what the game IS, not only what the runner can do", () => {
-    expect(strip({ phase: "building", slateCount: 2 })).toContain("Building the slate");
-    expect(strip({ phase: "picks_open" })).toContain("Picks are open");
-    expect(strip({ phase: "locked" })).toContain("Picks are locked");
-  });
-
-  it("every available move states its consequence for everyone else", () => {
-    // Two-word labels are not enough for actions that change what sixteen
-    // people can see.
-    expect(strip({ phase: "building", slateCount: 2 })).toContain(
-      "Everyone can start filling in their sheet"
+    // ...and with nothing scored the move is simply there, needing no
+    // explanation. The phase-detail line that used to be asserted here went
+    // with the panel restructure: it restated the phase, which the header no
+    // longer does and the button never did.
+    expect(strip({ phase: "locked", hasResults: false })).toContain(
+      'data-testid="pickem-strip-unlock"'
     );
-    expect(strip({ phase: "picks_open" })).toContain("Closes every sheet immediately");
-    expect(strip({ phase: "locked" })).toContain("Nothing is lost");
   });
 
   it("the deadline appears once picks can close against it, not while building", () => {
@@ -377,31 +399,23 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     );
   });
 
-  it("demotes the manual move to a ghost ONLY while a deadline exists", () => {
+  it("gives the one action a fixed weight, with nothing to demote it against", () => {
     /**
-     * Auto-lock is the workflow, so the deadline outranks the button — but with
-     * no deadline set, "Lock now" is the only way this game ever closes, and
-     * demoting the sole exit is the same mistake pointed the other way.
+     * This replaced a case asserting the manual move was DEMOTED to a ghost
+     * whenever a deadline existed. That distinction is gone with the second
+     * button: there is one action now, right-justified and sized to its label,
+     * so there is no pair to rank.
      *
-     * Asserted as a DIFFERENCE between the two, because "renders a lock button"
-     * is true of every build including the wrong ones.
+     * What survives is the part that mattered — the control a runner reaches
+     * for on the day a kickoff moves must not be small.
      */
-    const scheduled = strip({ phase: "picks_open", deadline: "2026-09-05T17:00:00.000Z" });
-    const manual = strip({ phase: "picks_open", deadline: null });
-
-    const btn = (html: string) => {
+    for (const deadline of [null, "2026-09-05T17:00:00.000Z"]) {
+      const html = strip({ phase: "picks_open", deadline });
       const at = html.indexOf('data-testid="pickem-strip-lock"');
-      expect(at, "lock button missing").toBeGreaterThan(-1);
-      // The button's own style attribute, which precedes its testid.
-      return html.slice(html.lastIndexOf("<button", at), at + 400);
-    };
-
-    expect(btn(manual)).toContain("background:var(--color-bt-accent)");
-    expect(btn(scheduled)).toContain("background:transparent");
-
-    // Demotion is visual weight ONLY. A control a runner reaches for on the one
-    // day the kickoff moves is exactly the one that must not shrink.
-    expect(btn(manual)).toContain("min-height:44px");
-    expect(btn(scheduled)).toContain("min-height:44px");
+      expect(at, String(deadline)).toBeGreaterThan(-1);
+      const btn = html.slice(html.lastIndexOf("<button", at), at + 400);
+      expect(btn, String(deadline)).toContain("min-height:40px");
+      expect(btn, String(deadline)).toContain("background:var(--color-bt-accent)");
+    }
   });
 });

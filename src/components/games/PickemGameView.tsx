@@ -219,13 +219,15 @@ export function PickemGameView() {
    * CLAUDE.md #15).
    */
   /**
-   * Which of the two-up row's panels is open on a locked page, or neither.
+   * Which TAB is showing on a locked page. Never null — one is always selected,
+   * and Matches is the default because it is what most people opened the game
+   * to see.
    *
    * ONE value rather than a boolean each: they are alternatives, and two
    * booleans that must never both be true is how a screen ends up showing two
    * things stacked that were each designed to be the only one.
    */
-  const [openPanel, setOpenPanel] = useState<PickemPanel | null>(null);
+  const [openPanel, setOpenPanel] = useState<PickemPanel>("matches");
   const [saveError, setSaveError] = useState<string | null>(null);
   const savePicks = trpc.pickem.savePicks.useMutation({
     onSuccess: async () => {
@@ -989,6 +991,13 @@ export function PickemGameView() {
           {!runnerStrip && <PickemClosedBanner closure={pickemClosure(clock, now)} />}
 
           <PickemTwoUp
+            /* The first tab's own count. Under team totals there are no
+               matches to count, so it says what that shape has instead. */
+            matchesLabel={
+              individualMatches
+                ? `${matchPairs.length} match${matchPairs.length === 1 ? "" : "es"}`
+                : `${q.data.teams.length} teams`
+            }
             /* Null, not zero, for somebody with no sheet: "0 pts · 16 of 16"
                reads as a bad weekend rather than as an absence. */
             myPoints={mySheet?.total ?? null}
@@ -998,7 +1007,9 @@ export function PickemGameView() {
             total={totalGames}
             canEdit={canEdit}
             open={openPanel}
-            onOpen={(p) => setOpenPanel((cur) => (cur === p ? null : p))}
+            /* A tab bar SELECTS. Tapping the open one again is not a close —
+               there is no closed state for a page to be in. */
+            onOpen={setOpenPanel}
           />
 
           {/* Their own sheet, read-only and one tap away. They spent time on it
@@ -1038,16 +1049,13 @@ export function PickemGameView() {
             />
           )}
 
-          {/* Never an empty grid: §12 forbids it, and a runner is under no
-              pressure to pair before the deadline (§5), so "locked, unpaired"
-              is a normal state that must read as waiting rather than broken. */}
-          {individualMatches && matchPairs.length === 0 ? (
-            <PickemNoMatches
-              canEdit={canEdit}
-              // The same opener the chrome gear uses, so the card cannot send a
-              // runner somewhere the gear would not.
-              onOpenSettings={settings.openConfig}
-            />
+          {/* Behind the first TAB now, not under the other two. Never an empty
+              grid: §12 forbids it, and a runner is under no pressure to pair
+              before the deadline (§5), so "locked, unpaired" is a normal state
+              that must read as waiting rather than broken. */}
+          {openPanel === "matches" &&
+            (individualMatches && matchPairs.length === 0 ? (
+            <PickemNoMatches />
           ) : (
             <PickemBoard
               slate={q.data.slate}
@@ -1073,18 +1081,12 @@ export function PickemGameView() {
                 pointsTotal
               )}
             />
-          )}
+          ))}
         </>
       ) : phase === "building" ? (
-        <PhaseBody
-          slateCount={q.data.slate.length}
-          canEdit={canEdit}
-          onOpenSlate={() => setSlateOpen(true)}
-          onOpenPicks={() =>
-            setPhase.mutate({ tripId: tripId!, gameId, action: "open" })
-          }
-          opening={setPhase.isPending}
-        />
+        /* No props left: it takes no viewer and no counts because it says the
+           same thing to everybody. The runner's half moved to the one panel. */
+        <PhaseBody />
       ) : sheetsOpen && !proxyTarget ? (
         /**
          * The list COVERS the page rather than sitting under the sheet. It is
@@ -1399,96 +1401,23 @@ export function PickemGameView() {
  * "nothing added yet" and "a finished slate, unpublished" must be
  * indistinguishable from outside.
  */
-export function PhaseBody({
-  slateCount,
-  canEdit,
-  onOpenSlate,
-  onOpenPicks,
-  opening,
-}: {
-  slateCount: number;
-  canEdit: boolean;
-  onOpenSlate: () => void;
-  onOpenPicks: () => void;
-  opening: boolean;
-}) {
+export function PhaseBody() {
   /**
-   * ── The runner gets a BANNER, not the member's screen plus a door ─────────
+   * ── The runner sees the MEMBER's screen, and their panel above it ─────────
    *
-   * A member reads "Picks open soon" because that is the whole truth for them.
-   * The runner reading the same words plus a button underneath was being told
-   * to wait and then handed the thing they are waiting on — the words describe
-   * somebody else's position.
+   * This used to branch: a runner got their own banner with Configure, and
+   * under it a full-width "Open picks · N games" with a paragraph explaining
+   * what pressing it would do. Together with the phase strip that made THREE
+   * calls to action for one job, two of them the same action.
    *
-   * So the runner's version says whose job it is and puts the action IN the
-   * banner. The member's stays exactly as it was.
+   * All of it is now the one panel in `PickemPhaseStrip`, so there is no
+   * branch left here. The runner sees what everyone else sees — because that
+   * is what everyone else sees — plus their controls above it.
+   *
+   * Configure went entirely rather than moving into the panel: the header gear
+   * is the way to settings on all five formats, and a second right-justified
+   * action would have put a detour beside the phase action.
    */
-  if (canEdit) {
-    return (
-      <div className="flex flex-col gap-3">
-        <div
-          data-testid="pickem-runner-banner"
-          className="flex items-center gap-3 px-3 py-3"
-          style={{
-            borderRadius: 13,
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block" style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 700 }}>
-              You&rsquo;re in charge of pick&rsquo;em
-            </span>
-            <span
-              className="mt-0.5 block"
-              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-            >
-              Add the games for everyone to pick.
-            </span>
-          </span>
-          <button
-            type="button"
-            onClick={onOpenSlate}
-            data-testid="pickem-configure"
-            className="shrink-0 rounded-lg px-3"
-            style={{
-              minHeight: 36,
-              fontSize: TYPE_SCALE.bodyDense,
-              fontWeight: 600,
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
-            }}
-          >
-            Configure
-          </button>
-        </div>
-
-        {/* The transition sixteen people are waiting on. It is not the
-            banner's action — the banner is about building — so it keeps its
-            own place, and its consequence copy with it. */}
-        {slateCount > 0 && (
-          <div className="flex flex-col items-center gap-2">
-            <Primary onClick={onOpenPicks} disabled={opening} testId="pickem-open-picks">
-              {opening ? "Opening…" : `Open picks · ${slateCount} games`}
-            </Primary>
-            <p
-              style={{
-                fontSize: TYPE_SCALE.caption,
-                color: "var(--color-bt-text-dim)",
-                maxWidth: 260,
-                lineHeight: 1.5,
-                textAlign: "center",
-              }}
-            >
-              Everyone can start filling in their sheet. The slate freezes —
-              you can still reopen it from settings.
-            </p>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <Empty
       icon="◷"
@@ -1586,36 +1515,3 @@ function Empty({
 
 /** Names an unbuilt phase rather than leaving blank space — an empty area reads
  *  as broken, and a person looking at this early needs to know which. */
-
-function Primary({
-  onClick,
-  children,
-  disabled = false,
-  testId = "pickem-build-slate",
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  disabled?: boolean;
-  /** The primary slot changes job with the state (build → open), so the id
-   *  travels with the ACTION rather than being fixed to the slot. */
-  testId?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      data-testid={testId}
-      className="rounded-xl px-4 py-2.5 disabled:opacity-40"
-      style={{
-        background: "var(--color-bt-accent)",
-        color: "var(--color-bt-base)",
-        fontSize: TYPE_SCALE.bodyDense,
-        fontWeight: 700,
-        minHeight: 44,
-      }}
-    >
-      {children}
-    </button>
-  );
-}

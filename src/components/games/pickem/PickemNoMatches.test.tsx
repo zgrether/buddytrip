@@ -7,20 +7,13 @@ import { PickemNoMatches } from "./PickemNoMatches";
  * being dressed as a broken one.
  */
 
-const render = (over: Partial<Parameters<typeof PickemNoMatches>[0]> = {}) =>
-  renderToStaticMarkup(
-    <PickemNoMatches canEdit={false} onOpenSettings={() => {}} {...over} />
-  );
+const render = () => renderToStaticMarkup(<PickemNoMatches />);
 
 describe("PickemNoMatches", () => {
-  it("tells a member what they are waiting for, and stops", () => {
+  it("tells everyone what they are waiting for, and stops", () => {
     const html = render();
     expect(html).toContain("No matches drawn yet");
     expect(html).toContain("Check back later to see who your opponent is.");
-    // No instruction — a member cannot pair, and naming an action they have no
-    // control for is the refusal-with-nowhere-to-go shape this feature has
-    // already produced twice.
-    expect(html).not.toContain("settings");
   });
 
   it("is DASHED, because there will be something here", () => {
@@ -30,24 +23,23 @@ describe("PickemNoMatches", () => {
     expect(render()).toContain("dashed");
   });
 
-  it("gives the runner the way through — and never a warning", () => {
+  it("sends nobody to settings, and takes no viewer at all", () => {
     /**
-     * Pairing after the lock is a legitimate workflow: a runner may well draw
-     * the matches once they can see who actually submitted. Amber would make
-     * that look like a mistake, so this is a plain card with an accent badge.
+     * There was a second card here for the runner — "Matches can be set in the
+     * game settings", with a chevron. It is gone and nothing replaced it.
+     *
+     * It duplicated a route the header gear already provides on every format,
+     * and it sat INSIDE the matches tab: a signpost to somewhere else, printed
+     * on the surface a runner had just chosen to open. The tab is the answer to
+     * "where are the matches"; a card explaining they live elsewhere is the
+     * screen apologising for itself.
+     *
+     * The component takes no props now, which is the strongest form of "it says
+     * the same thing to everyone" — there is nothing to branch on.
      */
-    const html = render({ canEdit: true });
-    expect(html).toContain("Matches can be set in the game settings");
-    expect(html).toContain('data-testid="pickem-no-matches-settings"');
-    expect(html).not.toContain("--color-bt-warning-faint");
-    expect(html).not.toContain("--color-bt-owner");
-  });
-
-  it("offers nothing to press when there is nothing to press", () => {
-    // A runner reading this on a surface with no settings route would be sent
-    // somewhere that is not there. Absent, not disabled.
-    expect(render({ canEdit: true, onOpenSettings: undefined })).not.toContain(
-      'data-testid="pickem-no-matches-settings"'
-    );
+    const html = render();
+    expect(html).not.toContain("game settings");
+    expect(html).not.toContain('data-testid="pickem-no-matches-settings"');
+    expect(PickemNoMatches.length).toBe(0);
   });
 });

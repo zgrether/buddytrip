@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 
 /**
@@ -14,23 +14,20 @@ import { TYPE_SCALE } from "@/lib/typeScale";
  * a nag: a DASHED panel says "there will be something here", where a solid card
  * would say "here is the thing" and a warning would say "somebody has failed".
  *
- * The member's half explains what they are waiting for and stops. Naming an
- * action they cannot take would be the refusal-with-nowhere-to-go shape this
- * feature has already produced twice.
+ * ── It says the same thing to everyone ─────────────────────────────────────
  *
- * ── The runner's half is a plain card, deliberately ────────────────────────
+ * There was a second card under this one for the runner — a teal badge reading
+ * "Matches can be set in the game settings" with a chevron into settings. It is
+ * gone, and nothing replaced it.
  *
- * Amber would make a normal workflow look like a mistake. The runner gets the
- * one fact they need — pairing lives in settings — as a statement with a way
- * through, and nothing that implies they are late.
+ * Two reasons. It duplicated a route the header gear already provides on every
+ * format, which is where a runner looks for settings. And it sat inside the
+ * MATCHES tab, so it was a signpost to somewhere else printed on the surface a
+ * runner had just chosen to open — the tab is the answer to "where are the
+ * matches", and a card explaining that they are configured elsewhere is the
+ * screen apologising for itself.
  */
-export function PickemNoMatches({
-  canEdit,
-  onOpenSettings,
-}: {
-  canEdit: boolean;
-  onOpenSettings?: () => void;
-}) {
+export function PickemNoMatches() {
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-no-matches">
       <div
@@ -47,40 +44,6 @@ export function PickemNoMatches({
           Check back later to see who your opponent is.
         </span>
       </div>
-
-      {canEdit && onOpenSettings && (
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          data-testid="pickem-no-matches-settings"
-          className="flex items-center gap-2.5 px-3 py-2.5 text-left active:scale-[0.98]"
-          style={{
-            borderRadius: 12,
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-border)",
-          }}
-        >
-          <span
-            className="flex shrink-0 items-center justify-center"
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 9999,
-              background: "var(--color-bt-accent-faint)",
-              border: "1px solid var(--color-bt-accent-border)",
-            }}
-          >
-            <Users size={15} style={{ color: "var(--color-bt-accent)" }} />
-          </span>
-          <span className="min-w-0 flex-1" style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>
-            Matches can be set in the game settings
-          </span>
-          <ChevronRight
-            size={16}
-            style={{ color: "var(--color-bt-accent)", flexShrink: 0 }}
-          />
-        </button>
-      )}
     </div>
   );
 }

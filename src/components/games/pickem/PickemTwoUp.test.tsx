@@ -17,8 +17,9 @@ const render = (over: Partial<Parameters<typeof PickemTwoUp>[0]> = {}) =>
       sheetCount={16}
       resolved={11}
       total={16}
+      matchesLabel="7 matches"
       canEdit={false}
-      open={null}
+      open="matches"
       onOpen={() => {}}
       {...over}
     />
@@ -47,7 +48,9 @@ describe("PickemTwoUp", () => {
     const html = render({ canEdit: true, resolved: 11, total: 16 });
     expect(html).toContain("Enter results");
     expect(html).toContain("5 to mark");
-    expect(html).toContain("--color-bt-warning-faint");
+    // Amber TEXT, not a fill: a tab bar has one raised surface (the selected
+    // tab) and a second tinted one would read as two selections.
+    expect(html).toContain("--color-bt-owner");
   });
 
   it("stops asking once everything is marked", () => {
@@ -60,10 +63,10 @@ describe("PickemTwoUp", () => {
      * this one mean something.
      */
     const done = render({ canEdit: true, resolved: 16, total: 16 });
-    expect(done).toContain("Game results");
+    expect(done).toContain("Results");
     expect(done).not.toContain("Enter results");
     expect(done).toContain("16 of 16 in");
-    expect(done).not.toContain("--color-bt-warning-faint");
+    expect(done).not.toContain("--color-bt-owner");
   });
 
   it("never shows a MEMBER the runner's amber, however much is unmarked", () => {
@@ -71,36 +74,48 @@ describe("PickemTwoUp", () => {
     // would be told to perform an action they have no control for.
     const html = render({ canEdit: false, resolved: 0, total: 16 });
     expect(html).not.toContain("Enter results");
-    expect(html).not.toContain("--color-bt-warning-faint");
+    expect(html).not.toContain("--color-bt-owner");
     expect(html).toContain("0 of 16 in");
   });
 
-  it("says it is a control, and says which way it opens", () => {
+  it("is a TAB BAR — three tabs, one always selected, no chevrons", () => {
     /**
-     * The first look read these as stat cards — reasonably, since a number
-     * under a heading is what a stat card is. The fix is a chevron rather than
-     * quieter numbers, because the numbers are the reason the row is worth its
-     * space.
+     * This replaced a pair of disclosure buttons that expanded drawers over an
+     * always-rendered matches list. Two navigation models on one screen, and
+     * the thing most people came to see had no control of its own.
      *
-     * DOWN when open, not a navigation arrow: these expand in place. Asserted
-     * as the flip between two renders, since "has a chevron" is true of a
-     * build that never changes it.
+     * A tab bar SELECTS rather than discloses, so the chevrons went with the
+     * drawers — and there is no closed state for the page to be in.
      */
-    const closed = render({ open: null });
-    expect(closed).toContain("lucide-chevron-right");
-    expect(closed).not.toContain("lucide-chevron-down");
-
-    const opened = render({ open: "picks" });
-    expect(opened).toContain("lucide-chevron-down");
-    // ...and only the open half flips; the other still offers to open.
-    expect(opened).toContain("lucide-chevron-right");
+    const html = render();
+    for (const t of ["matches", "picks", "results"]) {
+      expect(html, t).toContain(`data-testid="pickem-two-up-${t}"`);
+    }
+    expect(html).not.toContain("lucide-chevron");
+    expect(html).toContain('role="tablist"');
+    // Exactly one selected, always.
+    expect(html.split('aria-selected="true"').length - 1).toBe(1);
   });
 
-  it("marks the open half, so the panel below is attached to what opened it", () => {
+  it("puts MATCHES first and selects it by default", () => {
+    // It is what most people opened the game to see, and it used to be the one
+    // destination with no control at all.
+    const html = render();
+    expect(html.indexOf("pickem-two-up-matches")).toBeLessThan(
+      html.indexOf("pickem-two-up-picks")
+    );
+    const at = html.indexOf('data-testid="pickem-two-up-matches"');
+    expect(html.slice(at, at + 120)).toContain('data-selected="true"');
+    expect(html).toContain("7 matches");
+  });
+
+  it("marks the selected tab, and only it", () => {
     const html = render({ open: "results" });
     const at = html.indexOf('data-testid="pickem-two-up-results"');
-    expect(html.slice(at, at + 120)).toContain('data-selected="true"');
-    const other = html.indexOf('data-testid="pickem-two-up-picks"');
-    expect(html.slice(other, other + 120)).toContain('data-selected="false"');
+    expect(html.slice(at, at + 140)).toContain('data-selected="true"');
+    for (const other of ["matches", "picks"]) {
+      const i = html.indexOf(`data-testid="pickem-two-up-${other}"`);
+      expect(html.slice(i, i + 140), other).toContain('data-selected="false"');
+    }
   });
 });
