@@ -43,14 +43,14 @@ import { ridingOn } from "@/lib/pickemBoard";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { PickemMatchBuilder } from "@/components/games/pickem/PickemMatchBuilder";
 import type { DraftMatchConfig } from "@/lib/configDraft";
-import { PickemTwoUp, type PickemPanel } from "@/components/games/pickem/PickemTwoUp";
+import { PickemTwoUp } from "@/components/games/pickem/PickemTwoUp";
+import { pickemSurface, type PickemPanel, type PicksSub } from "@/lib/pickemSurface";
 import {
   PickemOtherPicks,
   PickemPicksSubTabs,
   PickemReadingHeader,
   sortOtherSheets,
   type OtherSheet,
-  type PicksSub,
 } from "@/components/games/pickem/PickemOtherPicks";
 import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
 import { PickemProxyBanner, type ProxyTarget } from "@/components/games/pickem/PickemProxyPanel";
@@ -948,46 +948,20 @@ export function PickemGameView() {
    * facts, and the row copy branches on exactly this.
    */
   /**
-   * Is the PICKS surface on screen?
+   * WHAT IS ON THIS PAGE — read, never re-derived here.
    *
-   * While picks are open it IS the page — there is no tab row to choose it
-   * with, and `openPanel` is meaningless because nothing else is rendered.
-   * Once locked it is one of three, and the tab decides.
-   *
-   * Read as one flag rather than repeating the disjunction at three sites: the
-   * version where each remembers the open-phase case is the version where one
-   * of them does not.
+   * The four conditions this replaces (the tab row, the three panel bodies, the
+   * sub-tab bar) each carried their own idea of when they belonged on screen
+   * and only happened to agree. `pickemSurface` is the one answer, and the
+   * reason its tests mean anything is that this line is the only caller.
    */
-  const picksVisible = phase === "picks_open" || openPanel === "picks";
+  const surface = pickemSurface({
+    phase,
+    openPanel,
+    picksSub,
+    proxyTargetCount: proxyTargets.length,
+  });
 
-  /**
-   * Is there a second half for the sub-tab bar to switch to?
-   *
-   * Locked: always — every sheet is revealed, so everyone has somebody to read.
-   *
-   * Open: only if the server has given this viewer somebody to enter FOR. That
-   * is `proxyTargets.length`, straight from `pickem_sheet_status`, and it is
-   * the same rule the deleted Sheets button followed — the ROW COUNT decides,
-   * never a role. A client-side role test would be a second copy of a policy
-   * that already exists in exactly one place.
-   *
-   * With no second half the bar is absent rather than showing a tab that opens
-   * an empty list, which is what most participants would have got.
-   */
-  const otherPicksAvailable = phase === "locked" || proxyTargets.length > 0;
-
-  /**
-   * The sub-tab actually in force.
-   *
-   * `picksSub` survives a phase change — a captain who was on Other picks
-   * while entering for a teammate is still on it when the deadline passes. That
-   * is right when the tab still exists, and a blank screen when it does not:
-   * with no second half the bar is not rendered, so nothing can move them back.
-   *
-   * Derived rather than corrected by an effect, so the impossible state is not
-   * reachable at all rather than being repaired one render later.
-   */
-  const activeSub: PicksSub = otherPicksAvailable ? picksSub : "your";
 
   const otherSheets: OtherSheet[] = (() => {
     const field = new Set<string>(Object.keys(q.data.sheets));
@@ -1155,11 +1129,11 @@ export function PickemGameView() {
               the banner is the weaker of the two, since the strip also carries
               the way back. The sheet keeps `closedBannerHoisted` either way: it
               must not grow a third copy for the reader who loses this one. */}
-          {phase === "locked" && !runnerStrip && (
+          {surface.showTabs && !runnerStrip && (
             <PickemClosedBanner closure={pickemClosure(clock, now)} />
           )}
 
-          {phase === "locked" && (
+          {surface.showTabs && (
           <PickemTwoUp
             /* The first tab's own count. Under team totals there are no
                matches to count, so it says what that shape has instead. */
@@ -1186,7 +1160,7 @@ export function PickemGameView() {
               picks-OPEN page, through the proxy button. So the one phase where
               every sheet is deliberately readable was the one phase with
               nowhere to read them. */}
-          {picksVisible && (
+          {surface.panel === "picks" && (
             <>
               {/* The sub-tabs, in BOTH phases — but only when there is a second
                   half to switch to. While picks are open that is "has the
@@ -1195,7 +1169,7 @@ export function PickemGameView() {
                   button followed, since a client-side role test would be a
                   second copy of a policy that lives in one place. Once locked
                   every sheet is readable, so the bar is always there. */}
-              {otherPicksAvailable && (
+              {surface.showPicksSubTabs && (
                 <PickemPicksSubTabs
                   open={picksSub}
                   onOpen={(sub) => {
@@ -1216,7 +1190,7 @@ export function PickemGameView() {
                   offer an edit the policy refuses or refuse one it would allow.
                   A separate read-only component is how two definitions of
                   "picks open" get created. */}
-              {activeSub === "your" && (
+              {surface.sub === "your" && (
                 <PickemSheet
                   gameId={gameId}
                   slate={q.data.slate}
@@ -1245,7 +1219,7 @@ export function PickemGameView() {
                   `pickem_sheet_status`, which answers nobody once picks close.
                   Same place on screen, two sources, and conflating them is what
                   would empty this tab for every member on a locked game. */}
-              {activeSub === "other" && readingSheetOf == null && !proxyTarget && (
+              {surface.sub === "other" && readingSheetOf == null && !proxyTarget && (
                 picksOpen(clock, now) ? (
                   <PickemSheetsList
                     targets={proxyTargets}
@@ -1281,7 +1255,7 @@ export function PickemGameView() {
                   a mixed message, and mixed is how somebody edits what they
                   think is their own sheet. That is the only way this feature
                   goes badly. */}
-              {activeSub === "other" && proxyTarget && (
+              {surface.sub === "other" && proxyTarget && (
                 <>
                   <PickemProxyBanner
                     name={proxyTarget.name}
@@ -1321,7 +1295,7 @@ export function PickemGameView() {
                 </>
               )}
 
-              {activeSub === "other" && readingSheetOf != null && (
+              {surface.sub === "other" && readingSheetOf != null && (
                 <>
                   {/* NOT `PickemProxyBanner`. That band says "You are
                       entering Charlie’s sheet · saving replaces it" over a
@@ -1369,7 +1343,7 @@ export function PickemGameView() {
           {/* Results are visible to everyone as they land — no embargo, since
               the whole point is watching it resolve (§7). `canEdit` decides
               whether the BUTTONS are there, not whether the outcomes are. */}
-          {phase === "locked" && openPanel === "results" && (
+          {surface.panel === "results" && (
             <PickemRunView
               slate={q.data.slate}
               canEdit={canEdit}
@@ -1388,7 +1362,7 @@ export function PickemGameView() {
               grid: §12 forbids it, and a runner is under no pressure to pair
               before the deadline (§5), so "locked, unpaired" is a normal state
               that must read as waiting rather than broken. */}
-          {phase === "locked" && openPanel === "matches" &&
+          {surface.panel === "matches" &&
             (individualMatches && matchPairs.length === 0 ? (
             <PickemNoMatches />
           ) : (

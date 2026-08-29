@@ -1,7 +1,3 @@
-"use client";
-
-import { useState } from "react";
-import { TYPE_SCALE } from "@/lib/typeScale";
 
 /**
  * The picks deadline — the only pressure this game has.

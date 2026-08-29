@@ -175,8 +175,8 @@ export function sortOtherSheets(list: OtherSheet[]): OtherSheet[] {
   });
 }
 
-/** Which half of the Picks tab is showing. */
-export type PicksSub = "your" | "other";
+export type { PicksSub } from "@/lib/pickemSurface";
+import type { PicksSub } from "@/lib/pickemSurface";
 
 /**
  * The sub-tab bar under Picks.

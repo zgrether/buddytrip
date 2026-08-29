@@ -67,11 +67,27 @@ import { formatLeadTime, type PickemPhase } from "@/lib/pickemLifecycle";
  * The helper is a FACT the runner can use — how many games are on the slate —
  * rather than a description of the state they can already see.
  */
+/**
+ * ── The two words, and they name the JOB rather than the mechanism ─────────
+ *
+ * "Start" and "Stop" were the first pass and they were too bare: on a screen
+ * with a slate, a deadline and a settings gear, a button called Stop does not
+ * say what it stops. "Start picking" / "Close picking" name the thing being
+ * opened and shut, which is the only ambiguity a two-word label had left.
+ *
+ * "Close" rather than "Stop" also lines the control up with the STATE, which
+ * this feature already says in member-facing copy — "Picks are closed", "Picks
+ * closed at 11:00". One word now covers the button and what it produces, where
+ * Start/Stop needed a reader to connect two different verbs.
+ *
+ * Sentence case, like every other button in the app ("Reset scores", "Save
+ * picks", "Set deadline") rather than title case.
+ */
 const ACTION_LABEL: Record<PickemPhase, string> = {
-  building: "Start",
-  picks_open: "Stop",
+  building: "Start picking",
+  picks_open: "Close picking",
   // Reopening after a lock. Absent once anything is scored — see `hasResults`.
-  locked: "Start",
+  locked: "Start picking",
 };
 
 /** Said once results exist, in place of the unlock move — so the absence of the
@@ -313,8 +329,8 @@ export function PickemPhaseStrip({
             lineHeight: 1.45,
           }}
         >
-          The deadline has passed, so Start clears it — picks stay open until you
-          press Stop.
+          The deadline has passed, so Start picking clears it — picks stay open
+          until you close them.
         </span>
       )}
 
@@ -511,15 +527,15 @@ function DeadlineBlock({
             color: pending ? "var(--color-bt-owner)" : "var(--color-bt-text)",
           }}
         >
-          {/* "Stops automatically", not "Auto-locks". The control on this
-              panel is Start / Stop, and the deadline is the scheduled version
-              of pressing Stop — so it takes the same word. A second verb for
-              one action is how a runner ends up looking for a Lock button that
-              does not exist. */}
+          {/* "Closes automatically", not "Auto-locks". The control on this
+              panel is Start picking / Close picking, and the deadline is the
+              scheduled version of pressing the second one — so it takes the
+              same verb. A second word for one action is how a runner ends up
+              looking for a Lock button that does not exist. */}
           {!set
             ? "No deadline set"
             : pending
-              ? `Stops automatically ${formatDeadline(deadline)}`
+              ? `Closes automatically ${formatDeadline(deadline)}`
               : `Deadline ${formatDeadline(deadline)}`}
         </span>
         <span
@@ -532,7 +548,7 @@ function DeadlineBlock({
               where unlocking a past-deadline game does nothing — a trap Start
               now defuses by clearing the spent deadline itself. */}
           {!set
-            ? "Picks stay open until you press Stop."
+            ? "Picks stay open until you close them."
             : lead > 0
               ? `${formatLeadTime(lead)} from now. Nobody has to do anything.`
               : "Any moment now. Nobody has to do anything."}
