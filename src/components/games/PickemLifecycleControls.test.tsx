@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PhaseBody, PickemSlateRow } from "./PickemGameView";
 import { PickemScoringRows } from "./pickem/PickemScoringRows";
@@ -68,20 +70,29 @@ describe("ONE runner panel, persisting across every phase", () => {
     expect(strip({ phase: "building", slateCount: 1 })).not.toContain("1 games");
   });
 
-  it("START becomes STOP when picks open, and back again", () => {
-    // One control in two states — which is why the label is the whole
-    // explanation and there is no consequence line under it.
+  it("START PICKING becomes CLOSE PICKING when picks open, and back again", () => {
+    /**
+     * One control in two states — which is why the label is the whole
+     * explanation and there is no consequence line under it.
+     *
+     * The labels were "Start" and "Stop". Too bare: on a screen carrying a
+     * slate, a deadline and a settings gear, a button called Stop does not say
+     * what it stops. Naming the job removes the only ambiguity two words had
+     * left — and "Close" lines the control up with the STATE this feature
+     * already says in member copy ("Picks are closed"), where Start/Stop needed
+     * a reader to connect two different verbs.
+     */
     const building = strip({ phase: "building", slateCount: 2 });
     expect(building).toContain('data-testid="pickem-strip-open"');
-    expect(building).toContain(">Start<");
+    expect(building).toContain(">Start picking<");
 
     const open = strip({ phase: "picks_open" });
     expect(open).toContain('data-testid="pickem-strip-lock"');
-    expect(open).toContain(">Stop<");
+    expect(open).toContain(">Close picking<");
 
     const locked = strip({ phase: "locked", hasResults: false });
     expect(locked).toContain('data-testid="pickem-strip-unlock"');
-    expect(locked).toContain(">Start<");
+    expect(locked).toContain(">Start picking<");
   });
 
   it("stops restating the phase, and drops the consequence copy", () => {
@@ -174,13 +185,13 @@ describe("ONE runner panel, persisting across every phase", () => {
      */
     expect(
       strip({ phase: "locked", deadlinePassed: true, deadline: "2026-08-01T12:00:00.000Z" })
-    ).toContain("Start clears it");
+    ).toContain("Start picking clears it");
     expect(
       strip({ phase: "locked", deadlinePassed: false, deadline: "2027-08-01T12:00:00.000Z" })
-    ).not.toContain("Start clears it");
+    ).not.toContain("Start picking clears it");
     // ...and never where there is no Start to qualify.
     expect(strip({ phase: "locked", hasResults: true, deadlinePassed: true })).not.toContain(
-      "Start clears it"
+      "Start picking clears it"
     );
   });
 
@@ -362,7 +373,7 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     // START / STOP is the vocabulary. This said "until you lock them", and
     // there is no Lock control anywhere — a second word for one action is how a
     // runner ends up hunting for a button that does not exist.
-    expect(none).toContain("Picks stay open until you press Stop.");
+    expect(none).toContain("Picks stay open until you close them.");
     expect(none).not.toContain("lock them");
 
     const set = strip({
@@ -370,7 +381,7 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
       deadline: "2026-09-05T17:00:00.000Z",
       now: Date.parse("2026-09-03T13:00:00.000Z"),
     });
-    expect(set).toContain("Stops automatically ");
+    expect(set).toContain("Closes automatically ");
     expect(set).not.toContain("Auto-locks");
     // The lead time, and the sentence that is the whole point of the redesign:
     // the runner does not have to be holding the phone when this fires.
@@ -467,5 +478,70 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
       expect(btn, String(deadline)).toContain("min-height:40px");
       expect(btn, String(deadline)).toContain("background:var(--color-bt-accent)");
     }
+  });
+});
+
+describe("one vocabulary for one action", () => {
+  /** Visible TEXT only — attributes carry `pickem-strip-unlock`, which is an
+   *  id and not a word anybody reads. */
+  const words = (html: string) => html.replace(/<[^>]*>/g, " ").toLowerCase();
+
+  it("says LOCK nowhere a runner can read it, in any phase", () => {
+    /**
+     * The control is Start / Stop. The deadline copy said "Picks stay open
+     * until you lock them" beside a button labelled Stop, and the headline said
+     * "Auto-locks Fri 11:35 PM" — two words for one action, which is how a
+     * runner ends up hunting for a Lock button that does not exist.
+     *
+     * Swept over every phase and both deadline states rather than fixed at the
+     * two known strings: the defect is the vocabulary, so the assertion has to
+     * be about the vocabulary. Asserted on stripped text because the testids
+     * legitimately contain "lock" — a raw `not.toContain` would fail against a
+     * correct render, which is the substring trap this suite has hit twice.
+     */
+    for (const phase of ["building", "picks_open", "locked"] as const) {
+      for (const deadline of [null, "2026-09-05T17:00:00.000Z"]) {
+        for (const hasResults of [false, true]) {
+          const text = words(strip({ phase, deadline, hasResults, slateCount: 2 }));
+          expect(text, `${phase}/${deadline}/${hasResults}`).not.toContain("lock");
+        }
+      }
+    }
+  });
+
+  it("still says CLOSED, which is the state and not the control", () => {
+    /**
+     * The pair, and the reason the sweep above is not simply "delete words".
+     * Member-facing copy about picks being closed is correct and stays — what
+     * was wrong was naming the CONTROL twice.
+     */
+    expect(words(strip({ phase: "locked", hasResults: true }))).toContain("picks stay closed");
+  });
+});
+
+describe("the post-lock list does not come from the write-scoped query", () => {
+  it("never hands `proxyTargets` to the read-only list", () => {
+    /**
+     * A SOURCE guard, in the shape `TripIdProvider.test.ts` established, because
+     * the thing being protected is a wiring decision that no rendered output
+     * reveals: both lists take an array of people and both render rows.
+     *
+     * `pickem_sheet_status` answers "whose sheet may I WRITE", which after the
+     * lock is nobody — so pointing the read-only list at it would empty the tab
+     * for every member on a locked game while looking entirely reasonable in
+     * the diff. The two questions coincide before the lock, which is exactly
+     * what makes the mistake easy.
+     */
+    const view = readFileSync(
+      join(process.cwd(), "src/components/games/PickemGameView.tsx"),
+      "utf8"
+    );
+    const call = view.slice(view.indexOf("<PickemOtherPicks"));
+    expect(call.slice(0, 300)).toContain("sheets={otherSheets}");
+    expect(call.slice(0, 300)).not.toContain("proxyTargets");
+    // ...and the write-scoped list is still fed the write-scoped query, so this
+    // is not passing because the wiring vanished.
+    const list = view.slice(view.indexOf("<PickemSheetsList"));
+    expect(list.slice(0, 300)).toContain("targets={proxyTargets}");
   });
 });

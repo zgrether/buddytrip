@@ -393,8 +393,8 @@ export function PickemSlateModal({
                 compares before and after, so reordering, re-pricing or renaming
                 every game on the slate costs nobody a re-rank. Saying otherwise
                 deters a runner from a fix that is free. */}
-            <b>Picks are open, so the slate is frozen.</b> Press Stop on the game
-            page to change it. Nothing is lost unless you add or remove a game —
+            <b>Picks are open, so the slate is frozen.</b> Close picking on the
+            game page to change it. Nothing is lost unless you add or remove a game —
             that is what clears everyone&rsquo;s ranking.
           </div>
         )}
