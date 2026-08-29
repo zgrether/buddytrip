@@ -1,12 +1,29 @@
 "use client";
 
-import { ChevronLeft, Users } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { sortTargets, targetStatusLabel, type ProxyTarget } from "./PickemProxyPanel";
 
 /**
- * Screen I — everyone whose sheet you may enter.
+ * Everyone whose sheet you may enter — the OTHER PICKS sub-tab, while picks
+ * are open.
+ *
+ * ── It stopped being a page ────────────────────────────────────────────────
+ *
+ * This was its own screen, reached from a button above the sheet, with its own
+ * back chevron and its own title. That made two ways to look at sheets on one
+ * game — this one before the lock, "Other picks" after it — which is two names
+ * and two routes for one job.
+ *
+ * It is now the same sub-tab in both phases. The header went with the page: a
+ * sub-tab bar directly above it already says what this is, and a title under a
+ * tab of the same name is the duplicate-heading bug this feature has now hit
+ * four times. The chevron went too — the way back is the other sub-tab.
+ *
+ * What is left is the LIST, which is the part that was ever specific to this
+ * phase: before the lock these rows are people you may enter FOR, and after it
+ * the same slot holds everyone whose sheet you may read (`PickemOtherPicks`).
+ * Different question, different source, same place on the screen.
  *
  * ── THE LIST IS THE PERMISSION ─────────────────────────────────────────────
  *
@@ -38,7 +55,6 @@ export function PickemSheetsList({
   runner,
   scopeName,
   avatarFor,
-  onBack,
   onPick,
 }: {
   /** Straight from `pickem_sheet_status`, minus the viewer. Never filtered here. */
@@ -48,7 +64,6 @@ export function PickemSheetsList({
   /** The viewer's own team, for the captain's scope line. Null when they have none. */
   scopeName: string | null;
   avatarFor: (userId: string) => { avatarIcon: string | null; teamColor: string | null };
-  onBack: () => void;
   onPick: (t: ProxyTarget) => void;
 }) {
   const sorted = sortTargets(targets);
@@ -56,40 +71,31 @@ export function PickemSheetsList({
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-sheets-list">
-      <div className="flex items-center gap-1 px-1">
-        <button
-          type="button"
-          onClick={onBack}
-          data-testid="pickem-sheets-back"
-          aria-label="Back to your sheet"
-          className="-ml-1 flex shrink-0 items-center justify-center"
-          style={{ width: 32, height: 32, color: "var(--color-bt-accent)" }}
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <span className="min-w-0 flex-1 truncate" style={{ fontSize: 17, fontWeight: 700 }}>
-          {runner ? "Everyone’s sheets" : "Your team’s sheets"}
+      {/* ONE line where a title, a chevron and a scope line used to be.
+          The sub-tab above says what this is, so a heading here would be the
+          same word twice; the other sub-tab is the way back, so a chevron would
+          be a second one. What no control says is WHOSE list this is — a
+          captain sees their team, a runner sees everybody — and how many are
+          still out, which is the only thing on this screen anybody is chasing. */}
+      <div
+        className="flex items-baseline gap-2 px-1"
+        style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)" }}
+      >
+        <span className="min-w-0 flex-1 truncate">
+          {runner || !scopeName
+            ? `Everyone but you · ${targets.length} sheet${targets.length === 1 ? "" : "s"}`
+            : `${scopeName} · your ${targets.length} teammate${targets.length === 1 ? "" : "s"}`}
         </span>
         <span
           className="shrink-0"
           data-testid="pickem-sheets-waiting"
           style={{
-            fontSize: TYPE_SCALE.caption,
             color: waiting > 0 ? "var(--color-bt-owner)" : "var(--color-bt-text-dim)",
             fontWeight: waiting > 0 ? 600 : 400,
           }}
         >
           {waiting === 0 ? "Everyone’s in" : `${waiting} still to come`}
         </span>
-      </div>
-
-      <div
-        className="px-1"
-        style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)" }}
-      >
-        {runner || !scopeName
-          ? `Everyone but you · ${targets.length} sheet${targets.length === 1 ? "" : "s"}`
-          : `${scopeName} · your ${targets.length} teammate${targets.length === 1 ? "" : "s"}`}
       </div>
 
       {sorted.map((t) => {
@@ -156,49 +162,15 @@ export function PickemSheetsList({
 }
 
 /**
- * The way in — a header button rather than a block at the bottom of the page.
+ * DELETED: `PickemSheetsButton`.
  *
- * It was under the sheet, which put a captain's job below sixteen rows of their
- * own picks. Up here it is reachable without scrolling past the thing it is not
- * about.
+ * It was the way into this list when the list was a page — a header button that
+ * opened a screen. There is no screen now: the list is a sub-tab, and the
+ * sub-tab bar is the control.
  *
- * Renders only when the server has given the viewer somebody to act for, which
- * is the same "the list is the permission" rule one level up: no role test
- * decides whether this button exists, the row count does.
+ * Its one real idea survives in that bar: it rendered only when the server had
+ * given the viewer somebody to act for, deciding on the ROW COUNT rather than
+ * on a role. The Other picks sub-tab is gated the same way while picks are
+ * open, for the same reason — a client-side role test would be a second copy of
+ * a policy that exists in one place.
  */
-export function PickemSheetsButton({
-  count,
-  waiting,
-  onOpen,
-}: {
-  count: number;
-  waiting: number;
-  onOpen: () => void;
-}) {
-  if (count === 0) return null;
-  return (
-    <div className="flex justify-end">
-      <button
-        type="button"
-        onClick={onOpen}
-        data-testid="pickem-sheets-open"
-        className="flex items-center gap-1.5 px-2.5"
-        style={{
-          height: 32,
-          borderRadius: 9,
-          fontSize: TYPE_SCALE.bodyDense,
-          fontWeight: 600,
-          background: "transparent",
-          border: `1px solid ${waiting > 0 ? "var(--color-bt-warning-border)" : "var(--color-bt-border)"}`,
-          color: waiting > 0 ? "var(--color-bt-owner)" : "var(--color-bt-text)",
-        }}
-      >
-        <Users size={14} />
-        Sheets
-        {waiting > 0 && (
-          <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>{waiting}</span>
-        )}
-      </button>
-    </div>
-  );
-}

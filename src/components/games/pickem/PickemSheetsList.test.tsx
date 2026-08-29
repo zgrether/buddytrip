@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PickemSheetsList, PickemSheetsButton } from "./PickemSheetsList";
+import { PickemSheetsList } from "./PickemSheetsList";
 import type { ProxyTarget } from "./PickemProxyPanel";
 
 /**
@@ -32,7 +32,6 @@ const render = (over: Partial<Parameters<typeof PickemSheetsList>[0]> = {}) =>
       runner
       scopeName="Aces"
       avatarFor={AVATARS}
-      onBack={() => {}}
       onPick={() => {}}
       {...over}
     />
@@ -61,8 +60,16 @@ describe("the list is the permission", () => {
     const asRunner = render({ runner: true });
     const asCaptain = render({ runner: false });
 
-    expect(asRunner).toContain("Everyone’s sheets");
-    expect(asCaptain).toContain("Your team’s sheets");
+    /**
+     * The TITLE is gone with the page — this is a sub-tab now, and a heading
+     * under a tab of the same name is the duplicate-heading bug this feature
+     * keeps producing. What `runner` still decides is the SCOPE line, which is
+     * the same distinction in the place that had no other job.
+     */
+    expect(asRunner).not.toContain("Everyone’s sheets");
+    expect(asCaptain).not.toContain("Your team’s sheets");
+    expect(asRunner).toContain("Everyone but you");
+    expect(asCaptain).toContain("Aces · your");
 
     const rows = (html: string) =>
       [...html.matchAll(/data-testid="pickem-proxy-target-([a-z]+)"/g)].map((m) => m[1]);
@@ -110,7 +117,36 @@ describe("a guest reads differently, and structurally must", () => {
   });
 });
 
-describe("what the header says", () => {
+describe("it is a sub-tab, not a page", () => {
+  it("carries no title, no back chevron and no way to open itself", () => {
+    /**
+     * It was its own screen, reached from a Sheets button above the sheet, with
+     * a chevron and a heading. That made two routes to somebody else's picks on
+     * one game — this before the lock, "Other picks" after — which is two names
+     * for one job.
+     *
+     * All three go together, and the assertion covers all three, because
+     * removing any one of them alone leaves the surface half a page.
+     */
+    const html = render();
+    expect(html).not.toContain('data-testid="pickem-sheets-back"');
+    expect(html).not.toContain('data-testid="pickem-sheets-open"');
+    // The TITLES, both of them — asserted as the strings rather than as a
+    // markup shape. The first version of this line looked for "sheets</span>"
+    // and failed against a correct render, because the scope line legitimately
+    // ends "· 3 sheets" inside a span. A shape assertion here cannot tell a
+    // heading from a count; the words can.
+    expect(html).not.toContain("Everyone’s sheets");
+    expect(html).not.toContain("Your team’s sheets");
+    // ...and the rows are still all there, so this is not passing on an empty
+    // render.
+    expect(
+      [...html.matchAll(/data-testid="pickem-proxy-target-([a-z]+)"/g)]
+    ).toHaveLength(3);
+  });
+});
+
+describe("what the scope line says", () => {
   it("counts who is MISSING, not how many people there are", () => {
     // Carried from the panel this replaced: the number a captain acts on is
     // how many are still to come.
@@ -134,30 +170,12 @@ describe("what the header says", () => {
   });
 });
 
-describe("PickemSheetsButton", () => {
-  it("does not exist when there is nobody to act for", () => {
-    /**
-     * The same rule one level up: no role test decides whether the way in
-     * appears, the row count does. A plain participant's list is empty — the
-     * viewer is removed from their own — so they never see this.
-     */
-    expect(
-      renderToStaticMarkup(<PickemSheetsButton count={0} waiting={0} onOpen={() => {}} />)
-    ).toBe("");
-  });
-
-  it("carries the waiting count, and goes quiet when there is none", () => {
-    const waiting = renderToStaticMarkup(
-      <PickemSheetsButton count={5} waiting={2} onOpen={() => {}} />
-    );
-    expect(waiting).toContain("Sheets");
-    expect(waiting).toContain(">2<");
-    expect(waiting).toContain("--color-bt-owner");
-
-    const done = renderToStaticMarkup(
-      <PickemSheetsButton count={5} waiting={0} onOpen={() => {}} />
-    );
-    expect(done).toContain("Sheets");
-    expect(done).not.toContain("--color-bt-owner");
-  });
-});
+/**
+ * DELETED: the `PickemSheetsButton` cases.
+ *
+ * The button was the way into this list when the list was a page. There is no
+ * page, so there is no way in to test — the sub-tab bar is the control, and the
+ * one rule the button carried (render only when the server has given the viewer
+ * somebody to act for, decided on the ROW COUNT and never on a role) moved to
+ * that bar with it.
+ */

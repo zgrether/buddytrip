@@ -43,21 +43,19 @@ import { ridingOn } from "@/lib/pickemBoard";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { PickemMatchBuilder } from "@/components/games/pickem/PickemMatchBuilder";
 import type { DraftMatchConfig } from "@/lib/configDraft";
-import { PickemTwoUp, type PickemPanel } from "@/components/games/pickem/PickemTwoUp";
+import { PickemTwoUp } from "@/components/games/pickem/PickemTwoUp";
+import { pickemSurface, type PickemPanel, type PicksSub } from "@/lib/pickemSurface";
 import {
   PickemOtherPicks,
   PickemPicksSubTabs,
   PickemReadingHeader,
   sortOtherSheets,
   type OtherSheet,
-  type PicksSub,
 } from "@/components/games/pickem/PickemOtherPicks";
 import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
 import { PickemProxyBanner, type ProxyTarget } from "@/components/games/pickem/PickemProxyPanel";
-import {
-  PickemSheetsList,
-  PickemSheetsButton,
-} from "@/components/games/pickem/PickemSheetsList";
+import { PickemSheetsList } from "@/components/games/pickem/PickemSheetsList";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { ListChecks, Swords } from "lucide-react";
@@ -266,7 +264,6 @@ export function PickemGameView() {
    */
   const [proxyFor, setProxyFor] = useState<string | null>(null);
   /** Is the Sheets list covering the page. Never a permission — see the list. */
-  const [sheetsOpen, setSheetsOpen] = useState(false);
   /** Is the Matches accordion open on the settings page. */
   const [matchesOpen, setMatchesOpen] = useState(false);
   /** The subject's name as it was when Save was pressed — the toast reports a
@@ -483,6 +480,37 @@ export function PickemGameView() {
     () => proxyTargets.find((t) => t.userId === proxyFor) ?? null,
     [proxyTargets, proxyFor]
   );
+
+
+  /**
+   * ── BACK UNWINDS THE IN-PAGE SCREENS ──────────────────────────────────────
+   *
+   * Opening somebody's sheet is a NAVIGATION — the page swaps its whole body
+   * for a different subject with its own back control — but it was pure React
+   * state, so it pushed nothing onto history. Back therefore found the next
+   * entry down, which is the game panel's own `?game=`, and closed the game.
+   * Re-opening mounts fresh, so the reader landed on Matches: not a tab reset,
+   * a panel teardown that looked like one.
+   *
+   * `useModalBackButton` is the app's existing answer — a phantom entry per
+   * layer, a shared stack so only the topmost reacts, and depth-tagged
+   * ownership so a foreign pop passes through rather than being eaten. Reused
+   * rather than re-derived: the ownership rules are exactly where a second
+   * implementation would go wrong, and this hook has already paid for them
+   * twice (the spurious-popstate window, the programmatic-pop marker).
+   *
+   * ABOVE the `!q.data` early return, with the rest of the hooks. Placed by
+   * the state they read, they sat below it and fired the rules-of-hooks lint
+   * immediately — which is the guard working: a loading render would have
+   * called two fewer hooks than a loaded one.
+   *
+   * The two are exclusive by phase — a proxy sheet needs picks open, a
+   * read-only one needs them closed — so they can never stack. Registered
+   * separately anyway, because "they cannot both be open" is a fact about
+   * today's conditions and not about this hook.
+   */
+  useModalBackButton(() => setReadingSheetOf(null), readingSheetOf != null);
+  useModalBackButton(() => setProxyFor(null), proxyFor != null);
 
   /**
    * Whose sheet the component is about. Never derived inside `PickemSheet` by
@@ -919,6 +947,22 @@ export function PickemGameView() {
    * -missed and zero-because-they-never-picked are the same number and opposite
    * facts, and the row copy branches on exactly this.
    */
+  /**
+   * WHAT IS ON THIS PAGE — read, never re-derived here.
+   *
+   * The four conditions this replaces (the tab row, the three panel bodies, the
+   * sub-tab bar) each carried their own idea of when they belonged on screen
+   * and only happened to agree. `pickemSurface` is the one answer, and the
+   * reason its tests mean anything is that this line is the only caller.
+   */
+  const surface = pickemSurface({
+    phase,
+    openPanel,
+    picksSub,
+    proxyTargetCount: proxyTargets.length,
+  });
+
+
   const otherSheets: OtherSheet[] = (() => {
     const field = new Set<string>(Object.keys(q.data.sheets));
     for (const t of q.data.teams) for (const uid of t.memberIds) field.add(uid);
@@ -996,7 +1040,12 @@ export function PickemGameView() {
           for one surface, the second of them about a different subject. Same
           shape as the STANDINGS-over-TEAM-TOTALS pair, which no test could see
           because both halves were correct. */}
-      {runnerStrip && !sheetsOpen && (
+      {/* The panel used to be suppressed while the Sheets PAGE was up — that
+          page was a screen with its own header, and the strip above it made two
+          headings for one surface. There is no such page now: Other picks is a
+          sub-tab under a tab bar, with the runner's panel above the whole
+          thing, so there is nothing left to suppress it for. */}
+      {runnerStrip && (
         <PickemPhaseStrip
           // Migration 165 refuses unlock once anything is scored; this is why
           // the move is not offered. Same predicate the server uses, mirrored
@@ -1045,22 +1094,29 @@ export function PickemGameView() {
         />
       )}
 
-      {phase === "locked" ? (
+      {phase === "building" ? (
+        /* No props: it takes no viewer and no counts because it says the same
+           thing to everybody. The runner's half is the panel above it. */
+        <PhaseBody />
+      ) : (
         /**
-         * ── The locked page IS the matches ────────────────────────────────
+         * ── THE TAB ROW ARRIVES AT THE LOCK ───────────────────────────────
          *
-         * While picks are open the page is the sheet and nothing else: one job,
-         * no navigation. At the lock the sheet stops being a task and becomes a
-         * record, and the question changes to "how am I doing" — which the
-         * matches answer. So the two things that WERE the page collapse into
-         * the two-up row and the board takes their place.
+         * Before it, two of the three tabs are about things that do not exist:
+         * nobody is in a match and no result has been entered. And for a
+         * participant the matches never mattered at pick time anyway — whether
+         * a sheet rolls into a team total or a head-to-head changes not one
+         * pick. The only question before the lock is whether your sheet is in.
          *
-         * ONE arm for both roll-up shapes, which is the simplification this
-         * composition buys. The board previously sat above the phase branch
-         * precisely BECAUSE the branch swallowed it: a `team_totals` game took
-         * the sheet arm and showed no board, and Run took the same fall. There
-         * is no longer a shape-keyed branch here to fall through, so the board
-         * can live where it is read.
+         * So while picks are open the page IS the sheet, with Other picks
+         * beside it for anyone who can enter for somebody. At the lock the
+         * sheet stops being a task and becomes a record, the question becomes
+         * "how am I doing", and the tabs appear to answer it.
+         *
+         * ONE arm for both phases rather than two, because PICKS is common to
+         * them: the same sub-tabs, the same two components, differing only in
+         * whether they are editable. Splitting the arm is what produced two
+         * routes to a person's sheet in the first place.
          */
         <>
           {/* FIRST, because this is what a person lands in the instant their
@@ -1073,8 +1129,11 @@ export function PickemGameView() {
               the banner is the weaker of the two, since the strip also carries
               the way back. The sheet keeps `closedBannerHoisted` either way: it
               must not grow a third copy for the reader who loses this one. */}
-          {!runnerStrip && <PickemClosedBanner closure={pickemClosure(clock, now)} />}
+          {surface.showTabs && !runnerStrip && (
+            <PickemClosedBanner closure={pickemClosure(clock, now)} />
+          )}
 
+          {surface.showTabs && (
           <PickemTwoUp
             /* The first tab's own count. Under team totals there are no
                matches to count, so it says what that shape has instead. */
@@ -1094,53 +1153,149 @@ export function PickemGameView() {
                there is no closed state for a page to be in. */
             onOpen={setOpenPanel}
           />
+          )}
 
-          {/* Their own sheet, read-only and one tap away. They spent time on it
-              and should not have to hunt for what they submitted (§5). */}
           {/* PICKS — the viewer's own sheet, and everybody else's.
               Reading another sheet used to be reachable only from the
               picks-OPEN page, through the proxy button. So the one phase where
               every sheet is deliberately readable was the one phase with
               nowhere to read them. */}
-          {openPanel === "picks" && (
+          {surface.panel === "picks" && (
             <>
-              <PickemPicksSubTabs
-                open={picksSub}
-                onOpen={(sub) => {
-                  setPicksSub(sub);
-                  // Leaving the list closes whoever was open in it. Coming back
-                  // to a sheet you did not choose this time is the same
-                  // stale-subject bug the proxy sheet's remount key exists for.
-                  setReadingSheetOf(null);
-                }}
-              />
+              {/* The sub-tabs, in BOTH phases — but only when there is a second
+                  half to switch to. While picks are open that is "has the
+                  server given me somebody to enter for", decided on the row
+                  count and never on a role: the same rule the deleted Sheets
+                  button followed, since a client-side role test would be a
+                  second copy of a policy that lives in one place. Once locked
+                  every sheet is readable, so the bar is always there. */}
+              {surface.showPicksSubTabs && (
+                <PickemPicksSubTabs
+                  open={picksSub}
+                  onOpen={(sub) => {
+                    setPicksSub(sub);
+                    // Leaving the list closes whoever was open in it. Coming
+                    // back to a sheet you did not choose this time is the same
+                    // stale-subject bug the proxy sheet's remount key exists
+                    // for.
+                    setReadingSheetOf(null);
+                    setProxyFor(null);
+                  }}
+                />
+              )}
 
-              {picksSub === "your" && (
+              {/* YOUR sheet — ONE component across both phases, with
+                  `editable` coming from the CLOCK. `picksOpen` is the same
+                  predicate `pickem_picks_write` calls, so the screen cannot
+                  offer an edit the policy refuses or refuse one it would allow.
+                  A separate read-only component is how two definitions of
+                  "picks open" get created. */}
+              {surface.sub === "your" && (
                 <PickemSheet
                   gameId={gameId}
                   slate={q.data.slate}
                   settings={q.data.settings}
                   picks={q.data.myPicks}
                   subject={{ userId: me?.id ?? "", name: "You", isSelf: true, isGuest: false }}
-                  editable={false}
-                  saving={false}
-                  saveError={null}
-                  deadlineMs={null}
+                  editable={picksOpen(clock, now)}
+                  saving={savePicks.isPending}
+                  saveError={proxyTarget ? null : saveError}
+                  deadlineMs={msUntilDeadline(clock, now)}
+                  /* The runner's panel already says picks are closed, and the
+                     member gets the hoisted banner above — either way the sheet
+                     must not print a third copy. */
                   closedBannerHoisted
                   closure={pickemClosure(clock, now)}
-                  onSave={() => {}}
+                  onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
                 />
               )}
 
-              {picksSub === "other" && readingSheetOf == null && (
-                <PickemOtherPicks
-                  sheets={otherSheets}
-                  avatarFor={avatarFor}
-                  onOpen={setReadingSheetOf}
-                />
+              {/* OTHER picks — the same slot, a different question either side
+                  of the lock.
+
+                  Open: whose sheet may I WRITE (`pickem_sheet_status`, the
+                  list that IS the permission). Locked: whose may I READ, which
+                  after the lock is everybody — and that list must NOT come from
+                  `pickem_sheet_status`, which answers nobody once picks close.
+                  Same place on screen, two sources, and conflating them is what
+                  would empty this tab for every member on a locked game. */}
+              {surface.sub === "other" && readingSheetOf == null && !proxyTarget && (
+                picksOpen(clock, now) ? (
+                  <PickemSheetsList
+                    targets={proxyTargets}
+                    /* A LABEL, not a gate — it names the list and admits
+                       nobody. Nothing filters `targets` here and nothing may:
+                       the list is the permission, and a client-side role check
+                       would be a second copy of a policy that already exists in
+                       one place. */
+                    runner={canEdit}
+                    scopeName={me?.id ? teamNameOf(me.id) : null}
+                    avatarFor={avatarFor}
+                    onPick={(t) => {
+                      setProxyFor(t.userId);
+                      setSaveError(null);
+                    }}
+                  />
+                ) : (
+                  <PickemOtherPicks
+                    sheets={otherSheets}
+                    avatarFor={avatarFor}
+                    onOpen={setReadingSheetOf}
+                  />
+                )
               )}
 
-              {picksSub === "other" && readingSheetOf != null && (
+              {/* PROXY ENTRY (migration 163) — reached from Other picks while
+                  picks are open.
+
+                  The banner is a BAND, not a subtitle, and it sits above a
+                  sheet that is POPULATED, because proxy mode looks exactly like
+                  a filled-in sheet — it is one. The copy underneath is swept of
+                  "your" in the same breath: a banner over second-person text is
+                  a mixed message, and mixed is how somebody edits what they
+                  think is their own sheet. That is the only way this feature
+                  goes badly. */}
+              {surface.sub === "other" && proxyTarget && (
+                <>
+                  <PickemProxyBanner
+                    name={proxyTarget.name}
+                    isGuest={proxyTarget.isGuest}
+                    submitted={proxyTarget.submitted}
+                    onBack={() => setProxyFor(null)}
+                  />
+                  <PickemSheet
+                    /* Remounts when the subject changes. The sheet holds a
+                       draft keyed on a fingerprint of the server picks, and two
+                       people who have not submitted fingerprint IDENTICALLY —
+                       so without a key the draft would survive a subject switch
+                       and carry one person's picks into another's sheet. Same
+                       collision the outbox scope closes, one layer up; both
+                       have to hold. */
+                    key={proxyTarget.userId}
+                    gameId={gameId}
+                    slate={q.data.slate}
+                    settings={q.data.settings}
+                    picks={q.data.sheets[proxyTarget.userId] ?? []}
+                    subject={subject}
+                    editable={picksOpen(clock, now)}
+                    saving={savePicksFor.isPending}
+                    saveError={saveError}
+                    deadlineMs={msUntilDeadline(clock, now)}
+                    closure={pickemClosure(clock, now)}
+                    onSave={(picks) => {
+                      proxyTargetName.current = proxyTarget.name;
+                      savePicksFor.mutate({
+                        tripId: tripId!,
+                        gameId: gameId!,
+                        targetUserId: proxyTarget.userId,
+                        picks,
+                      });
+                    }}
+                  />
+                </>
+              )}
+
+              {surface.sub === "other" && readingSheetOf != null && (
                 <>
                   {/* NOT `PickemProxyBanner`. That band says "You are
                       entering Charlie’s sheet · saving replaces it" over a
@@ -1188,7 +1343,7 @@ export function PickemGameView() {
           {/* Results are visible to everyone as they land — no embargo, since
               the whole point is watching it resolve (§7). `canEdit` decides
               whether the BUTTONS are there, not whether the outcomes are. */}
-          {openPanel === "results" && (
+          {surface.panel === "results" && (
             <PickemRunView
               slate={q.data.slate}
               canEdit={canEdit}
@@ -1207,7 +1362,7 @@ export function PickemGameView() {
               grid: §12 forbids it, and a runner is under no pressure to pair
               before the deadline (§5), so "locked, unpaired" is a normal state
               that must read as waiting rather than broken. */}
-          {openPanel === "matches" &&
+          {surface.panel === "matches" &&
             (individualMatches && matchPairs.length === 0 ? (
             <PickemNoMatches />
           ) : (
@@ -1236,108 +1391,6 @@ export function PickemGameView() {
               )}
             />
           ))}
-        </>
-      ) : phase === "building" ? (
-        /* No props left: it takes no viewer and no counts because it says the
-           same thing to everybody. The runner's half moved to the one panel. */
-        <PhaseBody />
-      ) : sheetsOpen && !proxyTarget ? (
-        /**
-         * The list COVERS the page rather than sitting under the sheet. It is
-         * one job — pick a person — and the sheet behind it is not that job.
-         *
-         * `targets` is exactly what `pickem_sheet_status` returned, minus the
-         * viewer. Nothing filters it here and nothing may: the list IS the
-         * permission, and a client-side role check would be a second copy of a
-         * policy that already exists in one place.
-         */
-        <PickemSheetsList
-          targets={proxyTargets}
-          /* A LABEL, not a gate — it names the list and admits nobody. */
-          runner={canEdit}
-          scopeName={me?.id ? teamNameOf(me.id) : null}
-          avatarFor={avatarFor}
-          onBack={() => setSheetsOpen(false)}
-          onPick={(t) => {
-            setProxyFor(t.userId);
-            setSheetsOpen(false);
-            setSaveError(null);
-          }}
-        />
-      ) : (
-        <>
-          {/* ONE component for both states. `editable` comes from the CLOCK —
-              `picksOpen`, the same predicate `pickem_picks_write` calls — so the
-              screen cannot offer an edit the policy will refuse, and cannot
-              refuse one it would allow. The alternative (a separate read-only
-              component) is how the two definitions of "picks open" get created,
-              which is the risk this phase was flagged on. */}
-          {/* PROXY ENTRY (migration 163).
-
-              The banner is a BAND, not a subtitle, and it sits above a sheet
-              that is POPULATED — proxy mode looks exactly like a filled-in
-              sheet, because it is one. The copy underneath is swept of "your"
-              in the same breath: a banner over second-person text is a mixed
-              message, and mixed is how somebody edits what they think is their
-              own sheet. That is the only way this feature goes badly. */}
-          {/* The way in, above the sheet rather than below sixteen rows of the
-              viewer's own picks. Gated on the server having given them somebody
-              to act for — the row count, never a role. */}
-          {!proxyTarget && picksOpen(clock, now) && (
-            <PickemSheetsButton
-              count={proxyTargets.length}
-              waiting={proxyTargets.filter((t) => !t.submitted).length}
-              onOpen={() => setSheetsOpen(true)}
-            />
-          )}
-          {proxyTarget && (
-            <PickemProxyBanner
-              name={proxyTarget.name}
-              isGuest={proxyTarget.isGuest}
-              submitted={proxyTarget.submitted}
-              onBack={() => setProxyFor(null)}
-            />
-          )}
-          <PickemSheet
-            /* Remounts when the subject changes. The sheet holds a draft keyed
-               on a fingerprint of the server picks, and two people who have not
-               submitted fingerprint IDENTICALLY — so without a key the draft
-               would survive a subject switch and carry one person's picks into
-               another's sheet. Same collision the outbox scope closes, one
-               layer up; both have to hold. */
-            key={subject.userId}
-            gameId={gameId}
-            slate={q.data.slate}
-            settings={q.data.settings}
-            picks={
-              proxyTarget ? (q.data.sheets[proxyTarget.userId] ?? []) : q.data.myPicks
-            }
-            subject={subject}
-            editable={picksOpen(clock, now)}
-            saving={proxyTarget ? savePicksFor.isPending : savePicks.isPending}
-            saveError={saveError}
-            deadlineMs={msUntilDeadline(clock, now)}
-            closure={pickemClosure(clock, now)}
-            onSave={(picks) => {
-              if (proxyTarget) {
-                proxyTargetName.current = proxyTarget.name;
-                savePicksFor.mutate({
-                  tripId: tripId!,
-                  gameId: gameId!,
-                  targetUserId: proxyTarget.userId,
-                  picks,
-                });
-              } else {
-                savePicks.mutate({ tripId: tripId!, gameId, picks });
-              }
-            }}
-          />
-
-          {/* The builder used to sit HERE, on the game page, writing straight
-              through on its own Save. It is in settings now (critique r1 §2):
-              pairing is setup, not something you do while the game runs, and
-              every other configuration lives there. What remains on this page
-              is the post-lock matchups DISPLAY above — a different job. */}
         </>
       )}
 
