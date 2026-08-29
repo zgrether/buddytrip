@@ -57,13 +57,13 @@ describe("sortTargets — who needs chasing, in order", () => {
 
 describe("targetStatusLabel — a guest reads differently on purpose", () => {
   it("says a guest HASN'T SIGNED UP, not that they have not submitted", () => {
-    // "No sheet yet" implies they might yet do it. A placeholder has no
+    // "Nothing submitted" is what happened, and it is what everyone else reads. It
     // `auth.uid()`, so `pickem_picks_write` can never match them — chasing them
     // is wasted effort, and the honest label says so.
     expect(targetStatusLabel(t({ userId: "1", name: "G", isGuest: true }))).toBe(
       "Hasn’t signed up"
     );
-    expect(targetStatusLabel(t({ userId: "2", name: "R" }))).toBe("No sheet yet");
+    expect(targetStatusLabel(t({ userId: "2", name: "R" }))).toBe("Nothing submitted");
   });
 
   it("says SHEET IN once there is one — guest or not", () => {

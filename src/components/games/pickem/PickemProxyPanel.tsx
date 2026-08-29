@@ -57,7 +57,7 @@ export function sortTargets(targets: ProxyTarget[]): ProxyTarget[] {
 /** What a row says about someone's state. Guests read differently on purpose. */
 export function targetStatusLabel(t: ProxyTarget): string {
   if (t.submitted) return "Sheet in";
-  return t.isGuest ? "Hasn’t signed up" : "No sheet yet";
+  return t.isGuest ? "Hasn’t signed up" : "Nothing submitted";
 }
 
 /**

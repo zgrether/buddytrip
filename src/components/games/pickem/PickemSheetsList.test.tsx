@@ -95,12 +95,12 @@ describe("a guest reads differently, and structurally must", () => {
   it("says HASN'T SIGNED UP for a guest and NO SHEET YET for everyone else", () => {
     /**
      * A guest has no `auth.uid()`, so `pickem_picks_write` can never match them
-     * — they can never enter their own sheet. "No sheet yet" implies they might
+     * — they can never enter their own sheet. "Nothing submitted" implies they might
      * yet do it and sends somebody off to chase a person who cannot act.
      */
     const html = render();
     expect(html).toContain("Hasn’t signed up");
-    expect(html).toContain("No sheet yet");
+    expect(html).toContain("Nothing submitted");
   });
 
   it("puts the guest first, where the chasing starts", () => {
