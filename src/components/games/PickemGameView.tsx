@@ -778,7 +778,32 @@ export function PickemGameView() {
   const myRank = mySheet ? 1 + sheetTotals.filter((s) => s.total > mySheet.total).length : null;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div
+      className="flex flex-col gap-3"
+      style={{
+        /**
+         * Clear the bottom nav ourselves.
+         *
+         * The panel already sets this exact padding (CompetitionFace's
+         * `navUnderPanel`) and it does not reach us. That padding shrinks the
+         * panel's content box, which is what the golf formats' `absolute
+         * inset-0` surfaces resolve against — so it works for them. In-flow
+         * content OVERFLOWS that box instead, and a scroll container's end
+         * padding is not re-applied after an overflowing descendant: the
+         * scrollable region is the union of descendant border boxes, and it
+         * stops at the last card.
+         *
+         * Measured rather than reasoned: at max scroll the last match card's
+         * bottom sat at 843.9 in an 844px viewport, under a nav occupying the
+         * last ~58px. With this padding it sits at 779.9.
+         *
+         * Pick'em is the first long in-flow game view, so it is the first to
+         * meet it. The shell-level fix is #1131 — this goes at the source when
+         * the stroke spine can be run against it.
+         */
+        paddingBottom: "calc(64px + env(safe-area-inset-bottom))",
+      }}
+    >
       {standaloneHeader && (
         <GameStandaloneHeader
           title="Pick'em"
