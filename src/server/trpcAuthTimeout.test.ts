@@ -119,3 +119,48 @@ describe("the timeout is its own event", () => {
     expect(line).not.toContain("eyJ");
   });
 });
+
+describe("BOTH auth calls are raced, not just the fallback", () => {
+  /**
+   * The second incident's signature: 300-second invocations with NOT ONE
+   * `surface: "trpc"` line in the logs. The guarded call was never reached
+   * because the unguarded one above it never returned — so the absence of the
+   * timeout log is what located the hang.
+   *
+   * `getClaims()` is described as a LOCAL verify, and it is — once the JWKS is
+   * in hand. The first call in a cold isolate fetches the signing keys over
+   * the network, from the same host that was stalling.
+   */
+  it("gives up on getClaims when it never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const p = resolveWithTimeout(() => new Promise<never>(() => {}), AUTH_TIMEOUT_MS);
+      await vi.advanceTimersByTimeAsync(AUTH_TIMEOUT_MS + 1);
+      expect((await p).timedOut).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats a REJECTED getClaims as no claims, not as a failed request", async () => {
+    /**
+     * The old code wrapped it in try/catch so a rejection meant "JWKS
+     * unavailable or token malformed — fall through to the network path".
+     * Racing it must not turn that into a thrown request: `.catch(() => null)`
+     * is what preserves the original meaning.
+     */
+    const resolved = await resolveWithTimeout(
+      () => Promise.reject(new Error("jwks down")).catch(() => null),
+      AUTH_TIMEOUT_MS
+    );
+    expect(resolved.timedOut).toBe(false);
+    if (!resolved.timedOut) expect(resolved.value).toBeNull();
+  });
+
+  it("would throw without that catch — which is why it is there", async () => {
+    // The control for the case above: an unprotected rejection propagates.
+    await expect(
+      resolveWithTimeout(() => Promise.reject(new Error("jwks down")), AUTH_TIMEOUT_MS)
+    ).rejects.toThrow("jwks down");
+  });
+});

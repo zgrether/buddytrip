@@ -379,6 +379,28 @@ seam, never on a calendar.
   produce it twice by different means. A count that would change the decision if
   halved deserves more than one grep.
 
+  **THE SAME MISTAKE HAS A SWEEP FORM, and it is the more dangerous one: the
+  boundary you sweep at decides what you are able to find, and picking the
+  wrong one looks exactly like a complete sweep.**
+
+  Worked instance (the auth stall, three incidents). A production hang was
+  traced to an unguarded `getUser()`, and the response was to sweep every call
+  site — which found a third, in the invite page, and was written up as
+  thorough. It was thorough at FILE granularity. `createTRPCContext` holds TWO
+  calls to the same stalling dependency, and only one of them was guarded; the
+  other sat eight lines above it, in the function that had just been edited.
+  Production hung again the same day.
+
+  **The sweep unit is the smallest thing that can independently fail. A file is
+  not it.** Two calls in one function are two failure sites, and a sweep that
+  lists files reports "all four call sites guarded" while one of them is not.
+
+  The tell that it was wrong is worth having, because it is cheap: the second
+  incident produced 300-second hangs and NOT ONE log line from the new guard.
+  An absent signal from an instrument that should have fired is a positive
+  result — it says the code never reached the guarded line, which locates the
+  problem above it. Do not read a silent instrument as "nothing to report".
+
 ## Seed Data Rules
 
 - Mock/test data lives only in `supabase/seed.sql` — never in migration files
