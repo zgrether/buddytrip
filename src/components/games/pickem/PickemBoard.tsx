@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { PickemMatchCard, h2hNote } from "./PickemMatchCard";
 import { PickemHeadToHead } from "./PickemHeadToHead";
 import { PickemTeamRollUp } from "./PickemTeamRollUp";
@@ -107,6 +108,14 @@ export function PickemBoard({
    */
   const rollUp = pointsMode ? "team_totals" : rollUpSetting;
   const [openMatch, setOpenMatch] = useState<string | null>(null);
+  /**
+   * The head-to-head REPLACES this board — its own header, its own back chevron
+   * — so back has to close it rather than tear the game panel down underneath
+   * it. Third surface in this feature with a back control that the OS back
+   * button did not reach; they are registered together rather than one at a
+   * time, because the shape is what recurs and not the screen.
+   */
+  useModalBackButton(() => setOpenMatch(null), openMatch != null);
   const { resolved, total } = resolvedCount(slate);
 
   /** Sheets that are in no match at all — the individual-matches counterpart of

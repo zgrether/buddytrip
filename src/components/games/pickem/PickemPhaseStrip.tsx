@@ -170,31 +170,31 @@ export function PickemPhaseStrip({
           : null;
 
   /**
-   * HIDDEN UNTIL START IS PRESSED.
+   * ── ONLY while picks are open ────────────────────────────────────────────
    *
-   * A deadline only means something once picks can close against it: offering
-   * it while building would let a runner schedule a close for a game nobody
-   * can pick in yet, and puts a second control on the one screen whose whole
-   * job is Start.
+   * A deadline is a scheduled Stop. It means something in exactly one state —
+   * picks accepting, with a close to schedule — and in every other it is a
+   * control for an event that cannot happen.
    *
- * `building` is exactly "Start has not been pressed", so the phase IS the
-   * condition — no separate flag, and nothing to keep in sync.
+   * It rendered in `locked` too, which is the PRE-START state after a Stop,
+   * and there it showed a spent deadline from the previous cycle beside a
+   * Change button: an answer to a question nobody has asked yet. Before that it
+   * also rendered with results in, where unlocking is refused outright
+   * (migration 165), so the schedule could change nothing at all.
    *
-   * ── ...and HIDDEN AGAIN once results exist ───────────────────────────────
-   *
-   * A deadline is a scheduled close for picks that can reopen. Once anything is
-   * scored they cannot: `set_pickem_phase('unlock')` refuses outright
-   * (migration 165), which is why no Start button is offered either. The block
-   * went on rendering through all of that, with a Set/Change control and two
-   * sentences about unlocking — offering a setting whose only effect is on a
-   * transition the server has closed, one line under a panel saying so.
-   *
-   * Same shape as the two bugs already recorded in `DeadlineBlock` below: a
+   * Both are the same defect this component has now produced four times — a
    * sentence written for the state its author had in mind, rendered on a
-   * condition covering more states than that one. This is the third, and it is
-   * the widest — every locked-with-results game showed it.
+   * condition covering more states than that one. Narrowing the CONDITION to
+   * the single state the block is about is what stops the fifth: there is no
+   * longer a wider case for the copy to be wrong in.
+   *
+   * It costs nothing, because Start already carries the one thing the locked
+   * block was needed for. A game past its deadline is not reopened by clearing
+   * the hand lock, so the deadline had to stay reachable — and Start now clears
+   * the spent deadline itself. The control that had to be there is reachable
+   * through the action instead.
    */
-  const showDeadline = phase !== "building" && !hasResults;
+  const showDeadline = phase === "picks_open";
 
   /**
    * ── The deadline stays IN this panel ─────────────────────────────────────
@@ -437,7 +437,7 @@ function DeadlineBlock({
    * `formatDeadline` is `toLocaleString` — the VIEWER's own timezone, which is
    * the only correct rendering when the schema stores no timezone anywhere.
    * Never format this server-side: the server's zone is not the reader's, and a
-   * lock time an hour out is worse than no lock time.
+   * stop time an hour out is worse than no stop time.
    */
   const lead = set ? new Date(deadline).getTime() - now : 0;
 
@@ -472,8 +472,18 @@ function DeadlineBlock({
    * render in the locked phase may contain a sentence that says picks are open.
    * A per-case assertion would have passed the first fix and missed this.
    */
+  /**
+   * PENDING is not the same as SET, and the strip once said it was — a locked
+   * game read "Auto-locks Fri 11:35 PM · 4h 22m from now" with its picks
+   * already shut by hand.
+   *
+   * The distinction survives the narrowing even though the caller now renders
+   * this in `picks_open` only, where the two coincide. It is kept because it
+   * is the thing being said: the amber means "this will happen on its own", and
+   * a component that assumes its caller's guard is a component that stops being
+   * true when somebody moves it.
+   */
   const pending = set && phase === "picks_open";
-  const passed = set && lead <= 0;
 
   return (
     <div
@@ -501,34 +511,31 @@ function DeadlineBlock({
             color: pending ? "var(--color-bt-owner)" : "var(--color-bt-text)",
           }}
         >
+          {/* "Stops automatically", not "Auto-locks". The control on this
+              panel is Start / Stop, and the deadline is the scheduled version
+              of pressing Stop — so it takes the same word. A second verb for
+              one action is how a runner ends up looking for a Lock button that
+              does not exist. */}
           {!set
             ? "No deadline set"
             : pending
-              ? `Auto-locks ${formatDeadline(deadline)}`
-              : passed
-                ? `Deadline passed ${formatDeadline(deadline)}`
-                : `Deadline ${formatDeadline(deadline)}`}
+              ? `Stops automatically ${formatDeadline(deadline)}`
+              : `Deadline ${formatDeadline(deadline)}`}
         </span>
         <span
           className="mt-0.5 block"
           style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
         >
+          {/* Two states, because the block renders in one phase now. The
+              locked-phase sentences went with the phase: one explained why a
+              Set button was on a closed game, and the other named the trap
+              where unlocking a past-deadline game does nothing — a trap Start
+              now defuses by clearing the spent deadline itself. */}
           {!set
-            ? phase === "locked"
-              ? /* Says why the SET button is here at all on a closed game: a
-                   deadline is what would hold picks shut after an unlock, so on
-                   this screen it is a setting for later rather than a clock. */
-                "Picks are already closed. A deadline would only matter if you unlock them."
-              : "Picks stay open until you lock them."
-            : pending
-              ? lead > 0
-                ? `${formatLeadTime(lead)} from now. Nobody has to do anything.`
-                : "Any moment now. Nobody has to do anything."
-              : passed
-                ? /* The trap, named. Unlocking a game past its deadline does
-                     nothing at all, and the runner has no other way to tell. */
-                  "Unlocking won’t reopen picks until this moves."
-                : "Picks are already closed. Unlocking reopens them until then."}
+            ? "Picks stay open until you press Stop."
+            : lead > 0
+              ? `${formatLeadTime(lead)} from now. Nobody has to do anything.`
+              : "Any moment now. Nobody has to do anything."}
         </span>
       </span>
       <button

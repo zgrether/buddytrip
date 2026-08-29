@@ -126,9 +126,10 @@ describe("ONE runner panel, persisting across every phase", () => {
     expect(strip({ phase: "building", slateCount: 2 })).not.toContain(
       'data-testid="pickem-strip-deadline"'
     );
-    // ...and it appears the moment Start has been.
+    // ...and it appears the moment Start has been — and goes again at Stop,
+    // which is the pre-Start state for the NEXT cycle.
     expect(strip({ phase: "picks_open" })).toContain('data-testid="pickem-strip-deadline"');
-    expect(strip({ phase: "locked" })).toContain('data-testid="pickem-strip-deadline"');
+    expect(strip({ phase: "locked" })).not.toContain('data-testid="pickem-strip-deadline"');
   });
 
   it("hides the deadline once results exist, where it can change nothing", () => {
@@ -146,7 +147,13 @@ describe("ONE runner panel, persisting across every phase", () => {
      * The pair is the assertion: same phase, same everything, results the only
      * difference.
      */
-    expect(strip({ phase: "locked", hasResults: false })).toContain(
+    /**
+     * Both locked cases are now hidden, so `hasResults` no longer decides this
+     * — the PHASE does, and results are one of the states inside it. Asserted
+     * as agreement rather than as two literals: the point is that the block
+     * cannot come back for one flavour of locked game, whatever the flag says.
+     */
+    expect(strip({ phase: "locked", hasResults: false })).not.toContain(
       'data-testid="pickem-strip-deadline"'
     );
     expect(strip({ phase: "locked", hasResults: true })).not.toContain(
@@ -330,27 +337,41 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     );
   });
 
-  it("the deadline appears once picks can close against it, not while building", () => {
-    // Scheduling a close for a game nobody can pick in yet is a state with no
-    // meaning.
+  it("shows the deadline ONLY while picks are open", () => {
+    /**
+     * A deadline is a scheduled Stop, so it means something in exactly one
+     * state. It used to render in `locked` too — the PRE-START state after a
+     * Stop — where it showed a spent deadline from the previous cycle beside a
+     * Change button, answering a question nobody had asked. Before that it
+     * rendered with results in, where reopening is refused outright.
+     *
+     * The three cases together are the assertion: hidden either side, present
+     * in the middle. Only the pair proves the condition is a WINDOW rather than
+     * a flag that happens to be off.
+     */
     expect(strip({ phase: "building", slateCount: 2 })).not.toContain(
       'data-testid="pickem-strip-deadline"'
     );
     expect(strip({ phase: "picks_open" })).toContain('data-testid="pickem-strip-deadline"');
-    expect(strip({ phase: "locked" })).toContain('data-testid="pickem-strip-deadline"');
+    expect(strip({ phase: "locked" })).not.toContain('data-testid="pickem-strip-deadline"');
   });
 
   it("says whether a deadline exists, and what that means either way", () => {
     const none = strip({ phase: "picks_open", deadline: null });
     expect(none).toContain("No deadline set");
-    expect(none).toContain("Picks stay open until you lock them");
+    // START / STOP is the vocabulary. This said "until you lock them", and
+    // there is no Lock control anywhere — a second word for one action is how a
+    // runner ends up hunting for a button that does not exist.
+    expect(none).toContain("Picks stay open until you press Stop.");
+    expect(none).not.toContain("lock them");
 
     const set = strip({
       phase: "picks_open",
       deadline: "2026-09-05T17:00:00.000Z",
       now: Date.parse("2026-09-03T13:00:00.000Z"),
     });
-    expect(set).toContain("Auto-locks ");
+    expect(set).toContain("Stops automatically ");
+    expect(set).not.toContain("Auto-locks");
     // The lead time, and the sentence that is the whole point of the redesign:
     // the runner does not have to be holding the phone when this fires.
     expect(set).toContain("2d 4h from now");
@@ -393,56 +414,24 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     expect(strip({ phase: "picks_open", deadline: null })).toContain("Picks stay open");
   });
 
-  it("explains why SET is offered on a game that is already closed", () => {
-    // The block is the runner's only way out of the past-deadline trap, so it
-    // stays on a locked game — which leaves the button needing a reason. A
-    // deadline there is a setting for after an unlock, not a clock.
-    const html = strip({ phase: "locked", deadline: null });
-    expect(html).toContain("Picks are already closed");
-    expect(html).toContain("would only matter if you unlock them");
-    expect(html).toContain('data-testid="pickem-strip-deadline-edit"');
-  });
 
-  it("stops promising an auto-lock on a game that is already locked", () => {
-    /**
-     * Live, a hand-locked game read "Auto-locks Fri, Aug 28, 11:35 PM · 4h 22m
-     * from now" with its picks already closed — a future event on a game where
-     * there is nothing left to lock.
-     *
-     * PENDING is not the same as SET, and the strip had them as one condition.
-     */
-    const html = strip({
-      phase: "locked",
-      deadline: "2026-09-05T17:00:00.000Z",
-      now: Date.parse("2026-09-03T13:00:00.000Z"),
-    });
-    expect(html).not.toContain("Auto-locks");
-    expect(html).not.toContain("from now");
-    expect(html).not.toContain("--color-bt-warning-faint");
-    expect(html).toContain("Picks are already closed");
-  });
 
-  it("names the UNLOCK TRAP when the deadline has passed", () => {
-    /**
-     * `unlock` clears `picks_locked_at` and nothing else, so a game past its
-     * deadline is not reopened by pressing it (migration 151, restated in 156
-     * and 159). Editing the deadline is the only way out.
-     *
-     * Which is why the block cannot be hidden on a locked game — the tempting
-     * simplification would leave a runner pressing Unlock and watching nothing
-     * happen, with the one control that would help removed from the screen.
-     */
-    const html = strip({
-      phase: "locked",
-      deadline: "2026-09-01T17:00:00.000Z",
-      now: Date.parse("2026-09-03T13:00:00.000Z"),
-    });
-    expect(html).toContain("Deadline passed");
-    expect(html).toContain("Unlocking won’t reopen picks until this moves.");
-    // The way out is still on screen.
-    expect(html).toContain('data-testid="pickem-strip-deadline-edit"');
-  });
 
+  /**
+   * DELETED: three cases about the deadline block on a LOCKED game.
+   *
+   *  - "explains why SET is offered on a game that is already closed"
+   *  - "stops promising an auto-lock on a game that is already locked"
+   *  - "names the UNLOCK TRAP when the deadline has passed"
+   *
+   * All three were true, and all three were about copy for a state the block no
+   * longer renders in. That is the point of the narrowing rather than a cost of
+   * it: each case existed because a sentence written for picks-open had been
+   * rendered on a wider condition, and the third had to explain a trap the
+   * block itself created. Start clears a spent deadline now, so the trap is
+   * gone and the block belongs to one phase — which is a smaller thing to keep
+   * correct than three sentences and their conditions.
+   */
   it("paints the deadline block amber only when something is SCHEDULED", () => {
     /**
      * Amber says "this will happen on its own". On an UNSET deadline it would
