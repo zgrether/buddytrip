@@ -64,7 +64,7 @@ describe("PickemOtherPicks", () => {
      */
     const html = render();
     expect(html).toContain("Bill");
-    expect(html).toContain("Didn’t pick");
+    expect(html).toContain("Nothing submitted");
     expect((html.match(/data-testid="pickem-other-picks-row"/g) ?? []).length).toBe(3);
   });
 
@@ -88,10 +88,10 @@ describe("PickemOtherPicks", () => {
     const shut = rows.filter((r) => r.includes('disabled=""'));
     expect(shut.length).toBe(1);
     expect(shut[0]).toContain("Bill");
-    expect(shut[0]).toContain("Didn’t pick");
+    expect(shut[0]).toContain("Nothing submitted");
     for (const open of rows.filter((r) => !r.includes('disabled=""'))) {
       expect(open).toContain("pts");
-      expect(open).not.toContain("Didn’t pick");
+      expect(open).not.toContain("Nothing submitted");
     }
   });
 

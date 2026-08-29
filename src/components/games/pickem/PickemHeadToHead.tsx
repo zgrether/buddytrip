@@ -94,7 +94,7 @@ export function h2hPill(
   const pill = matchPill(s, resolved, picked);
   if (pill === "final") return "Final";
   if (pill === "clinched") return "Clinched";
-  if (pill === "no-sheet") return "Didn’t pick";
+  if (pill === "no-sheet") return "Nothing submitted";
   return `${s.remaining} left`;
 }
 
