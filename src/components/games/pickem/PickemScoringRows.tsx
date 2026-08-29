@@ -38,6 +38,7 @@ export function PickemScoringRows({
   editable,
   frozenReason,
   showRollUp,
+  slateCount,
   onChange,
   slateRow,
   matchesRow,
@@ -60,6 +61,8 @@ export function PickemScoringRows({
    * not apply at all.
    */
   showRollUp: boolean;
+  /** The slate's size, for "Ranked 16 down to 1" — the concrete version. */
+  slateCount: number;
   /** The page's draft setter. This component owns NO state: it used to keep a
    *  private draft with its own Save button, which made it a third write model
    *  on a page that already had three. Everything now rides the page's one
@@ -101,9 +104,14 @@ export function PickemScoringRows({
           title="Confidence Points"
           testId="row-confidence"
           state="resolved"
+          /* The CONCRETE version, and shorter — the long one truncated to
+              "Ranked, highest to lowest — …" beside the toggle, which is a
+              subtitle that stops before the part carrying the meaning. */
           subtitle={
             settings.useConfidence
-              ? "Ranked, highest to lowest — a correct pick scores its rank"
+              ? slateCount > 0
+                ? `Ranked ${slateCount} down to 1`
+                : "Ranked, highest first"
               : "Every correct pick scores 1"
           }
           control={
@@ -166,7 +174,11 @@ export function PickemTotalPointsRow({
   return (
     <ChecklistRow
       icon={Hash}
-      title={individual ? "Total Points" : "Points for this game"}
+      /* "Total Points" implies a division that team totals does not do, so
+         the label changes with the format — but the design's "Points for this
+         game" is 20 characters and truncated to "Points for this ga…" beside an
+         inline stepper at 390. Shorter, same distinction. */
+      title={individual ? "Total Points" : "Game Points"}
       testId="row-total-points"
       state={pointsTotal ? "resolved" : "empty"}
       subtitle={
@@ -217,7 +229,7 @@ function PointsSubtitle({
   // Team totals awards the whole total to one side and points mode splits it
   // across places, so a per-match figure there would be a number about a
   // mechanic neither of them has.
-  if (!individual) return <>The higher side takes the whole total</>;
+  if (!individual) return <>Higher total takes them all</>;
 
   if (validMatches === 0) {
     return <>Set the matches and each one&rsquo;s share appears here.</>;

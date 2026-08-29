@@ -52,7 +52,7 @@ import {
 } from "@/components/games/pickem/PickemSheetsList";
 import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
-import { ListChecks } from "lucide-react";
+import { ListChecks, Swords } from "lucide-react";
 import {
   msUntilDeadline,
   picksEverOpened,
@@ -229,6 +229,8 @@ export function PickemGameView() {
   const [proxyFor, setProxyFor] = useState<string | null>(null);
   /** Is the Sheets list covering the page. Never a permission — see the list. */
   const [sheetsOpen, setSheetsOpen] = useState(false);
+  /** Is the Matches accordion open on the settings page. */
+  const [matchesOpen, setMatchesOpen] = useState(false);
   /** The subject's name as it was when Save was pressed — the toast reports a
    *  past action, so it must not follow a later rename or refetch. */
   const proxyTargetName = useRef<string | null>(null);
@@ -602,6 +604,18 @@ export function PickemGameView() {
    * settings page genuinely need different answers.
    */
   const individualMatchesStaged = !pointsMode && configDraft.rollUp === "individual_matches";
+  /**
+   * What the Matches row says about itself.
+   *
+   * Both counts come from the DRAFT, so the subtitle moves as a runner pairs
+   * rather than after the Save — the same rule the divisor line follows, and
+   * the reason a half-filled slot counts toward the total but not toward
+   * "assigned": scaffolding is not a match.
+   */
+  const pairsTotal = configDraft.matches.length;
+  const pairsAssigned = configDraft.matches.filter(
+    (m) => m.a[0] != null && m.b[0] != null
+  ).length;
 
   /** The settings shape the scoring rows speak, read off the DRAFT — so the
    *  toggle reflects what will be saved, not what the server currently holds.
@@ -1270,6 +1284,7 @@ export function PickemGameView() {
                   // inert control is the state Phase 7 rejected a third roll_up
                   // CHECK value for — it reads as configured and is not.
                   showRollUp={q.data.game.competition_id != null && !pointsMode}
+                  slateCount={q.data.slate.length}
                   onChange={(next) => {
                     setRollUpDraft(next.rollUp);
                     setUseConfidenceDraft(next.useConfidence);
@@ -1295,25 +1310,54 @@ export function PickemGameView() {
                     />
                   }
                   matchesRow={
-                individualMatchesStaged && q.data.teams.length >= 2 ? (
-                  <PickemMatchBuilder
-                    draft={configDraft.matches}
-                    setDraft={(fn) =>
-                      setMatchesDraft((prev) => fn(prev ?? serverConfigDraft.matches))
-                    }
-                    teams={q.data.teams}
-                    nameMap={nameMap}
-                    colorMap={colorMap}
-                    avatarIconMap={avatarIconMap}
-                    teamColorOf={teamColorOf}
-                    teamForSlot={teamForSlot}
-                    canEdit={canEdit}
-                    pointsTotal={configDraft.pointsTotal}
-                    selector={selector}
-                    setSelector={setSelector}
-                  />
-                ) : null
-              }
+                    /* Rendered whenever the game HAS sides. Under team totals it
+                       is covered by the Requires: scrim rather than hidden —
+                       same treatment as "Requires: Golf Course" — because the
+                       setting is not missing, its prerequisite is. Hiding it
+                       would make the page change shape between two roll-ups and
+                       leave a runner hunting for a row that was there a moment
+                       ago.
+
+                       Below two teams there is nothing to pair at all, so the
+                       row is genuinely absent — a scrim there would promise a
+                       prerequisite that this game can never meet. */
+                    q.data.teams.length >= 2 ? (
+                      <ChecklistRow
+                        icon={Swords}
+                        title="Matches"
+                        testId="row-matches"
+                        state={pairsAssigned > 0 ? "resolved" : "empty"}
+                        subtitle={
+                          pairsTotal === 0
+                            ? "Nobody paired yet"
+                            : `${pairsTotal} singles · ${pairsAssigned} of ${pairsTotal} assigned`
+                        }
+                        /* The STAGED roll-up, not the server's: this page is a
+                           draft, and a scrim reading the saved value would lift
+                           only after a Save the runner has not pressed yet. */
+                        requires={individualMatchesStaged ? undefined : ["Individual matches"]}
+                        expanded={matchesOpen}
+                        onToggle={() => setMatchesOpen((v) => !v)}
+                      >
+                        <PickemMatchBuilder
+                          draft={configDraft.matches}
+                          setDraft={(fn) =>
+                            setMatchesDraft((prev) => fn(prev ?? serverConfigDraft.matches))
+                          }
+                          teams={q.data.teams}
+                          nameMap={nameMap}
+                          colorMap={colorMap}
+                          avatarIconMap={avatarIconMap}
+                          teamColorOf={teamColorOf}
+                          teamForSlot={teamForSlot}
+                          canEdit={canEdit}
+                          pointsTotal={configDraft.pointsTotal}
+                          selector={selector}
+                          setSelector={setSelector}
+                        />
+                      </ChecklistRow>
+                    ) : null
+                  }
                 />
             )
           }
