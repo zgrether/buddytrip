@@ -5,6 +5,7 @@ import { ArrowUpDown, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
 import { slateSetChanged } from "@/lib/pickemSheet";
 import { ReorderableList } from "@/components/ReorderableList";
+import { groupSlateByDay, splitKickoffDay } from "@/lib/pickemSlateDays";
 import { Stepper } from "@/components/games/Stepper";
 import { ZoneHeader } from "@/components/games/ZoneHeader";
 import { TYPE_SCALE } from "@/lib/typeScale";
@@ -278,11 +279,12 @@ export function PickemSlateModal({
 
   const formsUsable = editable && !reorderMode;
 
-  const rows = draft.map((g, i) => (
+  const rowFor = (g: SlateDraftGame, i: number, kickoffOverride?: string | null) => (
     <div key={g.id} className="flex flex-col gap-1.5">
       <SlateRow
         index={i}
         game={g}
+        kickoffOverride={kickoffOverride}
         editable={formsUsable}
         beingEdited={editingId === g.id}
         onEdit={() => editRow(g.id)}
@@ -311,7 +313,21 @@ export function PickemSlateModal({
         />
       )}
     </div>
-  ));
+  );
+
+  // NOT `draft.map(rowFor)`: map passes the ARRAY as a third argument, which
+  // would land in `kickoffOverride`.
+  const rows = draft.map((g, i) => rowFor(g, i));
+
+  /**
+   * The slate as day runs, or null when it cannot be read that way.
+   *
+   * NOT while reordering: drag is over ONE list, and headings interleaved with
+   * the thing being dragged would say the groups are boundaries when they are
+   * not. The runner is editing the order itself there, so the order is the only
+   * structure worth showing.
+   */
+  const dayGroups = reorderMode ? null : groupSlateByDay(draft);
 
   return (
     <Sheet onClose={onClose} title="The slate" testId="pickem-slate-sheet">
@@ -394,6 +410,45 @@ export function PickemSlateModal({
                 <SlateRow index={i} game={byId.get(id)!} editable={false} beingEdited={false} />
               )}
             />
+          ) : dayGroups ? (
+            /* Sixteen rows become four short lists, and the day stops repeating
+               on every line — which is what was eating the row width. */
+            <div className="flex flex-col gap-3" data-testid="pickem-slate-days">
+              {dayGroups.map((group, gi) => {
+                // The running index across groups, so the ordinal on a row is
+                // still its position in the SLATE — the number every ranking is
+                // against — rather than its position within its day.
+                const before = dayGroups
+                  .slice(0, gi)
+                  .reduce((n, x) => n + x.games.length, 0);
+                return (
+                  <div key={`${group.key}-${gi}`} className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2 px-1">
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                          color: "var(--color-bt-text-dim)",
+                        }}
+                      >
+                        {group.day}
+                      </span>
+                      <span className="h-px flex-1" style={{ background: "var(--color-bt-border)" }} />
+                      <span
+                        style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+                      >
+                        {group.games.length} game{group.games.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    {group.games.map((g, i) =>
+                      rowFor(g, before + i, splitKickoffDay(g.kickoff)?.rest ?? null)
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="flex flex-col gap-1.5">{rows}</div>
           )}
@@ -473,12 +528,21 @@ export function PickemSlateModal({
 function SlateRow({
   index,
   game,
+  kickoffOverride,
   editable,
   beingEdited,
   onEdit,
 }: {
   index: number;
   game: SlateDraftGame;
+  /**
+   * The kickoff with its day removed, when a day HEADING is carrying it.
+   *
+   * Undefined leaves the row's own string alone. This is the second half of the
+   * grouping's width win — "Sat 3:30p" under a SAT heading says Saturday twice,
+   * and the repetition is what was eating the room the matchup needs.
+   */
+  kickoffOverride?: string | null;
   editable: boolean;
   beingEdited: boolean;
   onEdit?: () => void;
@@ -486,7 +550,12 @@ function SlateRow({
   // The stripe, the badges and the matchup text all live in `slateRowVisual`
   // now — the SHEET renders the same sixteen contests and must not re-parse
   // them (HANDOFF §3). This markup is the original; the module is where it went.
-  const body = <MatchupLine game={game} leading={<RowOrdinal>{index + 1}</RowOrdinal>} />;
+  const body = (
+    <MatchupLine
+      game={kickoffOverride === undefined ? game : { ...game, kickoff: kickoffOverride }}
+      leading={<RowOrdinal>{index + 1}</RowOrdinal>}
+    />
+  );
   const surface = pickemRowSurface({ weighted: game.multiplier > 1, active: beingEdited });
 
   if (!editable) {
