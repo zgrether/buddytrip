@@ -764,6 +764,12 @@ export function PickemGameView() {
    * all (`_pickem_write_sheet` refuses an incomplete one), so there is no state
    * where a row exists and the person has not submitted.
    */
+  /**
+   * Does the runner's phase strip render? Read by the strip itself AND by the
+   * closed banner, which stands in for it when it is absent.
+   */
+  const runnerStrip = canEdit;
+
   const { resolved: resolvedGames, total: totalGames } = resolvedCount(q.data.slate);
   const sheetTotals = Object.entries(q.data.sheets).map(([userId, picks]) => ({
     userId,
@@ -815,8 +821,13 @@ export function PickemGameView() {
       {/* The runner's control, above everything the participant sees. It does
           NOT replace the countdown below: the runner is a participant too —
           there is no separate runner's sheet — so "picks close in 4h 59m" is
-          their picker copy and still has to be there. */}
-      {canEdit && (
+          their picker copy and still has to be there.
+
+          `runnerStrip` rather than `canEdit` inline, because the closed banner
+          below reads the SAME fact from the other side — it renders only when
+          this does not. Two conditions that must always disagree drift exactly
+          like two that must always agree (#13), so there is one of them. */}
+      {runnerStrip && (
         <PickemPhaseStrip
           // Migration 165 refuses unlock once anything is scored; this is why
           // the move is not offered. Same predicate the server uses, mirrored
@@ -856,8 +867,15 @@ export function PickemGameView() {
         <>
           {/* FIRST, because this is what a person lands in the instant their
               countdown reaches zero — and until it was hoisted out of the sheet
-              that transition was silent. */}
-          <PickemClosedBanner closure={pickemClosure(clock, now)} />
+              that transition was silent.
+
+              For a MEMBER only. The runner's strip two blocks up already says
+              "Picks are locked · Every sheet is closed and revealed to the
+              trip", so a runner was reading one fact twice within 100px — and
+              the banner is the weaker of the two, since the strip also carries
+              the way back. The sheet keeps `closedBannerHoisted` either way: it
+              must not grow a third copy for the reader who loses this one. */}
+          {!runnerStrip && <PickemClosedBanner closure={pickemClosure(clock, now)} />}
 
           <PickemTwoUp
             /* Null, not zero, for somebody with no sheet: "0 pts · 16 of 16"
