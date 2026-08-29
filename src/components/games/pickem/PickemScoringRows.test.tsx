@@ -25,6 +25,7 @@ const render = (over: Partial<Parameters<typeof PickemScoringRows>[0]> = {}) =>
       editable
       frozenReason={null}
       showRollUp
+      slateCount={16}
       onChange={() => {}}
       {...over}
     />
@@ -172,7 +173,7 @@ describe("the scoring settings", () => {
 
   it("says what a pick is worth in plain terms, and changes with the switch", () => {
     expect(render({ settings: { ...ON, useConfidence: true } })).toContain(
-      "a correct pick scores its rank"
+      "Ranked 16 down to 1"
     );
     expect(render({ settings: { ...ON, useConfidence: false } })).toContain(
       "Every correct pick scores 1"
@@ -202,7 +203,7 @@ describe("the scoring settings", () => {
     // the page's draft says one thing and the row shows another.
     const on = render({ settings: { rollUp: "team_totals", useConfidence: true } });
     const off = render({ settings: { rollUp: "team_totals", useConfidence: false } });
-    expect(on).toContain("a correct pick scores its rank");
+    expect(on).toContain("Ranked 16 down to 1");
     expect(off).toContain("Every correct pick scores 1");
     // ...and the two really are different renders of the same row, not two
     // different rows: the id is stable across both.
