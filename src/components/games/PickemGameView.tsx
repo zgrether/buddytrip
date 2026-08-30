@@ -295,8 +295,42 @@ export function PickemGameView() {
    * inside a thunk — `setPendingLeave(() => go)` would CALL `go`, since React
    * treats a function argument as an updater.
    */
+  /**
+   * ── AND ONLY WHILE THE DRAFT CAN STILL BE COMMITTED ──────────────────────
+   *
+   * The dirty flag outlived the ability to save, and that made a trap with one
+   * exit that destroyed the work:
+   *
+   *   1. a sheet is open with unsaved picks
+   *   2. the runner closes picking
+   *   3. every tab is guarded, including the tab the sheet is ON, so tapping
+   *      Picks raises the prompt instead of opening it
+   *   4. Save is refused by the server — picks are closed, and will stay closed
+   *   5. Keep editing dismisses the prompt and leaves you where you were, which
+   *      is not the sheet, so it reads as a button that does nothing
+   *   6. Discard is the only door, and it is the one that throws the work away
+   *
+   * The guard's premise is "you can still save this if you want to". Once picks
+   * close that premise is false, so the guard has nothing to offer and asking
+   * the question is worse than not asking it: two of its three answers are
+   * walls.
+   *
+   * So it asks whether the draft is SAVEABLE, not merely whether it differs.
+   * `picksOpen` is the same predicate the sheet's own `editable` uses and the
+   * same one the server gates the write on, so the prompt cannot offer a save
+   * the RPC then refuses.
+   *
+   * ── What is still lost, stated plainly ───────────────────────────────────
+   *
+   * Leaving now drops the draft, because the sheet unmounts with the tab. That
+   * is not a regression — Discard did exactly this, and the picks were already
+   * unsaveable by the time anyone could choose. What the reader gets instead of
+   * a dialog is the closed banner on the sheet, and, if they tried to save, the
+   * error below it. A one-time "your unsaved picks did not make it" notice
+   * would be better still and is NOT built here; see the PR.
+   */
   const leaveSheet = (go: () => void) => {
-    if (sheetDirty.current) {
+    if (sheetDirty.current && picksOpen(clock, now)) {
       setPendingLeave(() => go);
       return;
     }

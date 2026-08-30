@@ -405,11 +405,59 @@ describe("a failed save", () => {
     // CLAUDE.md #15 / §7.4. The sheet below the error is intact and still
     // editable — the failure mode this guards is a screen that clears back to
     // defaults and looks like nothing happened.
-    const html = render({ saveError: "Picks are closed — the deadline passed." });
+    const html = render({ saveError: "Something went wrong." });
     expect(html).toContain('data-testid="pickem-save-error"');
     expect(html).toContain("Your sheet is still here");
     expect(html.split('data-testid="pickem-sheet-row"').length - 1).toBe(SLATE.length);
     expect(tagWith(html, 'data-testid="pickem-pick-away"')).not.toContain("disabled");
+  });
+
+  /**
+   * ── "TRY AGAIN" ONLY WHERE TRYING AGAIN CAN WORK ─────────────────────────
+   *
+   * Reported from the running app. A save refused because PICKS ARE CLOSED came
+   * back as "Picks are closed — the deadline passed or the runner closed them.
+   * Your sheet is still here — try again." Pressing Save again produces the
+   * identical sentence, for ever: the tail named the one action guaranteed to
+   * fail.
+   *
+   * The condition is `editable` — the same predicate the server gates the write
+   * on — rather than a match on the message, so the copy cannot promise a retry
+   * the RPC would refuse.
+   */
+  it("does NOT say try again once picks have closed", () => {
+    const html = render({
+      editable: false,
+      saveError: "Picks are closed — the deadline passed or the runner closed them.",
+    });
+    expect(html).toContain('data-testid="pickem-save-error"');
+    // The refusal itself survives — dropping the tail must not drop the reason.
+    expect(html).toContain("Picks are closed");
+    expect(html).not.toContain("try again");
+    expect(html).toContain("Your unsaved picks were not recorded");
+  });
+
+  it("STILL says try again on a retryable failure", () => {
+    /**
+     * The control, and the case that separates this from a build that just
+     * deleted the tail. A network drop or a conflict happens on a still-open
+     * sheet and is worth retrying — losing that would be the opposite error.
+     */
+    const html = render({ editable: true, saveError: "Something went wrong." });
+    expect(html).toContain("Your sheet is still here — try again.");
+    expect(html).not.toContain("were not recorded");
+  });
+
+  it("says it about THEIR sheet when entering for somebody else", () => {
+    // The proxy wording follows the same branch, so a fix to one arm cannot
+    // leave the other saying "your" about a sheet that is not yours.
+    const html = render({
+      editable: false,
+      subject: { userId: "u2", name: "Ty", isSelf: false, isGuest: false },
+      saveError: "Picks are closed.",
+    });
+    expect(html).toContain("These unsaved picks were not recorded");
+    expect(html).not.toContain("Your unsaved picks");
   });
 });
 

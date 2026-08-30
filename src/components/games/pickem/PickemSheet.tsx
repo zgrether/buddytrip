@@ -537,8 +537,38 @@ export function PickemSheet({
             color: "var(--color-bt-danger)",
           }}
         >
-          {saveError} {subject.isSelf ? "Your sheet is" : "The sheet is"} still here — try
-          again.
+          {/*
+            ── "TRY AGAIN" ONLY WHERE TRYING AGAIN CAN WORK ─────────────────
+
+            The tail was unconditional, so the one refusal a retry can never
+            clear got it too: a save that failed because PICKS ARE CLOSED came
+            back as "Picks are closed — the deadline passed or the runner
+            closed them. Your sheet is still here — try again." Pressing Save
+            again produces the identical sentence, for ever.
+
+            That is the refusal rule — a message must name an action the reader
+            can take — and this one named the single action guaranteed to fail.
+
+            `editable` is the right condition rather than matching on the
+            message: it is the same predicate the server gates the write on, so
+            the copy cannot promise a retry the RPC would refuse. Every OTHER
+            failure here — a network drop, a conflict, a validation refusal —
+            happens on a still-open sheet and IS worth retrying, so those keep
+            the tail they had.
+          */}
+          {saveError}{" "}
+          {editable ? (
+            <>{subject.isSelf ? "Your sheet is" : "The sheet is"} still here — try again.</>
+          ) : (
+            /* No instruction, because there is no longer an action. Saying so
+               is the whole of what this reader needs — and inventing one ("ask
+               the runner to reopen") would be the same mistake again, since
+               migration 165 refuses reopening once anything is scored. */
+            <>
+              {subject.isSelf ? "Your unsaved picks were" : "These unsaved picks were"} not
+              recorded.
+            </>
+          )}
         </p>
       )}
 
