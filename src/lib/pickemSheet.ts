@@ -7,26 +7,69 @@
  * on what "a complete sheet" means, and three implementations of that would
  * agree today and drift on the first change to the slate.
  *
- * ── The one idea everything here follows from ───────────────────────────────
+ * ── NOBODY HAS PICKS UNTIL THEY SUBMIT ─────────────────────────────────────
  *
- * **A sheet is always complete and always valid** (spec §4). There is no
- * partial state, no "not started", no forfeit. Everyone begins with the home
- * team in every game and the runner's slate order as their ranking, and PICKING
- * IS EDITING. That is not a convenience — it is what removes the entire class
- * of "what happens if someone only picked nine" from the engine, the board, and
- * every screen downstream.
+ * This module used to open on the home team in every game, on the reasoning
+ * that a sheet is always complete and always valid, with no partial state and
+ * no forfeit — so the engine would never have to answer "what if someone
+ * picked nine".
  *
- * So `reconcile` never returns something unsubmittable. Given a slate that has
- * changed underneath a stored sheet, given ranks that were cleared by a reopen,
- * given nothing stored at all, it returns a sheet a person could submit as-is —
- * and a flag saying whether they should be told their ranking was reset.
+ * **The code has never done that.** Rows are written on Save and nowhere else,
+ * so a person who never submitted holds no rows and scores zero. Verified on
+ * the live game rather than argued: three people with no `pickem_picks` rows
+ * and no points, beside sixteen rows on every submitted sheet. The engine has
+ * answered the forfeit question correctly since it was built; only the SHEET
+ * pretended otherwise, by opening pre-filled with an answer the server would
+ * never store unless the person pressed Save.
+ *
+ * So the default is REMOVED rather than implemented. A fresh sheet has nothing
+ * selected, and `All home` / `All away` put the old default one tap away —
+ * reproducing it exactly, with the difference that somebody chose it.
+ *
+ * Three things fall out, and each had a workaround before:
+ *
+ *   - **You can tell what you picked.** Pre-filled, a home team you chose and
+ *     one you never touched rendered identically; the design worked around it
+ *     with "untouched in plain text, accent on tap". Now it is structural.
+ *   - **The progress count is real.** "All 16 picked" was true of a sheet
+ *     nobody had opened, which is why the design left the count out. "12 of 16"
+ *     is a fact worth showing.
+ *   - **A missing sheet reads as missing.** "Nothing submitted" is what
+ *     happened; "Didn't pick" implied a choice.
+ *
+ * What did NOT change: `_pickem_write_sheet` still refuses an incomplete
+ * sheet, so it is still all N or none. `completedPicks` is how that is enforced
+ * on the way out — an incomplete sheet cannot be turned into a payload at all,
+ * rather than merely having its button disabled.
  */
 
 export type PickSide = "away" | "home";
 
-/** One call on one contest. `confidence` is null when the game runs with
- *  confidence off — never a stored 1 (migration 146's column comment). */
+/**
+ * One row of a sheet being edited.
+ *
+ * `pick` is nullable and that is the whole change: NOT YET CHOSEN is a state a
+ * sheet can be in now, and it is the state every sheet starts in.
+ *
+ * `confidence` is null when the game runs with confidence off — never a stored
+ * 1 (migration 146's column comment). The two nulls mean different things and
+ * are deliberately not folded together: an unpicked game still has a rank.
+ */
 export interface SheetPick {
+  slateGameId: string;
+  pick: PickSide | null;
+  confidence: number | null;
+}
+
+/**
+ * A sheet that can actually be sent — every game called.
+ *
+ * The narrowing exists so an incomplete sheet is UNSENDABLE rather than merely
+ * disabled. A disabled button is a promise the caller can forget to keep;
+ * `completedPicks` returning null is one `tsc` enforces at the only place a
+ * payload is built.
+ */
+export interface SubmittedPick {
   slateGameId: string;
   pick: PickSide;
   confidence: number | null;
@@ -47,33 +90,70 @@ export interface SheetSettings {
 }
 
 /**
- * The sheet everyone starts with: home team, slate order.
+ * The sheet everyone starts with: NOTHING picked, slate order.
  *
- * ── Why HOME, and why the FIRST slate game gets the HIGHEST rank ───────────
+ * ── The ranking still has a default, and the pick does not ────────────────
  *
- * Home is the closest thing to a neutral default that is also a real answer —
- * it wins more often than not, it needs no data the app has, and it is the same
- * for everybody, which matters because a default that varied by person would be
- * a hidden edge.
+ * They are different kinds of thing. A ranking is an ORDER over games, and
+ * every order is as valid as any other — the runner's own slate order is the
+ * one the picker just read the games in, so starting there is coherent rather
+ * than arbitrary and costs nobody an opinion they did not hold.
  *
- * The ranking is the runner's own order, highest first. He built the slate with
- * the marquee game at the top; borrowing that ordering means an untouched sheet
- * is at least *coherent* rather than arbitrary, and it makes the drag list start
- * in the order the picker just read the games in.
+ * A pick is a CLAIM about a contest, and there is no neutral one. Home was
+ * chosen because it wins more often than not and is the same for everybody,
+ * which is a fine tiebreak and a poor default: it put an opinion on the sheet
+ * that the person had not formed, and then scored it.
  *
- * Rank N..1 by position, so `defaultSheet` of a 16-game slate hands game 1 a 16.
+ * Rank N..1 by position, so a 16-game slate hands game 1 a 16.
  */
-export function defaultSheet(slate: SheetSlateGame[], useConfidence = true): SheetPick[] {
+export function emptySheet(slate: SheetSlateGame[], useConfidence = true): SheetPick[] {
   const n = slate.length;
   return slate.map((g, i) => ({
     slateGameId: g.id,
-    pick: "home" as PickSide,
+    pick: null,
     confidence: useConfidence ? n - i : null,
   }));
 }
 
+/**
+ * Both shortcuts, in one function — All home and All away.
+ *
+ * Sets PICKS ONLY. The ranking is untouched by design: the shortcut is for
+ * somebody who does not want to make sixteen calls, and re-ordering their list
+ * as a side effect would be a second decision they did not ask for. It is also
+ * what makes "All home, then Save" reproduce the old default sheet exactly,
+ * ranking included — the same sheet, now chosen.
+ */
+export function fillAll(picks: SheetPick[], side: PickSide): SheetPick[] {
+  return picks.map((p) => ({ ...p, pick: side }));
+}
+
+/** How many games still have no call — the number beside a disabled Save. */
+export function unpickedCount(picks: SheetPick[]): number {
+  return picks.filter((p) => p.pick == null).length;
+}
+
+/**
+ * The payload, or null if the sheet is not finished.
+ *
+ * `_pickem_write_sheet` refuses an incomplete sheet, so this is the client half
+ * of a rule the server already holds — and it is a NARROWING rather than a
+ * check, so the incomplete case cannot reach a mutation by being forgotten.
+ */
+export function completedPicks(picks: SheetPick[]): SubmittedPick[] | null {
+  const out: SubmittedPick[] = [];
+  for (const p of picks) {
+    if (p.pick == null) return null;
+    out.push({ slateGameId: p.slateGameId, pick: p.pick, confidence: p.confidence });
+  }
+  return out;
+}
+
 export interface ReconciledSheet {
-  /** Always complete, always valid, always submittable. */
+  /**
+   * Folded onto the current slate — NOT necessarily complete. Completeness is
+   * the person's job now, and `unpickedCount` is how far off they are.
+   */
   picks: SheetPick[];
   /**
    * True when the person had a sheet and its ranking is no longer theirs — a
@@ -91,12 +171,16 @@ export interface ReconciledSheet {
  *
  * The four inputs this has to survive, all reachable:
  *
- *   1. nothing stored — a fresh sheet
+ *   1. nothing stored — an EMPTY sheet, nothing selected
  *   2. a full stored sheet matching the slate — return it
  *   3. stored picks whose ranks were nulled by a reopen — keep the WINNERS,
  *      re-default the ranking, and raise `rankingReset`
  *   4. a slate that gained or lost games since the sheet was saved — keep the
- *      picks that still have a game, default the rest, ranking reset
+ *      picks that still have a game, leave the new ones UNPICKED, ranking reset
+ *
+ * Case 4 is where the removed default did real harm: a runner adding a
+ * seventeenth game silently answered it for everybody, and the next Save
+ * submitted an opinion nobody had been shown.
  *
  * Cases 3 and 4 collapse into one test: **is the stored ranking still exactly
  * 1..N over this slate?** If it is, it is usable whatever happened. If it is
@@ -116,9 +200,13 @@ export function reconcileSheet(
   const byGame = new Map(stored.map((p) => [p.slateGameId, p]));
   const submitted = stored.length > 0;
 
+  // `?? null` — a game with nothing stored is UNPICKED, not a home pick. On a
+  // first-time sheet that is every game; on a sheet whose slate has grown since
+  // it was saved it is exactly the new games, which is the right answer for
+  // both without a branch.
   const winners: SheetPick[] = slate.map((g, i) => ({
     slateGameId: g.id,
-    pick: byGame.get(g.id)?.pick ?? "home",
+    pick: byGame.get(g.id)?.pick ?? null,
     confidence: slate.length - i,
   }));
 
@@ -178,8 +266,20 @@ export function applyOrder(picks: SheetPick[], orderedIds: string[]): SheetPick[
   return picks.map((p) => ({ ...p, confidence: rank.get(p.slateGameId) ?? p.confidence }));
 }
 
-/** Flip one game's winner, leaving the ranking alone. */
-export function setPick(picks: SheetPick[], slateGameId: string, pick: PickSide): SheetPick[] {
+/**
+ * Set or CLEAR one game's winner, leaving the ranking alone.
+ *
+ * Null is a real argument now. Tapping the team you already took un-takes it,
+ * which is the only way back to "I have not decided" — and without it the very
+ * first tap on a row would be irreversible, on a sheet whose whole premise is
+ * that an opinion has to be given rather than assumed. It is also what keeps
+ * the progress count honest: it has to be able to go down.
+ */
+export function setPick(
+  picks: SheetPick[],
+  slateGameId: string,
+  pick: PickSide | null
+): SheetPick[] {
   return picks.map((p) => (p.slateGameId === slateGameId ? { ...p, pick } : p));
 }
 

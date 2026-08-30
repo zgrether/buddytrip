@@ -1,7 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PickemSheet, type PickemSheetGame } from "./PickemSheet";
-import { defaultSheet, type SheetPick } from "@/lib/pickemSheet";
+import { emptySheet, fillAll, type SheetPick } from "@/lib/pickemSheet";
+
+/**
+ * The old default sheet — all home, slate order — as a FIXTURE.
+ *
+ * Several cases below need a COMPLETE sheet to be about anything: submitted
+ * state, locked state, whose sheet it is. They used to get one from
+ * `defaultSheet`, which is gone because nothing is pre-filled any more.
+ * Building it from the two functions that replaced it keeps those cases testing
+ * what they were written to test — and it is exactly the sheet a person now
+ * gets by pressing All home.
+ */
+const filledSheet = (): SheetPick[] => fillAll(emptySheet(SLATE), "home");
 
 /**
  * The sheet, rendered in each of the states a participant can actually be in.
@@ -81,18 +93,65 @@ describe("the sheet, confidence ON", () => {
     expect(html.split('data-testid="pickem-sheet-row"').length - 1).toBe(SLATE.length);
   });
 
-  it("opens on a COMPLETE sheet — home team everywhere", () => {
-    // Spec §4. Nobody has a partial sheet, ever — the default is derived at
-    // read time, never written, so this is what the FIRST render shows.
+  it("opens on an EMPTY sheet — nothing selected on either side", () => {
+    /**
+     * Nobody has picks until they submit. The sheet used to open on the home
+     * team in every game, on a rule the code never implemented: rows are
+     * written on Save and nowhere else, so a person who never submitted holds
+     * no rows and scores zero. Only the SHEET pretended otherwise.
+     *
+     * Asserted per SIDE, and both sides, because "nothing picked" is exactly
+     * what a build that lost track of which side won would also produce for one
+     * of them. The row count is the third leg: this is not passing by rendering
+     * an empty list.
+     */
     const html = render();
-    expect(html.split('data-testid="pickem-team-home"').length - 1).toBe(SLATE.length);
+    expect(html.split('data-testid="pickem-sheet-row"').length - 1).toBe(SLATE.length);
 
-    // Every home target taken, every away target not. Asserted per SIDE rather
-    // than by counting "picked" tags, which cannot tell which side won.
     const homePicked = html.split('data-testid="pickem-team-home" data-picked="true"').length - 1;
     const awayPicked = html.split('data-testid="pickem-team-away" data-picked="true"').length - 1;
-    expect(homePicked).toBe(SLATE.length);
+    expect(homePicked).toBe(0);
     expect(awayPicked).toBe(0);
+  });
+
+  it("refuses to save an empty sheet, and says how far off it is", () => {
+    /**
+     * The pair to the case above. An empty sheet that could be SENT would be
+     * the same bug wearing different clothes — a sheet of nothing scored as a
+     * sheet.
+     *
+     * The count is asserted alongside, because a disabled button with no
+     * explanation is the silent refusal this feature keeps removing.
+     */
+    const html = render();
+    expect(tagWith(html, 'data-testid="pickem-submit"')).toContain("disabled");
+    expect(html).toContain(`0 of ${SLATE.length} picked`);
+  });
+
+  it("never says SAVED over a sheet that holds nothing", () => {
+    /**
+     * Caught in the look, not here. `needsSave` is false for two OPPOSITE
+     * reasons — nothing to save, and something to save that cannot be sent yet
+     * — so a label keyed on it alone read "Saved" over an empty sheet. The one
+     * word a person would take as confirmation, on a sheet with nothing in it.
+     *
+     * The pair is the assertion: the same disabled button says the two
+     * different things it means.
+     */
+    expect(render()).toContain(">Save picks<");
+    expect(render()).not.toContain(">Saved<");
+    expect(render({ picks: filledSheet() })).toContain(">Saved<");
+  });
+
+  it("ALL HOME fills the sheet and enables Save", () => {
+    // The shortcut is what makes removing the pre-fill affordable: the old
+    // default position is one tap away, and now somebody chose it.
+    const html = render({ picks: filledSheet() });
+    const homePicked = html.split('data-testid="pickem-team-home" data-picked="true"').length - 1;
+    expect(homePicked).toBe(SLATE.length);
+    expect(html).toContain(`${SLATE.length} of ${SLATE.length} picked`);
+    expect(html).toContain('data-testid="pickem-sheet-all-home"');
+    expect(html).toContain('data-testid="pickem-sheet-all-away"');
   });
 
   it("every row carries spread, kickoff, note and multiplier when present", () => {
@@ -131,7 +190,7 @@ describe("the sheet, confidence ON", () => {
   });
 
   it("shows no submission count anywhere — that is the runner's number (§7.3)", () => {
-    const html = render({ picks: defaultSheet(SLATE) });
+    const html = render({ picks: filledSheet() });
     expect(html).not.toMatch(/\d+\s*(of|\/)\s*\d+\s*submitted/i);
     expect(html).not.toMatch(/submitted/i);
   });
@@ -154,13 +213,16 @@ describe("the sheet, confidence OFF", () => {
     expect(html).toContain('data-testid="pickem-team-home"');
   });
 
-  it("the save bar does not claim the sheet is RANKED", () => {
+  it("the progress count does not claim the sheet is RANKED", () => {
     // Found at the Cadence look, not here: the bar read "All 16 picked and
     // ranked" on a game with no ranking. Same falsehood rule as the explanation
     // copy, one component further down, and invisible unless you open the off
     // variant — which is why §10 asks for two looks rather than one.
-    const html = render({ settings: OFF });
-    expect(html).toContain("All 3 picked");
+    //
+    // The line it lived on is gone with the save bar; the count that replaced
+    // it inherits the rule, and has no room to break it.
+    const html = render({ settings: OFF, picks: filledSheet() });
+    expect(html).toContain("3 of 3 picked");
     expect(html).not.toContain("and ranked");
   });
 
@@ -214,10 +276,15 @@ describe("the sheet carries NO explanation of its own", () => {
 
 describe("submitted, reset and locked", () => {
   it("SUBMITTING DOES NOT LOCK — the pick controls stay live", () => {
-    const html = render({ picks: defaultSheet(SLATE) });
+    const html = render({ picks: filledSheet() });
     // The attribute on the button's OWN tag, not the `disabled:` Tailwind class.
     expect(tagWith(html, 'data-testid="pickem-team-away"')).not.toContain("disabled");
-    expect(html).toContain("Saved · all chalk, nothing off the home teams yet");
+    // Submitted and unchanged: the button says so and stays refused, while the
+    // rows above it stay live. "Saved · all chalk…" went with the save bar —
+    // that phrasing existed to measure DEPARTURE from a pre-fill that no longer
+    // happens.
+    expect(tagWith(html, 'data-testid="pickem-submit"')).toContain("disabled");
+    expect(html).toContain(">Saved<");
   });
 
   it("a reopened slate says so, and asks for the ranking back", () => {
@@ -237,7 +304,7 @@ describe("submitted, reset and locked", () => {
   });
 
   it("a locked sheet is read-only, and says who can change it (nobody)", () => {
-    const html = render({ editable: false, picks: defaultSheet(SLATE) });
+    const html = render({ editable: false, picks: filledSheet() });
     expect(html).toContain('data-testid="pickem-sheet-locked"');
     // Substring stops before the apostrophe: the copy now reads "whoever's
     // running it" with a curly quote, which renders as an HTML entity.
@@ -262,7 +329,7 @@ describe("submitted, reset and locked", () => {
     const closedAt = new Date(2026, 10, 8, 11, 0).getTime();
     const html = render({
       editable: false,
-      picks: defaultSheet(SLATE),
+      picks: filledSheet(),
       closure: { at: closedAt, reason: "deadline" as const },
     });
     expect(html).toContain("Picks closed at");
@@ -277,7 +344,7 @@ describe("submitted, reset and locked", () => {
     // chance to change something.
     const html = render({
       editable: false,
-      picks: defaultSheet(SLATE),
+      picks: filledSheet(),
       closure: { at: Date.now(), reason: "locked" as const },
     });
     expect(html).toContain("ended early");
@@ -290,7 +357,7 @@ describe("submitted, reset and locked", () => {
   });
 
   it("a locked sheet shows no countdown", () => {
-    const html = render({ editable: false, picks: defaultSheet(SLATE) });
+    const html = render({ editable: false, picks: filledSheet() });
     expect(html).not.toContain('data-testid="pickem-countdown"');
   });
 });
@@ -321,28 +388,43 @@ describe("the countdown", () => {
   });
 });
 
-describe("the footer names whose sheet this is", () => {
+describe("whose sheet this is, once the footer is gone", () => {
   /**
    * The only way proxy entry goes badly is somebody editing what they think is
-   * their own sheet, and the sheet is POPULATED in proxy mode — it looks
-   * exactly like a filled-in sheet, because it is one.
+   * their own sheet, so the screen has to say whose it is.
    *
-   * So the last line under the thumb that is about to press Save says whose it
-   * is, in every state. Nothing is lost by giving that line up: the BUTTON
-   * already carries the save state.
+   * It used to be the save bar’s status line, and that line is gone with the
+   * bar — the two rows that absorbed the bar carry a hint and a count, both of
+   * which are about the SHEET rather than about its owner.
+   *
+   * Nothing was lost, and the replacement is louder: proxy mode renders
+   * `PickemProxyBanner` ABOVE the sheet, a band rather than a caption, in a
+   * treatment a 11px status line could not compete with. This component does
+   * not render it — the view does, above this — which is why the assertion
+   * here is that the sheet does not CONTRADICT it.
    */
-  it("says who it belongs to when it is not yours", () => {
+  it("says nothing about ownership either way, leaving it to the banner", () => {
+    const theirs = render({
+      subject: { userId: "ty", name: "Ty", isSelf: false, isGuest: false },
+    });
+    const mine = render();
+    for (const html of [theirs, mine]) {
+      expect(html).not.toContain("Entering for");
+      expect(html).not.toContain("not your sheet");
+    }
+    // ...and the row that replaced that line is present on both, so this is not
+    // passing because the header vanished.
+    expect(theirs).toContain("picked");
+    expect(mine).toContain("picked");
+  });
+
+  it("still refuses to send somebody else an unfinished sheet", () => {
+    // The gate is about the SHEET, not the subject — asserted on a proxy
+    // subject because that is the path where a hole is least likely to be
+    // noticed by the person it belongs to.
     const html = render({
       subject: { userId: "ty", name: "Ty", isSelf: false, isGuest: false },
     });
-    expect(html).toContain("Entering for Ty · not your sheet");
-  });
-
-  it("keeps the ordinary status on your own sheet", () => {
-    // The pair is the assertion — a bar that always said "Entering for" would
-    // satisfy the case above on its own.
-    const html = render();
-    expect(html).not.toContain("Entering for");
-    expect(html).toContain("picked");
+    expect(tagWith(html, 'data-testid="pickem-submit"')).toContain("disabled");
   });
 });

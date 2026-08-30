@@ -34,7 +34,8 @@ import { TYPE_SCALE } from "@/lib/typeScale";
  * team-totals idea, and the roll-up says it there with a heading and a column.
  */
 
-export type PickemPanel = "matches" | "picks" | "results";
+export type { PickemPanel } from "@/lib/pickemSurface";
+import type { PickemPanel } from "@/lib/pickemSurface";
 
 export function PickemTwoUp({
   matchesLabel,
@@ -85,7 +86,7 @@ export function PickemTwoUp({
         /* "Picks", not "Your picks": the tab now holds everybody’s, and the
            sub-tab under it is what says whose. */
         title="Picks"
-        sub={myPoints == null ? "You didn’t pick" : `${myPoints} pts`}
+        sub={myPoints == null ? "Nothing submitted" : `${myPoints} pts`}
         selected={open === "picks"}
         onClick={() => onOpen("picks")}
       />

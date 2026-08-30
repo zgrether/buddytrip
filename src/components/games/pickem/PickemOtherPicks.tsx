@@ -127,7 +127,7 @@ export function PickemOtherPicks({
                     trip — which is the opposite of the point: they ARE in the
                     game, on a side, and their side is carrying a blank. */}
                 {missing
-                  ? [s.team, "Didn’t pick"].filter(Boolean).join(" · ")
+                  ? [s.team, "Nothing submitted"].filter(Boolean).join(" · ")
                   : (s.team ?? "No team")}
               </span>
             </span>
@@ -175,8 +175,8 @@ export function sortOtherSheets(list: OtherSheet[]): OtherSheet[] {
   });
 }
 
-/** Which half of the Picks tab is showing. */
-export type PicksSub = "your" | "other";
+export type { PicksSub } from "@/lib/pickemSurface";
+import type { PicksSub } from "@/lib/pickemSurface";
 
 /**
  * The sub-tab bar under Picks.

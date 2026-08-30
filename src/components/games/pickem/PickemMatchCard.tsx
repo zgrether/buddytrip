@@ -92,7 +92,7 @@ const PILL_LABEL: Record<MatchPill, string> = {
   live: "Live",
   clinched: "Clinched",
   final: "Final",
-  "no-sheet": "Didn’t pick",
+  "no-sheet": "Nothing submitted",
 };
 
 /**

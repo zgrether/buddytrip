@@ -58,7 +58,7 @@ describe("PickemTwoUp", () => {
      * would be describing a sheet that does not exist.
      */
     const html = render({ myPoints: null });
-    expect(html).toContain("You didn’t pick");
+    expect(html).toContain("Nothing submitted");
     expect(html).not.toContain("0 pts");
     expect(html).not.toContain("of 16 ·");
   });
