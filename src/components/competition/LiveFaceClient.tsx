@@ -11,6 +11,8 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { SURFACE_BOX } from "@/components/shell/contentArea";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
+import { useRealtimeMyDelegations } from "@/hooks/useRealtimeMyDelegations";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { CompetitionFace } from "@/components/competition/CompetitionFace";
 import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
 
@@ -96,6 +98,11 @@ function LiveFaceInner({
   // the face re-resolves without a manual refresh.
   useRealtimeCompetition(tripId);
   useRealtimeMembers(tripId);
+  // A delegate grant that lands on ME while my board is already open (the
+  // Owner assigning it from their own settings page, in their own browser) —
+  // see useRealtimeMyDelegations for why this can't wait on a poll.
+  const me = useCurrentUser();
+  useRealtimeMyDelegations(tripId, me?.id);
 
   const utils = trpc.useUtils();
 

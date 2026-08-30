@@ -58,6 +58,11 @@ describe("faceBootstrap — both states in one resolve", () => {
     expect(boot.leaderboard).not.toBeNull();
     expect(boot.leaderboard!.teams.length).toBe(2);
     expect(boot.leaderboard!.pointsAvailable).toBeGreaterThan(0);
+    // No one has been explicitly delegated `gameId` — the owner IMPLICITLY runs
+    // it (DelegatePicker: "Null = the owner"), so it must flag as theirs too, or
+    // the board's "you're running this" marker never lights up for an owner's
+    // own, undelegated games (the common case).
+    expect(boot.myDelegateGameIds).toContain(gameId);
   });
 
   it("derives the competition role in both directions (live, per request)", async () => {
@@ -75,6 +80,11 @@ describe("faceBootstrap — both states in one resolve", () => {
     expect(asMember.myDelegateGameIds).toContain(gameId);
     // still a member-role competition role — delegate ≠ co-admin
     expect(asMember.myCompetitionRole).toBe("member");
+
+    // Now that it's EXPLICITLY handed to the member, the owner's implicit claim
+    // on it lapses — the marker should move, not duplicate.
+    const asOwner = await ctx.caller().competitions.faceBootstrap({ tripId });
+    expect(asOwner.myDelegateGameIds).not.toContain(gameId);
   });
 });
 
