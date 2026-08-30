@@ -401,6 +401,31 @@ seam, never on a calendar.
   result — it says the code never reached the guarded line, which locates the
   problem above it. Do not read a silent instrument as "nothing to report".
 
+  **AND IT HAS AN OPPOSITE ERROR, which the rule above does not describe.** The
+  auth stall swept too WIDE a unit — a file, when the unit was a function.
+  Migration 166 swept too NARROW a one: relaxing a rule inside
+  `_pickem_write_sheet`, I grepped the test file I was editing for assertions of
+  the old behaviour and found none to change. CI found one immediately, in a
+  second test file that reaches the same shared core through a different RPC.
+
+  **The failure surface is the shared thing; the edit surface is what is in
+  front of you.** Both misses are picking the second when the rule needs the
+  first, and neither is "sweep more broadly" or "sweep more narrowly" — the unit
+  is a property of what can break, not of what you happen to be typing in.
+
+  So before a sweep, name the thing that would actually fail, then find every
+  reader of it. For a behaviour change that is the FUNCTION or the RPC, not the
+  file; for an unguarded call it is the CALL, not the file. The file is a
+  convenient list, and it is the answer to neither.
+
+  **The same round produced the instrument version of it**, which is worth
+  recording beside this because it is the cheapest to avoid: CI runs
+  `eslint --max-warnings 0` and I was running `eslint src`, reading "0 errors, 1
+  warning" as clean. The local check was strictly weaker than the gate it stood
+  in for, and the warning it tolerated was a real dead prop. **Run the gate's
+  own command, not your own version of it** — for lint, for tests, for
+  typecheck.
+
 ## Seed Data Rules
 
 - Mock/test data lives only in `supabase/seed.sql` — never in migration files
