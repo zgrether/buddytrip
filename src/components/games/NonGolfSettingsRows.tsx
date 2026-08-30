@@ -182,9 +182,12 @@ export function NonGolfSettingsRows({
  * tap. This is the same trade `ChecklistRow`'s own `requires` scrim makes: show
  * the thing and say why, rather than hide it.
  *
- * Selectable: **Simple** and **Bracket**. Best of N / Live Results render as
- * disabled "Soon" tiles so the direction stays legible — their engines aren't
- * built (DO-NOT: don't implement them).
+ * Selectable: **Simple** and **Bracket**. Best of N renders as a disabled "Soon"
+ * tile so the direction stays legible — its engine isn't built (DO-NOT: don't
+ * implement it). Live Results was the fourth tile and is GONE rather than
+ * disabled: it named a feature nobody built. Migration 168 repoints the one
+ * production row that held the value; the CHECK drops it in a follow-up (169),
+ * after this code deploys.
  *
  * Simple is the DEFAULT: a null value displays as Simple selected (non-golf
  * already runs that way when unset), so this reserves the shape without a

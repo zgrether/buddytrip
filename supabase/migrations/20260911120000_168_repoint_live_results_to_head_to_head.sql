@@ -1,0 +1,74 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- 168 · The one `live_results` game becomes `head_to_head`
+--
+-- Prerequisite for 169, which drops `live_results` from the CHECK. 169 ships as
+-- its own FOLLOW-UP PR, not beside this one — see "Why not one file, and why not
+-- even one PR" below.
+--
+-- ── What the row is ────────────────────────────────────────────────────────
+-- Measured against production, not assumed: exactly one game holds
+-- `live_results`. It is a `gtt_generic_card` game, `status = 'complete'`, in a
+-- cup, worth 5 points, with two `game_results` placement rows and no matches
+-- and no scores. Created 2026-07-01.
+--
+-- It got the value honestly. The Live Results tile was FREELY SELECTABLE until
+-- the tiles rework disabled it ("Soon") — commit cd3935c6 (2026-06-13) shipped
+-- `COMP_FORMATS` with no `enabled` predicate at all — and this game was created
+-- inside that window. The reasoning that said "the picker can never have
+-- written one" was wrong on a checkable fact, which is why the query was run.
+--
+-- ── Why `head_to_head` and not NULL ────────────────────────────────────────
+-- Behaviourally the two are identical for this row, and that is worth stating
+-- plainly rather than glossing: NOTHING branches on this column except
+-- `= 'bracket'`. `resolveResultStrategy` returns the manual arm for any
+-- non-bracket value (so both keep the arm that wrote its two result rows), the
+-- readiness gate in `save_game_config` tests `= 'bracket'`, and the settings
+-- tiles render `value ?? 'head_to_head'` — so NULL and 'head_to_head' already
+-- paint the same selected tile. No engine, no guard and no surface can tell
+-- them apart.
+--
+-- So the choice is about what the RECORD SAYS, and there NULL is not neutral:
+-- the reset primitives (migrations 063, 066, 069) all write
+-- `competition_format = NULL`, so NULL carries a second meaning — "this game
+-- was reset" — on top of "nobody ever chose". Writing NULL here would make a
+-- finished game that someone DID configure indistinguishable from one that had
+-- been torn back down. That is CLAUDE.md's "empty is not unknown" in its
+-- ordinary clothes.
+--
+-- 'head_to_head' says what happened: a choice was made, and the game is the
+-- Simple one that choice now names. It is also what the game has always
+-- behaved as.
+--
+-- ── Keyed on the VALUE, never the game id ──────────────────────────────────
+-- The `044` lesson (#636): a DELETE/UPDATE keyed on an id that exists only on
+-- the prod box does nothing on CI's replay-from-zero, and the divergence
+-- surfaces later as a collision. Keying on the value is stable, is a no-op on
+-- an empty database, and stays correct if a second such row appears between
+-- this being written and being applied.
+--
+-- ── Why not one file with 169, and why not even one PR ─────────────────────
+-- Not one FILE, because the ordering is meant to ENFORCE something and folding
+-- the two together removes exactly that. In one file the UPDATE always runs
+-- first and repairs the row, so the CHECK could never refuse — the guard would
+-- be decorative. Split, the drop in 169 is a real gate: it fails loudly if any
+-- row still holds the value when it is applied.
+--
+-- Not one PR either, and that is the half found the hard way. `supabase db push
+-- --linked` reads the FILESYSTEM and has no "apply up to version N" — it
+-- applies everything pending. So two migrations sitting in one branch cannot be
+-- pushed separately without moving a file aside mid-production-write, which is
+-- controlling a prod write's scope by shuffling files: the exact trap the
+-- push-only-from-merged rule exists to prevent. CLAUDE.md 3b already prescribes
+-- the shape — for a REMOVAL, land and deploy the code that stops using it
+-- first, then the drop as its own follow-up PR — and this is why.
+--
+-- Note what the split does and does not buy. On CI both replay against an empty
+-- database, so the UPDATE is a no-op and the ADD CONSTRAINT trivially passes —
+-- a green CI run says NOTHING about this. The gate only exists on the manual
+-- prod apply, which is where the row is. Verify zero rows immediately before
+-- pushing 169, not at spec time.
+-- ════════════════════════════════════════════════════════════════════════════
+
+UPDATE public.games
+   SET competition_format = 'head_to_head'
+ WHERE competition_format = 'live_results';

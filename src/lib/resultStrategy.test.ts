@@ -47,7 +47,11 @@ describe("resolveResultStrategy — manual formats", () => {
   it("is null for the non-bracket descriptors", () => {
     expect(resolveResultStrategy("gtt_generic_yard", "head_to_head")).toBeNull();
     expect(resolveResultStrategy("gtt_generic_bar", "best_of_n")).toBeNull();
-    expect(resolveResultStrategy("gtt_manual", "live_results")).toBeNull();
+    // A non-bracket descriptor resolves to the manual arm whatever it is, and a
+    // RETIRED value is exactly when that matters. `live_results` used to stand
+    // here; it leaves the column in migration 169, so the case now uses a legacy
+    // value rows genuinely still hold rather than a string nothing can be.
+    expect(resolveResultStrategy("gtt_manual", "bracket_se")).toBeNull();
   });
 
   it("resolves to the bracket engine for competition_format 'bracket'", () => {
