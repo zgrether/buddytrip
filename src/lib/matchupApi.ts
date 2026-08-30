@@ -29,7 +29,8 @@
  */
 
 /** A league ESPN can be asked about. Adding basketball is a line in the list
- *  below, which is the point of it being config rather than a hardcoded pair. */
+ *  below, which is the point of it being config rather than a hardcoded pair —
+ *  MLB was added that way and cost exactly that. */
 export interface MatchupLeague {
   /** Our id, used in URLs and cache keys. */
   id: string;
@@ -39,9 +40,54 @@ export interface MatchupLeague {
   espnPath: string;
 }
 
+/**
+ * ── THE LABELS ARE ALL ABBREVIATIONS NOW ──────────────────────────────────
+ *
+ * "College Football" was the odd one out, and "CFB" is what the abbreviation
+ * beside it already promised the set would be.
+ *
+ * The reason is UNIFORMITY, not overflow — the first draft of this note said
+ * the row stopped fitting with a third league, and measuring it showed that is
+ * simply untrue. At 390px, in the 330px row (Chrome, the slate modal's add-game
+ * form):
+ *
+ *   NFL 41 · CFB 41 · MLB 44          = 138px used
+ *   NFL 41 · College Football 103 · MLB 44 = 200px used, still ONE line
+ *
+ * So nothing wrapped and nothing was going to. What the long label did was take
+ * half the used width for one of three equal choices, which reads as a heading
+ * with two chips beside it rather than as three options. Three abbreviations
+ * scan as a set. That is a smaller claim than the one this comment made before,
+ * and it is the one the measurement supports.
+ *
+ * DISPLAY-STRING tier only. `id` is what the URL, the cache key and
+ * `leagueById` speak, and it stays `cfb` — nothing stored or requested moves,
+ * so no slate built before this points at anything different.
+ *
+ * ── MLB NEEDED NO OTHER CHANGE, AND THAT WAS MEASURED ─────────────────────
+ *
+ * `scheduleUrl` pins `seasontype=2` because the NFL's default in August is the
+ * PRESEASON — a real bug, found by measurement. Baseball was checked the same
+ * way rather than assumed to behave, against the live endpoint on 2026-08-30:
+ *
+ *   MLB, no param      -> seasontype 2, 163 events, 24 in the future
+ *   MLB, seasontype=2  -> identical
+ *
+ * So the existing URL is already right for it: the parameter is REDUNDANT here
+ * rather than wrong, and no per-league branch is needed. Teams: 30, in one
+ * response, well inside the `limit=1000` the college list needs.
+ *
+ * The one thing baseball does that football does not is play the same pairing
+ * repeatedly — a three-game series is three contests between the same two
+ * clubs, often on consecutive days. Nothing here needs to care (each is its own
+ * `espnEventId` with its own start time, and `formatKickoff` carries the date),
+ * but a runner scanning the results will see the same matchup three times and
+ * that is correct rather than a duplicate.
+ */
 export const MATCHUP_LEAGUES: MatchupLeague[] = [
   { id: "nfl", label: "NFL", espnPath: "football/nfl" },
-  { id: "cfb", label: "College Football", espnPath: "football/college-football" },
+  { id: "cfb", label: "CFB", espnPath: "football/college-football" },
+  { id: "mlb", label: "MLB", espnPath: "baseball/mlb" },
 ];
 
 export function leagueById(id: string | null | undefined): MatchupLeague | undefined {
