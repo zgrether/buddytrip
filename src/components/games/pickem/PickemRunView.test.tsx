@@ -33,7 +33,6 @@ const render = (over: Partial<Parameters<typeof PickemRunView>[0]> = {}) =>
       slate={SLATE}
       canEdit
       busyId={null}
-      blockedReason={null}
       ridingOn={new Map([["g1", 3]])}
       matchesPending={4}
       onSetResult={() => {}}

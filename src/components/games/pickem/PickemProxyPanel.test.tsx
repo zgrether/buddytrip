@@ -18,6 +18,8 @@ import {
 
 const t = (over: Partial<ProxyTarget> & { userId: string; name: string }): ProxyTarget => ({
   submitted: false,
+  picked: 0,
+  total: 16,
   isGuest: false,
   ...over,
 });

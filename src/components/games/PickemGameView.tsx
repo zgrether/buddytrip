@@ -36,7 +36,6 @@ import { PickemPhaseStrip } from "@/components/games/pickem/PickemPhaseStrip";
 import { PickemRunView } from "@/components/games/pickem/PickemRunView";
 import { PickemBoard } from "@/components/games/pickem/PickemBoard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { matchesComplete, type PickemPair } from "@/lib/pickemPairing";
 import { effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import { resolvedCount, sheetPoints } from "@/lib/pickemScoring";
 import { ridingOn } from "@/lib/pickemBoard";
@@ -514,6 +513,10 @@ export function PickemGameView() {
         userId: r.userId,
         name: byId.get(r.userId)?.displayName ?? "Unknown",
         submitted: r.submitted,
+        // The COUNT (migration 167). Before it, the pre-lock list could not tell
+        // a half-finished sheet from a finished one and said nothing for both.
+        picked: r.picked,
+        total: r.total,
         isGuest: byId.get(r.userId)?.isGuest ?? false,
         // The row's second line. Resolved here because the list takes people,
         // not rosters — and a name is what a reader recognises, not a team id.
@@ -776,37 +779,24 @@ export function PickemGameView() {
   const gameName = q.data ? configDraft.name || "Pick'em" : "Pick'em";
 
   /**
-   * §6.1 — the gate, said BEFORE the runner tries.
+   * DELETED: `runBlockedReason`.
    *
-   * The completeness state is knowable when Run renders, so a banner beats a
-   * rejection. The RPC still refuses (and names the same person) — this is the
-   * courteous half, not the enforcement.
+   * It warned, before the runner tapped, that results could not be entered
+   * until every match had both sides — the client half of migration 159's
+   * completeness gate, which migration 167 removes.
    *
-   * Only under `individual_matches`: team totals has no gate, because every
-   * sheet sums into its side whatever the pairings look like — and neither does
-   * a POINTS cup, which has no matches at all.
+   * The gate was wrong: a slate game's result is a fact about the world, and
+   * whether Alabama covered does not depend on who has been paired against
+   * whom. And the arithmetic never needed it — entering a result scores every
+   * SHEET, which works with no matches at all. Only the match totals need
+   * matches, and those derive; an unpaired match has no total yet, which the
+   * board has always rendered as a display state rather than an error.
    *
-   * Reads `individualMatches`, not `settings.rollUp`. That derived value already
-   * carries the points override, and this was the fourth site to branch on the
-   * raw column: it told a points-cup runner to "set the matches before entering
-   * results" on a competition where the matches surface correctly does not
-   * render, so the instruction named something they could not do. Migration 164
-   * is the server half of the same mistake.
+   * It was also HALF of a double treatment: this amber banner said the
+   * condition, and the RPC then refused with a red error saying it again. Two
+   * voices for one fact is its own defect, and removing the gate removes both
+   * at once rather than picking which voice to keep.
    */
-  const runBlockedReason = useMemo(() => {
-    if (!q.data) return null;
-    if (!individualMatches) return null;
-    const pairs: PickemPair[] = (q.data.matches ?? []).map((m) => ({
-      a: m.sideAId ?? null,
-      b: m.sideBId ?? null,
-    }));
-    if (matchesComplete(pairs)) return null;
-    const stranded = pairs.find((p) => (p.a == null) !== (p.b == null));
-    const who = stranded ? nameOf((stranded.a ?? stranded.b) as string) : null;
-    return who
-      ? `${who} has no opponent yet — every match needs both sides before a result can be split.`
-      : "Set the matches before entering results — points are split across them.";
-  }, [q.data, nameOf, individualMatches]);
 
   /** Which side a person plays for — the team-totals grouping. Derived from
    *  `teams[].memberIds`, which the payload already carries, rather than a
@@ -1056,14 +1046,19 @@ export function PickemGameView() {
    */
   const proxyColumns: OtherPicksColumn[] = (() => {
     const byUser = new Map(proxyTargets.map((t) => [t.userId, t]));
-    const total = q.data.slate.length;
     const row = (t: ProxyTarget) => ({
       userId: t.userId,
       name: t.name,
-      // Started, but not how far — see above. Zero when they have not.
-      picked: t.submitted ? null : 0,
-      total,
+      // The real count now. `pickem_sheet_status` returned a boolean until
+      // migration 167, so this said "started, distance unknown" and rendered as
+      // silence — honest, but it could not tell a half-finished sheet from a
+      // finished one, which is the state a captain is chasing.
+      picked: t.picked,
+      total: t.total,
       isGuest: t.isGuest,
+      // Still null: RLS hides other people's PICKS until the reveal, so there
+      // is no score to show even though the count is now knowable. Two
+      // different questions, and only one of them was answered by 167.
       points: null,
       // Every one of these is somebody the SERVER said this viewer may enter
       // for. The row count is the permission, exactly as it was when this list
@@ -1503,7 +1498,6 @@ export function PickemGameView() {
               slate={q.data.slate}
               canEdit={canEdit}
               busyId={busyResultId}
-              blockedReason={runBlockedReason}
               ridingOn={riding.byGame}
               matchesPending={riding.matchesPending}
               onSetResult={(slateGameId, result) => {
