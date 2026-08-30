@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PickemSheet, type PickemSheetGame } from "./PickemSheet";
-import { emptySheet, fillAll, type SheetPick } from "@/lib/pickemSheet";
+import { emptySheet, fillAll, setPick, type SheetPick } from "@/lib/pickemSheet";
 
 /**
  * The old default sheet — all home, slate order — as a FIXTURE.
@@ -70,6 +70,19 @@ const render = (over: Partial<Props> = {}) =>
       {...over}
     />
   );
+
+/**
+ * One row's markup, found by a team name.
+ *
+ * Splitting on the row testid gives one segment per row (the last also carries
+ * whatever follows the list). Per-ROW is the whole point here: every assertion
+ * below is about one row differing from its neighbours, and a whole-page
+ * `toContain` would pass on any build that put the mark somewhere.
+ */
+const rowFor = (html: string, team: string): string =>
+  html.split('data-testid="pickem-sheet-row"').slice(1).find((part) => part.includes(team)) ?? "";
+
+const countOf = (html: string, marker: string): number => html.split(marker).length - 1;
 
 const tagWith = (html: string, marker: string): string => {
   const at = html.indexOf(marker);
@@ -426,5 +439,90 @@ describe("whose sheet this is, once the footer is gone", () => {
       subject: { userId: "ty", name: "Ty", isSelf: false, isGuest: false },
     });
     expect(tagWith(html, 'data-testid="pickem-submit"')).toContain("disabled");
+  });
+});
+
+/**
+ * ── r6 §2: an unpicked game needs a stamp, not a blank ─────────────────────
+ *
+ * "A blank row can't distinguish 'they didn't pick this' from 'this hasn't
+ * loaded' or 'there's nothing here'." Seventh instance of the family, and the
+ * first to arrive through the SHEET rather than through a number.
+ *
+ * The suite renders three games with ONE picked, so every case is a row
+ * differing from its neighbours on the same screen. A build that stamped every
+ * row, or none, fails all of them.
+ */
+describe("an unpicked row, once picking is closed", () => {
+  // Alabama taken, Ohio St and Texas left alone.
+  const partial = (): SheetPick[] => setPick(emptySheet(SLATE), SLATE[0].id, "away");
+
+  it("STAMPS the rows nobody picked, and only those", () => {
+    const html = render({ editable: false, picks: partial() });
+    expect(countOf(html, 'data-testid="pickem-row-not-picked"')).toBe(2);
+    expect(html).toContain("NOT PICKED");
+    // Per row, so this cannot pass by stamping the wrong two.
+    expect(rowFor(html, "Alabama")).not.toContain("pickem-row-not-picked");
+    expect(rowFor(html, "Ohio St")).toContain("pickem-row-not-picked");
+    expect(rowFor(html, "Texas")).toContain("pickem-row-not-picked");
+  });
+
+  it("stamps NOTHING while picks are still open — the same sheet, the other phase", () => {
+    /**
+     * The half of the rule that a build passing the case above would still get
+     * wrong. While picks are open an unpicked row is a thing to DO, and a
+     * stamp there scolds somebody mid-sheet.
+     */
+    const html = render({ editable: true, picks: partial() });
+    expect(html).not.toContain("pickem-row-not-picked");
+    expect(html).not.toContain("NOT PICKED");
+    // ...and the rows are all still there, so this is not passing on an empty
+    // render.
+    expect(countOf(html, 'data-testid="pickem-sheet-row"')).toBe(SLATE.length);
+  });
+
+  it("DARKENS the row it stamps, and leaves the picked one alone", () => {
+    // Two treatments saying one thing, which is what the handoff asked for:
+    // "darken the row and stamp it".
+    const html = render({ editable: false, picks: partial() });
+    expect(rowFor(html, "Ohio St")).toContain("opacity:0.38");
+    expect(rowFor(html, "Alabama")).not.toContain("opacity:0.38");
+  });
+
+  it("shows NO stake on a row nobody picked — a chip there is a bet never placed", () => {
+    const html = render({ editable: false, picks: partial() });
+    expect(rowFor(html, "Ohio St")).not.toContain("pickem-row-rank");
+    // The picked row keeps its chip, so the absence above is about the pick and
+    // not about the sheet being read-only.
+    expect(rowFor(html, "Alabama")).toContain("pickem-row-rank");
+  });
+
+  it("an unpicked game that has RESOLVED is not a miss — the build this replaces said it was", () => {
+    /**
+     * THE MECHANISM CASE, and the one that separates this from a cosmetic
+     * change. `pickOutcome` used to fall through to `pick === result`, which is
+     * false for a null pick — so a resolved game nobody picked came out "lost"
+     * and rendered a struck-through stake.
+     *
+     * The control is the third row: a pick that genuinely lost, on the same
+     * screen, still reading "lost". Without it this passes against a build that
+     * stopped computing outcomes at all.
+     */
+    const resolved: PickemSheetGame[] = [
+      { ...SLATE[0], result: "home" }, // taken away, home covered — a real miss
+      { ...SLATE[1], result: "home" }, // nobody picked it, and it has resolved
+      SLATE[2],
+    ];
+    const html = render({ editable: false, slate: resolved, picks: partial() });
+
+    const unpicked = rowFor(html, "Ohio St");
+    expect(unpicked).toContain("pickem-row-not-picked");
+    expect(unpicked).not.toContain('data-outcome="lost"');
+    expect(unpicked).not.toContain("line-through");
+
+    const missed = rowFor(html, "Alabama");
+    expect(missed).toContain('data-outcome="lost"');
+    expect(missed).toContain("line-through");
+    expect(missed).not.toContain("pickem-row-not-picked");
   });
 });

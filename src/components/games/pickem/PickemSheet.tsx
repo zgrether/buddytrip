@@ -22,7 +22,7 @@ import {
 } from "@/lib/pickemSheet";
 import { draftLostToLock, formatCountdown, type PickemClosure } from "@/lib/pickemLifecycle";
 import { paysOut, type SlateResult } from "@/lib/pickemScoring";
-import type { PickOutcome } from "./PickemSheetRow";
+import { isPlayedOutcome, type PickOutcome } from "./PickemSheetRow";
 
 /** "Sat 11:00 AM" — a weekday and a clock time, because a deadline people are
  *  told about is spoken that way. No year: a sheet is read within days of it. */
@@ -134,11 +134,24 @@ export interface PickemSheetGame {
  * with "not played yet" would put the two states that look identical in every
  * number on the row under the same treatment, which is the mistake this
  * feature has now made five times.
+ *
+ * ── The absence of a pick is answered FIRST, and that ordering is the fix ───
+ *
+ * It used to fall through to `pick === result`, which is false for a null pick,
+ * so an unpicked game on a resolved slate came out "lost" — a struck-through
+ * stake on a bet nobody placed. And on an UNRESOLVED game it came out null,
+ * which rendered as a plain row indistinguishable from one still waiting to be
+ * filled in.
+ *
+ * ONLY MEANINGFUL ON A CLOSED SHEET, which is why the sole caller gates it on
+ * `!editable`: while picks are open an unpicked row is a thing to do, not a
+ * result, and stamping it would be scolding somebody mid-sheet.
  */
 export function pickOutcome(
   result: SlateResult | null | undefined,
   pick: "away" | "home" | null
 ): PickOutcome | null {
+  if (pick == null) return "unpicked";
   if (result == null) return null;
   if (!paysOut(result)) return "void";
   return pick === result ? "won" : "lost";
@@ -709,7 +722,19 @@ export function PickemSheet({
            * outcome and there is nowhere else on the row for that to go.
            */
           const rank = settings.useConfidence ? slate.length - index : 1;
-          const stake = outcome != null ? rank * (g.multiplier ?? 1) : rank;
+          const played = isPlayedOutcome(outcome);
+          const stake = played ? rank * (g.multiplier ?? 1) : rank;
+          /**
+           * NO CHIP on a row nobody picked — the stamp is standing in for it.
+           *
+           * The chip is the STAKE, and an unpicked game carries none. Printing
+           * the position's value there would be the same decided-nothing-as-a-
+           * number mistake one column over from the one the stamp just fixed:
+           * a person scanning a finished sheet would read 3 and conclude three
+           * points were on this game.
+           */
+          const points =
+            outcome === "unpicked" ? null : settings.useConfidence || played ? stake : null;
           return (
             <PickemSheetRow
               game={{
@@ -724,7 +749,7 @@ export function PickemSheet({
               pick={p?.pick ?? null}
               // The chip shows what THIS POSITION is worth, derived from the
               // index — never a stored confidence beside the order.
-              points={settings.useConfidence || outcome != null ? stake : null}
+              points={points}
               outcome={outcome}
               editable={editable}
               onPick={(side) => editPicks((prev) => setPick(prev, id, side))}

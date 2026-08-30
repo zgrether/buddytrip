@@ -45,8 +45,57 @@ export interface SheetRowGame extends MatchupLineGame {
  * "void" is a decided outcome that paid nobody (a push, or a game pulled from
  * the scoring), which looks identical to "not played yet" in every number on
  * this row and means the opposite thing about what is left to come.
+ *
+ * ── "unpicked" is not a fifth kind of result — it is the ABSENCE of a pick ──
+ *
+ * It outranks all three, because it is knowable before the game is and stays
+ * true after: nobody chose here. Without it an unpicked row on a closed sheet
+ * rendered as plain, full-strength text — indistinguishable from a row still
+ * waiting to be filled in, on a sheet that can never be filled in again. And
+ * once the game resolved it rendered WORSE than blank: a struck-through stake,
+ * which claims a bet that was never placed.
+ *
+ * The seventh instance of the family CLAUDE.md keeps counting, and the one that
+ * arrived through the SHEET rather than through a number.
  */
-export type PickOutcome = "won" | "lost" | "void";
+export type PickOutcome = "won" | "lost" | "void" | "unpicked";
+
+/** Every outcome that is a RESULT — i.e. everything but the absence of a pick.
+ *  Exported because the sheet decides the stake from it and the two must not
+ *  disagree about which fates carry one. */
+export function isPlayedOutcome(outcome: PickOutcome | null): boolean {
+  return outcome != null && outcome !== "unpicked";
+}
+
+/**
+ * The stamp on a row nobody picked.
+ *
+ * A BADGE beside the matchup rather than a treatment of the names, because the
+ * fact is about the sheet and not about the teams — dimming the two names would
+ * say the same thing the row's own fade already says, and say nothing about
+ * why.
+ *
+ * Dashed, dim, and carrying no colour: this is not an error and not a loss. It
+ * is a blank that has been named.
+ */
+function NotPickedStamp() {
+  return (
+    <span
+      data-testid="pickem-row-not-picked"
+      className="rounded px-1.5"
+      style={{
+        fontSize: TYPE_SCALE.caption,
+        fontWeight: 700,
+        letterSpacing: "0.08em",
+        color: "var(--color-bt-text-dim)",
+        border: "1px dashed var(--color-bt-border)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      NOT PICKED
+    </span>
+  );
+}
 
 /**
  * "Sun" over "4:25p" — the two-line kickoff stack that fills the right side.
@@ -308,6 +357,11 @@ export function PickemSheetRow({
               team rather than in a column of its own — but it is a badge beside
               a name, not part of it, so it needs air the tap target's own
               padding does not provide. */}
+          {/* The stamp sits with the matchup, ahead of the game's own badges:
+              it is the answer to "what did they do here", and the spread and
+              the multiplier are facts about the contest that stay true either
+              way. */}
+          {outcome === "unpicked" && <NotPickedStamp />}
           {(game.spread || weighted) && (
             <span className="ml-0.5 flex items-center gap-1.5">
               {game.spread && <SpreadBadge spread={game.spread} />}
