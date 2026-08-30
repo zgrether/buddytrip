@@ -78,10 +78,26 @@ describe("invalidateChatQueries", () => {
     });
   });
 
-  it("skips the unread counts for team chat, which has no badge", () => {
+  /**
+   * REVERSES this file's own earlier assertion, which read "skips the unread
+   * counts for team chat, which has no badge" and asserted `["list"]` only.
+   * That was correct when `messages.unreadCount` summed only crew + planning;
+   * it became wrong the moment that function was extended to sum Team too
+   * (`countUnreadByChannel`, `messages.ts`), and nothing here was updated to
+   * match — a real gap, found live: a team message landed with the
+   * recipient's chat panel CLOSED and the bottom-nav dot never lit, even
+   * though the server's own `messages.unreadCount` was already returning the
+   * correct non-zero count. The invalidation call was the only thing not
+   * reaching it.
+   *
+   * Team's unread counts are the SAME server-summed total the trip channel's
+   * are — one function, both channels — so this now asserts parity with the
+   * trip case rather than an exception from it.
+   */
+  it("invalidates the unread counts for team chat too — same set as trip", () => {
     const { utils, names } = fakeUtils();
     invalidateChatQueries(utils, { tripId: "t1", channel: "team", teamId: "team-2" });
-    expect(names()).toEqual(["list"]);
+    expect(names()).toEqual(["list", "unreadCount", "unreadCountByChannel"]);
   });
 
   // ── Refetch policy ─────────────────────────────────────────────────────────

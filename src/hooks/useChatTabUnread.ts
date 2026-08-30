@@ -7,10 +7,19 @@ import { useNewsUnreadCount } from "@/components/NewsPanel";
 /**
  * Combined unread total for the Chat action's dot (`AppTabBar`, mobile — the
  * desktop toggle lives in `TopNav` instead, off its own `useChatUnreadCount`)
- * — Crew + Planning (via `messages.unreadCount`, already summed and
- * visibility-filtered server-side: a non-Owner/Organizer caller's Planning
- * share is 0 before it ever reaches this hook) + News. The filter is
- * server-side by construction; this hook only adds, never subtracts.
+ * — Crew + Planning + Team (via `messages.unreadCount`, already summed and
+ * visibility/membership-filtered server-side: a non-Owner/Organizer caller's
+ * Planning share is 0, and Team is 0 for someone on no team, before either
+ * ever reaches this hook) + News. The filter is server-side by construction;
+ * this hook only adds, never subtracts.
+ *
+ * Team's LIVE half — the dot actually lighting up while chat is closed —
+ * depends on something outside this hook entirely: `AppShell` holding an
+ * always-mounted `useRealtimeChat(tripId, "team", myTeamId)`, mirroring its
+ * Crew subscription. Team chat shipped without it; the dot only updated on
+ * refetch/refocus, exactly the gap this file's own header once described for
+ * Crew before that subscription existed. See the comment on that call in
+ * `AppShell.tsx`.
  *
  * ── Why the two halves are gated DIFFERENTLY (#763) ──────────────────────────
  * `AppTabBar` is `lg:hidden` but still MOUNTS at desktop widths, so this hook
