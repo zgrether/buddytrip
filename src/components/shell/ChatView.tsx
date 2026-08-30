@@ -89,6 +89,19 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
    * `viewerTeamForTrip` uses (they share that function), and React Query dedupes
    * it with the app-bar avatar's copy, so on a warm shell the Team tab costs no
    * request. It also means the tab's colour and the avatar's cannot disagree.
+   *
+   * KNOWN LAG, and it is issue #715 rather than anything new here:
+   * `team_assignments` has no Realtime coverage, and this rides `STRUCTURE_QUERY`
+   * (staleTime Infinity). `TeamsPanel` invalidates `myTeamColor` when it changes
+   * an assignment, so the ORGANIZER making the change sees the effect at once —
+   * but the person being assigned does not, on their own device, until something
+   * refetches. So a member added to a team mid-session may not see the Team tab
+   * appear until a reload.
+   *
+   * Not worked around here deliberately. Dropping to a polled staleTime would
+   * put a request on the shell's hot path to catch a once-per-trip event, and a
+   * team-chat-specific subscription would be a second mechanism for a gap that
+   * already has an owner. #715 fixes it for every reader of this table at once.
    */
   const { data: myTeam } = trpc.competitions.myTeamColor.useQuery(
     { tripId },

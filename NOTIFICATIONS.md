@@ -149,7 +149,7 @@ disappearance of that row raises the volume budget.
 | `tripMembers.updateTravel` / `updateMemberTravel` | RSVP / travel change | `invites` | **NEVER** (or heavily BATCH) | ~30–60 over trip life; low signal |
 | `tripMembers.updateRole` | Role changed | `invites` | **ELIGIBLE** | rare; notify the affected user |
 | `messages.send` (trip channel: Crew + Organizers) | New chat message | `chat` | **~~BATCH~~ 1:1 — WIRED** | **NOT coalesced.** One push per message per recipient, minus the sender and anyone viewing that channel. The BATCH marking was wrong and is struck rather than deleted — see "The reversal" below for what it cost. |
-| `messages.send` (team channel) | New team-chat message | `chat` | **not wired, structurally** | `chat_reads` has no team dimension, so there is nowhere to record whether a team panel is open; team chat also has no UI. Needs that dimension first. |
+| `messages.send` (team channel) | New team-chat message | `chat` | **1:1 — WIRED** | Same gate as the trip channel: not your own, not while you are looking. The AUDIENCE differs and is the only part that does — it comes from `team_assignments`, not from trip role, so an Owner not on the team is not in it. Volume is a fraction of Crew's (a team is half a trip, and only its own members). |
 | `news.create` | News posted | **its own category** (NOT `chat`, NOT `planning`) | **ELIGIBLE** | ~1–5/trip. See the News note above — folding it into `chat` mutes it for anyone who mutes the firehose. |
 
 ## Open questions for Phase 3 (not blocking Phase 2)
