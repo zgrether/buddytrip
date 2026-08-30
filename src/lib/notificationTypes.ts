@@ -20,7 +20,7 @@
  * eligibility (ELIGIBLE / BATCH / NEVER) lives in NOTIFICATIONS.md.
  */
 
-export type NotificationKey = "game_results" | "planning" | "invites" | "chat";
+export type NotificationKey = "game_results" | "planning" | "invites" | "chat" | "news";
 
 export interface NotificationTypeDef {
   key: NotificationKey;
@@ -107,6 +107,25 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
       "Per-channel preferences — this is ONE global switch, muted from profile → Preferences " +
       "and nowhere else. High-volume (hundreds/day on a live day), which is why muting it has " +
       "to be easy to find rather than why it starts off.",
+  },
+  {
+    // NOTIFICATIONS.md's own history is worth repeating here: this category
+    // was filed under `planning` until an Aug 2026 correction, on the
+    // reasoning that folding News into `chat` (or `planning`) mutes the
+    // highest-signal non-scoring notification in the app for anyone who mutes
+    // the firehose it would be sharing a switch with. It gets its own key for
+    // the same reason `game_results` was split out of a generic `scores` name
+    // — a category has to be nameable by what it actually sends, or someone
+    // reading the settings list can't predict what toggling it does.
+    key: "news",
+    label: "News posts",
+    shortLabel: "News",
+    description: "An organizer posts to the Trip Board.",
+    defaultOn: true,
+    excludes:
+      "Nothing else rides this key — News is the ONLY write site. ~1-5/trip, " +
+      "organizer-authored, and there is no mechanical/per-write event anywhere " +
+      "near this category the way scores.upsertEntry sits near game_results.",
   },
 ];
 

@@ -233,3 +233,54 @@ export const newsBlockSchema = z.discriminatedUnion("type", [
 
 /** A post's full block stack. Capped so a single post can't be unbounded. */
 export const newsBlocksSchema = z.array(newsBlockSchema).min(1).max(50);
+
+/** Plain-text content of one inline run — drops mentions, bold/italic, links,
+ *  keeping only what a lock-screen notification can render as bare text. */
+function segmentText(seg: NewsSegment): string {
+  if (typeof seg === "string") return seg;
+  if ("mention" in seg) return seg.mention.name;
+  // The remaining two variants — `{ text, bold?, italic? }` and
+  // `{ link, text }` — both carry `.text`, so `"text" in seg` is true for
+  // either and TS narrows the union to their common shape here rather than to
+  // one specific member. There is nothing left to distinguish.
+  return seg.text;
+}
+
+/**
+ * A short plain-text preview of a post, for a notification body.
+ *
+ * Walks the block stack for the first block that HAS text to show: a
+ * `heading`'s own text, or a `text` block's `text` (the plain-string fast
+ * path) or its `segments` joined back to plain runs. Every other block type
+ * (`crew`, `teams`, `media`, `steps`, `callout`) is skipped — none of them
+ * carries a sentence a lock screen can usefully show, and `callout`'s text is
+ * deliberately excluded too: it is a highlighted aside ("Tee time moved to
+ * 8am"), not necessarily the post's own headline, and a composer who wrote a
+ * heading first should have that be what a recipient sees on their lock
+ * screen, not whichever block happens to be a `callout`.
+ *
+ * Truncated to `maxLength` with an ellipsis — titles/bodies get cut around
+ * 40-50 characters on a real lock screen (`gameFinishNotify`'s own note), so a
+ * caller composing a title AND this preview should budget for both, not treat
+ * this as the whole line.
+ *
+ * `null` when nothing in the stack has renderable text (e.g. a post that is
+ * only a photo or a team draw) — a caller falls back to its own generic copy
+ * rather than this function inventing one, since "what to say instead" is a
+ * decision about NOTIFICATION COPY, not about what the post contains.
+ */
+export function newsPreview(blocks: NewsBlock[], maxLength = 90): string | null {
+  for (const block of blocks) {
+    let text: string | undefined;
+    if (block.type === "heading") {
+      text = block.text;
+    } else if (block.type === "text") {
+      text = block.text ?? block.segments?.map(segmentText).join("").trim();
+    }
+    if (text && text.trim().length > 0) {
+      const trimmed = text.trim();
+      return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength - 1)}…` : trimmed;
+    }
+  }
+  return null;
+}

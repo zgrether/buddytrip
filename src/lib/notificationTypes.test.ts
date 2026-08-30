@@ -11,7 +11,7 @@ import {
 describe("notification registry", () => {
   it("declares the confirmed taxonomy, and EVERY category defaults ON", () => {
     const byKey = Object.fromEntries(NOTIFICATION_TYPES.map((t) => [t.key, t]));
-    expect(NOTIFICATION_KEYS).toEqual(["game_results", "planning", "invites", "chat"]);
+    expect(NOTIFICATION_KEYS).toEqual(["game_results", "planning", "invites", "chat", "news"]);
 
     // The device toggle is the consent gate. Enabling notifications is the
     // deliberate act; the category list is a menu of what to MUTE, not a set of
@@ -61,6 +61,7 @@ describe("notification registry", () => {
       planning: true,
       invites: true,
       chat: true,
+      news: true,
     });
   });
 

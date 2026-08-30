@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Pin, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
+import { Pin, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown, HelpCircle, BellRing } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { Avatar } from "@/components/Avatar";
 import { NewsBlocks } from "@/components/news/NewsBlock";
 import { NewsComposer } from "@/components/news/NewsComposer";
 import { NewsHelpModal } from "@/components/news/NewsHelpModal";
+import { showToast } from "@/lib/toast";
 import type { NewsPost } from "@/lib/news";
 
 // ── NewsPanel — the Trip Board ──────────────────────────────────────────────
@@ -176,6 +177,31 @@ function NewsPanelInner({
       utils.news.unreadCount.invalidate({ tripId });
     },
   });
+  /**
+   * "Notify everyone" — the retroactive half of wiring the `news` category.
+   * `create` only fires on the create TRANSITION, so a post from before this
+   * category existed (or one someone missed) has nothing to re-send it — this
+   * is that trigger, Owner/Organizer only, same guard as every other post
+   * action in this menu.
+   *
+   * No cache to invalidate — a resend changes nothing about the post itself,
+   * only who gets pinged about it, so there is nothing here for
+   * `news.list`/`unreadCount` to reflect. The only feedback a reader needs is
+   * confirmation it went out, hence the toast rather than a silent success.
+   * Failure needs no `onError` here: every mutation gets the app's own
+   * generic error toast by default (`providers.tsx`'s `mutationCache.onError`)
+   * unless it opts out — this one doesn't.
+   */
+  const resendM = trpc.news.resend.useMutation({
+    onSuccess: (res) => {
+      showToast(
+        res.audience > 0
+          ? `Notified ${res.audience} ${res.audience === 1 ? "person" : "people"}`
+          : "Nobody else to notify on this trip",
+        "info"
+      );
+    },
+  });
 
   // The "New post" header button (owner/organizer only).
   const newPostBtn = canPost ? (
@@ -230,6 +256,8 @@ function NewsPanelInner({
           setPinnedM.mutate({ tripId, postId: p.id, pinned: !p.pinned })
         }
         onDelete={() => deleteM.mutate({ tripId, postId: p.id })}
+        onNotify={() => resendM.mutate({ tripId, postId: p.id })}
+        notifying={resendM.isPending && resendM.variables?.postId === p.id}
       />
     ))
   );
@@ -391,6 +419,8 @@ function NewsPostCard({
   onEdit,
   onTogglePin,
   onDelete,
+  onNotify,
+  notifying,
 }: {
   post: NewsPost;
   author: NewsAuthorMeta | undefined;
@@ -400,6 +430,12 @@ function NewsPostCard({
   onEdit: () => void;
   onTogglePin: () => void;
   onDelete: () => void;
+  /** Re-fire the `news` push for this post — the retroactive trigger for a
+   *  post that predates the category, or one that was simply missed. */
+  onNotify: () => void;
+  /** This card's resend is in flight — disables the menu item so a double-tap
+   *  can't queue two sends while the first is still resolving. */
+  notifying: boolean;
 }) {
   const name = author?.name ?? "Someone";
   const role = roleLine(author?.role ?? "Member");
@@ -457,6 +493,8 @@ function NewsPostCard({
               onEdit={onEdit}
               onTogglePin={onTogglePin}
               onDelete={onDelete}
+              onNotify={onNotify}
+              notifying={notifying}
             />
           )}
         </div>
@@ -473,18 +511,22 @@ function NewsPostCard({
 // post card's overflow:hidden AND the feed's scroll clipping. It flips above
 // the button when there isn't room below, and closes on outside-click / Esc /
 // scroll / resize (a fixed-position menu would otherwise drift from its anchor).
-const POST_MENU_HEIGHT = 132; // ~3 rows — enough to decide flip direction
+const POST_MENU_HEIGHT = 176; // ~4 rows (44px each) — enough to decide flip direction
 
 function PostMenu({
   pinned,
   onEdit,
   onTogglePin,
   onDelete,
+  onNotify,
+  notifying,
 }: {
   pinned: boolean;
   onEdit: () => void;
   onTogglePin: () => void;
   onDelete: () => void;
+  onNotify: () => void;
+  notifying: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -578,6 +620,15 @@ function PostMenu({
               }}
             />
             <MenuItem
+              icon={<BellRing size={14} />}
+              label={notifying ? "Notifying…" : "Notify everyone"}
+              disabled={notifying}
+              onClick={() => {
+                close();
+                onNotify();
+              }}
+            />
+            <MenuItem
               icon={<Trash2 size={14} />}
               label={confirming ? "Tap to confirm" : "Delete"}
               danger
@@ -602,25 +653,29 @@ function MenuItem({
   label,
   onClick,
   danger,
+  disabled,
 }: {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
+      disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)]"
+      className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-[var(--color-bt-hover)] disabled:cursor-default disabled:hover:bg-transparent"
       style={{
         fontSize: 13,
         fontWeight: 500,
         color: danger ? "var(--color-bt-danger)" : "var(--color-bt-text)",
         background: "transparent",
         border: "none",
-        cursor: "pointer",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.55 : 1,
       }}
     >
       {icon}

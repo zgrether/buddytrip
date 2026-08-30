@@ -273,6 +273,114 @@ describe("news router", () => {
     expect(posts.some((p) => p.id === post.id)).toBe(false);
   });
 
+  // ── notifications (news category) ─────────────────────────────────────────
+  //
+  // `create` awaits `notifyNewsPost`, which never throws (see
+  // newsNotify.test.ts) — so these check the MECHANISM (a real
+  // `push_send_log` row), not merely that `create` still returns. A test
+  // that only asserted `create` didn't throw would pass even if the notify
+  // call had been deleted outright.
+
+  it("create — fires a news push, recorded to push_send_log", async () => {
+    const before = new Date().toISOString();
+    await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "text", text: "notify me" }],
+    });
+
+    const { data } = await ctx.admin
+      .from("push_send_log")
+      .select("trigger, type_key, trip_id, actor_user_id, recipients")
+      .eq("trip_id", tripId)
+      .eq("trigger", "news_posted")
+      .gte("created_at", before)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    expect(data).not.toBeNull();
+    expect(data?.type_key).toBe("news");
+    expect(data?.actor_user_id).toBe(ctx.user.id);
+    // Owner (author) excluded; planner + member remain — exactly 2, not "at
+    // least 2", so a leaked audience member would fail this.
+    expect(data?.recipients).toBe(2);
+  });
+
+  it("resend — Owner/Organizer can re-fire an existing post's notification", async () => {
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "heading", text: "Resend me" }],
+    });
+
+    const res = await ctx.caller().news.resend({ tripId, postId: post.id });
+    expect(res.audience).toBe(2);
+
+    const { data } = await ctx.admin
+      .from("push_send_log")
+      .select("trigger, type_key, recipients")
+      .eq("trip_id", tripId)
+      .eq("trigger", "news_resend")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    expect(data?.type_key).toBe("news");
+    expect(data?.recipients).toBe(2);
+  });
+
+  it("resend — excludes the ORIGINAL author, not whoever triggers the resend", async () => {
+    // Owner authors; Organizer (planner) triggers the resend.
+    //
+    // THE COUNT ALONE CANNOT CATCH THIS, and asserting it would be decorative
+    // in exactly the way CLAUDE.md warns about: with 3 trip members, excluding
+    // the owner (correct) leaves 2, and excluding the planner (the caller,
+    // wrong) ALSO leaves 2 — a mutant swapping the exclusion target from
+    // `row.author_id` to the caller's id survives an audience.toBe(2)
+    // assertion. Confirmed by actually writing that mutant and watching this
+    // exact shape of test pass. The only observable that distinguishes WHO
+    // was excluded is `push_send_log.actor_user_id`, which `notifyNewsPost`
+    // sets to the value it was given as `authorId` — so this checks THAT,
+    // not the count.
+    const before = new Date().toISOString();
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "text", text: "authored by owner" }],
+    });
+    await ctx.callerAs("planner").news.resend({ tripId, postId: post.id });
+
+    const { data } = await ctx.admin
+      .from("push_send_log")
+      .select("actor_user_id")
+      .eq("trip_id", tripId)
+      .eq("trigger", "news_resend")
+      .gte("created_at", before)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    expect(data?.actor_user_id).toBe(ctx.user.id); // the OWNER, who authored it
+    expect(data?.actor_user_id).not.toBe(ctx.getUser("planner").id); // NOT the caller
+  });
+
+  it("resend — a plain member cannot", async () => {
+    const post = await ctx.caller().news.create({
+      tripId,
+      blocks: [{ type: "text", text: "no member resend" }],
+    });
+    await expect(
+      ctx.callerAs("member").news.resend({ tripId, postId: post.id })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("resend — refuses a postId from another trip", async () => {
+    const otherTripId = await ctx.createTrip("News Resend Other Trip");
+    const otherPost = await ctx.caller().news.create({
+      tripId: otherTripId,
+      blocks: [{ type: "text", text: "elsewhere" }],
+    });
+    await expect(
+      ctx.caller().news.resend({ tripId, postId: otherPost.id })
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
   // ── roster + competitionDraw (PR3) ────────────────────────────────────────
   // Own trip + competition so the post tests above aren't affected.
   describe("roster + competitionDraw", () => {
