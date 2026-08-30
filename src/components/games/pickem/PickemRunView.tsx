@@ -1,8 +1,17 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
-import { MultiplierBadge, SpreadBadge, pickemRowSurface } from "./slateRowVisual";
+import { pickemRowSurface } from "./slateRowVisual";
+import { PickemGameCard, PickemSegments, segmentStyle } from "./PickemGameCard";
+
+/**
+ * Re-exported so the results page stays the place its own tests import from.
+ * The DEFINITION moved to `PickemGameCard` with r7 §12, because the picks sheet
+ * now paints its two segments the same way and a second copy of the accent
+ * rule is a second thing to keep in step.
+ */
+export { segmentStyle };
 import { resolvedCount, type SlateResult, type ScoredSlateGame } from "@/lib/pickemScoring";
 
 /**
@@ -271,7 +280,6 @@ function PendingCard({
   matchesPending: number;
   onSetResult: (slateGameId: string, result: SlateResult | null) => void;
 }) {
-  const mult = g.multiplier ?? 1;
   /**
    * Said only where it DIFFERS from every other row.
    *
@@ -295,170 +303,63 @@ function PendingCard({
    */
   const ridingWorthSaying = riding > 0 && riding !== matchesPending;
   return (
-    <div
-      data-testid="pickem-run-row"
-      className="flex flex-col gap-2"
-      style={{
-        ...pickemRowSurface({ weighted: mult > 1 }),
-        borderRadius: 13,
-        padding: "9px 11px 10px 13px",
-      }}
+    <PickemGameCard
+      testId="pickem-run-row"
+      /* THE SHARED CARD (r7 §12). This used to build its own two-line head —
+         matchup and badges inline on the left, kickoff pushed to the right —
+         which put the same contest in a different arrangement from the sheet
+         and the slate modal. The kickoff is now the SUB-line, beside the note,
+         which is where the other two surfaces have always had it.
+         "TBD" survives the move: a game with no time is a fact worth stating on
+         a page about what has and has not happened. */
+      game={{ ...g, kickoff: g.kickoff ?? "TBD" }}
     >
-      <div className="flex items-baseline gap-2">
-        <span className="min-w-0 flex-1 truncate" style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>
-          {g.awayTeam} <span style={{ color: "var(--color-bt-text-dim)" }}>at</span> {g.homeTeam}
-          {g.spread && (
-            <>
-              {" "}
-              <SpreadBadge spread={g.spread} />
-            </>
-          )}
-          {mult > 1 && (
-            <>
-              {" "}
-              <MultiplierBadge multiplier={mult} />
-            </>
-          )}
-        </span>
-        <span
-          className="shrink-0"
-          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-        >
-          {g.kickoff ?? "TBD"}
-        </span>
-      </div>
-
-      {canEdit && <ResultSegments game={g} busy={busy} onSetResult={onSetResult} />}
+      {canEdit && (
+        <PickemSegments
+          values={RESULT_VALUES}
+          awayTeam={g.awayTeam}
+          homeTeam={g.homeTeam}
+          selected={(g.result as SlateResult | null) ?? null}
+          busy={busy}
+          onSelect={(value) => onSetResult(g.id, value)}
+          testIdPrefix="pickem-run"
+        />
+      )}
 
       {ridingWorthSaying && (
         <span
           data-testid="pickem-run-riding"
+          className="block"
           style={{ fontSize: 10.5, color: "var(--color-bt-text-dim)" }}
         >
           {riding} match{riding === 1 ? " is" : "es are"} still riding on this
         </span>
       )}
       {busy && (
-        <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>
+        <span
+          className="block"
+          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+        >
           Saving…
         </span>
       )}
-      {!canEdit && g.note && (
-        <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>
-          {g.note}
-        </span>
-      )}
-    </div>
+    </PickemGameCard>
   );
 }
 
 /**
- * The four outcomes as one control — shared by an unmarked game and a reopened
- * one, so a correction is offered in exactly the same shape as the original
- * entry. Two copies of this would be two places for the four values to drift.
- */
-function ResultSegments({
-  game: g,
-  busy,
-  onSetResult,
-}: {
-  game: RunSlateGame;
-  busy: boolean;
-  onSetResult: (slateGameId: string, result: SlateResult | null) => void;
-}) {
-  return (
-    <div
-      className="grid gap-0.5"
-      style={{
-        gridTemplateColumns: "1fr 1fr 52px 52px",
-        background: "var(--color-bt-card-raised)",
-        borderRadius: 11,
-        padding: 2,
-      }}
-    >
-      {(
-        [
-          ["away", g.awayTeam],
-          ["home", g.homeTeam],
-          ["push", "Push"],
-          ["cancelled", "Void"],
-        ] as const
-      ).map(([value, label]) => (
-        <Segment
-          key={value}
-          value={value}
-          label={label}
-          selected={g.result === value}
-          busy={busy}
-          onSelect={() => onSetResult(g.id, g.result === value ? null : value)}
-        />
-      ))}
-    </div>
-  );
-}
-
-/**
- * How a segment looks, given what it is and whether it is chosen.
+ * The four outcomes, in the order a runner meets them.
  *
- * Exported and tested directly because the DIFFERENCE between the two selected
- * states is the whole point and it lives entirely in these three values. A
- * selected team is accent; a selected Push or Void is a neutral fill.
+ * A CONSTANT rather than a literal at each call site, because both places that
+ * render the control — an unmarked game and a reopened one — must offer the
+ * same four, and a correction offered in a different shape from the original
+ * entry is two shapes for one decision.
  *
- * Push and cancelled score identically to each other (zero for everyone) and
- * are different FACTS — one happened and nobody covered, the other never
- * happened — but neither is a win, and painting them the way a team win is
- * painted would say a team did something.
+ * The control itself is `PickemSegments` (r7 §12): the picks sheet renders the
+ * same grid with the first two values, so there is one segmented control in the
+ * feature rather than two that resemble each other.
  */
-export function segmentStyle(value: SlateResult, selected: boolean): CSSProperties {
-  const team = value === "away" || value === "home";
-  if (!selected) {
-    return {
-      background: "transparent",
-      border: "1px solid transparent",
-      color: "var(--color-bt-text)",
-    };
-  }
-  return {
-    background: team ? "var(--color-bt-accent-faint)" : "var(--color-bt-hover)",
-    border: `1px solid ${team ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-    color: team ? "var(--color-bt-accent)" : "var(--color-bt-text)",
-  };
-}
-
-/** One quarter of the control. */
-function Segment({
-  value,
-  label,
-  selected,
-  busy,
-  onSelect,
-}: {
-  value: SlateResult;
-  label: string;
-  selected: boolean;
-  busy: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={onSelect}
-      data-testid={`pickem-run-${value}`}
-      data-selected={selected ? "true" : "false"}
-      className="truncate px-1 disabled:opacity-40"
-      style={{
-        height: 34,
-        borderRadius: 9,
-        fontSize: TYPE_SCALE.bodyDense,
-        fontWeight: selected ? 700 : 600,
-        ...segmentStyle(value, selected),
-      }}
-    >
-      {label}
-    </button>
-  );
-}
+const RESULT_VALUES = ["away", "home", "push", "cancelled"] as const;
 
 /**
  * A game already marked — one line, and a way back into it.
@@ -535,7 +436,15 @@ function EnteredRow({
 
       {canEdit && open && (
         <div className="flex flex-col gap-2 px-3 pb-2.5">
-          <ResultSegments game={g} busy={busy} onSetResult={onSetResult} />
+          <PickemSegments
+            values={RESULT_VALUES}
+            awayTeam={g.awayTeam}
+            homeTeam={g.homeTeam}
+            selected={(g.result as SlateResult | null) ?? null}
+            busy={busy}
+            onSelect={(value) => onSetResult(g.id, value)}
+            testIdPrefix="pickem-run"
+          />
           <button
             type="button"
             disabled={busy}
