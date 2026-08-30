@@ -27,6 +27,7 @@ import { resolveDoubleDraw } from "@/lib/bracketDoubleAdvance";
 import { readBracketDraw } from "../lib/bracketDraw";
 import { deriveBracketPlacements } from "../lib/bracketResults";
 import { resolveResultStrategy } from "@/lib/resultStrategy";
+import { computePickemResults } from "@/server/lib/pickemResults";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 
 /**
@@ -1168,6 +1169,19 @@ export const gamesRouter = router({
         matches = await computeMatchPlayResults(ctx.supabase, input.gameId, { onFailure: "throw" });
       } else if (strategy === "rack_n_stack") {
         teams = await computeRackNStackResults(ctx.supabase, input.gameId, { onFailure: "throw" });
+      // PICK'EM — the fifth engine, and the third shape of results this dispatch
+      // writes. Same split as the four above: the rule is client-safe
+      // (`src/lib/pickemFinalize.ts`, composing the board's own functions), the
+      // wrapper reads and commits.
+      //
+      // It REFUSES while picks are still open: nothing recomputes
+      // `game_results` afterwards, so a result recorded mid-picks silently stops
+      // matching the sheets it came from. A domain rule, NOT an RLS one — staff
+      // read every sheet through the proxy arm, which is measured and written
+      // down in the wrapper's header because the RLS version of the argument is
+      // wrong and reads well.
+      } else if (strategy === "pickem") {
+        await computePickemResults(ctx.supabase, input.gameId, { onFailure: "throw" });
       } else if (strategy === "stroke_total") {
         standings = await computeStrokePlayResults(ctx.supabase, input.gameId, {
           onFailure: "throw",

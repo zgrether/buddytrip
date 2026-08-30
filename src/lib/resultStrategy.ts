@@ -99,3 +99,24 @@ export function isBracketGame(
 ): boolean {
   return resolveResultStrategy(gameTypeId, competitionFormat) === "bracket";
 }
+
+/**
+ * Is this game scored by the pick'em engine?
+ *
+ * Beside `isBracketGame` and for the same reason: the leaderboard has to award a
+ * pick'em game from the ENGINE that finalized it, not from the shape of a
+ * `points_distribution` column pick'em never writes. Resolving both paths through
+ * this one file is what stops the write and the read disagreeing about what kind
+ * of game they are looking at.
+ *
+ * The descriptor argument rides along unused today — pick'em's strategy is fixed
+ * by the format — but the signature matches `isBracketGame` deliberately: a caller
+ * asking "which engine is this?" should not have to know which formats happen to
+ * consult the descriptor.
+ */
+export function isPickemGame(
+  gameTypeId: string | null | undefined,
+  competitionFormat: string | null | undefined
+): boolean {
+  return resolveResultStrategy(gameTypeId, competitionFormat) === "pickem";
+}

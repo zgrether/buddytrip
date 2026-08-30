@@ -16,6 +16,8 @@ import {
 } from "@/lib/configDraft";
 import { useGameSurfaceChrome } from "@/components/games/GameChrome";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
+import { useGameFinalize } from "@/hooks/useGameFinalize";
+import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useNow } from "@/hooks/useNow";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
@@ -34,6 +36,7 @@ import { PickemSheet, PickemClosedBanner } from "@/components/games/pickem/Picke
 import { explanationCopy, PARA_BREAK } from "@/lib/pickemSheet";
 import { PickemPhaseStrip } from "@/components/games/pickem/PickemPhaseStrip";
 import { PickemRunView } from "@/components/games/pickem/PickemRunView";
+import { gameLockState } from "@/lib/gameLifecycle";
 import { PickemBoard } from "@/components/games/pickem/PickemBoard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
@@ -62,6 +65,7 @@ import {
   msUntilDeadline,
   picksEverOpened,
   picksOpen,
+  picksRevealed,
   pickemClosure,
   pickemPhase,
   scoringSettingsEditable,
@@ -587,6 +591,60 @@ export function PickemGameView() {
   // the app (#808). `oneFinalizePath.test.ts` enumerates every game surface and
   // fails the build for exactly this — it caught this file.
   const exitToBoard = useExitToBoard(tripId, q.data?.game.competition_id as string | null);
+
+  /**
+   * ── THE RESULTS AXIS, adopted wholesale rather than a column at a time ─────
+   *
+   * Pick'em had none of this: no `gameLockState`, no finalize, no way back from
+   * one. `set_pickem_result` was the only thing that knew a game could be
+   * closed, and it knew it on the wrong axis until migration 167.
+   *
+   * The shared pieces are taken as a set — the predicate, the CTAs, the
+   * correction entry, the exit — because CLAUDE.md #24's eight incidents are all
+   * a format that took some of them. `useGameFinalize` is not optional either:
+   * `oneFinalizePath` fails the build if `games.finish` is called anywhere else,
+   * which is what stops the aftermath (the optimistic lock, the three board
+   * invalidations, `faceBootstrap` included) being rewritten here.
+   *
+   * PICKS are a SEPARATE axis and stay separate — see `pickemPhase`. The only
+   * crossing is `allComplete` below.
+   */
+  // Read ONCE, raw. `gameLifecycle` and `gameLockState` both take the COLUMN and
+  // derive from it; handing either a value already derived from the other is how
+  // two readings of one row start disagreeing.
+  const correctionsOpen =
+    ((q.data?.game as { corrections_open?: boolean | null } | undefined)?.corrections_open) ??
+    false;
+  const gameStatus = (q.data?.game.status as string | null) ?? null;
+  const lock = gameLockState({ status: gameStatus, correctionsOpen });
+  /**
+   * May a result be ENTERED right now — the role answer AND the lifecycle one.
+   *
+   * `canEdit` alone is a role answer, and on a locked game it left the four
+   * outcome buttons live: the runner taps, `set_pickem_result` refuses with
+   * `GAME_LOCKED`, and the segment springs back. That is CLAUDE.md #24's seventh
+   * incident — a lock-dependent behaviour each view had to remember — and it is
+   * the same fix non-golf made, reading the same `gameLockState` so the buttons
+   * and the CTA underneath them cannot disagree about whether the game is open.
+   *
+   * LOCKED → read-only, with "Correct a result" as the way back. CORRECTING →
+   * editable again. No permission changed; `canEdit` is only ANDed.
+   */
+  const resultsEditable = canEdit && !lock.isLocked;
+  const { correct: correctGame, isPending: correctPending } = useOpenCorrection(
+    tripId,
+    gameId,
+    (q.data?.game.competition_id as string | null) ?? null
+  );
+  const { finalize: finalizeGame, isPending: finalizePending } = useGameFinalize({
+    tripId,
+    gameId,
+    competitionId: (q.data?.game.competition_id as string | null) ?? null,
+    // This surface reads its own everything from `pickem.get` — the status the
+    // CTA branches on included — so that is what has to come back.
+    refreshSelf: () => void utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! }),
+    onExit: exitToBoard,
+  });
 
   const slateDraft: SlateDraftGame[] = useMemo(
     () =>
@@ -1496,10 +1554,43 @@ export function PickemGameView() {
           {surface.panel === "results" && (
             <PickemRunView
               slate={q.data.slate}
-              canEdit={canEdit}
+              /* The lifecycle-narrowed answer — a locked game's results are read
+                 only. `lifecycle.canEdit` below is deliberately the RAW role
+                 answer, because `gameLifecycle` ANDs it with the lock itself and
+                 narrowing it first would make "Correct a result" unreachable on
+                 exactly the games that need it. */
+              canEdit={resultsEditable}
               busyId={busyResultId}
               ridingOn={riding.byGame}
               matchesPending={riding.matchesPending}
+              lifecycle={{
+                canEdit,
+                status: gameStatus,
+                correctionsOpen,
+                /**
+                 * ── PICK'EM'S COMPLETENESS INPUT IS THE CLOCK, NOT THE RESULTS ──
+                 *
+                 * `allComplete` means "can the server compute a real result from
+                 * this yet". For golf that is every score entered; here it is
+                 * that picking has CLOSED, which is exactly what
+                 * `computePickemResults` refuses on.
+                 *
+                 * Counting resolved contests would have been the obvious
+                 * reading and it is the wrong one — it would refuse a finalize
+                 * the runner is entitled to make, because a postponed Tuesday
+                 * game must not hold the cup open. That case is a warning
+                 * below, in a treatment that does not disable anything.
+                 *
+                 * Derived from the SAME predicate the server gates on, so the
+                 * CTA cannot offer an action the RPC then refuses.
+                 */
+                allComplete: picksRevealed(clock, now),
+                finalizePending,
+                correctPending,
+                onFinalize: () => void finalizeGame(),
+                onCorrect: correctGame,
+                unresolvedCount: q.data.slate.filter((g) => g.result == null).length,
+              }}
               onSetResult={(slateGameId, result) => {
                 setBusyResultId(slateGameId);
                 setResult.mutate({ tripId: tripId!, gameId, slateGameId, result });

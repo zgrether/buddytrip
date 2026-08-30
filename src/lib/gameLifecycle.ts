@@ -1,6 +1,6 @@
 /**
  * gameLifecycle — the ONE place the finalize / correct / re-lock affordances are
- * decided, for every golf format.
+ * decided, for every format.
  *
  * ── Why this exists ──────────────────────────────────────────────────────────
  * Rack and stroke had each grown their own copy of the same three conditions,
@@ -27,6 +27,23 @@
  *
  * `games.finish` serves both the first finalize and the re-lock — it clears
  * `corrections_open` either way, which is what makes re-locking the same call.
+ *
+ * ── NOT the only lifecycle a game has, and pick'em is where that shows ──────
+ *
+ * This module is about RESULTS: finalized, corrected, re-locked. Pick'em carries
+ * a second, independent axis about PICKS — `pickemPhase` in
+ * `src/lib/pickemLifecycle.ts` — and the two are simultaneously true rather than
+ * two readings of one state. Picks locked with results still open is not an edge
+ * case; it is where a pick'em game sits for most of its life.
+ *
+ * The formats using this module have no equivalent because their entry window
+ * IS their results window. Pick'em's are days apart and closed by separate
+ * actions, so it feeds `picksRevealed` in as `allComplete` — the input that
+ * already means "may this be finalized yet" — and nothing else crosses over.
+ *
+ * The header no longer says "for every golf format": pick'em is not golf, and
+ * `GameLifecycleActions` now renders on all five. What is shared is the QUESTION,
+ * which was never a golf question — see CLAUDE.md #24's eight incidents.
  */
 
 export type GameLifecycleInput = {
@@ -42,6 +59,13 @@ export type GameLifecycleInput = {
    * format (rack: both sides of every slot; stroke: every player in the field).
    * That part legitimately differs per format; what must NOT differ is how the
    * answer is then USED, which is this module's job.
+   *
+   * The general form is "is the server able to compute a real result from this
+   * yet?", and pick'em is the case that makes the difference visible: it passes
+   * `picksRevealed`, because an unresolved contest is a WARNING there and not a
+   * blocker (a postponed Tuesday game must not hold the cup open), while a
+   * still-open picking window genuinely is one. Counting resolved contests here
+   * would have refused a finalize the runner is entitled to make.
    */
   allComplete: boolean;
 };

@@ -54,6 +54,14 @@ const ALLOWED = new Map<string, string>([
     "RESOLVES it for the explainer — drops the head-to-head paragraphs",
   ],
   [
+    "lib/pickemFinalize.ts",
+    // The FIFTH resolution point, and the first on the write path. It is
+    // `pickemResolution` and nothing else: points mode is read first and alone,
+    // so a cup carrying `individual_matches` cannot be paid as match play. Every
+    // other site in that file reads the resolution rather than the column.
+    "RESOLVES the override — `pickemResolution` reads `pointsMode` first",
+  ],
+  [
     "components/games/pickem/PickemScoringRows.tsx",
     "EDITS the setting itself; the row is absent in a points cup (`showRollUp`)",
   ],
