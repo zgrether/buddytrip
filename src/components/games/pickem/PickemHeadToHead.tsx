@@ -441,8 +441,48 @@ function SidePick({ pick, game }: { pick: BoardRow["aPick"]; game: BoardSlateGam
   return <span className="truncate">{pick === "away" ? game.awayTeam : game.homeTeam}</span>;
 }
 
-/** The rank somebody spent. Struck through when it missed — the number stays
- *  readable, because what they spent is the interesting part of a wrong pick. */
+/**
+ * The rank somebody spent.
+ *
+ * ── THREE STATES, AND THE STRIKE-THROUGH WAS CARRYING ONE OF THEM ──────────
+ *
+ * A missed pick used to be struck through, which was hard to read: a line
+ * across two tabular digits at 11px fights the digits for the same pixels, and
+ * the number is the thing worth reading — what somebody SPENT is the
+ * interesting part of a wrong pick.
+ *
+ * Dimming it instead is the obvious fix and it has a trap in it. Missed and
+ * UNPLAYED were identical but for the line, so removing the line without
+ * replacing it merges two states: a rank that lost and a rank still in play
+ * would render the same. Both are "not accent", and only one of them is over.
+ *
+ * So the ladder is explicit, and each step is a different amount of ink:
+ *
+ *   banked    accent on accent-faint — the teal that means points were awarded
+ *   in play   the ordinary dim, on the raised chip — undecided, still yours
+ *   missed    dimmer again, and the chip loses its fill — spent, and gone
+ *
+ * The fade is what says "no points", where the line used to. It reads as less
+ * ink rather than as damage, and it cannot be confused with the accent, which
+ * is the distinction that actually matters on this screen.
+ *
+ * ── DELIBERATELY UNLIKE THE SHEET'S RANK CHIP, WHICH STILL STRIKES ─────────
+ *
+ * `PickemSheetRow`'s chip keeps its strike-through, and that is not drift. On
+ * the SHEET a settled row is already at `opacity: 0.38` as a whole, so a further
+ * fade on the chip inside it has nothing to work with — it would be invisible
+ * against a row that is itself faded. The line survives that, because it is
+ * shape rather than contrast.
+ *
+ * Here the row is flat and undimmed, so the fade has the full range to itself
+ * and the strike-through is what fails: a rule across two tabular digits at 11px
+ * competes with the digits for the same pixels.
+ *
+ * So the two chips answer the same question with opposite tools because they sit
+ * on opposite surfaces. Unifying them would make the sheet's chip disappear —
+ * please do not, and if the sheet's row ever stops dimming itself, THAT is when
+ * this becomes one treatment.
+ */
 function Conf({
   value,
   hit,
@@ -457,6 +497,7 @@ function Conf({
   return (
     <span
       className="shrink-0 text-center"
+      data-testid={hit ? "pickem-conf-banked" : missed ? "pickem-conf-missed" : "pickem-conf-open"}
       style={{
         minWidth: 22,
         height: 20,
@@ -465,8 +506,19 @@ function Conf({
         fontSize: 11,
         fontWeight: 700,
         fontVariantNumeric: "tabular-nums",
-        textDecoration: missed ? "line-through" : undefined,
-        background: hit ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+        /**
+         * `opacity` on the whole chip rather than a fainter colour token,
+         * because there is no step below `--color-bt-text-dim` in the system
+         * and inventing one for a single chip would put a colour outside the
+         * surface hierarchy (STYLE_GUIDE §1). Fading the element keeps it on
+         * the same token in both themes and degrades identically in each.
+         */
+        opacity: missed ? 0.45 : 1,
+        background: hit
+          ? "var(--color-bt-accent-faint)"
+          : missed
+            ? "transparent"
+            : "var(--color-bt-card-raised)",
         color: hit ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
       }}
     >

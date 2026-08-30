@@ -307,7 +307,11 @@ export function PickemRunView({
           />
           {confirming && confirmMessage && (
             <PickemFinalizePrompt
+              title="Some games have no result"
               message={confirmMessage}
+              confirmLabel="Void and save results"
+              pendingLabel="Saving results…"
+              cancelLabel="Keep entering results"
               pending={lifecycle.finalizePending}
               onConfirm={() => {
                 setConfirming(false);

@@ -150,6 +150,23 @@ function Kickoff({ kickoff }: { kickoff: string }) {
  *
  * The strike-through is the one that carries meaning without colour: a number
  * crossed out is a number that did not count, in any theme and at any size.
+ *
+ * ── AND IT STAYS HERE, WHERE THE HEAD-TO-HEAD DROPPED IT ───────────────────
+ *
+ * `PickemHeadToHead`'s confidence chip now DIMS a missed rank instead of
+ * striking it, and the difference is deliberate rather than an oversight.
+ *
+ * The row this chip sits in is already at `opacity: 0.38` once settled (see the
+ * row surface below). A chip that tried to say "missed" by fading further has
+ * nothing left to fade against — it would read as absent rather than as spent.
+ * The line still reads at 0.38, because it is a shape and not a contrast.
+ *
+ * The head-to-head's rows are flat and undimmed, so there the fade has room and
+ * the LINE is what fails, at 11px across two tabular digits.
+ *
+ * Same question, opposite tools, because the surfaces underneath are opposite.
+ * Unifying them costs this chip its meaning — if that is ever attempted, the
+ * thing to change first is whether this row dims itself at all.
  */
 function RankChip({
   points,

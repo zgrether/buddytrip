@@ -3,7 +3,14 @@
 import { createPortal } from "react-dom";
 
 /**
- * The "some games have no result" confirm, asked at the moment of the decision.
+ * A pick'em confirm, asked at the moment of the decision.
+ *
+ * ── Two callers, one dialog ────────────────────────────────────────────────
+ *
+ * Finalizing with contests outstanding, and saving a sheet with nothing picked.
+ * Different facts, same shape and same rules — so the copy is passed in and the
+ * BEHAVIOUR is shared, rather than a second component that agrees with this one
+ * until somebody changes one of them.
  *
  * ── This REPLACES a persistent banner, and the reason is the better argument ─
  *
@@ -41,15 +48,31 @@ import { createPortal } from "react-dom";
  * note; this is the same mechanism, not a second decision.
  */
 export function PickemFinalizePrompt({
-  /** The sentence, built by `unresolvedWarning` so this and any other reader of
-   *  the same fact cannot word it differently. */
+  /**
+   * The heading. Names the CONDITION, not the action — a person reading a
+   * dialog they did not expect needs to know what is true before they are asked
+   * what to do about it.
+   */
+  title,
+  /** The sentence, built by the pure function that owns the fact, so this and
+   *  any other reader of it cannot word it differently. */
   message,
-  pending,
+  /** The act being agreed to, in its own words. Never "OK" or "Yes": a button
+   *  that names the act is the difference between a decision and a dismissal. */
+  confirmLabel,
+  pendingLabel,
+  /** The way out. First and accented — see below. */
+  cancelLabel,
+  pending = false,
   onConfirm,
   onCancel,
 }: {
+  title: string;
   message: string;
-  pending: boolean;
+  confirmLabel: string;
+  pendingLabel?: string;
+  cancelLabel: string;
+  pending?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -72,7 +95,7 @@ export function PickemFinalizePrompt({
         }}
       >
         <div style={{ fontSize: 16.5, fontWeight: 700, color: "var(--color-bt-text)" }}>
-          Some games have no result
+          {title}
         </div>
         <p className="mt-1.5 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
           {message}
@@ -93,7 +116,7 @@ export function PickemFinalizePrompt({
             }}
             data-testid="pickem-finalize-prompt-cancel"
           >
-            Keep entering results
+            {cancelLabel}
           </button>
           <button
             type="button"
@@ -113,9 +136,9 @@ export function PickemFinalizePrompt({
           >
             {/* Names the ACT, not the reluctance. "Save results anyway" was
                 written when the consequence was vaguer — it read as "yes, I
-                know, proceed", which is a shrug rather than a decision. The
-                voiding is the thing being agreed to, so the button says it. */}
-            {pending ? "Saving results…" : "Void and save results"}
+                know, proceed", which is a shrug rather than a decision. What is
+                being agreed to is what the button says. */}
+            {pending ? (pendingLabel ?? "Saving…") : confirmLabel}
           </button>
         </div>
       </div>
