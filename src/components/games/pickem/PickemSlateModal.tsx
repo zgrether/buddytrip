@@ -422,8 +422,83 @@ export function PickemSlateModal({
    */
   const dayGroups = reorderMode ? null : groupSlateByDay(draft);
 
+  /**
+   * ── THE DONE BAR IS THE SHEET'S FOOTER SLOT, NOT A STICKY CHILD ──────────
+   *
+   * It used to be `sticky bottom-0` INSIDE the scrolling body, and it did not
+   * reach the bottom. Measured at 390px, scrolled to the end:
+   *
+   *   footer bottom 811 · scroller bottom 843 · gap 32px
+   *
+   * `bottom: 0` pins to the containing block's CONTENT box, and there were two
+   * paddings under it: the inner column's `pb-4` (16px) and the sheet body's own
+   * `p-4` (16px). Both are part of the scrollable region, so the list scrolled
+   * THROUGH them and a strip of the add-game form sat visibly below the bar —
+   * which is what "not completely pinned" looks like.
+   *
+   * `Sheet` has had a `footer` prop the whole time — a flex sibling AFTER the
+   * scrolling body, which is what four other sheets in the app already use, the
+   * game-settings Cancel/Save among them. As a sibling there is no containing
+   * block to be inset from and nothing can pass beneath it.
+   *
+   * ── Why sticky was chosen originally, and why that reason is spent ───────
+   *
+   * The note here said the bar was anchored "not placed at the end of the
+   * content" (CLAUDE.md #14 — with sixteen games the end of the list is far
+   * below the fold), and that a GRADIENT "lets the list slide under it rather
+   * than stopping at a hard edge". The anchoring argument stands and the footer
+   * slot satisfies it better. The gradient does not: it was replaced by an
+   * opaque `--color-bt-card-float` when the bar was found to be painting the
+   * PAGE background inside a floating sheet. Sliding under an opaque bar is
+   * just disappearing behind it, so the one thing sticky bought is no longer
+   * bought — the premise changed, not the taste.
+   *
+   * Dropped with the move: `sticky`, `z-10`, the `-mx-4` that cancelled the
+   * body inset, and the explicit background. The slot supplies its own
+   * `border-t p-4` and inherits the sheet's surface, which is exactly what the
+   * old comment observed `AddEditSheet` doing.
+   */
+  const doneBar = editable ? (
+    <div data-testid="pickem-slate-footer" className="flex items-center gap-3">
+      {/*
+        ── ONE BUTTON, AND IT ALWAYS WORKS ───────────────────────────
+
+        The Save that used to sit here was DISABLED on arrival, which is
+        what somebody opening the slate to look at it saw first. A screen
+        whose only affordance is greyed out reads as broken.
+
+        Every edit persists now, so there is nothing to commit and the one
+        control is the way out. Its label does not change with state —
+        "Done" is true whether or not a write is in flight, where "Save"
+        had to lie in one direction or the other.
+      */}
+      <span
+        data-testid="pickem-slate-status"
+        style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", flex: 1 }}
+      >
+        {saving ? "Saving…" : touched ? "Changes saved" : "Changes save as you make them"}
+      </span>
+      <button
+        type="button"
+        onClick={onClose}
+        data-testid="pickem-slate-done"
+        className="rounded-xl px-4 py-2"
+        style={{
+          background: "var(--color-bt-accent)",
+          color: "var(--color-bt-base)",
+          fontSize: TYPE_SCALE.bodyDense,
+          fontWeight: 700,
+        }}
+      >
+        Done
+      </button>
+    </div>
+  ) : null;
+
   return (
-    <Sheet onClose={onClose} title="The Picks" testId="pickem-slate-sheet">
+    <Sheet onClose={onClose} title="The Picks" testId="pickem-slate-sheet" footer={doneBar}>
+      {/* `pb-4` stays: it is the gap between the last row and the footer's own
+          border, and the footer is no longer inside this box to be inset by it. */}
       <div className="flex flex-col gap-3 pb-4">
         {warnAboutRankings && (
           <p
@@ -600,85 +675,6 @@ export function PickemSlateModal({
           />
         )}
 
-        {editable && (
-          /**
-           * ANCHORED to the bottom of the scroller, not placed at the end of
-           * the content (CLAUDE.md #14).
-           *
-           * With sixteen games the end of the content is a long way below the
-           * fold, so the save state and the button scrolled out of reach — the
-           * runner could not see whether their work was saved without going to
-           * find out. The gradient lets the list slide under it rather than
-           * stopping at a hard edge.
-           *
-           * Negative side margins cancel the sheet's own inset so the gradient
-           * reaches the edges, while the rows above stay inset — the same
-           * treatment the picks sheet's save bar uses.
-           */
-          <div
-            data-testid="pickem-slate-footer"
-            className="sticky bottom-0 z-10 -mx-4 mt-1 flex items-center gap-3 px-4 pb-2 pt-3"
-            /**
-             * ── THE SHEET'S OWN SURFACE, not the page's ────────────────────
-             *
-             * This painted `--color-bt-base` — Level 0, the page background —
-             * inside a `Sheet`, which is Level 3 (`--color-bt-card-float`). So
-             * the bar read as a differently-coloured band across the bottom of a
-             * floating panel, which is what it was.
-             *
-             * The comment that used to sit here explained it as "one treatment
-             * for every anchored footer in the app", and that is exactly how it
-             * went wrong: the footers it was copied from sit on the PAGE, where
-             * Level 0 is correct. Same treatment, different surface. A footer
-             * inside a floating sheet has to match the sheet.
-             *
-             * (The picks save bar it named has since been deleted, so half the
-             * justification had stopped existing too.)
-             *
-             * Set explicitly rather than left transparent: the list scrolls
-             * UNDER this bar, so it has to be opaque. `AddEditSheet`'s footer
-             * inherits instead, which works there because it is a flex sibling
-             * with nothing passing beneath it.
-             */
-            style={{
-              background: "var(--color-bt-card-float)",
-              borderTop: "1px solid var(--color-bt-border)",
-            }}
-          >
-            {/*
-              ── ONE BUTTON, AND IT ALWAYS WORKS ───────────────────────────
-
-              The Save that used to sit here was DISABLED on arrival, which is
-              what somebody opening the slate to look at it saw first. A screen
-              whose only affordance is greyed out reads as broken.
-
-              Every edit persists now, so there is nothing to commit and the one
-              control is the way out. Its label does not change with state —
-              "Done" is true whether or not a write is in flight, where "Save"
-              had to lie in one direction or the other.
-            */}
-            <span
-              data-testid="pickem-slate-status"
-              style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", flex: 1 }}
-            >
-              {saving ? "Saving…" : touched ? "Changes saved" : "Changes save as you make them"}
-            </span>
-            <button
-              type="button"
-              onClick={onClose}
-              data-testid="pickem-slate-done"
-              className="rounded-xl px-4 py-2"
-              style={{
-                background: "var(--color-bt-accent)",
-                color: "var(--color-bt-base)",
-                fontSize: TYPE_SCALE.bodyDense,
-                fontWeight: 700,
-              }}
-            >
-              Done
-            </button>
-          </div>
-        )}
       </div>
     </Sheet>
   );

@@ -434,3 +434,89 @@ describe("write-on-change is wired (source)", () => {
     expect((CODE.match(ON_SAVE_CALL) ?? []).length).toBe(1);
   });
 });
+
+/**
+ * ── THE DONE BAR IS OUTSIDE THE SCROLLING BODY ────────────────────────────
+ *
+ * Reported from the running app: "when you scroll down, the done bar is not
+ * completely pinned to the bottom". Measured at 390px, scrolled to the end —
+ * footer bottom 811, scroller bottom 843, a 32px gap with a strip of the
+ * add-game form sitting visibly below the bar.
+ *
+ * The cause was `sticky bottom-0` inside the scroller: `bottom: 0` pins to the
+ * containing block's CONTENT box, and two paddings sat under it (the inner
+ * column's `pb-4` and the sheet body's `p-4`), both part of the scrollable
+ * region, so the list scrolled THROUGH them.
+ *
+ * The fix is structural — `Sheet`'s `footer` prop, a flex sibling after the
+ * body — so the assertion is structural too. A class check would pass against a
+ * build that merely swapped one sticky offset for another.
+ */
+describe("the Done bar is pinned, not sticky inside the list", () => {
+  /** Does `needle` fall inside the element that opens at `openIdx`? */
+  const isInside = (html: string, openIdx: number, needle: number) => {
+    let depth = 0;
+    let i = openIdx;
+    while (i > -1 && i < html.length) {
+      const nextOpen = html.indexOf("<div", i + 1);
+      const nextClose = html.indexOf("</div>", i + 1);
+      if (nextClose === -1) return false;
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth += 1;
+        i = nextOpen;
+      } else if (depth === 0) {
+        return needle < nextClose;
+      } else {
+        depth -= 1;
+        i = nextClose;
+      }
+    }
+    return false;
+  };
+
+  it("renders OUTSIDE the scrolling body", () => {
+    const html = render();
+    const scroller = html.indexOf("overflow-y-auto");
+    const footer = html.indexOf('data-testid="pickem-slate-footer"');
+    expect(scroller, "no scroll container").toBeGreaterThan(-1);
+    expect(footer, "no footer").toBeGreaterThan(-1);
+
+    // The scroller's own opening tag, walked to its close.
+    const open = html.lastIndexOf("<div", scroller);
+    expect(
+      isInside(html, open, footer),
+      "the Done bar is INSIDE the scroll container — content will scroll under it"
+    ).toBe(false);
+  });
+
+  it("carries no sticky positioning of its own", () => {
+    /**
+     * Not the primary assertion — the structural one above is — but a build
+     * that put it back inside would almost certainly bring `sticky` with it,
+     * and this names the mechanism in the failure message.
+     */
+    const html = render();
+    const at = html.indexOf('data-testid="pickem-slate-footer"');
+    const tag = html.slice(html.lastIndexOf("<div", at), html.indexOf(">", at));
+    expect(tag).not.toContain("sticky");
+    // ...and the negative inset that existed only to cancel the body padding.
+    expect(tag).not.toContain("-mx-4");
+  });
+
+  it("still says what it said, and still closes", () => {
+    // The move is presentational. Losing the status line or the button while
+    // relocating them would be a silent regression the geometry checks cannot
+    // see — the same "extraction leaves the message behind" shape.
+    const html = render();
+    expect(html).toContain("Changes save as you make them");
+    expect(html).toContain('data-testid="pickem-slate-done"');
+    expect(html).toContain(">Done</button>");
+  });
+
+  it("is absent on a read-only slate — nothing to be done", () => {
+    // The footer slot must not render an empty bar when picks are open and the
+    // slate is frozen. Already asserted elsewhere in this file; repeated here
+    // because the move changed WHERE the conditional lives.
+    expect(render({ editable: false })).not.toContain("pickem-slate-footer");
+  });
+});
