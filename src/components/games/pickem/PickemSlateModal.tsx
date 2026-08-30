@@ -871,9 +871,12 @@ function SlateForm({
           style={{ ...field, flex: "1 1 0" }}
         />
         <input
-          aria-label="Spread"
+          /* WHOSE line it is, in the label — it is shown beside the home team
+             everywhere it is read, and the form was the one place that made a
+             runner remember which side the number was for. */
+          aria-label="Spread Home"
           value={form.spread ?? ""}
-          placeholder="Spread"
+          placeholder="Spread Home"
           onChange={(e) => onChange({ spread: e.target.value || null })}
           style={{ ...field, flex: "0 0 96px" }}
         />

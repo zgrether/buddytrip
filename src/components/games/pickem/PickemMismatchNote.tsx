@@ -60,11 +60,26 @@ export function PickemMismatchNote({
   actionable: boolean;
 }) {
   const [a, b] = teams;
-  const { offRoster, unpaired, unevenBy, largerSide } = pairingMismatch(
-    pairs,
-    a.memberIds,
-    b.memberIds
-  );
+  /**
+   * ── ONLY `offRoster` IS RENDERED NOW (r7 §4) ──────────────────────────────
+   *
+   * Two of the three lines described what the grid was already showing.
+   * "Antman, BJ, Bill and Brad are on a team but not in a match yet" sat above
+   * a pairing grid with four empty slots in it, and "one player will have no
+   * opponent" restated an uneven pair of rosters the same grid makes obvious.
+   * A paragraph naming people, above a control that shows the same fact
+   * spatially, is the longest way to say it.
+   *
+   * `offRoster` stays, and the distinction is what the grid can express. An
+   * empty slot is visible; a slot holding somebody who has LEFT the team is
+   * not — it looks exactly like a correct pairing. That is a fact the runner
+   * cannot see and would want to, which is what a note is for.
+   *
+   * `pairingMismatch` still returns all three. It is pure, tested, and the other
+   * two are a reasonable thing for some future surface to ask about — the same
+   * call `slateSetChanged` and `matchesComplete` got when their callers went.
+   */
+  const { offRoster } = pairingMismatch(pairs, a.memberIds, b.memberIds);
   const lines: string[] = [];
 
   if (offRoster.length > 0) {
@@ -75,24 +90,6 @@ export function PickemMismatchNote({
         ? `${who} ${is} paired but no longer on either team — ` +
           `${offRoster.length === 1 ? "swap them" : "swap them out"} for someone on the roster.`
         : `${who} ${is} paired but no longer on either team.`
-    );
-  }
-
-  if (unpaired.length > 0) {
-    const who = names(unpaired.map(nameOf).sort());
-    const is = unpaired.length === 1 ? "is" : "are";
-    // Already a statement rather than an instruction, so it reads correctly on
-    // both surfaces — "yet" is the only word doing tense work, and it is true
-    // in both: a locked game's pairing can still be changed in settings.
-    lines.push(`${who} ${is} on a team but not in a match yet.`);
-  }
-
-  if (unevenBy > 0 && largerSide != null) {
-    const big = teams[largerSide];
-    const small = teams[largerSide === 0 ? 1 : 0];
-    lines.push(
-      `${big.name} has ${big.memberIds.length} and ${small.name} has ${small.memberIds.length}, ` +
-        `so ${unevenBy === 1 ? "one player" : `${unevenBy} players`} will have no opponent.`
     );
   }
 

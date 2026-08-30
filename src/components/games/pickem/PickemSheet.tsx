@@ -57,21 +57,31 @@ export function formatClosedAt(ms: number): string {
  * this at the top of the page and tells the nested sheet not to repeat it
  * (`closedBannerHoisted`), which keeps ONE statement on screen in both states.
  */
+/**
+ * ── THE CLAUSE IS GONE, BECAUSE IT WAS NOT TRUE ───────────────────────────
+ *
+ * It read "Nobody can change a sheet now, not even whoever's running it." The
+ * runner CAN reopen — Start picking is on their panel — so the sentence was
+ * false to the one person who could act on it, and told everybody else that a
+ * thing they might reasonably ask for is impossible.
+ *
+ * What is left is the fact and nothing else: when picks closed, and whether the
+ * clock or a person did it. Those are different — telling somebody the deadline
+ * passed when the runner ended it early is a small lie about why they lost the
+ * chance — so the two sentences stay two.
+ *
+ * The "ended early" phrasing goes with the clause. Without a second sentence to
+ * contrast against, "Picks are closed." is the whole statement for a hand lock,
+ * and the moment is not knowable there anyway.
+ */
 export function PickemClosedBanner({ closure }: { closure: PickemClosure | null }) {
   return (
     <Banner tone="info" testId="pickem-sheet-locked">
       <b>
         {closure?.reason === "deadline"
           ? `Picks closed at ${formatClosedAt(closure.at)}.`
-          : closure?.reason === "locked"
-            ? "Picks are closed — they were ended early."
-            : "Picks are closed."}
-      </b>{" "}
-      {/* The "not even the runner" clause appears ONCE. The first draft put it
-          in both sentences, which read as "whoever's running it closed them
-          early. Nobody can change one now, including whoever's running it" —
-          visible only once rendered. */}
-      Nobody can change a sheet now, not even whoever&rsquo;s running it.
+          : "Picks are closed."}
+      </b>
     </Banner>
   );
 }
