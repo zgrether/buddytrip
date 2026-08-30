@@ -1256,10 +1256,21 @@ export function pickemDraftToPayload(
   const sent = (ms: DraftMatchConfig[]) => ms.filter(isDraftMatchFilled);
   return {
     ...baseDraftToPayload(draft, draft.pointsDistribution, baseline),
-    // Only when the game HAS pairings to send. The RPC keys its structure guard
-    // on the key being present, so an unconditional `matches: []` would read as
-    // "clear every pairing" on a team-totals game that never had any.
-    ...(draft.matches.length > 0
+    /**
+     * Sent when pairings are IN PLAY for this game — which is not the same as
+     * the draft currently holding some.
+     *
+     * The condition was `draft.matches.length > 0` alone, and that made Clear a
+     * no-op: emptying the draft omitted the key, and the RPC preserves what a
+     * payload does not mention. So the pairings survived the clear that was
+     * supposed to remove them, which is half of how a game got stuck.
+     *
+     * The BASELINE is the other half of the question. A team-totals game that
+     * never had pairings still sends nothing — an unconditional `matches: []`
+     * would read as "clear every pairing" there — but a game that HAS them and
+     * has just had them cleared sends the empty list that says so.
+     */
+    ...(draft.matches.length > 0 || (baseline?.matches.length ?? 0) > 0
       ? {
           matches: matchesToSaveRows(draft.matches),
           // No baseline = first save of this page; assume dirty, which is the

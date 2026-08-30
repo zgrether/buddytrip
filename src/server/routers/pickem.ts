@@ -157,7 +157,11 @@ export const pickemRouter = router({
           // `result` and `status` ride along for `hasResults` below — the same
           // read, no extra round trip.
           .from("game_matches")
-          .select("id, display_order, side_a, side_b, point_value, result, status")
+          // `match_number` is the IDENTITY `save_game_config`'s fields-only branch
+          // looks a row up by. Without it the client had to invent one, and a
+          // positional guess is wrong the moment a row is dropped — see the
+          // mapping in `PickemGameView`.
+          .select("id, match_number, display_order, side_a, side_b, point_value, result, status")
           .eq("game_id", input.gameId)
           .order("display_order", { ascending: true }),
         // The two sides of the cup, for the pairing grid. Pick'em pairs ACROSS
@@ -350,6 +354,18 @@ export const pickemRouter = router({
          */
         matches: (matchRes.data ?? []).map((r) => ({
           id: r.id as string,
+          /**
+           * The STORED number, not a positional one.
+           *
+           * `save_game_config`'s fields-only branch identifies a row by
+           * `match_number`, so a client that renumbers by index is asking for a
+           * row that may not exist. It did: `matchesToSaveRows` drops unfilled
+           * matches and keeps each survivor's own number, so clearing a pairing
+           * in the MIDDLE stores 1,3 while the client said 1,2 — and every
+           * subsequent unchanged save raised STRUCTURE_MISMATCH, whose message
+           * is the same sentence the baseHash check uses.
+           */
+          matchNumber: (r.match_number as number | null) ?? null,
           displayOrder: r.display_order as number,
           sideAId: ((r.side_a as { id?: string } | null)?.id ?? null) as string | null,
           sideBId: ((r.side_b as { id?: string } | null)?.id ?? null) as string | null,

@@ -43,15 +43,20 @@ export interface BuilderTeam {
 }
 
 /** An empty pairing, one row per person on the SMALLER side. */
-function emptyRows(a: string[], b: string[]): DraftMatchConfig[] {
-  return Array.from({ length: Math.max(a.length, b.length) }, (_, i) => ({
-    matchNumber: i + 1,
-    playersPerSide: 1 as const,
-    a: [],
-    b: [],
-    handicap: 0,
-    pointValue: null,
-  }));
+/**
+ * Clear removes the matches. It does not leave a grid of empty ones.
+ *
+ * This used to return one blank row per person, which looked like clearing and
+ * was not: `matchesToSaveRows` drops every unfilled row before the payload
+ * leaves, so the save discarded all of them anyway. Eight rows on screen, none
+ * of them a match, and none of them saved — the divisor already said so
+ * ("a match = assigned") and the grid was the only thing claiming otherwise.
+ *
+ * It also made the save slow for no reason: the RPC clean-replaced against a
+ * list it then filtered to nothing.
+ */
+function emptyRows(): DraftMatchConfig[] {
+  return [];
 }
 
 /** Zip the two rosters in a shuffled order — a pairing, not a suggestion. */
@@ -158,7 +163,7 @@ export function PickemMatchBuilder({
           <button
             type="button"
             onClick={() => {
-              setDraft(() => emptyRows(a.memberIds, b.memberIds));
+              setDraft(() => emptyRows());
               setSelector(null);
             }}
             data-testid="pickem-clear-matches"

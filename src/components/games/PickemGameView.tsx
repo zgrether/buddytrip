@@ -673,7 +673,23 @@ export function PickemGameView() {
         // one person a side, so `playersPerSide` is 1 and the golf scalars sit
         // at their neutral values.
         (q.data?.matches ?? []).map((m, i) => ({
-          matchNumber: i + 1,
+          /**
+           * THE STORED NUMBER. This was `i + 1` — a positional fiction that is
+           * only true while no row has ever been dropped.
+           *
+           * `matchesToSaveRows` drops unfilled matches and preserves each
+           * survivor's own number, so a pairing cleared in the middle stores
+           * 1,3. Renumbering that to 1,2 made every later unchanged save ask
+           * the RPC for a match_number that does not exist, and its fields-only
+           * branch raised STRUCTURE_MISMATCH — which says "this game changed on
+           * another device", the same sentence as the optimistic-concurrency
+           * check. So a trapped game read as a conflict, and stayed trapped,
+           * because nothing about a clean read would fix it.
+           *
+           * Falling back to `i + 1` only where the column is null, which no row
+           * `save_game_config` writes ever is.
+           */
+          matchNumber: m.matchNumber ?? i + 1,
           playersPerSide: 1 as const,
           a: m.sideAId ? [m.sideAId] : [],
           b: m.sideBId ? [m.sideBId] : [],
