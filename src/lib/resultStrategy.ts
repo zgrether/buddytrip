@@ -46,10 +46,17 @@ import { getGameTypeDefinition, type ResultStrategy } from "@/lib/gameTypes";
  * game type `resultStrategy: "bracket"`, which would reintroduce the per-category
  * bracket types this format was collapsed out of.
  *
+ * `"matches"` is the SECOND such value, and arrives for exactly the same reason:
+ * a cornhole game played as four 2v2 matches and the same game settled in one
+ * declaration are the same game type, differing only in the per-game descriptor.
+ * `gtt_matches_*` types would be one per category all over again. That the
+ * bracket's reasoning generalised without amendment is the argument for having
+ * written it down as a rule rather than as a bracket fact.
+ *
  * `null` is a real answer (manual — the finishing order is entered by hand), and
  * is why the unknown case below is `undefined` rather than null.
  */
-export type ResolvedResultStrategy = ResultStrategy | "bracket" | null;
+export type ResolvedResultStrategy = ResultStrategy | "bracket" | "matches" | null;
 
 /**
  * The ONE `competition_format` value that resolves to the bracket engine.
@@ -66,6 +73,19 @@ export type ResolvedResultStrategy = ResultStrategy | "bracket" | null;
  * are the same claim about the same rows and are kept deliberately in step.
  */
 export const BRACKET_COMPETITION_FORMAT = "bracket";
+
+/**
+ * The ONE `competition_format` value that resolves to the per-match engine.
+ *
+ * A new value rather than the retired `live_results` slot it takes in the picker
+ * (migrations 168/169). The tile's SLOT moved; its VALUE did not, because this
+ * column stopped being cosmetic the moment this function began branching on it —
+ * a string reading `live_results` and meaning "head to head matches across
+ * teams" would be a load-bearing lie. There was also one real production row
+ * holding the old value, on a COMPLETE game, which reusing it would have
+ * re-routed away from the manual arm that wrote its results.
+ */
+export const MATCHES_COMPETITION_FORMAT = "matches";
 
 /**
  * The engine that finalizes this game.
@@ -85,7 +105,13 @@ export function resolveResultStrategy(
   if (!def) return undefined;
   // An engine format's strategy is fixed by the format. See the precedence note.
   if (def.resultStrategy !== null) return def.resultStrategy;
-  return competitionFormat === BRACKET_COMPETITION_FORMAT ? "bracket" : null;
+  // Two descriptors now resolve to an engine, and they are mutually exclusive by
+  // construction: a game carries ONE `competition_format`. Anything else — the
+  // legacy bracket values, `best_of_n`, `head_to_head`, null — is still the
+  // manual arm, which stays the default rather than a fallthrough nobody named.
+  if (competitionFormat === BRACKET_COMPETITION_FORMAT) return "bracket";
+  if (competitionFormat === MATCHES_COMPETITION_FORMAT) return "matches";
+  return null;
 }
 
 /**
@@ -119,4 +145,24 @@ export function isPickemGame(
   competitionFormat: string | null | undefined
 ): boolean {
   return resolveResultStrategy(gameTypeId, competitionFormat) === "pickem";
+}
+
+/**
+ * Is this game scored by the per-match engine (non-golf Matches)?
+ *
+ * Third in the row beside `isBracketGame` and `isPickemGame`, and the same
+ * argument: the write path and the read path must derive "what kind of game is
+ * this?" from ONE place, or they come to disagree about the same row.
+ *
+ * Note what this does NOT answer. It is not "does this game have match rows"
+ * (pick'em has them too) and not "does its points pool divide by them" — that is
+ * `pointsDivideByMatchRows`, which stays a separate predicate because merging
+ * questions that currently share an answer is the mistake that one exists to
+ * undo. This answers only which engine finalizes the game.
+ */
+export function isMatchesGame(
+  gameTypeId: string | null | undefined,
+  competitionFormat: string | null | undefined
+): boolean {
+  return resolveResultStrategy(gameTypeId, competitionFormat) === "matches";
 }
