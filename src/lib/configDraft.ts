@@ -27,6 +27,7 @@
 
 import { evenShare, isPlacement, type PointsDistribution } from "./pointsDistribution";
 import { isMatchPlayFormat } from "./gameRoutes";
+import { MATCHES_COMPETITION_FORMAT } from "./resultStrategy";
 import type { ModifiersMap } from "./modifiers";
 import { buildDraw, type BracketDrawMatch } from "./bracket";
 import { buildDoubleDraw } from "./bracketDouble";
@@ -48,15 +49,20 @@ export function isWinnerTakesAll(dist: PointsDistribution | null): boolean {
 /** `games.competition_format` values (non-golf structure). ONE definition shared by the
  *  draft, the payload, and the `saveConfig` zod so they can't drift.
  *
- *  `live_results` is removed here once migration 168 has repointed the one
- *  production row holding it to `head_to_head`; the CHECK narrows separately in a
- *  follow-up (169), AFTER this code has deployed and zero rows are confirmed —
- *  CLAUDE.md 3b's removal ordering. It named a feature that was never built, and
- *  this column stopped being cosmetic when `resolveResultStrategy` began
- *  branching on it. It is NOT moved to
- *  `LEGACY_COMPETITION_FORMATS` below: that list exists so rows which still hold a
- *  retired value stay saveable, and after 168 no row holds this one. */
-export const COMPETITION_FORMATS = ["head_to_head", "bracket", "best_of_n"] as const;
+ *  `live_results` was removed (168/169) once its one production row was
+ *  repointed to `head_to_head` — CLAUDE.md 3b's removal ordering. It named a
+ *  feature that was never built, and this column stopped being cosmetic when
+ *  `resolveResultStrategy` began branching on it. It is NOT moved to
+ *  `LEGACY_COMPETITION_FORMATS` below: that list exists so rows which still hold
+ *  a retired value stay saveable, and no row holds this one.
+ *
+ *  `matches` is `MATCHES_COMPETITION_FORMAT` — imported from `resultStrategy.ts`
+ *  rather than a second string literal, so the value the resolver branches on
+ *  and the value the zod accepts cannot drift apart. Migration 170 (the CHECK
+ *  constraint, a THIRD place this same value is enumerated per 114's precedent)
+ *  must land before this ships, or the zod accepts a value the database
+ *  refuses. */
+export const COMPETITION_FORMATS = ["head_to_head", "bracket", "best_of_n", MATCHES_COMPETITION_FORMAT] as const;
 /**
  * Values the picker no longer OFFERS but the saveConfig zod must still ACCEPT.
  *
@@ -202,26 +208,42 @@ export interface BaseConfigDraft {
 }
 
 /**
- * Non-golf's draft — the base plus ONE structural slice, the bracket pool.
+ * Non-golf's draft — the base plus TWO structural slices, one per engine format:
+ * the bracket pool and the Matches pairing grid. A card game that is neither
+ * carries both empty, which is why this stays one draft rather than a fourth or
+ * fifth variant — the same reasoning bracket's pool already established, now
+ * exercised by a second format instead of asserted for one.
  *
- * Everything else on its page (name · delegate · rules · format · points) is Quiet
- * or Warned, so there is nothing a scored game must lock. The pool is the
- * exception, and it is the format's only structural authoring: a list of
- * ENTRANTS in seed order, each a list of user ids (one for singles, two for
- * partners). Empty for every non-bracket game, which is why this stays one draft
- * rather than a fourth variant — a card game simply carries an empty pool.
+ * Everything else on the page (name · delegate · rules · format · points) is
+ * Quiet or Warned, so there is nothing a scored game must lock. The two pools
+ * are the exception, and each is its format's only structural authoring.
  *
- * `string[][]` deliberately matches `RackConfigDraft.groups`, so the same
- * presentation-only builder (`RackGroupBuilder`) drives both and there is no
- * second person-picker to keep in step.
+ * ── The bracket pool ─────────────────────────────────────────────────────
+ * A list of ENTRANTS in seed order, each a list of user ids (one for singles,
+ * two for partners). `string[][]` deliberately matches `RackConfigDraft.groups`,
+ * so the same presentation-only builder (`RackGroupBuilder`) drives both and
+ * there is no second person-picker to keep in step.
  *
  * The DRAW is not here. It is a pure function of the entrant count and the
  * consolation flag (`buildDraw`), so storing it would be a snapshot of something
  * derivable — it is computed at payload time instead.
+ *
+ * ── The Matches pairing grid ────────────────────────────────────────────
+ * The SAME `DraftMatchConfig` shape golf's `ConfigDraft` and pick'em's
+ * `PickemConfigDraft` carry, and it rides the SAME `save_game_config` matches
+ * arm — gated on the payload key being present, not on game type. That reuse is
+ * the whole reason this is a field addition rather than a new draft variant:
+ * the RPC, the hash, and `MatchSetup` already treat "a game with matches" as one
+ * shape regardless of which format put them there.
  */
 export interface NonGolfConfigDraft extends BaseConfigDraft {
   /** Entrants in SEED order: index 0 is seed 1. Empty for a non-bracket game. */
   bracketEntrants: string[][];
+  /** Pairings for the Matches format. Empty whenever `competitionFormat !==
+   *  "matches"` — including immediately after switching away, which is when an
+   *  existing pool must be explicitly CLEARED rather than merely stop being
+   *  read; see `nonGolfDraftToPayload`. */
+  matches: DraftMatchConfig[];
 }
 
 /** The shared course sub-object (id + composed back-nine + snapshotted schema) — the
@@ -595,15 +617,19 @@ function baseDraftToPayload(
 
 // ── Non-golf variant ─────────────────────────────────────────────────────────
 
-/** Server snapshot → non-golf draft baseline. The lean variant: no matches, no course
- *  (`configToDraft` needs those; this doesn't). */
+/** Server snapshot → non-golf draft baseline. Leaner than golf's `configToDraft`:
+ *  no course, no entry mode, no modifiers — this format owns none of them. It
+ *  DOES take matches now, unlike before Matches existed, mirroring
+ *  `configToPickemDraft`'s identical parameter. */
 export function configToNonGolfDraft(
   game: ConfigGameSnapshot,
   delegates: string[],
   /** Persisted entrants in seed order, pre-resolved by the caller (mirrors how
    *  `configToRackDraft` takes play_groups already resolved). Absent for every
    *  non-bracket game. */
-  entrants: string[][] = []
+  entrants: string[][] = [],
+  /** Persisted pairings, as stored. Absent for every non-Matches game. */
+  matches: DraftMatchInput[] = []
 ): NonGolfConfigDraft {
   return {
     gameTypeId: game.game_type_id ?? null,
@@ -616,15 +642,24 @@ export function configToNonGolfDraft(
     pointsDistribution: game.points_distribution ?? null,
     delegates: [...delegates].sort(),
     bracketEntrants: entrants.map((e) => [...e]),
+    matches: matches.map((m) => ({
+      matchNumber: m.matchNumber,
+      playersPerSide: m.playersPerSide,
+      a: [...m.a],
+      b: [...m.b],
+      handicap: m.handicap,
+      pointValue: m.pointValue,
+    })),
   };
 }
 
 /**
- * Non-golf draft → the atomic Save payload. Base fields ONLY — no `matches` (so the
- * RPC skips its matches block), no `entryMode`/`modifiers` (the RPC preserves
- * entry_mode and defaults modifiers to {} — both no-ops for a format that owns
- * neither), null course. A `placement` distribution is authored, so it passes
- * through untouched.
+ * Non-golf draft → the atomic Save payload. Base fields, plus WHICHEVER of the
+ * two structural slices the chosen format owns — never both, and never the
+ * wrong one. No `entryMode`/`modifiers` (the RPC preserves entry_mode and
+ * defaults modifiers to {} — both no-ops for a format that owns neither), null
+ * course. A `placement` distribution is authored, so it passes through
+ * untouched.
  *
  * ── The bracket slice ──────────────────────────────────────────────────────
  * `bracketEntrants` + `bracketDraw` are emitted TOGETHER or not at all: the draw
@@ -642,61 +677,112 @@ export function configToNonGolfDraft(
  * so the team is read from the entrant's FIRST member; the builder is what
  * enforces that its members agree.
  *
- * ── Emptying the pool IS a change, and has to be SENT ───────────────────────
+ * ── The Matches slice ───────────────────────────────────────────────────────
+ * `matches` + `matchesStructureDirty` ride the SAME `save_game_config` arm golf
+ * and pick'em use, and — per #1172 — `matchesStructureDirty` MUST be sent
+ * whenever `matches` is: the RPC defaults an absent flag to TRUE, so omitting it
+ * clean-replaces every match on every save, re-minting the ids that
+ * `readGameConfigHash` both hashes and sorts by. That is #1172's bug, reachable
+ * by any format that reuses this arm and forgets the flag; Matches does not
+ * reforget it.
+ *
+ * The dirty comparison is over the rows that are actually SENT
+ * (`matchesToSaveRows`'s own filter, mirrored here as `sent`), not the raw
+ * draft — comparing raw drafts reports dirty forever on a game with an unfilled
+ * slot (an odd player out, a match being built), which is the same bug wearing
+ * a filter that never runs.
+ *
+ * ── Emptying a pool IS a change, and has to be SENT — for EITHER slice ──────
  * "Omit when it isn't about the pool" and "omit when there is no pool" read as
  * the same rule and are not. The RPC preserves what an absent key doesn't
  * mention, so a draft that has been emptied — the format switched away from
- * Bracket, or partners → singles taken through `ClearPairingsPrompt` — would
- * silently leave the persisted entrants in place: the prompt promises "the
- * entrants you've built will be removed", the save reports success, and the
- * pool is still there on the next read. So a clear is sent EXPLICITLY as
- * `[]` + `[]`, which is what makes the RPC's dirty-compare see a difference
- * and delete.
+ * Bracket or Matches, or partners → singles taken through
+ * `ClearPairingsPrompt` — would silently leave the persisted rows in place: the
+ * prompt promises they will be removed, the save reports success, and they are
+ * still there on the next read. So a clear is sent EXPLICITLY (`[]` for the
+ * bracket pool, `matches: [], matchesStructureDirty: true` for Matches), which
+ * is what makes the RPC's dirty-compare see a difference and delete.
  *
- * It is sent only against a BASELINE that actually held entrants. Without a
- * baseline nothing is comparable, and an empty pool then means "this game has
- * never had one" — omitting is right there, and wiping on a hunch is not.
- * (A bracket with picks recorded is still refused server-side, HAS_PICKS.)
+ * Each is sent only against a BASELINE that actually held rows for that slice.
+ * Without a baseline nothing is comparable, and an empty slice then means "this
+ * game has never had one" — omitting is right there, and wiping on a hunch is
+ * not. (A bracket with picks recorded is still refused server-side, HAS_PICKS;
+ * Matches with a decided result is refused the same way — see the freeze guard
+ * migration.)
+ *
+ * A game is never both formats at once (`competitionFormat` is one value), so
+ * the two slices are computed independently and only one is ever non-empty —
+ * there is no ordering between them to get wrong.
  */
 export function nonGolfDraftToPayload(
   draft: NonGolfConfigDraft,
   baseline?: NonGolfConfigDraft,
   bracket?: { teamByUser: Record<string, string | null> }
 ): SaveConfigPayload {
-  const base = baseDraftToPayload(draft, draft.pointsDistribution, baseline);
+  let payload = baseDraftToPayload(draft, draft.pointsDistribution, baseline);
+
+  // ── Bracket slice ──
   const pool = draft.competitionFormat === "bracket" ? draft.bracketEntrants.filter((e) => e.length > 0) : [];
   if (pool.length === 0) {
     const had = baseline?.bracketEntrants.some((e) => e.length > 0);
-    return had ? { ...base, bracketEntrants: [], bracketDraw: [] } : base;
+    if (had) payload = { ...payload, bracketEntrants: [], bracketDraw: [] };
+  } else {
+    payload = {
+      ...payload,
+      bracketEntrants: pool.map((userIds, i) => ({
+        seed: i + 1,
+        teamId: bracket?.teamByUser[userIds[0]] ?? null,
+        userIds: [...userIds],
+      })),
+      // THE PERSISTED DRAW MUST MATCH THE CHOSEN FORMAT. This built a single-elim
+      // tree unconditionally, so a game saved as "double" would have been stored
+      // with no lower bracket and no grand final at all — the setting recorded,
+      // the structure not. That is why the toggle stayed disabled: enabling it
+      // alone would have produced games labelled double that were single
+      // underneath.
+      //
+      // Consolation is not passed to the double builder, and cannot be: double
+      // elimination produces 3rd structurally, so a play-off would be a second
+      // answer to a settled question (and the setup row hides it for the same
+      // reason).
+      bracketDraw:
+        draft.bracketConfig?.elimination === "double"
+          ? buildDoubleDraw(pool.length)
+          : buildDraw(pool.length, { consolation: draft.bracketConfig?.consolation ?? false }),
+    };
   }
-  return {
-    ...base,
-    bracketEntrants: pool.map((userIds, i) => ({
-      seed: i + 1,
-      teamId: bracket?.teamByUser[userIds[0]] ?? null,
-      userIds: [...userIds],
-    })),
-    // THE PERSISTED DRAW MUST MATCH THE CHOSEN FORMAT. This built a single-elim tree
-    // unconditionally, so a game saved as "double" would have been stored with no lower
-    // bracket and no grand final at all — the setting recorded, the structure not. That
-    // is why the toggle stayed disabled: enabling it alone would have produced games
-    // labelled double that were single underneath.
-    //
-    // Consolation is not passed to the double builder, and cannot be: double elimination
-    // produces 3rd structurally, so a play-off would be a second answer to a settled
-    // question (and the setup row hides it for the same reason).
-    bracketDraw:
-      draft.bracketConfig?.elimination === "double"
-        ? buildDoubleDraw(pool.length)
-        : buildDraw(pool.length, { consolation: draft.bracketConfig?.consolation ?? false }),
-  };
+
+  // ── Matches slice ──
+  const sent = (ms: DraftMatchConfig[]) => ms.filter(isDraftMatchFilled);
+  const matchRows = draft.competitionFormat === MATCHES_COMPETITION_FORMAT ? sent(draft.matches) : [];
+  if (matchRows.length === 0) {
+    const had = baseline && sent(baseline.matches).length > 0;
+    if (had) payload = { ...payload, matches: [], matchesStructureDirty: true };
+  } else {
+    payload = {
+      ...payload,
+      matches: matchesToSaveRows(draft.matches),
+      matchesStructureDirty: baseline
+        ? !matchesStructureEqual(matchRows, sent(baseline.matches))
+        : true,
+    };
+  }
+
+  return payload;
 }
 
-/** Pure whole-page equality for the non-golf draft — the base fields, plus the
- *  pool. Seed ORDER is meaningful (it is the draw position), so this compares the
- *  arrays in order rather than as sets. */
+/** Pure whole-page equality for the non-golf draft — the base fields, plus
+ *  BOTH structural slices. Seed ORDER is meaningful for the bracket pool (it is
+ *  the draw position), so that compares the arrays in order rather than as
+ *  sets; `matchesEqual` mirrors golf's own whole-draft comparison
+ *  (`configDraftsEqual`) so the two formats' dirty gates agree on what "a match
+ *  changed" means. */
 export function nonGolfDraftsEqual(a: NonGolfConfigDraft, b: NonGolfConfigDraft): boolean {
-  return baseDraftsEqual(a, b) && canonical(a.bracketEntrants) === canonical(b.bracketEntrants);
+  return (
+    baseDraftsEqual(a, b) &&
+    canonical(a.bracketEntrants) === canonical(b.bracketEntrants) &&
+    matchesEqual(a.matches, b.matches)
+  );
 }
 
 // ── Rack variant ─────────────────────────────────────────────────────────────

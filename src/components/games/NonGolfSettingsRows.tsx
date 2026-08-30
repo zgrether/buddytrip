@@ -14,6 +14,7 @@ import type { ScoringModel } from "@/lib/gameTypes";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 import type { NonGolfConfigDraft, CompetitionFormat } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
+import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 
 /**
  * Non-golf's own settings rows — the slot contents `GameSettingsPage` arranges.
@@ -182,12 +183,12 @@ export function NonGolfSettingsRows({
  * tap. This is the same trade `ChecklistRow`'s own `requires` scrim makes: show
  * the thing and say why, rather than hide it.
  *
- * Selectable: **Simple** and **Bracket**. Best of N renders as a disabled "Soon"
- * tile so the direction stays legible — its engine isn't built (DO-NOT: don't
- * implement it). Live Results was the fourth tile and is GONE rather than
- * disabled: it named a feature nobody built. Migration 168 repoints the one
- * production row that held the value; the CHECK drops it in a follow-up (169),
- * after this code deploys.
+ * Selectable: **Simple**, **Bracket**, and **Matches**. Best of N renders as a
+ * disabled "Soon" tile so the direction stays legible — its engine isn't built
+ * (DO-NOT: don't implement it). Live Results was the fourth tile and is GONE
+ * rather than disabled: it named a feature nobody built (removed in 168/169,
+ * after its one production row was repointed to `head_to_head`). Matches takes
+ * its SLOT in this list, not its value — see `MATCHES_COMPETITION_FORMAT`.
  *
  * Simple is the DEFAULT: a null value displays as Simple selected (non-golf
  * already runs that way when unset), so this reserves the shape without a
@@ -220,7 +221,7 @@ function CompetitionFormatTiles({
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="competition-format-options">
         {COMP_FORMATS.map((f) => {
-          const enabled = f.key === "head_to_head" || f.key === "bracket";
+          const enabled = f.key === "head_to_head" || f.key === "bracket" || f.key === MATCHES_COMPETITION_FORMAT;
           const selected = effective === f.key;
           return (
             <button
