@@ -9,11 +9,11 @@ import { draftOutboxRecover } from "@/lib/draftOutbox";
 import {
   reconcileSheet,
   applyOrder,
-  completedPicks,
   fillAll,
   rankedOrder,
   setPick,
   sheetsEqual,
+  submittablePicks,
   unpickedCount,
   type PickSide,
   type SheetPick,
@@ -367,16 +367,27 @@ export function PickemSheet({
 
 
   /**
-   * The sheet as a PAYLOAD, or null while any game is still uncalled.
+   * The sheet as a PAYLOAD — the games actually picked, and only those.
    *
    * Computed once and threaded to both the gate and the handler, so "can I
-   * save" and "what do I save" cannot answer differently — which is the shape
-   * of every one-of-two-checks bug in this file's history.
+   * save" and "what do I save" cannot answer differently — the shape of every
+   * one-of-two-checks bug in this file's history.
    */
-  const ready = completedPicks(picks);
+  const ready = submittablePicks(picks);
   const remaining = unpickedCount(picks);
-  const needsSave =
-    editable && ready != null && (!server.submitted || server.rankingReset || dirty);
+  /**
+   * SAVE ENABLES ON ANY CHANGE, not on completeness.
+   *
+   * It used to require a full sheet, which is what migration 150's server gate
+   * demanded. Both are gone (166): a sheet can be saved at any point, so
+   * progress lives on the server rather than only in a localStorage draft that
+   * a lost phone takes with it.
+   *
+   * The condition is unchanged apart from dropping that requirement — there
+   * still has to be something to save, or the button is offering to write what
+   * is already there.
+   */
+  const needsSave = editable && (!server.submitted || server.rankingReset || dirty);
 
   return (
     /**
@@ -508,7 +519,10 @@ export function PickemSheet({
           </p>
           <button
             type="button"
-            onClick={() => ready && onSave(ready)}
+            /* `ready` is the PICKED games, which is exactly what the RPC
+               stores. A game left out is a game whose pick is cleared, because
+               the write replaces the sheet rather than merging into it. */
+            onClick={() => onSave(ready)}
             disabled={saving || !needsSave}
             data-testid="pickem-submit"
             className="shrink-0 rounded-xl px-4 disabled:opacity-40"
@@ -534,13 +548,11 @@ export function PickemSheet({
             */}
             {saving
               ? "Saving…"
-              : ready == null
-                ? "Save picks"
-                : !needsSave
-                  ? "Saved"
-                  : server.submitted
-                    ? "Save changes"
-                    : "Save picks"}
+              : !needsSave
+                ? "Saved"
+                : server.submitted
+                  ? "Save changes"
+                  : "Save picks"}
           </button>
         </div>
       )}
