@@ -87,6 +87,14 @@ R1's shape has changed under it — see §2. What remains:
   shortcut vs Circle-era generic scorekeeper) is still owed, and still gates R1's registry.
 - **Agenda/Lodging → Bookings** — trip-owner UX simplification, big rework, low marginal value.
 - **Circle / Thread pivot** — top-level object shifts trip → Circle, trips become threads (post-launch).
+  Sub-note (2026-08-30, BBMI 2026 nickname investigation): `trip_members.nickname` is trip-scoped, so a
+  guest→real-account conversion loses the placeholder's name (it lived only on the deleted ghost `users`
+  row) and every later trip starts that person's nickname over at `null` — happened live with "Llama"
+  (Jason Schumacher) and would recur on BBMI 2027 unless fixed by hand each time. The Circle pivot is the
+  structural fix: move nickname onto a circle-membership row instead of `trip_members`, set once per crew,
+  inherited by every trip/thread that points back to the circle. Don't build the circle-scoped version now
+  — Circle-compatibility (§4) means the interim conversion-carryover fix (spawned as a background task
+  suggestion this session) should keep this destination in mind, not implement it early.
 - **Migration squash → single baseline** (CI/infra, post-September) — replace the ~90-file replay with one
   dump-generated baseline. Correctly deferred: it stops CI exercising individual migrations, which is exactly
   the per-migration replay gate that caught the 044 hardcoded-uuid delete. Keep the gate through the event;
