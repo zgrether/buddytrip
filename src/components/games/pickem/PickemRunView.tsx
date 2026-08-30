@@ -53,12 +53,29 @@ export interface RunSlateGame extends ScoredSlateGame {
   note: string | null;
 }
 
-/** How a resolved row reads. Push and cancelled must not share a label. */
+/**
+ * How a resolved row reads. Push and cancelled must not share a label.
+ *
+ * ── `cancelled` IS NO LONGER ALWAYS "never played" ─────────────────────────
+ *
+ * That copy was right while a runner pressing Void was the only way to produce
+ * the value: they were saying the contest did not happen. Finalizing with
+ * contests outstanding is a SECOND producer of the same value, and those games
+ * were very likely played — the runner just never entered a result. So
+ * "never played" became a claim the row cannot support.
+ *
+ * `Voided` is true of both producers, and it is what the glossary's own rule
+ * gives: decide by asking what the label is ABOUT. This one is about the STAKE
+ * — nobody was paid — and not about whether the game happened, which is exactly
+ * the question the finalize path cannot answer. (CLAUDE.md's glossary row is
+ * updated in the same change; this is a display-string rename, the cosmetic
+ * tier, and the DB value is untouched.)
+ */
 const RESULT_LABEL: Record<SlateResult, string> = {
   away: "Away won",
   home: "Home won",
   push: "Pushed",
-  cancelled: "Cancelled — never played",
+  cancelled: "Voided",
 };
 
 /**

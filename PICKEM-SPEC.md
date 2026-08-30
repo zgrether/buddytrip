@@ -180,10 +180,20 @@ an optional kickoff, an optional note and an optional multiplier.
 - A correct pick scores its confidence rank (or 1 with confidence off), times
   the game's multiplier.
 - A wrong pick scores nothing.
-- **A push and a cancellation both score zero for everyone, and are different
-  facts.** One happened and nobody covered; the other never happened. They are
-  one DB value (`pickem_slate_games.result = 'cancelled'`) with two display
-  strings — see the Cancelled/Void row in `CLAUDE.md`'s glossary.
+- **A push and a VOID both score zero for everyone, and are different facts.**
+  One happened and nobody covered; the other was struck from the scoring. One DB
+  value (`pickem_slate_games.result = 'cancelled'`) and one display word,
+  **Void / Voided** — see that row in `CLAUDE.md`'s glossary for why it stopped
+  being two.
+- **A void has TWO producers**, which is why it is no longer described as "never
+  happened": a runner marking a contest void, and FINALIZING with contests
+  outstanding. The second writes `cancelled` for every unresolved game at
+  finalize — written, never derived, because "had no result when this was
+  finalized" is not something the data remembers. Those games were very likely
+  played; nobody entered a result.
+- **It is reversible.** Correct a result reopens the game, the runner enters the
+  real outcome over the void, and re-finalizing recomputes the award. That is
+  what makes finalizing early a decision rather than a loss.
 - Both are **resolved**: they stop counting as remaining, which is what lets a
   clinch come forward correctly.
 

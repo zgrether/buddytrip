@@ -31,9 +31,10 @@ import type { BoardSlateGame } from "./PickemBoard";
  * neither was — and a reader wants to know which, because only one of them is
  * anybody's fault.
  *
- * `Void` rather than `Cancelled` here while the row's own result chip says
- * `Cancelled`: the chip is about the GAME and this is about the STAKE. The game
- * was cancelled, so the stake voided.
+ * `Void` here and `Voided` on the row's own result chip — the same word, short
+ * where 52px will not hold the longer one. It used to be `Void` against
+ * `Cancelled`, on the reasoning that the chip was about the GAME and this about
+ * the STAKE; see the chip for why that split no longer holds.
  */
 const ZERO_SHORT: Record<ZeroKind, string> = {
   push: "Push",
@@ -345,11 +346,29 @@ function ResultChip({
   result: BoardRow["result"];
   game: BoardSlateGame;
 }) {
+  /**
+   * ── `Voided`, not `Cancelled` — and this REVERSES a twice-settled split ────
+   *
+   * The glossary ratified two names for one DB value: `Cancelled` where the GAME
+   * is the subject, `Void` where the STAKE is. That was correct while a runner
+   * pressing Void was the only producer of `cancelled` — they were asserting the
+   * contest did not happen.
+   *
+   * Finalizing with contests outstanding is a second producer, and those games
+   * were probably PLAYED; the runner just never entered a result. So the
+   * game-subject fact the split depended on — "this did not happen" — is no
+   * longer knowable from the value. Only the stake-subject fact survives, and
+   * one surviving fact does not need two names.
+   *
+   * The premise changed; the decision follows it. CLAUDE.md's glossary row is
+   * updated in the same change and cites this. Display-string tier: the DB value
+   * is untouched.
+   */
   const label =
     result === "push"
       ? "Push"
       : result === "cancelled"
-        ? "Cancelled"
+        ? "Voided"
         : `${result === "away" ? game.awayTeam : game.homeTeam} covered`;
   return (
     <span

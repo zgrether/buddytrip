@@ -165,9 +165,12 @@ describe("what the screen says about its reader", () => {
      * other outcomes have a label. In a badge beside a row the em-dash clause
      * wraps, and the word doing the work is the first one anyway.
      *
-     * Cancelled keeps its clause: "Cancelled" alone invites the reading that
-     * somebody cancelled the ENTRY, and the fact worth carrying is that the
-     * contest never happened.
+     * The void lost its clause for a different reason. It read "Cancelled —
+     * never played", which was true while a runner pressing Void was the only
+     * way to produce the value. Finalizing now voids whatever is outstanding,
+     * and those games were probably played — so the clause became a claim the
+     * row cannot support. "Voided" is true of both producers and does not
+     * invite the "somebody cancelled the entry" misreading either.
      */
     const pushed = render({
       slate: SLATE.map((g, i) => ({ ...g, result: i === 0 ? ("push" as const) : null })),
@@ -412,5 +415,51 @@ describe("the confirm sits in front of the finalize (source)", () => {
     // to prevent one level up.
     expect(SRC).toContain("lifecycle.onFinalize();");
     expect((SRC.match(/lifecycle.onFinalize/g) ?? []).length).toBe(2);
+  });
+});
+
+/**
+ * ── A VOIDED CONTEST IS AN ENTERED ONE ─────────────────────────────────────
+ *
+ * Finalizing with contests outstanding writes `cancelled` for each, so they stop
+ * being a fourth state — rows above the ENTERED list with no label and no
+ * controls — and join the pushes as something that was dealt with.
+ *
+ * Rendered here rather than assumed: the grouping is `result != null`, so the
+ * write is what moves them, and this is the assertion that the move actually
+ * lands on the screen the runner is looking at.
+ */
+describe("a voided contest", () => {
+  const voided = (i: number) =>
+    SLATE.map((g, n) => ({ ...g, result: n === i ? ("cancelled" as const) : g.result }));
+
+  it("sits in ENTERED and reads Voided", () => {
+    const html = render({ slate: voided(0) });
+    expect(html).toContain("Entered");
+    expect(html).toContain("Voided");
+  });
+
+  it("does NOT claim the game was never played", () => {
+    /**
+     * The copy said "Cancelled — never played", which was true while a runner
+     * pressing Void was the only producer of the value. A game voided at
+     * finalize was probably played and simply never entered, so the clause
+     * became a claim the row cannot support.
+     */
+    const html = render({ slate: voided(0) });
+    expect(html).not.toContain("never played");
+    expect(html).not.toContain("Cancelled");
+  });
+
+  it("is still distinct from a PUSH — two facts, two labels", () => {
+    // Both pay nobody and they are not the same thing: one happened and nobody
+    // covered, the other was struck from the scoring.
+    const html = render({
+      slate: SLATE.map((g, n) =>
+        n === 0 ? { ...g, result: "cancelled" as const } : n === 1 ? { ...g, result: "push" as const } : g
+      ),
+    });
+    expect(html).toContain("Voided");
+    expect(html).toContain("Pushed");
   });
 });
