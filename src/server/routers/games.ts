@@ -30,6 +30,7 @@ import { resolveResultStrategy } from "@/lib/resultStrategy";
 import { computePickemResults } from "@/server/lib/pickemResults";
 import { writeTeamMatchPoints } from "../lib/matchAwards";
 import type { PlaceCapacity } from "@/lib/gameConfig";
+import { myDelegateGameIds as computeMyDelegateGameIds } from "@/server/lib/myDelegateGameIds";
 
 /**
  * The game-row columns that constitute CONFIG (fingerprinted by `configHash`).
@@ -2376,21 +2377,18 @@ export const gamesRouter = router({
       return data ?? [];
     }),
 
-  // myDelegateGameIds — the games the CURRENT user is a delegated organizer of
-  // (§10). Powers the leaderboard's "you're running this" marking: the board
-  // intersects this set with the games it shows, so a delegate sees their games
-  // flagged on the same normal board everyone sees (no filtered view). Returns
-  // ids only; RLS already limits rows to games in trips the user can read.
+  // myDelegateGameIds — the games the CURRENT user is running (§10). Powers the
+  // leaderboard's "you're running this" marking: the board intersects this set
+  // with the games it shows, so whoever runs a game sees it flagged on the same
+  // normal board everyone sees (no filtered view). Includes the Owner's
+  // IMPLICIT games (no explicit `game_delegates` row) — see
+  // `myDelegateGameIds` (server/lib) for why that's not optional.
   myDelegateGameIds: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
-    .query(async ({ ctx }) => {
-      const { data } = await ctx.supabase
-        .from("game_delegates")
-        .select("game_id")
-        .eq("user_id", ctx.user!.id);
-      return (data ?? []).map((r) => r.game_id as string);
-    }),
+    .query(({ ctx, input }) =>
+      computeMyDelegateGameIds(ctx.supabase, input.tripId, ctx.user!.id, ctx.tripRole === "Owner")
+    ),
 
   // resetScoring — Organizer+ (#786), ONE game. Clears this game's RESULTS back
   // to unscored; keeps config + identity (incl. its per-match point value). The

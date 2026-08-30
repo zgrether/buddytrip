@@ -153,8 +153,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 
   const data = lb as LeaderboardData | undefined;
 
-  // Games THIS user delegates (§10) — marked on the same normal board everyone
-  // sees (no filtered view). Empty for non-delegates, so the badge never shows.
+  // Games THIS user is running (§10) — an explicit delegate grant, OR (for the
+  // Owner) any game nobody has been explicitly handed (DelegatePicker: "Null =
+  // the owner") — marked on the same normal board everyone sees (no filtered
+  // view). Empty for a plain member with no grant, so the badge never shows.
   const { data: myDelegateIds = [] } = trpc.games.myDelegateGameIds.useQuery(
     { tripId },
     { ...STRUCTURE_QUERY, enabled: !!tripId }

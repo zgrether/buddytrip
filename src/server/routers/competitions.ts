@@ -5,6 +5,7 @@ import { requireTripMember, requireTripRole, requireCompetitionRole } from "../m
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
 import { reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { viewerTeamForTrip } from "../lib/viewerTeam";
+import { myDelegateGameIds as computeMyDelegateGameIds } from "../lib/myDelegateGameIds";
 import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
 
 const SCOREBOARD_STYLES = [
@@ -163,7 +164,11 @@ export const competitionsRouter = router({
 
       // All independent — one round-trip, parallel DB work. `leaderboard` is the
       // SAME compute competitions.leaderboard runs (parallelized internally), so
-      // its shape matches for cache-seeding.
+      // its shape matches for cache-seeding. `myDelegateGameIds` is the SAME
+      // helper `games.myDelegateGameIds` calls (server/lib/myDelegateGameIds) —
+      // must stay identical, since this payload seeds that query's cache
+      // (LiveFaceClient.tsx) and a drifting second implementation would desync
+      // the two the moment one of them changed.
       const [teams, assignments, games, myDelegateGameIds, leaderboard] =
         await Promise.all([
           ctx.supabase
@@ -205,11 +210,7 @@ export const competitionsRouter = router({
             .eq("trip_id", tripId)
             .order("created_at", { ascending: false })
             .then((r) => r.data ?? []),
-          ctx.supabase
-            .from("game_delegates")
-            .select("game_id")
-            .eq("user_id", ctx.user!.id)
-            .then((r) => (r.data ?? []).map((x) => x.game_id as string)),
+          computeMyDelegateGameIds(ctx.supabase, tripId, ctx.user!.id, ctx.tripRole === "Owner"),
           computeCompetitionLeaderboard(ctx.supabase, competitionId),
         ]);
 

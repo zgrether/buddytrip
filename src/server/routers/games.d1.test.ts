@@ -144,8 +144,11 @@ describe("per-game organizer delegation (§8)", () => {
     expect(memberIds).toContain(mine);
     expect(memberIds).not.toContain(notMine);
 
-    // The owner (no game-level grant) doesn't see these flagged as "theirs".
+    // The owner has explicitly handed `mine` off, so it's not flagged as theirs
+    // any more — but `notMine` has no delegate at all, so the owner IMPLICITLY
+    // runs it (DelegatePicker: "Null = the owner") and should still see it.
     const ownerIds = await ctx.caller().games.myDelegateGameIds({ tripId });
     expect(ownerIds).not.toContain(mine);
+    expect(ownerIds).toContain(notMine);
   });
 });
