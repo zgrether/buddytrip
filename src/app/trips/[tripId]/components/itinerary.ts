@@ -390,7 +390,13 @@ export function summarizeLodging(
 // so same-time events still cluster sensibly: a stay's checkout closes
 // before that day's arrivals/departures are shown, which come before that
 // day's check-in, which comes before the agenda body.
-const KIND_PRIORITY: Record<ItineraryEvent["kind"], number> = {
+//
+// Exported: ItineraryView's DaySection reuses these same priority numbers to
+// interleave the day-level Arrivals/Departures group cards against schedule
+// and lodging cards by real time — the same tiebreak rule applied at a
+// different granularity (a whole group's earliest time vs. one event's time),
+// so it has to be the same numbers or the two layers could disagree.
+export const KIND_PRIORITY: Record<ItineraryEvent["kind"], number> = {
   "lodging-checkout": 0,
   arrival: 1,
   departure: 2,
@@ -435,6 +441,50 @@ function compareEvents(a: ItineraryEvent, b: ItineraryEvent): number {
     return a.sortOrder - b.sortOrder;
   }
   return 0;
+}
+
+/**
+ * The earliest (HH:MM-comparable) time among a set of events, or `null` when
+ * none of them have one. Used to give a day-level group card (the "Arrivals
+ * for Sep 9" / "Departures for Sep 13" summary, which bundles every arrival
+ * or departure for the day into one card) a single sort key so it can
+ * interleave with schedule/lodging cards by real time instead of always
+ * rendering first — its own individual members keep whatever times they
+ * have; this is only for placing the CARD.
+ */
+export function earliestTime(events: { time: string | null }[]): string | null {
+  let earliest: string | null = null;
+  for (const e of events) {
+    if (e.time === null) continue;
+    if (earliest === null || e.time < earliest) earliest = e.time;
+  }
+  return earliest;
+}
+
+/**
+ * Comparator for interleaving a day's RENDER CARDS by real time — the same
+ * rule `compareEvents` applies to individual events (step 2+3: time governs,
+ * untimed sorts last, `KIND_PRIORITY` breaks a same-time tie), generalized to
+ * anything carrying just a time + a priority number. Needed because the
+ * Arrivals/Departures group card isn't an `ItineraryEvent` with a `kind` to
+ * look up — it's one card standing in for many, positioned by `earliestTime`
+ * — so `compareEvents` itself can't be reused directly for this.
+ *
+ * Deliberately NOT threaded back into `compareEvents` — that function is
+ * already covered by the schedule-vs-schedule drag-order carve-out and its
+ * own regression tests; duplicating a few lines here was judged safer than
+ * risking that logic while generalizing it for an unrelated caller.
+ */
+export function compareByTimeThenPriority(
+  a: { time: string | null; priority: number },
+  b: { time: string | null; priority: number }
+): number {
+  if (a.time !== b.time) {
+    if (a.time === null) return 1;
+    if (b.time === null) return -1;
+    return a.time < b.time ? -1 : 1;
+  }
+  return a.priority - b.priority;
 }
 
 // ── Grouping ──────────────────────────────────────────────────────────────

@@ -28,8 +28,11 @@ import { useTextOverflow } from "@/hooks/useTextOverflow";
 import { shouldShowExpandAffordance } from "@/lib/textOverflow";
 import {
   buildItinerary,
+  compareByTimeThenPriority,
+  earliestTime,
   groupByDay,
   groupDayBlocks,
+  KIND_PRIORITY,
   summarizeLodging,
   todayLocalISO,
   type ItineraryEvent,
@@ -1123,6 +1126,84 @@ function EmptyRunBand({
   );
 }
 
+/**
+ * Interleaves the day's Arrivals/Departures group cards with its individual
+ * schedule/lodging cards by real time, instead of always rendering the group
+ * cards first regardless of what time they actually cover — the bug that
+ * had a 12pm–7pm Departures block sitting above a 7:40am tee time.
+ *
+ * A group card (at most one per direction per day) gets a single sort key —
+ * its earliest member's time — since it's one card representing possibly
+ * many people at many times; there's no way to give it more than one
+ * position. `KIND_PRIORITY` (shared with `compareEvents`, itinerary.ts)
+ * breaks same-time ties so this stays consistent with how the individual
+ * `events` array was already ordered.
+ */
+function dayCards({
+  arrivals,
+  departures,
+  events,
+  date,
+  compact,
+}: {
+  arrivals: ArrivalEvent[];
+  departures: DepartureEvent[];
+  events: ItineraryEvent[];
+  date: string;
+  compact: boolean;
+}): ReactNode {
+  const cards: { time: string | null; priority: number; node: ReactNode }[] = [];
+
+  if (arrivals.length > 0) {
+    cards.push({
+      time: earliestTime(arrivals),
+      priority: KIND_PRIORITY.arrival,
+      node: (
+        <TravelGroup
+          key="arrivals"
+          events={arrivals}
+          label="Arrivals"
+          date={date}
+          HeaderIcon={Plane}
+          direction="arrival"
+        />
+      ),
+    });
+  }
+  if (departures.length > 0) {
+    cards.push({
+      time: earliestTime(departures),
+      priority: KIND_PRIORITY.departure,
+      node: (
+        <TravelGroup
+          key="departures"
+          events={departures}
+          label="Departures"
+          date={date}
+          HeaderIcon={PlaneTakeoff}
+          direction="departure"
+        />
+      ),
+    });
+  }
+  for (const event of events) {
+    cards.push({
+      time: event.time,
+      priority: KIND_PRIORITY[event.kind],
+      node: <EventCard key={event.id} event={event} compact={compact} />,
+    });
+  }
+
+  // Same rule as compareEvents (step 2+3), generalized in compareByTimeThenPriority:
+  // time governs, untimed sorts last, ties break on kind priority. A stable
+  // sort (guaranteed by the spec since ES2019) means two schedule items that
+  // tie here keep the relative order `events` already established via
+  // compareEvents — i.e. their own drag order.
+  cards.sort(compareByTimeThenPriority);
+
+  return cards.map((c) => c.node);
+}
+
 function DaySection({
   date,
   dayNumber,
@@ -1180,21 +1261,7 @@ function DaySection({
         )}
       </div>
       <div className={compact ? "space-y-1" : "space-y-1.5"}>
-        {arrivals.length > 0 && (
-          <TravelGroup events={arrivals} label="Arrivals" date={date} HeaderIcon={Plane} direction="arrival" />
-        )}
-        {departures.length > 0 && (
-          <TravelGroup
-            events={departures}
-            label="Departures"
-            date={date}
-            HeaderIcon={PlaneTakeoff}
-            direction="departure"
-          />
-        )}
-        {events.map((event) => (
-          <EventCard key={event.id} event={event} compact={compact} />
-        ))}
+        {dayCards({ arrivals, departures, events, date, compact })}
         {arrivals.length === 0 && departures.length === 0 && events.length === 0 && (
           <p className="pl-3 text-xs italic" style={{ color: "var(--color-bt-text-dim)" }}>
             Nothing scheduled
