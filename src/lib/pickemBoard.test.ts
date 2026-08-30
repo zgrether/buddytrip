@@ -287,12 +287,37 @@ describe("a side that did not pick", () => {
     expect(built[0].upsideB).toBe(0);
   });
 
-  it("does not call a resolved row NEITHER — nobody was wrong about it", () => {
+  it("calls it NEITHER when one side wagered and lost", () => {
     /**
-     * "Neither" says two people were wrong about a contest one of them never
-     * wagered on. The zero is real; the REASON was not.
+     * ── THIS CASE USED TO ASSERT "unpicked", AND THE READING WAS WRONG ──────
+     *
+     * The old argument: "Neither" says two people were wrong about a contest
+     * one of them never wagered on, so an absent side makes it not a contest.
+     *
+     * That reads the cell as being about the SIDES. It is the SWING column, and
+     * it says why nothing moved — so on a row where somebody staked a rank and
+     * lost it, "No pick" reports the quiet half and stays silent about the half
+     * where something actually happened.
+     *
+     * A picked away and was wrong; B has no sheet.
      */
     const built = rows(slate, [p("x", "away", 5), p("y", "away", 3)], []);
+    expect(built[0].swing).toBe(0);
+    expect(built[0].zeroKind).toBe("neither");
+  });
+
+  it("still says NO PICK when NOBODY wagered — there was no contest", () => {
+    /**
+     * The half of the old argument that survives, and the case it was really
+     * about. With both slots empty "Neither" would invent two people being
+     * wrong about a game nobody touched.
+     *
+     * This is what separates the new rule from `!bothPicked` AND from dropping
+     * `unpicked` altogether: the first calls the case above "No pick", the
+     * second calls this one "Neither", and every other zero row in this file
+     * passes under all three.
+     */
+    const built = rows(slate, [], []);
     expect(built[0].swing).toBe(0);
     expect(built[0].zeroKind).toBe("unpicked");
   });

@@ -466,3 +466,114 @@ describe("a pick with no rank", () => {
     expect(html).not.toContain("pickem-conf-unranked");
   });
 });
+
+/**
+ * ── r7 §13 · A MISS FADES THE NAME TOO ────────────────────────────────────
+ *
+ * The rank chip already faded on a miss and the team name did not, so a wrong
+ * pick rendered as a full-strength name beside a faded number — which reads as
+ * one of the pair being uncertain rather than as both being spent.
+ *
+ * These assertions are on the ELEMENT and not the page. A page-wide
+ * `toContain("opacity:0.45")` is satisfied by the OTHER side's chip, which is
+ * the mistake this file has now made three times, and once it was the chip on
+ * the very row under test.
+ */
+describe("a missed pick is faded, name and rank together", () => {
+  const slateGame = {
+    id: "g1", awayTeam: "Alabama", homeTeam: "Georgia",
+    spread: null, kickoff: "Sat 3:30p", note: null, multiplier: 1,
+  };
+  const render3 = (r: BoardRow) =>
+    renderToStaticMarkup(
+      <PickemHeadToHead
+        slate={[slateGame]} rows={[r]}
+        aName="Ada" bName="Bo" aUserId="u1" bUserId="u2"
+        avatarFor={() => ({ avatarIcon: null, teamColor: null })}
+        matchIndex={1} matchCount={1} resolved={r.result != null ? 1 : 0}
+        picked={{ a: true, b: true }} useConfidence
+        note="Live" onBack={() => {}}
+      />
+    );
+
+  /** Every element carrying this testid, as its opening tag alone. */
+  const tags = (html: string, testId: string) =>
+    html
+      .split('data-testid="' + testId + '"')
+      .slice(1)
+      .map((part) => part.slice(0, part.indexOf(">")));
+
+  const FADED = "opacity:0.45";
+
+  // A took Georgia and it came in; B took Alabama and it did not.
+  const DECIDED = row({
+    slateGameId: "g1", result: "home",
+    aPick: "home", aConfidence: 9, aPoints: 9,
+    bPick: "away", bConfidence: 9, bPoints: 0,
+    swing: 9,
+  });
+
+  it("fades the LOSING team name and leaves the winning one alone", () => {
+    const html = render3(DECIDED);
+    const names = tags(html, "pickem-h2h-team");
+    expect(names).toHaveLength(2);
+    // A is the left column, so A's name comes first in the markup.
+    expect(names[0], "the winning pick must not be faded").not.toContain(FADED);
+    expect(names[1], "the losing pick must be faded").toContain(FADED);
+  });
+
+  it("fades the name and the rank by the SAME amount, on the same side", () => {
+    /**
+     * They are one statement — took Alabama, at 9, got nothing — and the point
+     * of §13 is that half of it was at full strength. Asserting the pair
+     * together is what a per-element check of either one alone cannot say.
+     */
+    const html = render3(DECIDED);
+    expect(tags(html, "pickem-h2h-team")[1]).toContain(FADED);
+    expect(tags(html, "pickem-conf-missed")[0]).toContain(FADED);
+    // ...and the banked chip on the other side is untouched, which is what a
+    // page-wide search for the same string would have been reading all along.
+    expect(tags(html, "pickem-conf-banked")[0]).not.toContain(FADED);
+  });
+
+  it("does not fade anything while the game is UNPLAYED", () => {
+    // Nothing is spent yet. A build fading on `!hit` alone dims every pick on
+    // the board before a single game kicks off.
+    const html = render3(row({ slateGameId: "g1", aPick: "home", bPick: "away", upsideA: 3, upsideB: 2 }));
+    for (const t of tags(html, "pickem-h2h-team")) expect(t).not.toContain(FADED);
+  });
+
+  it("does not fade an ABSENT pick as though it lost something", () => {
+    /**
+     * "No pick" has its own treatment — dim and italic — and fading it as a
+     * miss would say somebody lost a stake they never made. The
+     * empty-versus-unknown split one more time: an absence and a defeat are
+     * different facts and must not paint the same.
+     *
+     * ── WHAT THIS CASE DOES AND DOES NOT PIN ─────────────────────────────
+     *
+     * `missed` is derived as `played && pick != null && !banked`, and that
+     * middle clause is NOT what holds this up. Removing it was run as a
+     * mutation and broke nothing: `SidePick` takes its null branch before it
+     * reads `missed` at all, and `Conf` returns early on `!picked`. So the
+     * guarantee below comes from the two components, and the clause is there so
+     * that the VARIABLE means what it is named — a third consumer written later
+     * would otherwise inherit a `missed` that is true of somebody who never
+     * picked.
+     *
+     * Said here rather than left implied, because a case that looks like it
+     * covers a line it cannot reach is worse than no case: it stops the next
+     * person checking.
+     */
+    const html = render3(
+      row({ slateGameId: "g1", result: "home", aPick: null, aConfidence: null, aPoints: 0, bPick: "home", bConfidence: 4, bPoints: 4, swing: -4 })
+    );
+    const absent = tags(html, "pickem-h2h-no-pick");
+    expect(absent).toHaveLength(1);
+    expect(absent[0]).not.toContain(FADED);
+    // One name rendered, and it is the side that WON — so there is no faded
+    // name anywhere, rather than one that happens to be off screen.
+    expect(tags(html, "pickem-h2h-team")).toHaveLength(1);
+    expect(tags(html, "pickem-h2h-team")[0]).not.toContain(FADED);
+  });
+});

@@ -41,9 +41,11 @@ const ZERO_SHORT: Record<ZeroKind, string> = {
   cancelled: "Void",
   both: "Both",
   neither: "Neither",
-  // Not a fifth kind of wrong. "Neither" says two people were wrong about a
-  // contest one of them never wagered on — which is the row this label exists
-  // to stop describing as a contest at all.
+  // NOBODY picked — not "one of them didn't". A wrong pick against an empty
+  // slot is `neither` now: something was wagered and lost, and reporting the
+  // quiet half of the row says nothing about the half where that happened.
+  // With both slots empty there is no contest to be wrong about, and this is
+  // the whole story.
   unpicked: "No pick",
 };
 
@@ -223,6 +225,20 @@ export function PickemHeadToHead({
         if (!g) return null;
         const played = r.result != null;
         const cell = swingCell(r);
+        /**
+         * Spent and gone — the one condition, derived once per side.
+         *
+         * The team NAME and the rank CHIP both fade on it, and they are one
+         * statement: this side took Alabama, at 12, and got nothing. Two
+         * private derivations of that would be two things that must always
+         * agree, which is how they stop agreeing.
+         *
+         * `r.aPick != null` matters: an absent pick is not a miss. It has its
+         * own treatment ("No pick", italic) and fading that too would say
+         * somebody lost something they never staked.
+         */
+        const aMissed = played && r.aPick != null && !(r.aPoints > 0);
+        const bMissed = played && r.bPick != null && !(r.bPoints > 0);
         return (
           <div
             key={r.slateGameId}
@@ -282,11 +298,11 @@ export function PickemHeadToHead({
                 className="flex min-w-0 items-center justify-end gap-1.5 truncate"
                 style={{ fontSize: TYPE_SCALE.caption }}
               >
-                <SidePick pick={r.aPick} game={g} />
+                <SidePick pick={r.aPick} game={g} missed={aMissed} />
                 <Conf
                   value={r.aConfidence}
                   hit={r.aPoints > 0}
-                  played={played}
+                  missed={aMissed}
                   picked={r.aPick != null}
                   ranksMatter={useConfidence}
                 />
@@ -301,11 +317,11 @@ export function PickemHeadToHead({
                 <Conf
                   value={r.bConfidence}
                   hit={r.bPoints > 0}
-                  played={played}
+                  missed={bMissed}
                   picked={r.bPick != null}
                   ranksMatter={useConfidence}
                 />
-                <SidePick pick={r.bPick} game={g} />
+                <SidePick pick={r.bPick} game={g} missed={bMissed} />
               </span>
             </span>
           </div>
@@ -441,8 +457,29 @@ function ResultChip({
  * Dimmed and in the same slot rather than blanked: the column has to stay
  * readable down the page, and an empty cell is the ambiguity this feature keeps
  * having to remove — "they didn't pick" against "this hasn't loaded".
+ *
+ * ── A MISSED PICK FADES THE NAME TOO ──────────────────────────────────────
+ *
+ * The rank chip beside it already fades on a miss, and a wrong pick was
+ * rendering as a full-strength team name next to a faded number — which reads
+ * as one of them being uncertain rather than as the pair of them being spent.
+ * They are one statement: this side took Alabama, at 12, and got nothing.
+ *
+ * Same `opacity: 0.45` as the chip, deliberately, for the reason the chip gives:
+ * there is no step below `--color-bt-text-dim` in the system, and fading the
+ * element keeps both halves on the same token and degrades identically in each
+ * theme. `missed` is DERIVED ONCE at the call site and handed to both, so the
+ * two cannot fade by different amounts or at different moments.
  */
-function SidePick({ pick, game }: { pick: BoardRow["aPick"]; game: BoardSlateGame }) {
+function SidePick({
+  pick,
+  game,
+  missed,
+}: {
+  pick: BoardRow["aPick"];
+  game: BoardSlateGame;
+  missed: boolean;
+}) {
   if (pick == null) {
     return (
       <span
@@ -454,7 +491,11 @@ function SidePick({ pick, game }: { pick: BoardRow["aPick"]; game: BoardSlateGam
       </span>
     );
   }
-  return <span className="truncate">{pick === "away" ? game.awayTeam : game.homeTeam}</span>;
+  return (
+    <span className="truncate" data-testid="pickem-h2h-team" style={{ opacity: missed ? 0.45 : 1 }}>
+      {pick === "away" ? game.awayTeam : game.homeTeam}
+    </span>
+  );
 }
 
 /**
@@ -502,13 +543,17 @@ function SidePick({ pick, game }: { pick: BoardRow["aPick"]; game: BoardSlateGam
 function Conf({
   value,
   hit,
-  played,
+  missed,
   picked,
   ranksMatter,
 }: {
   value: number | null;
   hit: boolean;
-  played: boolean;
+  /** Played, picked, and no points. Passed IN rather than derived from `played`
+   *  and `hit` here, because `SidePick` fades on the same condition and two
+   *  private derivations of one condition is how the halves of a single
+   *  statement drift apart. */
+  missed: boolean;
   /** Did this side pick this contest at all? A missing rank on a missing pick is
    *  not worth marking — `SidePick` already says "No pick". */
   picked: boolean;
@@ -553,7 +598,6 @@ function Conf({
       </span>
     );
   }
-  const missed = played && !hit;
   return (
     <span
       className="shrink-0 text-center"
