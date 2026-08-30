@@ -15,6 +15,9 @@ import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { PointsAtStake } from "./PointsAtStake";
 import type { ScoringModel } from "@/lib/gameTypes";
+import { isMatchesGame } from "@/lib/resultStrategy";
+import { MatchesScoreboard, type MatchScoreRow } from "./MatchesScoreboard";
+import { PickemFinalizePrompt } from "./pickem/PickemFinalizePrompt";
 
 /**
  * NonGolfScoreboard — the scoring-mode body of the non-golf scoreboard page
@@ -48,6 +51,8 @@ export function NonGolfScoreboard({
   result,
   onPick,
   placements,
+  matches,
+  onMatchResultPick,
   canEdit,
   onPosted,
 }: {
@@ -80,19 +85,42 @@ export function NonGolfScoreboard({
   onPick: (next: string) => void;
   /** Exactly what `commit` posts, built by the parent so the projection it
    *  previews and the result this saves are one array. `null` = nothing declared
-   *  yet, which is also what disables the finalize CTA. */
+   *  yet, which is also what disables the finalize CTA. Ignored under Matches —
+   *  `games.finish`'s Matches arm reads `game_matches.result` directly and
+   *  takes no per-format input (see `commitMatches` below). */
   placements: { entityId: string; position: number }[] | null;
+  /** Matches ONLY (170) — player-resolved paired matches, each carrying its
+   *  own declared result. Empty for every other format. */
+  matches: MatchScoreRow[];
+  /** Matches ONLY — declares one match's result. WRITES DIRECTLY (its own
+   *  mutation, `matches.setResult`) rather than staging into `placements` —
+   *  there is no single "the outcome" for a page with N independent match
+   *  results to stage. */
+  onMatchResultPick: (matchId: string, result: "a_win" | "b_win" | "halve") => void;
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
   onPosted: () => void;
 }) {
   const utils = trpc.useUtils();
+  // Matches (170) decides FIRST — before winLoseTie is even consulted. Its
+  // shape is a match-play cup with exactly two sides too (so it would
+  // otherwise satisfy `winLoseTie`'s own condition), but its result entry is
+  // per-match, not a single declared outcome for the whole game — the two
+  // are mutually exclusive branches of the SAME "how does this game's result
+  // arrive" question `resolveResultStrategy` already answers server-side.
+  const isMatches = isMatchesGame(game.game_type_id, game.competition_format);
   // Head-to-head win/lose/tie is a manual match-play game with exactly two sides;
   // anything else (points model, >2 teams) keeps the finishing-order editor.
-  const winLoseTie = scoringModel === "match_play" && teams.length === 2;
+  const winLoseTie = !isMatches && scoringModel === "match_play" && teams.length === 2;
   const dist = game.points_distribution?.type === "placement" ? game.points_distribution.values : [];
 
   const [error, setError] = useState<string | null>(null);
+  // Matches' pre-commit confirm (§ build spec, mirroring pick'em's
+  // `PickemFinalizePrompt` — see that file's header for why this is asked AT
+  // THE TAP rather than shown as a standing banner). Only relevant when
+  // `isMatches`; every other branch finalizes straight from `commit` below.
+  const [confirmFinalize, setConfirmFinalize] = useState(false);
+  const matchesUndecidedCount = matches.filter((m) => m.result == null).length;
 
   const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(
     tripId,
@@ -152,6 +180,18 @@ export function NonGolfScoreboard({
 
   async function commit() {
     setError(null);
+    if (isMatches) {
+      // Asked at the moment of the tap, not shown as a standing banner — see
+      // `PickemFinalizePrompt`'s own header for the full reasoning, reused
+      // here rather than re-argued. An undecided match's points stay unpaid
+      // (Phase 0 §3); that is permitted, so this is a confirm, not a refusal.
+      if (matchesUndecidedCount > 0) {
+        setConfirmFinalize(true);
+        return;
+      }
+      await finalizeMatches();
+      return;
+    }
     // The parent built this from the same state the header just previewed, so
     // what gets posted is definitionally what was shown. It used to be rebuilt
     // here, which is a second place the win/tie→position mapping could drift.
@@ -162,6 +202,16 @@ export function NonGolfScoreboard({
     // living in one place. `placements` is the only per-format input
     // `games.finish` takes — the golf formats compute their result server-side.
     await finalize(placements);
+  }
+
+  /** Matches' actual finalize call — no `placements` (the Matches arm of
+   *  `games.finish` ignores that input; it reads `game_matches.result`
+   *  directly, same as every other engine strategy). Split from `commit` so
+   *  the confirm prompt's "yes, finalize anyway" has something to call that
+   *  skips straight past the undecided-count gate it already agreed to. */
+  async function finalizeMatches() {
+    setConfirmFinalize(false);
+    await finalize();
   }
 
   return (
@@ -187,7 +237,13 @@ export function NonGolfScoreboard({
       {/* `canEdit` now reaches the outcome rows themselves. It used to be
           expressed by handing them a no-op `onPick`, which leaves three
           live-looking, focusable controls that silently do nothing for a member. */}
-      {winLoseTie ? (
+      {isMatches ? (
+        <MatchesScoreboard
+          matches={matches}
+          onPick={onMatchResultPick}
+          canEdit={editable}
+        />
+      ) : winLoseTie ? (
         <NonGolfMatchControl
           teams={teams}
           result={result}
@@ -220,17 +276,41 @@ export function NonGolfScoreboard({
           genuinely unanswered. Reading `placements` rather than re-testing
           `winLoseTie && result` keeps the CTA's enablement and the commit's own
           guard on ONE value, so the button cannot be live for a state that
-          `commit` would refuse. */}
+          `commit` would refuse.
+
+          Matches reads a DIFFERENT truth for the same prop: not "has an outcome
+          been chosen" (placements is meaningless here — the Matches arm of
+          `games.finish` ignores it) but "is there at least one paired match to
+          finalize" — deliberately NOT "has every match been decided", because
+          undecided is PERMITTED (Phase 0 §3), just confirmed first (above). An
+          empty pairing grid still refuses — there is nothing for a tap on this
+          button to mean. */}
       <GameLifecycleActions
         canEdit={canEdit}
         status={game.status}
         correctionsOpen={game.corrections_open}
-        allComplete={!!placements}
+        allComplete={isMatches ? matches.length > 0 : !!placements}
         finalizePending={busy}
         correctPending={correctPending}
         onFinalize={commit}
         onCorrect={handleCorrect}
       />
+
+      {confirmFinalize && (
+        <PickemFinalizePrompt
+          title={`${matchesUndecidedCount} match${matchesUndecidedCount === 1 ? "" : "es"} ${matchesUndecidedCount === 1 ? "has" : "have"} no result`}
+          message={`${matchesUndecidedCount === 1 ? "Its" : "Their"} points stay unpaid until entered — this is reversible, and you can still correct it after.`}
+          // Names the ACT and its consequence, not a shrug — same rule this
+          // component's own header states, and the same reason pick'em's
+          // caller says "Void and save results" rather than "anyway".
+          confirmLabel="Save with points unpaid"
+          pendingLabel="Saving results…"
+          cancelLabel="Keep entering results"
+          pending={busy}
+          onConfirm={finalizeMatches}
+          onCancel={() => setConfirmFinalize(false)}
+        />
+      )}
     </div>
   );
 }

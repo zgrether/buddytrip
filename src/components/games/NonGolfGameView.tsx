@@ -571,6 +571,59 @@ export function NonGolfGameView() {
     setMatchesDraft((prev) => (prev ?? configDraft.matches).map((m, i) => (i === idx ? { ...m, pointValue: value } : m)));
   };
 
+  // ── The SCOREBOARD's matches (170) — SERVER rows, not the draft ────────────
+  // The settings-side `matchesPointsMatches` above is keyed by DRAFT INDEX
+  // because a not-yet-saved match has no server id; declaring a result is the
+  // opposite case — a match MUST already be persisted to have a result
+  // declared against it, so this reads `serverMatchRows` directly and keys by
+  // the REAL `game_matches.id`. Same name/color/avatar maps as the pairing
+  // grid and the override panel, so a player reads identically on all three
+  // surfaces of this one game.
+  const matchesScoreRows = useMemo(
+    () =>
+      (serverMatchRows as {
+        id: string;
+        match_number: number | null;
+        side_a: ServerSide;
+        side_b: ServerSide;
+        result: "a_win" | "b_win" | "halve" | null;
+      }[])
+        .map((mm, i) => ({
+          id: mm.id,
+          number: mm.match_number ?? i + 1,
+          aPlayers: sideMemberIds(mm.side_a, membersOfSide).map((u) => ({
+            id: u,
+            name: matchesNameMap.get(u) ?? "Player",
+            teamColor: matchesTeamColorOf(u) ?? matchesColorMap.get(u),
+          })),
+          bPlayers: sideMemberIds(mm.side_b, membersOfSide).map((u) => ({
+            id: u,
+            name: matchesNameMap.get(u) ?? "Player",
+            teamColor: matchesTeamColorOf(u) ?? matchesColorMap.get(u),
+          })),
+          result: mm.result,
+        }))
+        // Same rule as everywhere else in this format (§3): an unpaired match
+        // isn't there to resolve, so it doesn't reach the entry surface at all
+        // — no refusal to write because there's nothing to tap in the first
+        // place.
+        .filter((m) => m.aPlayers.length > 0 && m.bPlayers.length > 0),
+    [serverMatchRows, membersOfSide, matchesNameMap, matchesColorMap, matchesTeamColorOf],
+  );
+  const setMatchResult = trpc.matches.setResult.useMutation({
+    onSuccess: () => {
+      // The SAME query the pairing grid reads (`matches.listByGame`) — one
+      // invalidate refreshes both surfaces of this one game. Realtime
+      // (`useRealtimeGame`, CLAUDE.md #19) covers OTHER devices; this is for
+      // the tab that just wrote, which cannot rely on its own broadcast
+      // round-tripping back to itself promptly.
+      utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: urlGameId! });
+    },
+  });
+  const onMatchResultPick = (matchId: string, result: "a_win" | "b_win" | "halve") => {
+    setMatchResult.mutate({ tripId: tripId!, gameId: urlGameId!, matchId, result });
+  };
+
   // ── The bracket's derived shape, read by everything below ───────────────────
   // `isBracket` and the entrant count both come off the DRAFT, so the rows, the
   // place ceiling and the payload all answer from the same state — a staged
@@ -1249,6 +1302,8 @@ export function NonGolfGameView() {
           result={result}
           onPick={setResultDraft}
           placements={draftPlacements}
+          matches={matchesScoreRows}
+          onMatchResultPick={onMatchResultPick}
           canEdit={canEdit}
           // #808 — was a bare `router.back()`. Correct from a panel, wrong
           // everywhere else: on a standalone route or a cold deep-link from a
