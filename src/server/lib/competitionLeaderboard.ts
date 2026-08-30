@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { rollUp, placementDetail, placementPoints, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
-import { isBracketGame, isPickemGame } from "@/lib/resultStrategy";
+import { isBracketGame, isPickemGame, isMatchesGame } from "@/lib/resultStrategy";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 import { projectedTeamTotals } from "@/lib/gameProjection";
 import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
@@ -586,10 +586,11 @@ export async function computeCompetitionLeaderboard(
   const liveProjectionInputs: LiveProjectionInput[] = allGames
     .filter((g) => {
       const t = g.game_type_id as string | null;
+      const cf = g.competition_format as string | null;
       return (
         g.status === "active" &&
         startedByGame.has(g.id as string) &&
-        ((t != null && MATCH_PLAY_TYPES.has(t)) || t === RACK_TYPE)
+        ((t != null && MATCH_PLAY_TYPES.has(t)) || t === RACK_TYPE || isMatchesGame(t, cf))
       );
     })
     .map((g) => {
@@ -597,6 +598,7 @@ export async function computeCompetitionLeaderboard(
       return {
         id: g.id as string,
         gameTypeId: (g.game_type_id as string | null) ?? null,
+        competitionFormat: (g.competition_format as string | null) ?? null,
         // #1031: pass the raw total + the distribution TYPE, not a precomputed
         // per-match/per-slot value — `computeLiveProjections` derives that LIVE
         // from the bulk-fetched matches/roster it already has, so the board's

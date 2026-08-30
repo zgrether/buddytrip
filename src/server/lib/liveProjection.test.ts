@@ -151,6 +151,78 @@ describe("projectGame — rack", () => {
   });
 });
 
+describe("projectGame — Matches", () => {
+  it("sums only DECIDED matches — an undecided one contributes nothing, not a partial credit", () => {
+    // pointsTotal 12 ÷ 3 assigned matches, no overrides → even share 4/match.
+    const input: LiveProjectionInput = {
+      id: "g4",
+      gameTypeId: "gtt_generic_card",
+      competitionFormat: "matches",
+      pointsTotal: 12,
+      isPerMatch: true,
+    };
+    const data: GameProjectionData = {
+      schema: null,
+      modifiers: null,
+      matches: [
+        { id: "m1", side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" }, result: "a_win" },
+        { id: "m2", side_a: { type: "user", id: "carol" }, side_b: { type: "user", id: "dave" }, result: "halve" },
+        { id: "m3", side_a: { type: "user", id: "erin" }, side_b: { type: "user", id: "finn" }, result: null }, // undecided
+      ],
+      parts: [],
+      playGroups: [],
+      gross: new Map(),
+      outcomes: [],
+      userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red", erin: "blue", finn: "red" }),
+    };
+    // m1: blue +4. m2 halved: blue +2, red +2. m3 undecided: nothing (NOT +2 each,
+    // which is what a "credit the leader" mistake copied from golf would do).
+    expect(projectGame(input, data)).toEqual({ blue: 6, red: 2 });
+  });
+
+  it("a per-match point_value override wins over the even share, same as the persisted write", () => {
+    const input: LiveProjectionInput = {
+      id: "g5",
+      gameTypeId: "gtt_generic_card",
+      competitionFormat: "matches",
+      pointsTotal: 10,
+      isPerMatch: true,
+    };
+    const data: GameProjectionData = {
+      schema: null,
+      modifiers: null,
+      matches: [
+        { id: "m1", side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" }, result: "a_win", point_value: 6 },
+        { id: "m2", side_a: { type: "user", id: "carol" }, side_b: { type: "user", id: "dave" }, result: "b_win" }, // even share
+      ],
+      parts: [],
+      playGroups: [],
+      gross: new Map(),
+      outcomes: [],
+      userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red" }),
+    };
+    // even share = (10 - 6) / 1 non-overridden match = 4.
+    expect(projectGame(input, data)).toEqual({ blue: 6, red: 4 });
+  });
+
+  it("gameTypeId is a generic non-golf shape shared with other formats — competitionFormat is what decides this is Matches", () => {
+    // Same gtt_generic_card game type, but NOT a Matches game (no competitionFormat) —
+    // must fall through to null, not be mistaken for one just because the shape matches.
+    const input: LiveProjectionInput = { id: "g6", gameTypeId: "gtt_generic_card", pointsTotal: 10, isPerMatch: true };
+    const data: GameProjectionData = {
+      schema: null,
+      modifiers: null,
+      matches: [{ id: "m1", side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" }, result: "a_win" }],
+      parts: [],
+      playGroups: [],
+      gross: new Map(),
+      outcomes: [],
+      userTeam: userTeam({ alice: "blue", bob: "red" }),
+    };
+    expect(projectGame(input, data)).toBeNull();
+  });
+});
+
 describe("projectGame — no projection", () => {
   it("returns null for a format without a live projection (stroke play)", () => {
     const input: LiveProjectionInput = { id: "g3", gameTypeId: "gtt_stroke_play", pointsTotal: null, isPerMatch: false };
