@@ -8,6 +8,9 @@ import {
   dayNumber,
   summarizeLodging,
   groupDayBlocks,
+  earliestTime,
+  compareByTimeThenPriority,
+  KIND_PRIORITY,
   type ItineraryScheduleItem,
   type ItineraryLogisticsItem,
   type ItineraryTripMember,
@@ -585,6 +588,67 @@ describe("buildItinerary — sorting", () => {
     // too — but relative to each other they must stay in drag order.
     const order = events.map((e) => e.id);
     expect(order.indexOf("s_late")).toBeLessThan(order.indexOf("s_early"));
+  });
+});
+
+// ── earliestTime + compareByTimeThenPriority (day-card interleaving) ──────
+//
+// These back ItineraryView's DaySection, which gives the whole-day Arrivals/
+// Departures group card a single sort key (its earliest member's time) so it
+// can interleave with schedule/lodging cards instead of always rendering
+// first. Regression: an 8-person Departures block spanning 12pm–7pm rendered
+// ABOVE a 7:40am tee time, because the group was pinned first unconditionally.
+
+describe("earliestTime", () => {
+  it("returns the smallest time among timed events", () => {
+    expect(
+      earliestTime([{ time: "16:00" }, { time: "07:40" }, { time: "12:00" }])
+    ).toBe("07:40");
+  });
+
+  it("ignores untimed events when a timed one exists", () => {
+    expect(earliestTime([{ time: null }, { time: "09:00" }])).toBe("09:00");
+  });
+
+  it("returns null when every event is untimed", () => {
+    expect(earliestTime([{ time: null }, { time: null }])).toBeNull();
+  });
+
+  it("returns null for an empty list", () => {
+    expect(earliestTime([])).toBeNull();
+  });
+});
+
+describe("compareByTimeThenPriority", () => {
+  it("sorts an earlier time first regardless of priority", () => {
+    // The exact regression: a Departures group's earliest time (12:00) vs a
+    // schedule item's time (07:40) — the schedule item must sort first even
+    // though "departure" has a lower (earlier-sorting) KIND_PRIORITY number
+    // than "schedule".
+    const departuresGroup = { time: "12:00", priority: KIND_PRIORITY.departure };
+    const golf = { time: "07:40", priority: KIND_PRIORITY.schedule };
+    expect(compareByTimeThenPriority(golf, departuresGroup)).toBeLessThan(0);
+    expect(compareByTimeThenPriority(departuresGroup, golf)).toBeGreaterThan(0);
+  });
+
+  it("puts an untimed card after every timed card", () => {
+    const untimed = { time: null, priority: KIND_PRIORITY.schedule };
+    const timed = { time: "23:00", priority: KIND_PRIORITY.arrival };
+    expect(compareByTimeThenPriority(untimed, timed)).toBeGreaterThan(0);
+    expect(compareByTimeThenPriority(timed, untimed)).toBeLessThan(0);
+  });
+
+  it("breaks a same-time tie by priority", () => {
+    const checkout = { time: "10:00", priority: KIND_PRIORITY["lodging-checkout"] };
+    const schedule = { time: "10:00", priority: KIND_PRIORITY.schedule };
+    expect(compareByTimeThenPriority(checkout, schedule)).toBeLessThan(0);
+  });
+
+  it("both untimed — falls through to priority, never throws or loops", () => {
+    const a = { time: null, priority: KIND_PRIORITY.arrival };
+    const b = { time: null, priority: KIND_PRIORITY.schedule };
+    expect(compareByTimeThenPriority(a, b)).toBeLessThan(0);
+    expect(compareByTimeThenPriority(a, a)).toBe(0);
   });
 });
 
