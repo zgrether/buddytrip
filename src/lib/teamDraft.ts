@@ -90,3 +90,44 @@ export function hasUnsavedTeamWork(input: {
     orderDiffers(input.orderDraft, input.serverOrder)
   );
 }
+
+/**
+ * Project a roster-order draft onto the roster that actually exists RIGHT NOW.
+ *
+ * The Edit Team modal is a partial draft (see the header): order drafts, but add /
+ * remove apply on tap. So the moment someone drags a row and THEN adds a player,
+ * the stored draft is a snapshot of a roster that no longer exists — it is missing
+ * the newcomer, and after a removal it names someone who has left.
+ *
+ * That single stale-set condition produced both halves of the reported bug:
+ *
+ *   - `teamAssignments.reorder` validates its input is a PERMUTATION of the team's
+ *     current roster and refuses anything else, so Save failed with "Order must be
+ *     exactly this team's current roster" — a refusal naming a condition the reader
+ *     could not clear from the modal, since the only order they could see was the
+ *     stale one (CLAUDE.md's refusal rule).
+ *   - the roster list renders every assignment but feeds `SortableContext` the
+ *     DRAFT ids, so a player missing from the draft rendered as a row that was not
+ *     a sortable item: visible, appended at the bottom, and immovable. The
+ *     newest-added player is always the one at the bottom, which is exactly how it
+ *     was reported.
+ *
+ * So the draft is never read raw. Reconciling it against the live roster keeps the
+ * drafted SEQUENCE while making the SET always correct: ids that have left are
+ * dropped, ids that arrived are appended in the roster's own order — which is where
+ * the server puts them anyway (`assign` writes `sort_order = max + 1`), so an add on
+ * its own reconciles equal to the server and correctly does NOT mark the order dirty.
+ *
+ * `null` in, `null` out — untouched stays untouched.
+ */
+export function reconcileOrderDraft(
+  draft: readonly string[] | null,
+  rosterOrder: readonly string[],
+): string[] | null {
+  if (draft === null) return null;
+  const live = new Set(rosterOrder);
+  const kept = draft.filter((id) => live.has(id));
+  const keptSet = new Set(kept);
+  const arrived = rosterOrder.filter((id) => !keptSet.has(id));
+  return [...kept, ...arrived];
+}

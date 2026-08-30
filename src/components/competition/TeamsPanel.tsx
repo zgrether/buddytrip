@@ -39,7 +39,12 @@ import { Avatar } from "@/components/Avatar";
 import { RowNumber } from "@/components/games/RowNumber";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
-import { identityDiffers, orderDiffers, hasUnsavedTeamWork } from "@/lib/teamDraft";
+import {
+  identityDiffers,
+  orderDiffers,
+  reconcileOrderDraft,
+  hasUnsavedTeamWork,
+} from "@/lib/teamDraft";
 
 interface Props {
   competitionId: string;
@@ -214,12 +219,22 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         // Composite PK is (competition_id, user_id) — drop any existing
         // row for this user before inserting the new pairing.
         const filtered = list.filter((a) => a.user_id !== vars.userId);
+        // sort_order MIRRORS the server: `assign` writes max + 1, i.e. the end of
+        // the target team's order. Omitting it here was not neutral — every reader
+        // sorts on `sort_order ?? 0`, so the newcomer optimistically tied with the
+        // FIRST row and rendered near the top, then jumped to the bottom when the
+        // refetch landed. Same value, same place, no jump.
+        const nextSortOrder =
+          filtered
+            .filter((a) => a.team_id === vars.teamId)
+            .reduce((max, a) => Math.max(max, a.sort_order ?? 0), -1) + 1;
         return [
           ...filtered,
           {
             competition_id: vars.competitionId,
             user_id: vars.userId,
             team_id: vars.teamId,
+            sort_order: nextSortOrder,
           },
         ] as never;
       });
@@ -1481,9 +1496,28 @@ export function TeamSheet({
     [rosterAssignments, team?.id]
   );
 
+  /**
+   * The draft PROJECTED onto the roster as it stands now — the only form of the
+   * order anything is allowed to read.
+   *
+   * `orderDraft` is a snapshot, and add / remove apply immediately (the partial-draft
+   * rule above), so a raw draft goes stale the instant either is tapped. Every reader
+   * below takes this instead: the rendered order, the dirty check, the leave-guard,
+   * and the write. Reading the raw draft in ANY of them re-opens the bug — the write
+   * is refused for not being a permutation, and the render hands `SortableContext` a
+   * set that omits a row it is drawing, which is what made the newest player
+   * undraggable.
+   */
+  const effectiveOrder = useMemo(
+    () => reconcileOrderDraft(orderDraft, serverOrderedIds),
+    [orderDraft, serverOrderedIds]
+  );
+
   // Dirty only when the draft actually differs — dragging a row and putting it
-  // back leaves Save disabled, same as retyping the original name.
-  const orderDirty = orderDiffers(orderDraft, serverOrderedIds);
+  // back leaves Save disabled, same as retyping the original name. Compared
+  // RECONCILED, so merely adding a player doesn't arm Save on an order nobody
+  // edited: the newcomer lands at the end of both sides and they compare equal.
+  const orderDirty = orderDiffers(effectiveOrder, serverOrderedIds);
 
   /** Who the server currently has, so the draft can be compared to it. */
   const serverCaptain = useMemo(
@@ -1519,7 +1553,7 @@ export function TeamSheet({
     hasUnsavedTeamWork({
       identity: currentIdentity,
       baseline: leaveBaseline,
-      orderDraft,
+      orderDraft: effectiveOrder,
       serverOrder: serverOrderedIds,
     });
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -1649,13 +1683,16 @@ export function TeamSheet({
 
     // Roster order — skipped entirely when unchanged, so an identity-only edit
     // fires exactly one request.
-    if (isEdit && team && orderDirty && orderDraft) {
+    if (isEdit && team && orderDirty && effectiveOrder) {
       try {
         await reorder.mutateAsync({
           tripId,
           competitionId,
           teamId: team.id,
-          orderedUserIds: orderDraft,
+          // RECONCILED, never the raw draft — `reorder` refuses anything that is
+          // not a permutation of the current roster, and a draft taken before an
+          // add / remove is exactly that.
+          orderedUserIds: effectiveOrder,
         });
       } catch (e) {
         // PARTIAL FAILURE. Identity is already committed; the order is not.
@@ -1929,7 +1966,7 @@ export function TeamSheet({
               // Order is drafted HERE (TeamSheet owns Save); the roster renders
               // the draft when present and reports drags back up. It never
               // writes order itself any more.
-              orderedIds={orderDraft ?? serverOrderedIds}
+              orderedIds={effectiveOrder ?? serverOrderedIds}
               onReorder={setOrderDraft}
               // The captain is drafted HERE, like the order: the roster renders
               // what is staged and reports taps back up. It never writes the

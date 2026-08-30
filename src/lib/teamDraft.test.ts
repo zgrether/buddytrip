@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { identityDiffers, orderDiffers, hasUnsavedTeamWork } from "./teamDraft";
+import {
+  identityDiffers,
+  orderDiffers,
+  reconcileOrderDraft,
+  hasUnsavedTeamWork,
+} from "./teamDraft";
 
 /**
  * The Edit/Add Team modal's confirm-on-leave gate. `hasUnsavedTeamWork` is the whole
@@ -71,6 +76,63 @@ describe("orderDiffers", () => {
     const dragged = ["u2", "u1", "u3"];
     const back = [dragged[1], dragged[0], dragged[2]];
     expect(orderDiffers(back, server)).toBe(false);
+  });
+});
+
+describe("reconcileOrderDraft — the drafted SEQUENCE over the LIVE set", () => {
+  // The reported bug, both halves. The modal drafts order but applies add/remove on
+  // tap, so a draft taken before a membership change names a roster that no longer
+  // exists. Each assertion below is the exact shape of one half.
+
+  it("returns null for an untouched draft", () => {
+    expect(reconcileOrderDraft(null, ["u1", "u2"])).toBeNull();
+  });
+
+  it("APPENDS a player added after the drag — the reorder input stays a permutation", () => {
+    // Drag first, then add: the raw draft omits u4, which is what `teamAssignments.reorder`
+    // refuses with "Order must be exactly this team's current roster."
+    const dragged = ["u2", "u1", "u3"];
+    const roster = ["u1", "u2", "u3", "u4"];
+    expect(reconcileOrderDraft(dragged, roster)).toEqual(["u2", "u1", "u3", "u4"]);
+  });
+
+  it("appends EVERY newcomer, in roster order — 'I added a bunch of players'", () => {
+    expect(reconcileOrderDraft(["u3", "u1"], ["u1", "u2", "u3", "u4", "u5"])).toEqual([
+      "u3",
+      "u1",
+      "u2",
+      "u4",
+      "u5",
+    ]);
+  });
+
+  it("DROPS a player removed after the drag", () => {
+    // The other direction of the same staleness: the draft names someone who left.
+    expect(reconcileOrderDraft(["u2", "u1", "u3"], ["u1", "u3"])).toEqual(["u1", "u3"]);
+  });
+
+  it("preserves the drafted sequence for everyone who is still here", () => {
+    expect(reconcileOrderDraft(["u3", "u2", "u1"], ["u1", "u2", "u3"])).toEqual(["u3", "u2", "u1"]);
+  });
+
+  it("is ALWAYS a permutation of the live roster — the property reorder validates", () => {
+    // Asserted as a set-equality over a draft that is wrong in BOTH directions at
+    // once (u9 has left, u4/u5 have arrived), because that is the only version of
+    // this the server's permutation check would still reject.
+    const roster = ["u1", "u2", "u3", "u4", "u5"];
+    const out = reconcileOrderDraft(["u3", "u9", "u1", "u2"], roster)!;
+    expect([...out].sort()).toEqual([...roster].sort());
+    expect(out.length).toBe(roster.length);
+  });
+
+  it("compares CLEAN against the server when a lone add is the only change", () => {
+    // Why Save is not armed by an add on its own: the server puts a new assignment at
+    // sort_order max + 1, so the reconciled draft and the server order agree exactly.
+    // Reading the raw draft here reports a phantom edit AND arms a doomed Save.
+    const beforeAdd = ["u1", "u2", "u3"];
+    const roster = ["u1", "u2", "u3", "u4"];
+    expect(orderDiffers(reconcileOrderDraft(beforeAdd, roster), roster)).toBe(false);
+    expect(orderDiffers(beforeAdd, roster)).toBe(true);
   });
 });
 
