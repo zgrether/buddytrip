@@ -567,10 +567,30 @@ export function PickemSlateModal({
           <div
             data-testid="pickem-slate-footer"
             className="sticky bottom-0 z-10 -mx-4 mt-1 flex items-center gap-3 px-4 pb-2 pt-3"
-            // Matches the picks save bar and the settings footer: one
-            // treatment for every anchored footer in the app.
+            /**
+             * ── THE SHEET'S OWN SURFACE, not the page's ────────────────────
+             *
+             * This painted `--color-bt-base` — Level 0, the page background —
+             * inside a `Sheet`, which is Level 3 (`--color-bt-card-float`). So
+             * the bar read as a differently-coloured band across the bottom of a
+             * floating panel, which is what it was.
+             *
+             * The comment that used to sit here explained it as "one treatment
+             * for every anchored footer in the app", and that is exactly how it
+             * went wrong: the footers it was copied from sit on the PAGE, where
+             * Level 0 is correct. Same treatment, different surface. A footer
+             * inside a floating sheet has to match the sheet.
+             *
+             * (The picks save bar it named has since been deleted, so half the
+             * justification had stopped existing too.)
+             *
+             * Set explicitly rather than left transparent: the list scrolls
+             * UNDER this bar, so it has to be opaque. `AddEditSheet`'s footer
+             * inherits instead, which works there because it is a flex sibling
+             * with nothing passing beneath it.
+             */
             style={{
-              background: "var(--color-bt-base)",
+              background: "var(--color-bt-card-float)",
               borderTop: "1px solid var(--color-bt-border)",
             }}
           >

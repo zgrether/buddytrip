@@ -195,13 +195,37 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
     //
     // `finally`, because a failed refetch must still clear the draft: the WRITE landed, so
     // keeping the slices would leave the page dirty against data it already committed.
+    //
+    // ── BOTH REFRESHES, TOGETHER, BEFORE `reset` — and that ordering is the fix ──
+    //
+    // The hash refetch used to sit AFTER this block, un-awaited. That is not a
+    // race that usually goes the right way; it is a guaranteed wrong ordering:
+    // `reset(true)` flips `anyTouched` false, the baseline effect runs on the very
+    // next pass, and at that moment the MIRROR has been refetched (awaited above)
+    // while the hash refetch has not been CALLED yet. So the baseline was always
+    // re-frozen as { draft: fresh, hash: STALE }.
+    //
+    // It self-healed when the hash landed — and stopped self-healing the instant
+    // the user touched anything, because the freeze guard then returns `prev`
+    // untouched. Save then sent a base hash one write out of date and the server
+    // answered "This game changed on another device", on a game nobody else had
+    // opened. Reported from a phone: set the total, Save, reopen settings, change
+    // the roll-up, Save -> conflict.
+    //
+    // `Promise.all`, so this costs no latency against the awaited `onSaved` it
+    // replaces — the two are independent reads. The point is not that the hash
+    // arrives sooner; it is that `anyTouched` cannot go false until BOTH have,
+    // which is what makes the pair the effect freezes come from one point in time.
+    //
+    // `.catch` on the refetch alone: a failed hash read must not take the mirror
+    // refresh down with it. The baseline then stays on the old hash and the next
+    // poll heals it — the pre-existing behaviour, reached only on a failure.
     try {
-      await onSaved?.();
+      await Promise.all([onSaved?.(), hashQ.refetch().catch(() => undefined)]);
     } finally {
       reset(true);
       setCommitting(false);
     }
-    void hashQ.refetch();
     return true;
   }
   function handleCancel() {
