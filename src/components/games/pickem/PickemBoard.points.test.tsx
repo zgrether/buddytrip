@@ -217,3 +217,111 @@ describe("PickemBoard — points mode", () => {
     expect(html).not.toContain("pickem-board-payout");
   });
 });
+
+/**
+ * ── WHO IS "NOT IN THE SCORING" — THE ROSTER, NOT THE SHEETS ───────────────
+ *
+ * The list was built from `Object.keys(sheets)` — everybody who had submitted —
+ * so a teammate who had not picked yet was invisible. That is backwards: five
+ * people unpaired across two teams reported ONE, the only one holding a sheet,
+ * and the four the runner most needs to chase were the four it dropped.
+ *
+ * The rule is on a team, and not in a VALID match. Sheets do not enter into it.
+ */
+describe("the unassigned note", () => {
+  const NOTE = 'data-testid="pickem-board-unassigned"';
+
+  /**
+   * The names the note LISTS — its bolded run, not its markup.
+   *
+   * Two narrowings, each because the wider version failed against correct code:
+   *
+   * Every name in the note is also elsewhere on the page — a match card, a
+   * standings row, a roll-up — so a page-wide assertion about who is NOT listed
+   * reads the rest of the board.
+   *
+   * And the note's own markup is no better. These names are two letters, and
+   * `"Bo"` is a substring of `viewBox` in the info icon's SVG. Asserting a short
+   * name against HTML matches attributes, not people.
+   */
+  const listedIn = (html: string) => {
+    const at = html.indexOf(NOTE);
+    if (at < 0) return "";
+    const openB = html.indexOf("<b", at);
+    return html.slice(html.indexOf(">", openB) + 1, html.indexOf("</b>", openB));
+  };
+
+  it("names people with NO sheet — the ones worth chasing", () => {
+    /**
+     * The reported shape: everybody on a roster, nobody paired, one sheet
+     * between them. A build counting sheets names one of four and passes any
+     * assertion that only checks the note exists.
+     */
+    const html = render({ pointsMode: false, rollUp: "individual_matches", matches: [], sheets: { a1: sheet(4) } });
+    expect(html).toContain(NOTE);
+    // Everybody ON A TEAM, whether or not they hold a sheet. Only `a1` does.
+    const listed = listedIn(html);
+    for (const uid of Object.keys(TEAM_OF)) {
+      expect(listed, NAMES[uid] + " missing from the note").toContain(NAMES[uid]);
+    }
+  });
+
+  it("leaves out somebody on NO team — that is the other note's job", () => {
+    /**
+     * `x1` holds a sheet and belongs to nothing. This note is about people whose
+     * TEAM will not score them; a person with no team is `PickemTeamRollUp`'s
+     * `unplaced`, and naming them in both would be one fact reported twice with
+     * two different remedies.
+     *
+     * My first version of the case above asserted every NAME rather than every
+     * ROSTERED name, and failed against correct code for exactly this reason.
+     */
+    const html = render({ pointsMode: false, rollUp: "individual_matches", matches: [], sheets: { x1: sheet(4) } });
+    expect(html).toContain(NOTE);
+    expect(listedIn(html)).not.toContain(NAMES.x1);
+  });
+
+  it("counts a HALF-FILLED match as no match at all", () => {
+    /**
+     * A side of one pairs nobody — the divisor says so and `matchesToSaveRows`
+     * drops the row before it is stored. Counting it as paired would hide the
+     * person with no opponent, who is the likeliest reason somebody is not in
+     * the scoring.
+     */
+    const html = render({
+      pointsMode: false,
+      rollUp: "individual_matches",
+      matches: [{ id: "m1", sideAId: "a1", sideBId: null }],
+      sheets: { a1: sheet(4) },
+    });
+    expect(html).toContain(NOTE);
+    expect(listedIn(html)).toContain(NAMES.a1);
+  });
+
+  it("drops somebody once they are in a REAL match", () => {
+    // The control. Without it "names everyone" is satisfied by a note that
+    // never filters anybody out.
+    const html = render({
+      pointsMode: false,
+      rollUp: "individual_matches",
+      matches: [{ id: "m1", sideAId: "a1", sideBId: "b1" }],
+      sheets: { a1: sheet(4) },
+    });
+    const note = listedIn(html);
+    expect(note).not.toContain(NAMES.a1);
+    expect(note).not.toContain(NAMES.b1);
+    // ...and the others are still named, so this is not passing on a note that
+    // vanished altogether.
+    expect(note).toContain(NAMES.c1);
+  });
+
+  it("does not presuppose a sheet in its copy", () => {
+    // It fires for people who have not picked, so a sentence about "their
+    // sheet" describes something that does not exist.
+    const html = render({ pointsMode: false, rollUp: "individual_matches", matches: [], sheets: {} });
+    expect(html).toContain(NOTE);
+    expect(html).not.toContain("sheet doesn");
+    expect(html).not.toContain("sheets don");
+    expect(html).toContain("picks won");
+  });
+});
