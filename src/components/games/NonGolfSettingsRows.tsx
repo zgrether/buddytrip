@@ -15,6 +15,7 @@ import type { PlaceCapacity } from "@/lib/gameConfig";
 import type { NonGolfConfigDraft, CompetitionFormat } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
+import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
 
 /**
  * Non-golf's own settings rows — the slot contents `GameSettingsPage` arranges.
@@ -51,19 +52,54 @@ export function usesPointsPool(
   return scoringModel === "points" || isPlacement(distribution);
 }
 
-/** GAME MANAGEMENT slot — Total Points: a per-match value, or a pool to split. */
+/**
+ * GAME MANAGEMENT slot — Total Points: a per-match value, a pool to split, or
+ * (settings-parity §2) golf's OWN per-match subtext under Matches.
+ *
+ * THREE outcomes now, not two, and `competitionFormat` decides FIRST — before
+ * `usesPointsPool` is even consulted. Matches' award is per-match regardless
+ * of the competition's `scoringModel` (a Matches game only ever exists in a
+ * match-play cup in practice, but the ordering makes that an observation, not
+ * an assumption this code leans on). The subtitle golf renders is "Points per
+ * match: X" / "Custom" — `MatchValueRow`'s "Win X · Draw X each" is the
+ * SIMPLE format's own line and would misdescribe a per-match award (§2: "the
+ * label stays Total Points, the subtext carries the format" — pick'em
+ * critique-2 §4's rule, applied a second time).
+ */
 export function NonGolfTotalPointsRow({
-  scoringModel, distribution, value, canEdit, onChange,
+  scoringModel, competitionFormat, distribution, value, matches, canEdit, onChange, onOverrideChange,
 }: {
   scoringModel: ScoringModel;
+  competitionFormat: CompetitionFormat | null;
   /** The game's own split, if it has one. A match-play game that carries one
    *  needs the POOL control, not the per-match value — the total is what the
    *  places divide up. */
   distribution: PointsDistribution | null;
   value: number | null;
+  /** Matches ONLY — player-resolved paired matches, for the derived even
+   *  share the subtitle shows. Ignored (and safe to pass `[]`) for every
+   *  other format. */
+  matches: PointsMatch[];
   canEdit: boolean;
   onChange: (total: number | null) => void;
+  /** Matches ONLY — one match's override set/cleared. Ignored for every
+   *  other format (they have no per-match value to override). */
+  onOverrideChange: (matchId: string, value: number | null) => void;
 }) {
+  if (competitionFormat === MATCHES_COMPETITION_FORMAT) {
+    return (
+      <MatchPointsRow
+        part="total"
+        matches={matches}
+        pointsTotal={value}
+        defaultTotal={0}
+        canEdit={canEdit}
+        locked={false}
+        onTotalChange={onChange}
+        onOverrideChange={onOverrideChange}
+      />
+    );
+  }
   return usesPointsPool(scoringModel, distribution) ? (
     <TotalPoolRow value={value} canEdit={canEdit} onChange={onChange} />
   ) : (
@@ -74,7 +110,7 @@ export function NonGolfTotalPointsRow({
 /** SETTINGS slot — Competition Format, plus the placement split for the points
  *  model. Owns the single-open accordion state shared by its two rows. */
 export function NonGolfSettingsRows({
-  game, scoringModel, draft, canEdit, capacity, bracketRows, matchRows, onFormatChange, onPointsTotalChange, onPointsDistChange,
+  game, scoringModel, draft, canEdit, capacity, bracketRows, matchRows, pointsMatches, onFormatChange, onPointsTotalChange, onPointsDistChange, onPointsOverrideChange,
 }: {
   game: GameRow;
   scoringModel: ScoringModel;
@@ -93,9 +129,20 @@ export function NonGolfSettingsRows({
   /** Matches' pairing grid (170) — the same slot pattern as `bracketRows`, one
    *  per structural format. */
   matchRows?: React.ReactNode;
+  /** Settings-parity §1 — player-resolved paired matches, for the Point
+   *  Distribution row's override editor under Matches. Ignored (safe as `[]`)
+   *  for every other format — the branch below is keyed on
+   *  `draft.competitionFormat`, not on this being non-empty. Threaded in
+   *  rather than resolved here because the name/color maps it needs come from
+   *  the same crew read `matchRows` already resolved them from — this file
+   *  would otherwise rebuild a second copy. */
+  pointsMatches?: PointsMatch[];
   onFormatChange: (format: CompetitionFormat | null) => void;
   onPointsTotalChange: (total: number | null) => void;
   onPointsDistChange: (dist: PointsDistribution | null) => void;
+  /** Settings-parity §1 — one match's override set/cleared. Ignored for every
+   *  other format. */
+  onPointsOverrideChange?: (matchId: string, value: number | null) => void;
 }) {
   // Only the distribution row is an accordion now — the format is a tile row that
   // is always open, so it no longer takes part in the single-open rule.
@@ -107,6 +154,7 @@ export function NonGolfSettingsRows({
   // panel it opened said "not distributed yet".
   const hasSplit = isPlacement(draft.pointsDistribution);
   const isPool = usesPointsPool(scoringModel, draft.pointsDistribution);
+  const isMatches = draft.competitionFormat === MATCHES_COMPETITION_FORMAT;
   return (
     <>
       <CompetitionFormatTiles
@@ -116,7 +164,7 @@ export function NonGolfSettingsRows({
       />
       {bracketRows}
       {matchRows}
-      {/* Point Distribution — the placement split.
+      {/* Point Distribution — the placement split for every OTHER format.
 
           SHOWN IN EVERY CUP NOW, which retires this file's standing exception.
           The row used to be hidden outside the points model, and hidden rather
@@ -132,45 +180,67 @@ export function NonGolfSettingsRows({
 
           The subtitle names the model's actual default rather than one of them:
           "Even" is true of a points cup and false of a match-play one, where an
-          unset split means the winner takes the lot. */}
-      <ChecklistRow
-        icon={Scale}
-        title="Point Distribution"
-        subtitle={
-          hasSplit
-            ? "Custom placement split — tap to edit"
-            : isPool
-              ? "Even — tap to set a placement split"
-              : "Winner takes all — tap to set a placement split"
-        }
-        state={hasSplit ? "resolved" : "empty"}
-        expanded={openAccordion === "distribution"}
-        onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
-        testId="row-point-distribution"
-      >
-        <FormatPointsPanel
-          capacity={capacity}
-          game={game}
-          canEdit={canEdit}
+          unset split means the winner takes the lot.
+
+          Settings-parity §1 — Matches REPLACES this whole row rather than
+          configuring it: golf's per-match override editor
+          (`MatchPointsRow` part="distribution"), because "Winner takes all ·
+          Add 2nd place" has no meaning for an award that is per-match. Not
+          shown-and-disabled — the placement row is not rendered at all for
+          this format, same as bracket rows don't appear under Simple. */}
+      {isMatches ? (
+        <MatchPointsRow
           part="distribution"
-          // The fix (#911's contradiction): the panel defaults `winnerTakesAll` to
-          // FALSE, so it always rendered the placement editor — "0 of 2 · not
-          // distributed yet" — under a row whose own subtitle said "Winner takes
-          // all". Two claims about one game, on screen together.
-          //
-          // NOT stroke's bare `winnerTakesAll`. Stroke can pass it unconditionally
-          // because for stroke an unset split ALWAYS means the winner takes the
-          // pool. Non-golf's answer depends on the cup: unset means winner-takes-all
-          // in a match-play cup and EVEN in a points cup. Same prop, different
-          // predicate behind it — and it is the predicate this row already keys its
-          // subtitle on, not a third derivation of the same question.
-          winnerTakesAll={!isPool}
-          controlled={{
-            value: { total: draft.pointsTotal, distribution: draft.pointsDistribution },
-            onChange: (t, d) => { onPointsTotalChange(t); onPointsDistChange(d); },
-          }}
+          matches={pointsMatches ?? []}
+          pointsTotal={draft.pointsTotal}
+          defaultTotal={0}
+          canEdit={canEdit}
+          locked={false}
+          expanded={openAccordion === "distribution"}
+          onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
+          onTotalChange={onPointsTotalChange}
+          onOverrideChange={onPointsOverrideChange ?? (() => {})}
         />
-      </ChecklistRow>
+      ) : (
+        <ChecklistRow
+          icon={Scale}
+          title="Point Distribution"
+          subtitle={
+            hasSplit
+              ? "Custom placement split — tap to edit"
+              : isPool
+                ? "Even — tap to set a placement split"
+                : "Winner takes all — tap to set a placement split"
+          }
+          state={hasSplit ? "resolved" : "empty"}
+          expanded={openAccordion === "distribution"}
+          onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
+          testId="row-point-distribution"
+        >
+          <FormatPointsPanel
+            capacity={capacity}
+            game={game}
+            canEdit={canEdit}
+            part="distribution"
+            // The fix (#911's contradiction): the panel defaults `winnerTakesAll` to
+            // FALSE, so it always rendered the placement editor — "0 of 2 · not
+            // distributed yet" — under a row whose own subtitle said "Winner takes
+            // all". Two claims about one game, on screen together.
+            //
+            // NOT stroke's bare `winnerTakesAll`. Stroke can pass it unconditionally
+            // because for stroke an unset split ALWAYS means the winner takes the
+            // pool. Non-golf's answer depends on the cup: unset means winner-takes-all
+            // in a match-play cup and EVEN in a points cup. Same prop, different
+            // predicate behind it — and it is the predicate this row already keys its
+            // subtitle on, not a third derivation of the same question.
+            winnerTakesAll={!isPool}
+            controlled={{
+              value: { total: draft.pointsTotal, distribution: draft.pointsDistribution },
+              onChange: (t, d) => { onPointsTotalChange(t); onPointsDistChange(d); },
+            }}
+          />
+        </ChecklistRow>
+      )}
     </>
   );
 }

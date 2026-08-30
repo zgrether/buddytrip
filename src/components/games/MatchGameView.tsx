@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
-import { ChevronRight, Swords, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
+import { ChevronRight, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
@@ -38,7 +38,8 @@ import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
 import { RelHandicapControl } from "@/components/games/RelHandicapControl";
 import type { SidePlayer } from "@/components/games/MatchSides";
-import { MatchSetup, PlayerSelector } from "@/components/games/matchSetup/MatchSetup";
+import { PlayerSelector } from "@/components/games/matchSetup/MatchSetup";
+import { MatchesAccordionRow } from "@/components/games/MatchesAccordionRow";
 import { SegmentedToggle } from "@/components/games/SegmentedToggle";
 import { TimePicker } from "@/components/TimePicker";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
@@ -1852,25 +1853,11 @@ export function MatchGameView() {
         // lineup can legitimately exceed it. Fall back to the generous MAX ceiling;
         // per-shape caps can be reintroduced on the add-match choice if wanted.
         const maxMatchesForAdd = MAX_MATCHES;
-        // §5 row copy. Per-match shape (A2a): the title is just "Matches" (a game
-        // can mix 1v1 + 2v2, so a single format name would lie); the subtitle is a
-        // COMPOSITION line — "6 singles · 1 doubles · X of Y assigned". Matches uses
-        // the INVALID state while any slot is empty (§4/§6.1 hard-block).
-        const matchesTitle = "Matches";
-        const singlesCount = draft.filter((d) => d.playersPerSide === 1).length;
-        const doublesCount = draft.filter((d) => d.playersPerSide === 2).length;
-        const compParts: string[] = [];
-        if (singlesCount) compParts.push(`${singlesCount} single${singlesCount > 1 ? "s" : ""}`);
-        if (doublesCount) compParts.push(`${doublesCount} double${doublesCount > 1 ? "s" : ""}`);
-        const matchesSubtitle = draft.length === 0
-          ? "No matches yet — add one to start"
-          : [...compParts, `${filledDraft.length} of ${draft.length} assigned`].join(" · ");
-        // Three-way: 0 matches is a VALID EMPTY state (neutral, not red — a brand-new
-        // game shouldn't open in error); a draft with any unfilled/under-rostered slot
-        // is invalid (red); all filled + rostered is resolved. (P2/P2b collapse-boundary
-        // timing unchanged — this only adds the empty state ahead of the invalid one.)
-        const matchesState: ChecklistRowState =
-          draft.length === 0 ? "empty" : allFilled && allRosterValid ? "resolved" : "invalid";
+        // §5 row copy — title/subtitle/state are now derived INSIDE
+        // `MatchesAccordionRow` (shared with non-golf Matches), from `draft` +
+        // `twoTeams` + `teamedUserIds`, so this file no longer computes them.
+        // `allFilled`/`allRosterValid`/`teamedUserIds` above stay — they also
+        // feed `enableReady`/`enableBlockedReason`, which are this file's alone.
         // Handicaps is hard-gated on Matches AND Course (W-9HOLE-01): the per-hole
         // stroke allocation needs the course's stroke-index table, so a complete
         // 18 must resolve first. "Course resolved" = a course applied AND an 18-hole
@@ -2102,12 +2089,24 @@ export function MatchGameView() {
                   />
                 )}
 
-                {/* Matches — the pairing builder (the score-entry unit), in place. */}
-                <ChecklistRow
-                  icon={Swords}
-                  title={matchesTitle}
-                  subtitle={matchesSubtitle}
-                  state={matchesState}
+                {/* Matches — the pairing builder (the score-entry unit), in place.
+                    `MatchesAccordionRow` — shared with non-golf Matches, see its
+                    header for why the extraction. */}
+                <MatchesAccordionRow
+                  draft={draft}
+                  setDraft={editDraft}
+                  nameOf={nameOf}
+                  colorOf={colorOf}
+                  teamColorOf={teamColorOf}
+                  avatarIconOf={avatarIconOf}
+                  teamForSlot={teamForSlot}
+                  maxMatches={maxMatchesForAdd}
+                  twoTeams={twoTeams}
+                  teamedUserIds={teamedUserIds}
+                  openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
+                  expanded={openRows.has("matches")}
+                  onToggle={() => toggleRow("matches")}
+                  canEdit={canEdit}
                   // The ONE row that is not scrimmed when scores exist, deliberately.
                   // Its affordances are mixed: the existing pairings are frozen (the
                   // clean-replace mints fresh UUIDs and would orphan entered scores),
@@ -2115,32 +2114,14 @@ export function MatchGameView() {
                   // `matches.addMatch` appends without touching anything already
                   // underway. A whole-row scrim would take the add away with the edit,
                   // so the freeze lives INSIDE `MatchSetup` (per match) instead.
-                  locked={false}
-                  expanded={openRows.has("matches") && canEdit}
-                  onToggle={canEdit ? () => toggleRow("matches") : undefined}
-                  testId="row-matches"
-                >
-                  <MatchSetup
-                    draft={draft}
-                    setDraft={editDraft}
-                    nameOf={nameOf}
-                    colorOf={colorOf}
-                    teamColorOf={teamColorOf}
-                    avatarIconOf={avatarIconOf}
-                    teamForSlot={teamForSlot}
-                    maxMatches={maxMatchesForAdd}
-                    openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
-                    frozen={scoresExist}
-                    onAddLive={scoresExist ? addMatchLive : undefined}
-                    // Live-add REQUIRES a clean draft. The add commits immediately
-                    // while staged edits don't, so allowing both would apply half of
-                    // what the user did — and the baseline re-freeze (below) would
-                    // then have to reconcile against pending changes. Save first.
-                    addBlockedReason={
-                      scoresExist && dirty ? "Save your changes before adding a match" : null
-                    }
-                  />
-                </ChecklistRow>
+                  frozen={scoresExist}
+                  onAddLive={scoresExist ? addMatchLive : undefined}
+                  // Live-add REQUIRES a clean draft. The add commits immediately
+                  // while staged edits don't, so allowing both would apply half of
+                  // what the user did — and the baseline re-freeze (below) would
+                  // then have to reconcile against pending changes. Save first.
+                  addBlockedReason={scoresExist && dirty ? "Save your changes before adding a match" : null}
+                />
 
                 {/* Point Distribution — the per-match override panel (§3.2 split,
                     WARNED tier). REQUIRES matches (you distribute ACROSS matches), so

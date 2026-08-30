@@ -28,11 +28,13 @@ import {
   configToNonGolfDraft,
   nonGolfDraftToPayload,
   nonGolfDraftsEqual,
+  isDraftMatchFilled,
   type NonGolfConfigDraft,
   type CompetitionFormat,
   type DraftMatchConfig,
   type DraftMatchInput,
 } from "@/lib/configDraft";
+import type { PointsMatch } from "@/components/games/MatchPointsRow";
 import { isPlacement, effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
 import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
@@ -488,6 +490,15 @@ export function NonGolfGameView() {
     return new Map(ids.map((id, i) => [id, PLAYER_COLORS[i % PLAYER_COLORS.length]]));
   }, [pickerTeams]);
   const [matchesSelector, setMatchesSelector] = useState<{ matchIdx: number; slot: "a" | "b"; memberIdx: number } | null>(null);
+  // The Matches accordion's own expand state — independent of Point
+  // Distribution's, mirroring golf's `openRows` (a Set, so its sections
+  // expand/collapse independently rather than mutually excluding each other).
+  const [matchesRowExpanded, setMatchesRowExpanded] = useState(false);
+  // Point Distribution's own expand state under Matches lives INSIDE
+  // `NonGolfSettingsRows` (its existing `openAccordion`) — no state needed
+  // here, unlike the pairing row above (`matchesRowExpanded`), which this
+  // view owns because it's rendered through the `matchRows` slot rather than
+  // internally to that component.
 
   // Draft slices — a scalar sentinel means "untouched, read the server mirror". name/
   // rules/scoring/delegates use null; format/points can BE null, so they use undefined.
@@ -532,6 +543,33 @@ export function NonGolfGameView() {
     }),
     [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, entrantsDraft, bracketConfigDraft, matchesDraft],
   );
+
+  // Settings-parity §1/§2 — the paired DRAFT matches resolved to display
+  // players + each match's override, the SAME derivation golf's own
+  // `pointsMatches` useMemo builds (`MatchGameView.tsx`), off the SAME maps
+  // `MatchesBuilder` already gets. Paired-only (`isDraftMatchFilled`), so it's
+  // the same denominator the award/leaderboard use. `id` is the DRAFT INDEX,
+  // never a server match id — an unsaved match has none, and the override
+  // travels ON its match (`pointValue`), so add/remove/reorder can't
+  // mis-attribute it — identical reasoning to golf's version.
+  const matchesPointsMatches = useMemo<PointsMatch[]>(() => {
+    const toPlayers = (ids: string[]) =>
+      ids.map((u) => ({ id: u, name: matchesNameMap.get(u) ?? "Player", teamColor: matchesTeamColorOf(u) ?? matchesColorMap.get(u) }));
+    return configDraft.matches
+      .map((m, i) => ({ m, i }))
+      .filter(({ m }) => isDraftMatchFilled(m))
+      .map(({ m, i }) => ({
+        id: String(i),
+        number: i + 1,
+        aPlayers: toPlayers(m.a),
+        bPlayers: toPlayers(m.b),
+        pointValue: m.pointValue,
+      }));
+  }, [configDraft.matches, matchesNameMap, matchesColorMap, matchesTeamColorOf]);
+  const onMatchesPointsOverrideChange = (draftIdx: string, value: number | null) => {
+    const idx = Number(draftIdx);
+    setMatchesDraft((prev) => (prev ?? configDraft.matches).map((m, i) => (i === idx ? { ...m, pointValue: value } : m)));
+  };
 
   // ── The bracket's derived shape, read by everything below ───────────────────
   // `isBracket` and the entrant count both come off the DRAFT, so the rows, the
@@ -911,12 +949,18 @@ export function NonGolfGameView() {
         rulesValue={configDraft.rulesForToday}
         onRulesChange={setRulesDraft}
         totalPointsRow={
+          // Settings-parity §2 — `NonGolfTotalPointsRow` decides Matches vs
+          // Simple internally now (the same place it already decided pool vs
+          // match-value), so this call site just supplies every input.
           <NonGolfTotalPointsRow
             scoringModel={scoringModel}
+            competitionFormat={configDraft.competitionFormat}
             distribution={configDraft.pointsDistribution}
             value={configDraft.pointsTotal}
+            matches={matchesPointsMatches}
             canEdit={canEdit}
             onChange={setPointsTotalDraft}
+            onOverrideChange={onMatchesPointsOverrideChange}
           />
         }
         settingsRows={
@@ -968,12 +1012,21 @@ export function NonGolfGameView() {
                   avatarIconMap={matchesAvatarIconMap}
                   teamColorOf={matchesTeamColorOf}
                   canEdit={canEdit}
-                  pointsTotal={configDraft.pointsTotal}
+                  expanded={matchesRowExpanded}
+                  onToggle={() => setMatchesRowExpanded((o) => !o)}
                   selector={matchesSelector}
                   setSelector={setMatchesSelector}
                 />
               ) : null
             }
+            // Settings-parity §1 — `NonGolfSettingsRows` decides Matches vs
+            // placement internally now, same as the Total Points row above;
+            // this just supplies the resolved matches + the override handler.
+            // Same `matchesPointsMatches` / `onMatchesPointsOverrideChange`
+            // the Total Points row above uses, so an override can't disagree
+            // between the two rows that show it.
+            pointsMatches={matchesPointsMatches}
+            onPointsOverrideChange={onMatchesPointsOverrideChange}
           />
         }
         // The toggle reads the DRAFT; `staged` = draft ≠ the live server flag.
