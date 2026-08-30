@@ -465,6 +465,23 @@ function SidePick({ pick, game }: { pick: BoardRow["aPick"]; game: BoardSlateGam
  * The fade is what says "no points", where the line used to. It reads as less
  * ink rather than as damage, and it cannot be confused with the accent, which
  * is the distinction that actually matters on this screen.
+ *
+ * ── DELIBERATELY UNLIKE THE SHEET'S RANK CHIP, WHICH STILL STRIKES ─────────
+ *
+ * `PickemSheetRow`'s chip keeps its strike-through, and that is not drift. On
+ * the SHEET a settled row is already at `opacity: 0.38` as a whole, so a further
+ * fade on the chip inside it has nothing to work with — it would be invisible
+ * against a row that is itself faded. The line survives that, because it is
+ * shape rather than contrast.
+ *
+ * Here the row is flat and undimmed, so the fade has the full range to itself
+ * and the strike-through is what fails: a rule across two tabular digits at 11px
+ * competes with the digits for the same pixels.
+ *
+ * So the two chips answer the same question with opposite tools because they sit
+ * on opposite surfaces. Unifying them would make the sheet's chip disappear —
+ * please do not, and if the sheet's row ever stops dimming itself, THAT is when
+ * this becomes one treatment.
  */
 function Conf({
   value,
