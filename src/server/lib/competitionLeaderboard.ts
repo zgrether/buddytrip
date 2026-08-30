@@ -472,7 +472,7 @@ export async function computeCompetitionLeaderboard(
       // writing match rows. Pick'em writes them too, and took the roster-derived
       // arm: a plausible non-zero pool sized by min(teamA, teamB), with
       // points_total ignored (#1101).
-      const dividesByMatchRows = pointsDivideByMatchRows(typeId);
+      const dividesByMatchRows = pointsDivideByMatchRows(typeId, g.competition_format as string | null);
       const isRackType = typeId === RACK_TYPE;
       // Match play (singles/doubles): available = value × the game's ASSIGNED
       // match count (game_matches rows with both sides paired) — an unfilled slot
@@ -653,7 +653,8 @@ export async function computeCompetitionLeaderboard(
           totalMatchRowsByGame.get(gid) ?? 0,
           // Stroke + rack both gate on GROUPED players (mandatory groupings, 089).
           ((typeId && ROSTER_TYPES.has(typeId)) ? groupedParticipantCountByGame : participantCountByGame).get(gid) ?? 0,
-          hasPoints
+          hasPoints,
+          g.competition_format as string | null
         ),
         /**
          * NEW — nothing configured yet, only what the add-game modal wrote.

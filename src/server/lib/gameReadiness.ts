@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import { matchPlayReady } from "@/lib/matchDraft";
+import { isMatchesGame } from "@/lib/resultStrategy";
 
 /**
  * Game readiness — the ONE "is this game configured enough to score?" signal,
@@ -28,19 +29,36 @@ export const ROSTER_TYPES = new Set(["gtt_stroke_play", RACK_TYPE]);
  *  - match play → ALL pairings assigned (`matchPlayReady`: paired === total, ≥1) —
  *    the SAME threshold the setup-page Enable gate uses, so list-ready ⟺
  *    setup-can-enable (readiness rework P1b).
+ *  - Matches (non-golf) → the SAME threshold. Phase 0's decision, made
+ *    structural rather than merely documented: "an unpaired match isn't
+ *    resolvable" is exactly what `matchPlayReady` already enforces for golf, and
+ *    a Matches game with zero paired matches reading Ready — passing the enable
+ *    guard with nothing to score — is the kind of wrong-and-looks-right this
+ *    predicate exists to prevent. Without this branch it falls to the LAST arm
+ *    (`hasPoints`), and a fresh non-golf game always has a points sentinel
+ *    (`CONFIG_COL_DEPARTED`'s own header explains why), so it would read Ready
+ *    at creation.
  *  - stroke / rack → participants assigned to a PLAYING GROUP (the manual group
  *    builder); groupings are MANDATORY for both (089), so the caller passes the
  *    GROUPED participant count — ungrouped players (not in the game) don't read as ready
  *  - manual / side events → points configured (no roster to assign)
+ *
+ * `competitionFormat` is optional so every caller that has no descriptor to hand
+ * — everything before Matches existed — keeps its exact prior answer: Matches
+ * is not a game type, so a type check alone can never mistake a generic manual
+ * game for one, and an absent format is treated as "not Matches" rather than
+ * throwing.
  */
 export function isConfigured(
   typeId: string | null,
   matchPaired: number,
   matchTotal: number,
   participantCount: number,
-  hasPoints: boolean
+  hasPoints: boolean,
+  competitionFormat?: string | null
 ): boolean {
   if (typeId && MATCH_PLAY_TYPES.has(typeId)) return matchPlayReady(matchPaired, matchTotal);
+  if (isMatchesGame(typeId, competitionFormat)) return matchPlayReady(matchPaired, matchTotal);
   if (typeId && ROSTER_TYPES.has(typeId)) return participantCount > 0;
   return hasPoints;
 }
@@ -54,18 +72,23 @@ export function isConfigured(
 export async function assertGameReady(supabase: SupabaseClient, gameId: string): Promise<void> {
   const { data: game } = await supabase
     .from("games")
-    .select("game_type_id, points_distribution, points_total")
+    .select("game_type_id, competition_format, points_distribution, points_total")
     .eq("id", gameId)
     .maybeSingle();
   if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
   const typeId = (game.game_type_id as string | null) ?? null;
+  const competitionFormat = (game.competition_format as string | null) ?? null;
   const hasPoints = game.points_distribution != null || game.points_total != null;
   let matchPaired = 0;
   let matchTotal = 0;
   let participantCount = 0;
 
-  if (typeId && MATCH_PLAY_TYPES.has(typeId)) {
+  // Same query, same paired/total derivation, for BOTH shapes that read matches
+  // through `game_matches` — golf match play by game type, Matches by descriptor.
+  // One query, because the table and the shape are identical; only the reason a
+  // game lands here differs.
+  if ((typeId && MATCH_PLAY_TYPES.has(typeId)) || isMatchesGame(typeId, competitionFormat)) {
     const { data: rows } = await supabase
       .from("game_matches")
       .select("side_a, side_b")
@@ -85,7 +108,7 @@ export async function assertGameReady(supabase: SupabaseClient, gameId: string):
     participantCount = count ?? 0;
   }
 
-  if (!isConfigured(typeId, matchPaired, matchTotal, participantCount, hasPoints)) {
+  if (!isConfigured(typeId, matchPaired, matchTotal, participantCount, hasPoints, competitionFormat)) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
       message: "Finish setting up this game before switching it to scoring.",

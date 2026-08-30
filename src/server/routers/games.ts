@@ -13,7 +13,7 @@ import type { StrokeStanding } from "@/lib/strokePlay";
 import { type ScorecardSchema } from "@/lib/courseIndex";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
-import { isPlacement } from "@/lib/pointsDistribution";
+import { isPlacement, liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
@@ -28,6 +28,7 @@ import { readBracketDraw } from "../lib/bracketDraw";
 import { deriveBracketPlacements } from "../lib/bracketResults";
 import { resolveResultStrategy } from "@/lib/resultStrategy";
 import { computePickemResults } from "@/server/lib/pickemResults";
+import { writeTeamMatchPoints } from "../lib/matchAwards";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 
 /**
@@ -1092,7 +1093,10 @@ export const gamesRouter = router({
         // `competition_format` joins the select because the strategy is resolved
         // from the game type AND it (see `resolveResultStrategy`) — a bracket is
         // not a game type, so the type alone no longer answers "what engine?".
-        .select("id, game_type_id, status, name, competition_id, competition_format")
+        // `points_total`/`points_distribution` join for the "matches" arm, which
+        // needs them to derive the live even share (`liveMatchPointsPerMatch`) —
+        // the same two columns golf match play's own award write reads.
+        .select("id, game_type_id, status, name, competition_id, competition_format, points_total, points_distribution")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
@@ -1134,6 +1138,14 @@ export const gamesRouter = router({
       let matches: MatchOutcome[] = [];
       let teams: RackTeamOutcome[] = [];
       let standings: StrokeStanding[] = [];
+      // Non-golf Matches (170) is the ONLY arm that can produce a soft WARNING
+      // rather than a hard refusal — Phase 0 §3 / the build spec §3: finalize is
+      // PERMITTED with matches undecided (an undecided match just leaves its
+      // points unpaid, same as golf match play), but the caller should be told,
+      // naming the count, rather than silently locking a game with games still
+      // to play. Every other arm either refuses outright or has nothing partial
+      // to warn about.
+      let warning: string | null = null;
       if (strategy === null) {
         if (!input.placements) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "A manual game posts a finishing order." });
@@ -1167,6 +1179,67 @@ export const gamesRouter = router({
       // WriteFailureMode. `writeGameResults.guard.test.ts` pins these three.
       } else if (strategy === "match_play") {
         matches = await computeMatchPlayResults(ctx.supabase, input.gameId, { onFailure: "throw" });
+      // NON-GOLF MATCHES (170) — the sixth engine, and the one whose "compute"
+      // is nothing at all: a match's result is DECLARED directly to
+      // `game_matches.result` (no holes, no gross scores), so there is no
+      // derivation step here the way golf's `computeMatchPlayResults` has one.
+      // This arm reads the CURRENT rows and reuses only the shared AWARD half
+      // (`matchAwards.writeTeamMatchPoints`) — see that module's header for why
+      // Matches does not `import … from "./matchPlay"`.
+      //
+      // Undecided matches are PERMITTED, not refused — Phase 0 §3: a match
+      // result is a fact someone enters, and refusing finalize because one pair
+      // never played would hold a whole cup open for it. An undecided match
+      // simply leaves its points unpaid (`writeTeamMatchPoints` skips any row
+      // whose `result` is still null), which is honest rather than a defect to
+      // guard against. The count is surfaced as a WARNING instead — named,
+      // not silent — because "permitted" is not "invisible".
+      //
+      // "Undecided" is counted over ASSIGNED matches only (both sides filled).
+      // An unpaired slot isn't a match yet (Phase 0 §3 / #517's "a match =
+      // assigned, everywhere"), so it has nothing to warn about — the pairing
+      // grid, not finalize, is where that gets resolved.
+      } else if (strategy === "matches") {
+        const { data: rows } = await ctx.supabase
+          .from("game_matches")
+          .select("id, side_a, side_b, result, point_value")
+          .eq("game_id", input.gameId);
+        const gameMatches = (rows ?? []) as {
+          id: string;
+          side_a: { type: string; id: string } | null;
+          side_b: { type: string; id: string } | null;
+          result: "a_win" | "b_win" | "halve" | null;
+          point_value: number | null;
+        }[];
+        const assigned = gameMatches.filter((m) => m.side_a?.id && m.side_b?.id);
+        const undecidedCount = assigned.filter((m) => m.result == null).length;
+        if (undecidedCount > 0) {
+          warning = `${undecidedCount} of ${assigned.length} match${assigned.length === 1 ? "" : "es"} ${undecidedCount === 1 ? "has" : "have"} no result yet — ${undecidedCount === 1 ? "its" : "their"} points will stay unpaid until entered and re-finalized.`;
+        }
+        if (game.competition_id) {
+          // Same derivation golf's own award write uses (`matchPlay.ts`) — the
+          // LIVE even share from #1031, never the persisted
+          // `points_distribution.value` snapshot, so a match added/removed
+          // outside a settings Save can't leave this paying a stale figure.
+          const evenShareFallback = liveMatchPointsPerMatch(
+            game.points_total as number | null,
+            assigned.map((m) => ({
+              sideAId: m.side_a?.id ?? null,
+              sideBId: m.side_b?.id ?? null,
+              pointValue: m.point_value,
+            })),
+            (game.points_distribution as { value?: number } | null)?.value ?? null
+          );
+          await writeTeamMatchPoints(
+            ctx.supabase,
+            input.gameId,
+            game.competition_id as string,
+            evenShareFallback,
+            gameMatches,
+            [], // no freshly-computed outcomes — every result is already persisted
+            "throw"
+          );
+        }
       } else if (strategy === "rack_n_stack") {
         teams = await computeRackNStackResults(ctx.supabase, input.gameId, { onFailure: "throw" });
       // PICK'EM — the fifth engine, and the third shape of results this dispatch
@@ -1282,7 +1355,10 @@ export const gamesRouter = router({
         );
       }
 
-      return { standings, matches, teams };
+      // `warning` is additive and null for every strategy but "matches" — every
+      // existing caller of `games.finish` keeps reading `standings`/`matches`/
+      // `teams` exactly as before; this is the one new field, not a shape change.
+      return { standings, matches, teams, warning };
     }),
 
   // update — game-edit gate. Phase-1 shell fields the creation modal edits.

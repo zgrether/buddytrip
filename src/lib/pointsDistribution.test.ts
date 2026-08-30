@@ -183,4 +183,19 @@ describe("pointsDivideByMatchRows — #1101", () => {
     expect(pointsDivideByMatchRows("gtt_pickem")).toBe(true);
     expect(OLD_MATCH_PLAY_TYPES.has("gtt_pickem")).toBe(false);
   });
+
+  it("Matches divides by real rows — same #1101 gap, a third format short", () => {
+    // Matches is NOT a game type, unlike gtt_match_play/gtt_pickem — it is a
+    // `competitionFormat` descriptor on an otherwise generic type. So the type
+    // alone must NOT decide this: a generic card game with no such descriptor
+    // stays false (it's an ordinary manual game), and the SAME type WITH the
+    // descriptor is true.
+    expect(pointsDivideByMatchRows("gtt_generic_card", "matches")).toBe(true);
+    expect(pointsDivideByMatchRows("gtt_generic_card", null)).toBe(false);
+    expect(pointsDivideByMatchRows("gtt_generic_card")).toBe(false);
+    // A descriptor on the WRONG type doesn't count either — resolveResultStrategy
+    // only reaches the descriptor for a manual-engine type, and stroke play's
+    // engine is fixed by the format regardless of what competition_format says.
+    expect(pointsDivideByMatchRows("gtt_stroke_play", "matches")).toBe(false);
+  });
 });

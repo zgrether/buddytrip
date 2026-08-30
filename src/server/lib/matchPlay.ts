@@ -9,6 +9,10 @@ import {
   type MatchResultUpdate,
   type WriteFailureMode,
 } from "./writeGameResults";
+// The team-award half now lives in its own module so a format with no holes can
+// reuse it without importing this file — see `matchAwards.ts`'s header. Golf
+// still calls it from exactly where it always did.
+import { writeTeamMatchPoints } from "./matchAwards";
 
 /**
  * DB-persist side of match-play results. Reads each `game_matches` row, builds
@@ -329,133 +333,4 @@ function mkResult(
     position,
     competition_points_earned: null,
   };
-}
-
-/** Aggregate decided match outcomes into per-team competition points and write
- *  them to game_results (entity_type='team', raw_score=accumulated points).
- *  Combines skipped-complete matches (from the initial query's result field)
- *  with freshly-computed outcomes so the team total is always complete.
- *
- *  A2b: each match is worth `point_value ?? evenShareFallback` — the per-match
- *  override when set, else the game's LIVE derived even share (#1031:
- *  `liveMatchPointsPerMatch`, recomputed from the current assigned matches — NOT
- *  a persisted `points_distribution.value` snapshot). So a "counts double" match
- *  awards its own value. */
-async function writeTeamMatchPoints(
-  supabase: SupabaseClient,
-  gameId: string,
-  competitionId: string,
-  evenShareFallback: number,
-  allMatches: { id: unknown; side_a: unknown; side_b: unknown; result: unknown; point_value?: unknown }[],
-  freshOutcomes: MatchOutcome[],
-  onFailure?: WriteFailureMode
-) {
-  // Fresh outcomes override stale results for the matches we just processed.
-  const resultByMatch = new Map<string, "a_win" | "b_win" | "halve" | null>();
-  for (const m of allMatches) {
-    resultByMatch.set(
-      m.id as string,
-      (m.result as "a_win" | "b_win" | "halve" | null) ?? null
-    );
-  }
-  for (const o of freshOutcomes) {
-    resultByMatch.set(o.matchId, o.result);
-  }
-
-  // user → team for this competition.
-  const { data: assignments } = await supabase
-    .from("team_assignments")
-    .select("user_id, team_id")
-    .eq("competition_id", competitionId);
-  const userTeam = new Map<string, string>();
-  for (const a of assignments ?? []) {
-    userTeam.set(a.user_id as string, a.team_id as string);
-  }
-
-  // play_group → team (2v2): a side is a pair, so resolve its team via a member.
-  // Both partners are on the same team in a two-team competition. Empty for 1v1.
-  const { data: pgMembers } = await supabase
-    .from("game_participants")
-    .select("user_id, play_group_id")
-    .eq("game_id", gameId);
-  const pgTeam = new Map<string, string>();
-  for (const gp of pgMembers ?? []) {
-    const pg = gp.play_group_id as string | null;
-    if (!pg || pgTeam.has(pg)) continue;
-    const team = userTeam.get(gp.user_id as string);
-    if (team) pgTeam.set(pg, team);
-  }
-  // A side resolves to its team via the user map (1v1) or the play_group map (2v2).
-  const sideTeam = (s: SideRef): string | undefined =>
-    s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id);
-
-  const teamPoints = new Map<string, number>();
-  for (const m of allMatches) {
-    const result = resultByMatch.get(m.id as string);
-    if (!result) continue;
-    const a = m.side_a as SideRef | null;
-    const b = m.side_b as SideRef | null;
-    if (!a?.id || !b?.id) continue;
-    const aTeam = sideTeam(a);
-    const bTeam = sideTeam(b);
-    if (!aTeam || !bTeam) continue;
-
-    // A2b award rule: this match's own override, else the even share.
-    const value = (m.point_value as number | null) ?? evenShareFallback;
-    if (result === "a_win") {
-      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + value);
-    } else if (result === "b_win") {
-      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + value);
-    } else {
-      // halve — each side gets half
-      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + value / 2);
-      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + value / 2);
-    }
-  }
-
-  // EVERY team in the competition gets a row — including one that won NOTHING.
-  //
-  // This used to build the row set from `teamPoints`, i.e. from the AWARDS, and a
-  // team only enters that map by winning or halving. Two failures followed, both
-  // seen in production:
-  //   · a shut-out team got no row at all (a decisive 1v1 wrote ONE team row);
-  //   · when NO side resolved to a team — an unassigned roster, so every match
-  //     hit the `!aTeam || !bTeam` skip — the map came out empty, and an empty
-  //     `rows` under this entity_type-scoped write DELETED the game's existing
-  //     team rows and inserted nothing. `writeGameResults` reports that as
-  //     success (an empty write is not an error), so nothing threw and the board
-  //     read 0–0 while the game's own scoreboard stayed correct.
-  // Deriving the row set from the TEAMS instead makes both unrepresentable.
-  //
-  // `position` stays null deliberately. A per_match game's cup points ARE its
-  // match points — `competitionLeaderboard.ts` builds a synthetic distribution
-  // that passes them straight through — so ranking here would collapse 4½–3½ and
-  // 7–1 into the same 1st/2nd and discard the margin the model exists to
-  // preserve. `raw_score` is NUMERIC (migration 048) and genuinely carries the
-  // halves.
-  const { data: compTeams } = await supabase
-    .from("teams")
-    .select("id")
-    .eq("competition_id", competitionId);
-  const teamIds = (compTeams ?? []).map((t) => t.id as string);
-
-  // No teams (or the read failed) → there is nothing to say about this game, and
-  // an empty scoped write is destructive rather than neutral: it would delete
-  // whatever team rows already exist. Leave them alone.
-  if (teamIds.length === 0) return;
-
-  const rows = teamIds.map((teamId) => ({
-    id: crypto.randomUUID(),
-    entity_id: teamId,
-    entity_type: "team" as const,
-    raw_score: teamPoints.get(teamId) ?? 0,
-    position: null as number | null,
-    competition_points_earned: null as null,
-  }));
-  await writeGameResults(supabase, {
-    gameId,
-    scope: { kind: "entity_type", entityType: "team" },
-    rows,
-    onFailure,
-  });
 }

@@ -11,6 +11,8 @@
  *   rows; computeCompetitionLeaderboard builds a synthetic placement distribution
  *   from those so rollUp() consumes both adapter kinds identically.
  */
+import { isMatchesGame } from "./resultStrategy";
+
 export type PlacementDistribution = { type: "placement"; values: number[] };
 export type PerMatchDistribution = { type: "per_match"; value: number };
 export type PointsDistribution = PlacementDistribution | PerMatchDistribution;
@@ -177,9 +179,31 @@ export function effectiveDistribution(
  * projection engine yet. Merging three questions behind one name because they
  * currently share an answer is the mistake this predicate exists to undo, one
  * level up.
+ *
+ * ── A third format joins, and #1101 is exactly what it would repeat ───────
+ *
+ * Non-golf Matches writes real `game_matches` rows too, and a game type check
+ * alone cannot see it: Matches is not a game type, it is a `competitionFormat`
+ * descriptor on an otherwise generic non-golf type (`gtt_generic_card`,
+ * `gtt_generic_yard`, …) — the same shape the bracket engine takes, and the
+ * reason `isMatchesGame` needs both inputs. Leaving this predicate keyed on
+ * `gameTypeId` alone would hand a Matches game the SAME wrong answer #1101
+ * documents for pick'em: the roster-derived arm, a plausible non-zero pool,
+ * `points_total` ignored. Three weeks after that was fixed once, the same
+ * predicate was one format short again — which is the argument for a shared
+ * predicate over a type check made a second time, in this file's own history.
+ *
+ * `competitionFormat` is optional and defaults to `undefined` so every existing
+ * caller — none of which has a descriptor to hand it — keeps compiling and
+ * keeps its answer: `isMatchesGame` is false for any `gameTypeId` its own
+ * game-type lookup does not recognise as a Matches-capable format, regardless
+ * of what a stray descriptor claims.
  */
-export function pointsDivideByMatchRows(gameTypeId: string | null | undefined): boolean {
-  return gameTypeId === "gtt_match_play" || gameTypeId === "gtt_pickem";
+export function pointsDivideByMatchRows(
+  gameTypeId: string | null | undefined,
+  competitionFormat?: string | null
+): boolean {
+  return gameTypeId === "gtt_match_play" || gameTypeId === "gtt_pickem" || isMatchesGame(gameTypeId, competitionFormat);
 }
 
 export function liveMatchPointsPerMatch(

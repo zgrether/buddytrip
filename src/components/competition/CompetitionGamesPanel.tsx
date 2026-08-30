@@ -27,7 +27,7 @@ import {
 } from "@/lib/placementGroups";
 import {
   Plus, X, ListTree,
-  Target, Swords, Check, Users, Info,
+  Target, Swords, ArrowLeftRight, Check, Users, Info,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -41,6 +41,7 @@ import { CATEGORY_ICONS } from "@/lib/gameCategoryIcon";
 // consumers (CompetitionFace, GameSetupRows) keep their `from "./CompetitionGamesPanel"`
 // import path.
 import { gameTypesForScoringModel, type GameType, type ScoringModel } from "@/lib/gameTypes";
+import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 
 export type { GameType };
 
@@ -113,10 +114,12 @@ export const COMP_FORMATS = [
   // look like two different formats.
   { key: "bracket", label: "Bracket", desc: "We support single and double elimination.", Icon: ListTree },
   { key: "best_of_n", label: "Best of N", desc: "First to win the majority of games.", Icon: Target },
-  // `live_results` used to sit here. It was FREELY SELECTABLE until the tiles
-  // rework disabled it, and one production game was created holding it — which
-  // is why removing it needed a repoint (migration 168) before the CHECK could
-  // drop it (169), rather than just deleting the line.
+  // Matches takes the SLOT `live_results` used to occupy in this list, not its
+  // VALUE — the value is `MATCHES_COMPETITION_FORMAT` ("matches"), a new one.
+  // `live_results` named a feature nobody built; this is the feature. The
+  // explainer matches pick'em's own wording for individual matches — it's the
+  // same idea, applied to a declared rather than picked outcome.
+  { key: MATCHES_COMPETITION_FORMAT, label: "Matches", desc: "Head to head matches across teams.", Icon: ArrowLeftRight },
 ] as const;
 
 /**

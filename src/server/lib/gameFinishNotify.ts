@@ -407,7 +407,14 @@ function cupUrl(tripId: string): string {
  * `strategy === "stroke_total"`, which is this table, spelled twice, one of them
  * in another file.
  */
-type NotifyFormatKey = "stroke_total" | "match_play" | "rack_n_stack" | "bracket" | "manual" | "pickem";
+type NotifyFormatKey =
+  | "stroke_total"
+  | "match_play"
+  | "rack_n_stack"
+  | "bracket"
+  | "manual"
+  | "pickem"
+  | "matches";
 
 interface NotifySurface {
   /**
@@ -448,6 +455,26 @@ const NOTIFY_SURFACE = {
   // them, and a placement-shaped summary. Revisit when the engine writes its
   // first `game_results`, rather than assuming this was validated by shipping.
   pickem: { audience: "participants", competitor: "team", summary: "placement" },
+  // Non-golf Matches. This registry FOUND itself — the four-predicate sweep that
+  // scoped the format did not list this file, and the `satisfies` above refused
+  // to compile until the row existed. That is the mechanism working as its own
+  // header describes, and it is worth saying so, because the sweep was careful
+  // and still missed it.
+  //
+  // `participants`, unlike the other two `competition`-audience formats beside
+  // it. The reason those are cup-scoped is that they have no resolvable roster —
+  // a bracket's competitors live in `bracket_entrants` and a manual side event
+  // has none at all. Matches is different in fact, not by preference: pairing
+  // runs through `_write_game_side`, which mints a real `game_participants` row
+  // per player, so "the people who played it" resolves to the people in the
+  // matches. A 4x2v2 cornhole game is 16 of them.
+  //
+  // `team` because that is the ONLY entity type this format writes. Match play
+  // writes per-side rows AND team totals and picks `team` to avoid reporting
+  // eight competitors for four matches; Matches reuses only the team-award half
+  // (`matchAwards.writeTeamMatchPoints`), so there are no per-side rows for the
+  // other choices to name.
+  matches: { audience: "participants", competitor: "team", summary: "placement" },
 } as const satisfies Record<NotifyFormatKey, NotifySurface>;
 
 /** The registry key for a resolved strategy. `null` is a real answer (manual,
