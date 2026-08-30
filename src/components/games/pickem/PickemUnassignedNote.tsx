@@ -4,14 +4,23 @@ import { Info } from "lucide-react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 
 /**
- * People who filled in a sheet that counts for nothing.
+ * People on a team whose picks will count for nothing.
  *
  * ── Not a cosmetic gap ─────────────────────────────────────────────────────
  *
- * Someone with a sheet and no side — or no opponent — did the work and it
- * scores nowhere. That is a real state and two people need it visible: the
- * PERSON, who otherwise opens a board they are simply absent from, and the
- * RUNNER, for whom it is usually a setup error they would want to fix.
+ * Somebody on a roster with no side — or no opponent — scores nowhere whatever
+ * they do. That is a real state and two people need it visible: the PERSON, who
+ * otherwise opens a board they are simply absent from, and the RUNNER, for whom
+ * it is usually a setup error they would want to fix.
+ *
+ * ── It must not presuppose a SHEET ─────────────────────────────────────────
+ *
+ * The board's list used to be built from `Object.keys(sheets)`, so everybody in
+ * it had submitted and the copy could say "their sheets don't count". The rule
+ * is now the roster, which is what makes it useful — the people worth chasing
+ * are precisely the ones who have not picked — so the sentence has to be true
+ * of somebody holding no sheet at all. "Their picks won't count" is, and
+ * "their sheet doesn't count" is not.
  *
  * Rendering nothing is the empty-versus-unknown pattern: fifteen rows where
  * there are seventeen people reads as "there are fifteen people", and the
@@ -67,9 +76,8 @@ export function PickemUnassignedNote({
         }}
       >
         <b style={{ color: "var(--color-bt-text)" }}>{names(list)}</b>{" "}
-        {list.length === 1 ? "isn't" : "aren't"} in the scoring —{" "}
-        {list.length === 1 ? "their sheet doesn't" : "their sheets don't"} count toward{" "}
-        {teamCount > 2 ? "any team" : "either side"}.
+        {list.length === 1 ? "isn't" : "aren't"} in the scoring — their picks won&rsquo;t
+        count toward {teamCount > 2 ? "any team" : "either side"}.
       </p>
     </div>
   );

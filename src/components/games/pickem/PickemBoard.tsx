@@ -68,7 +68,9 @@ export function PickemBoard({
   useConfidence: boolean;
   meId: string | null;
   nameOf: (userId: string) => string;
-  teams: { id: string; name: string }[];
+  /** `memberIds` is what the unassigned note counts from — see below. It was
+   *  already on the value the view passes; only this type narrowed it away. */
+  teams: { id: string; name: string; memberIds?: string[] }[];
   teamOf: (userId: string) => string | null;
   /**
    * Identity for the head-to-head header, where the two people are the whole
@@ -118,16 +120,38 @@ export function PickemBoard({
   useModalBackButton(() => setOpenMatch(null), openMatch != null);
   const { resolved, total } = resolvedCount(slate);
 
-  /** Sheets that are in no match at all — the individual-matches counterpart of
-   *  a person with no team. */
+  /**
+   * People on a team who are in no valid match.
+   *
+   * ── It counted SHEETS, which omitted the people worth chasing ─────────────
+   *
+   * The source was `Object.keys(sheets)` — everybody who has submitted — so a
+   * teammate who had not picked yet was invisible here. That is exactly
+   * backwards: five people unpaired across two teams reported ONE, the only one
+   * with a sheet, and the four the runner most needs to know about were the four
+   * it dropped.
+   *
+   * The rule is about the ROSTER and the PAIRING, and mentions sheets nowhere:
+   * on a team, and not in a valid match.
+   *
+   * ── "Valid" carries weight ────────────────────────────────────────────────
+   *
+   * A half-filled match pairs nobody — the divisor already says so, and
+   * `matchesToSaveRows` drops it before it is ever stored. Counting a side of one
+   * as paired would hide the person with no opponent, who is the single most
+   * likely reason somebody is not in the scoring.
+   */
   const unmatched = useMemo(() => {
     const paired = new Set<string>();
     for (const m of matches) {
-      if (m.sideAId) paired.add(m.sideAId);
-      if (m.sideBId) paired.add(m.sideBId);
+      if (m.sideAId && m.sideBId) {
+        paired.add(m.sideAId);
+        paired.add(m.sideBId);
+      }
     }
-    return Object.keys(sheets).filter((uid) => !paired.has(uid)).map(nameOf).sort();
-  }, [matches, sheets, nameOf]);
+    const roster = teams.flatMap((t) => t.memberIds ?? []);
+    return [...new Set(roster)].filter((uid) => !paired.has(uid)).map(nameOf).sort();
+  }, [matches, teams, nameOf]);
 
   const matchRows = useMemo(() => {
     const out = new Map<string, BoardRow[]>();
