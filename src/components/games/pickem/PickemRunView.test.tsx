@@ -1,6 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PickemRunView, segmentStyle, type RunSlateGame } from "./PickemRunView";
 
@@ -267,154 +265,46 @@ describe("progress", () => {
 });
 
 /**
- * ── THE FINALIZE, at the end of the runner's job ───────────────────────────
+ * ── THE FINALIZE IS NOT ON THIS SURFACE ANY MORE (r7 §10) ──────────────────
  *
- * `GameLifecycleActions` decides WHICH of the three CTAs shows; those arms have
- * their own tests. What is asserted here is the wiring pick'em owns and could
- * get wrong on its own: which input carries "may this be finalized", that the
- * unresolved count warns without gating, and that a locked game stops offering
- * result entry.
+ * Six cases used to live here — which input carries "may this be finalized",
+ * that the unresolved count warns without gating, the correction wording, the
+ * re-lock arm, the member's empty render — plus a source guard proving the
+ * confirm sits in front of the tap.
+ *
+ * They moved WITH the block, to `PickemLifecycleControls.test.tsx`, which is
+ * where the runner's panel is tested. Moving the tests with the component is
+ * the point: an extraction that leaves its assertions behind is how a surface
+ * ends up covered twice and the new one not at all.
+ *
+ * The one case that stayed is below, because it is about THIS view: what a
+ * person can tap on a locked results list.
  */
-describe("the finalize block", () => {
-  const lifecycle = (over: Partial<Parameters<typeof PickemRunView>[0]["lifecycle"] & object> = {}) => ({
-    canEdit: true,
-    status: "active" as string | null,
-    correctionsOpen: false,
-    allComplete: true,
-    finalizePending: false,
-    correctPending: false,
-    onFinalize: () => {},
-    onCorrect: () => {},
-    unresolvedCount: 0,
-    ...over,
-  });
-
-  it("offers the finalize once picking has CLOSED, and not before", () => {
-    /**
-     * `allComplete` is pick'em's picking window, not its resolved count — the
-     * mapping the view makes and the one thing about this block that is a
-     * pick'em decision rather than a shared one.
-     */
-    expect(render({ lifecycle: lifecycle({ allComplete: true }) })).toContain(
-      'data-testid="game-finalize"'
-    );
-    expect(render({ lifecycle: lifecycle({ allComplete: false }) })).not.toContain(
-      'data-testid="game-finalize"'
-    );
-  });
-
-  it("prints NO standing warning about unresolved contests — it asks at the tap", () => {
-    /**
-     * The banner this replaces was skippable and, worse, it told a runner
-     * entering results to keep entering results. The rule now lives at the tap
-     * (`confirmUnresolvedFinalize`), so the screen must be quiet about it.
-     *
-     * Asserted with unresolved games present, which is the only state the old
-     * banner rendered in — a build that kept it fails here and nowhere else.
-     */
-    const html = render({ lifecycle: lifecycle({ unresolvedCount: 2 }) });
-    expect(html).not.toContain("pickem-unresolved-warning");
-    expect(html).not.toContain("score nothing for everyone");
-    // ...and the CTA is there, unblocked. Outstanding contests never gate.
-    expect(html).toContain('data-testid="game-finalize"');
-  });
-
-  it("does not render the prompt until the tap", () => {
-    // It is state-driven, so a render with unresolved games shows the button
-    // and nothing else. The confirm is a response to an action, not a state.
-    expect(render({ lifecycle: lifecycle({ unresolvedCount: 3 }) })).not.toContain(
-      "pickem-finalize-prompt"
-    );
-  });
-
-  it("calls the correction 'a result', because pick'em has no scores", () => {
-    const html = render({
-      lifecycle: lifecycle({ status: "complete", correctionsOpen: false }),
-    });
-    expect(html).toContain("Correct a result");
-    expect(html).not.toContain("Correct a score");
-  });
-
-  it("offers the RE-LOCK while corrections are open", () => {
-    const html = render({
-      lifecycle: lifecycle({ status: "complete", correctionsOpen: true }),
-    });
-    expect(html).toContain('data-testid="game-relock"');
-  });
-
-  it("renders NO block at all for a member — absent, never disabled", () => {
-    // The view passes no `lifecycle` at all where there is no finalize to offer.
-    const html = render();
-    expect(html).not.toContain('data-testid="game-finalize"');
-    expect(html).not.toContain('data-testid="game-correct"');
-    // ...and the results themselves are still on the screen, so this is not
-    // passing on an empty render.
-    expect(html).toContain('data-testid="pickem-run"');
-  });
-
-  it("a LOCKED game shows no outcome buttons — the CTA is the only way in", () => {
+describe("a locked game is read-only here", () => {
+  it("shows no outcome buttons — the way back in is on the panel", () => {
     /**
      * The view ANDs `canEdit` with the lock before this prop, so a locked game
-     * arrives here read-only. Asserted at this level because what a person can
-     * TAP is the observable half; `set_pickem_result` refusing is the other.
+     * arrives read-only. Asserted at this level because what a person can TAP
+     * is the observable half; `set_pickem_result` refusing is the other.
      */
-    const locked = render({
-      canEdit: false,
-      lifecycle: lifecycle({ status: "complete", correctionsOpen: false }),
-    });
+    const locked = render({ canEdit: false });
     expect(locked).not.toContain(String.raw`data-testid="pickem-run-away"`);
     expect(locked).not.toContain(String.raw`data-testid="pickem-run-push"`);
-    expect(locked).toContain('data-testid="game-correct"');
-  });
-});
-
-/**
- * ── SOURCE GUARD: the confirm is actually IN FRONT of the finalize ─────────
- *
- * Written because a mutation exposed a real hole rather than because the shape
- * felt worth pinning. Deleting the interception entirely — so tapping Save
- * finalizes at once and the prompt never opens — broke NOTHING in this file or
- * in the pure suite. The rule (`confirmUnresolvedFinalize`) is tested exactly,
- * and the dialog's markup is tested by rendering it, but the WIRE between them
- * had no cover at all.
- *
- * It has none behaviourally either, and that is a limit rather than a choice:
- * this suite is `environment: "node"` with `renderToStaticMarkup`, so nothing
- * clicks, and the prompt is state-driven and therefore invisible to a static
- * render by construction. A guard over the source is what is available.
- *
- * What it proves: the CTA's `onFinalize` consults `needsConfirm` rather than
- * going straight through. What it does not prove: that the confirm button then
- * calls the handler. That second half is covered by the pure predicate plus the
- * prompt's own render — and if this surface ever gets a Playwright spec, the tap
- * is the thing to put in it.
- */
-describe("the confirm sits in front of the finalize (source)", () => {
-  const SRC = readFileSync(resolve(__dirname, "PickemRunView.tsx"), "utf8");
-
-  it("the scan can see the CTA at all — not passing on a renamed file", () => {
-    // The vacuity check. A guard that reads the wrong file, or a file whose
-    // contents moved, would otherwise assert happily about nothing.
-    expect(SRC).toContain("GameLifecycleActions");
-    expect(SRC).toContain("confirmUnresolvedFinalize");
+    // ...and the results are still on screen, so this is not an empty render.
+    expect(locked).toContain('data-testid="pickem-run"');
   });
 
-  it("onFinalize is routed through needsConfirm", () => {
-    expect(
-      /onFinalize={s*needsConfirms*?/.test(SRC),
-      "GameLifecycleActions' onFinalize no longer consults needsConfirm. Tapping " +
-        "Save with unresolved contests would finalize immediately and the prompt " +
-        "would never open — which no behavioural test in this suite can see, " +
-        "because it runs in node and nothing clicks."
-    ).toBe(true);
-  });
-
-  it("the prompt calls the SAME handler, not a second finalize path", () => {
-    // The confirm is a question about this action. A second call site would be
-    // a second aftermath to keep in step — the shape `oneFinalizePath` exists
-    // to prevent one level up.
-    expect(SRC).toContain("lifecycle.onFinalize();");
-    expect((SRC.match(/lifecycle.onFinalize/g) ?? []).length).toBe(2);
+  it("carries no finalize CTA of its own, in any state", () => {
+    // The guard on the move. A build that kept a second copy here would leave
+    // the runner two Save results buttons, which is the "second place to look"
+    // the original placement argument was worried about — pointing the other
+    // way than it expected.
+    for (const canEdit of [true, false]) {
+      const html = render({ canEdit });
+      expect(html).not.toContain('data-testid="game-finalize"');
+      expect(html).not.toContain('data-testid="game-correct"');
+      expect(html).not.toContain('data-testid="game-relock"');
+    }
   });
 });
 

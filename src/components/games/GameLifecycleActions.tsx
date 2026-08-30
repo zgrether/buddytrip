@@ -1,5 +1,6 @@
 "use client";
 
+import { TYPE_SCALE } from "@/lib/typeScale";
 import { gameLifecycle, type GameLifecycleInput } from "@/lib/gameLifecycle";
 
 /**
@@ -58,16 +59,51 @@ const CTA_BOX: React.CSSProperties = {
   paddingBottom: "calc(var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px)) + 24px)",
 };
 
+/**
+ * ── WHERE THE ARMS SIT, AND HOW LOUD THE FIRST ONE IS ─────────────────────
+ *
+ * Two presentation props, both added for pick'em, both deliberately HERE rather
+ * than as a private button on that surface.
+ *
+ * CLAUDE.md #24's eighth incident was match rendering its own copy of this
+ * markup, agreeing with the shared component only by coincidence of nobody
+ * having changed either side. Its second shape is the one in play now: the
+ * STATE is already unified and the PRESENTATION gets re-rendered privately.
+ * Pick'em needs different chrome, not different conditions — so the chrome
+ * becomes a variant and `gameLifecycle` stays the only thing deciding which arm
+ * appears.
+ *
+ * `variant: "panel"` — the arm sits in a row of standing controls (pick'em's
+ * runner panel) rather than at the end of a scroll surface. No `CTA_BOX`: that
+ * clearance exists because a bottom-anchored CTA has a tab bar under it, and a
+ * button inside a card at the top of the page has nothing to clear.
+ *
+ * `quiet` — the finalize arm loses its fill. Golf cannot use this: `canFinalize`
+ * already requires `allComplete` there, so the button only exists once the work
+ * is done. Pick'em's completeness input is the CLOCK rather than the results
+ * (a postponed Tuesday game must not hold the cup open), so its finalize is
+ * offered while contests are still unmarked — and a full-weight primary is the
+ * wrong thing to put in front of somebody mid-way through a list.
+ */
 export function GameLifecycleActions({
   finalizeLabel = "Save results",
   finalizePendingLabel = "Saving results…",
   correctLabel = "Correct a score",
   finalizePending = false,
   correctPending = false,
+  variant = "cta",
+  quiet = false,
   onFinalize,
   onCorrect,
   ...lifecycleInput
 }: GameLifecycleInput & {
+  /** Where this renders. See the note above. */
+  variant?: "cta" | "panel";
+  /**
+   * Offer the finalize without the fill — the action is available and is not
+   * being urged. See the note above for why only pick'em passes it.
+   */
+  quiet?: boolean;
   /**
    * The finalize CTA. One string across all four formats since the vocabulary
    * sweep, so it is the DEFAULT rather than something each caller repeats — all
@@ -95,27 +131,65 @@ export function GameLifecycleActions({
   onCorrect: () => void;
 }) {
   const state = gameLifecycle(lifecycleInput);
+  const panel = variant === "panel";
+
+  /**
+   * The wrapper each arm sits in. `pt` is the gap the two post-finalize arms
+   * need and the first one gets for free from the surface above it — see the
+   * correct arm's own note. Both are irrelevant in the panel variant, which is
+   * one control in a row that already spaces itself.
+   */
+  const box = (testId: string, pt: boolean, children: React.ReactNode) =>
+    panel ? (
+      <div className="shrink-0" data-testid={testId}>
+        {children}
+      </div>
+    ) : (
+      <div className={pt ? "px-4 pt-4" : "px-4"} style={CTA_BOX} data-testid={testId}>
+        {children}
+      </div>
+    );
+
+  /**
+   * Sized to its label and 40px tall, matching the Start / Close picking button
+   * it stands beside. A full-width primary is what made that panel read as a
+   * call to action rather than as the runner's standing controls, and this
+   * would undo it.
+   */
+  const PANEL_BTN = {
+    minHeight: 40,
+    borderRadius: 8,
+    fontSize: TYPE_SCALE.bodyDense,
+  } as const;
 
   // Primary — first finalize.
   if (state.canFinalize) {
-    return (
-      <div className="px-4" style={CTA_BOX} data-testid="game-finalize">
-        <button
-          onClick={onFinalize}
-          disabled={finalizePending}
-          className="w-full disabled:opacity-40"
-          style={{
-            height: 50,
-            borderRadius: 12,
-            background: "var(--color-bt-accent)",
-            color: "var(--color-bt-on-accent)",
-            fontSize: 15,
-            fontWeight: 600,
-          }}
-        >
-          {finalizePending ? finalizePendingLabel : finalizeLabel}
-        </button>
-      </div>
+    return box(
+      "game-finalize",
+      false,
+      <button
+        onClick={onFinalize}
+        disabled={finalizePending}
+        className={panel ? "shrink-0 px-4 disabled:opacity-40" : "w-full disabled:opacity-40"}
+        style={{
+          ...(panel ? PANEL_BTN : { height: 50, borderRadius: 12, fontSize: 15 }),
+          /* Quiet takes the SECONDARY treatment already used by the correct arm
+             below and by the panel's own non-primary move — a bordered
+             transparent button — rather than a faded accent. A dimmed primary
+             reads as disabled, and this one is not: it works, and pressing it
+             will stop to ask about the games with no result. */
+          background: quiet ? "transparent" : "var(--color-bt-accent)",
+          border: quiet ? "1px solid var(--color-bt-border)" : "none",
+          color: quiet ? "var(--color-bt-text)" : "var(--color-bt-on-accent)",
+          /* 600 in the CTA variant, unchanged — the golf formats all render that
+             one and none of them asked for a heavier button. 700 only in the
+             panel, where it matches the Start / Close picking primary it
+             stands beside. */
+          fontWeight: panel && !quiet ? 700 : 600,
+        }}
+      >
+        {finalizePending ? finalizePendingLabel : finalizeLabel}
+      </button>
     );
   }
 
@@ -127,24 +201,25 @@ export function GameLifecycleActions({
       // the entry surface, which ends in its own spacing; after it the results
       // land directly above and the button butted straight against them. The
       // post-finalize arms need the gap the pre-finalize one gets for free.
-      <div className="px-4 pt-4" style={CTA_BOX} data-testid="game-correct">
+      // (Not in the panel variant, where the row does its own spacing.)
+      box(
+        "game-correct",
+        true,
         <button
           onClick={onCorrect}
           disabled={correctPending}
-          className="w-full disabled:opacity-40"
+          className={panel ? "shrink-0 px-4 disabled:opacity-40" : "w-full disabled:opacity-40"}
           style={{
-            height: 48,
-            borderRadius: 12,
+            ...(panel ? PANEL_BTN : { height: 48, borderRadius: 12, fontSize: 14 }),
             background: "transparent",
             color: "var(--color-bt-text)",
             border: "1px solid var(--color-bt-border)",
-            fontSize: 14,
             fontWeight: 600,
           }}
         >
           {correctPending ? "Opening…" : correctLabel}
         </button>
-      </div>
+      )
     );
   }
 
@@ -153,23 +228,24 @@ export function GameLifecycleActions({
   if (state.canRelock) {
     return (
       // Same post-finalize context as the correct arm above — same top padding.
-      <div className="px-4 pt-4" style={CTA_BOX} data-testid="game-relock">
+      // (Not in the panel variant, where the row does its own spacing.)
+      box(
+        "game-relock",
+        true,
         <button
           onClick={onFinalize}
           disabled={finalizePending}
-          className="w-full disabled:opacity-40"
+          className={panel ? "shrink-0 px-4 disabled:opacity-40" : "w-full disabled:opacity-40"}
           style={{
-            height: 50,
-            borderRadius: 12,
+            ...(panel ? PANEL_BTN : { height: 50, borderRadius: 12, fontSize: 15 }),
             background: "var(--color-bt-warning)",
             color: "var(--color-bt-on-accent)",
-            fontSize: 15,
             fontWeight: 600,
           }}
         >
           {finalizePending ? "Saving changes…" : "Save scoring changes"}
         </button>
-      </div>
+      )
     );
   }
 

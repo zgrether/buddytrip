@@ -107,10 +107,26 @@ export function upsideFor(
 /**
  * Why a played row moved nobody.
  *
- * `unpicked` is checked ahead of both/neither because those two describe a
- * CONTEST — "both were right", "neither was" — and a row where somebody did not
- * pick is not one. Calling it "Neither" says two people were wrong about a game
- * one of them never wagered on.
+ * ── `unpicked` NARROWED: it used to fire when EITHER side was absent ───────
+ *
+ * The reasoning was that "both were right" and "neither was" describe a
+ * CONTEST, and a row one side never wagered on is not one — so a wrong pick
+ * against an empty slot got "No pick".
+ *
+ * That reads the cell as being about the SIDES. It is not: it is the swing
+ * column, and it says why nothing moved. Against an opponent who picked and was
+ * WRONG, "No pick" reports the state of the quieter half of the row and says
+ * nothing about the half where something actually happened — somebody wagered a
+ * rank and lost it.
+ *
+ * So the two labels split on whether ANYBODY wagered:
+ *
+ *   nobody picked   `unpicked` — "No pick" is the whole story, and the reason
+ *   somebody did    `neither`  — a wager was made and neither side gained
+ *
+ * The old argument survives in the case it was actually about. With both slots
+ * empty there is still no contest, and "Neither" would invent two people being
+ * wrong about a game nobody touched.
  *
  * Below push and cancelled, which are facts about the GAME and outrank any fact
  * about the sheets: a voided contest moved nobody whatever anyone picked.
@@ -119,11 +135,12 @@ function zeroKindFor(
   result: SlateResult,
   aHit: boolean,
   bHit: boolean,
-  bothPicked: boolean
+  /** Did EITHER side wager on this contest — not both. See above. */
+  eitherPicked: boolean
 ): ZeroKind {
   if (result === "push") return "push";
   if (result === "cancelled") return "cancelled";
-  if (!bothPicked) return "unpicked";
+  if (!eitherPicked) return "unpicked";
   return aHit && bHit ? "both" : "neither";
 }
 
@@ -184,7 +201,7 @@ export function buildBoardRows(
             g.result as SlateResult,
             paysOut(g.result) && aPick === g.result,
             paysOut(g.result) && bPick === g.result,
-            aPick != null && bPick != null
+            aPick != null || bPick != null
           )
         : null;
 

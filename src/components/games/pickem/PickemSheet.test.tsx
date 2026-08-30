@@ -121,8 +121,8 @@ describe("the sheet, confidence ON", () => {
     const html = render();
     expect(html.split('data-testid="pickem-sheet-row"').length - 1).toBe(SLATE.length);
 
-    const homePicked = html.split('data-testid="pickem-team-home" data-picked="true"').length - 1;
-    const awayPicked = html.split('data-testid="pickem-team-away" data-picked="true"').length - 1;
+    const homePicked = html.split('data-testid="pickem-pick-home" data-selected="true"').length - 1;
+    const awayPicked = html.split('data-testid="pickem-pick-away" data-selected="true"').length - 1;
     expect(homePicked).toBe(0);
     expect(awayPicked).toBe(0);
   });
@@ -160,7 +160,7 @@ describe("the sheet, confidence ON", () => {
     // The shortcut is what makes removing the pre-fill affordable: the old
     // default position is one tap away, and now somebody chose it.
     const html = render({ picks: filledSheet() });
-    const homePicked = html.split('data-testid="pickem-team-home" data-picked="true"').length - 1;
+    const homePicked = html.split('data-testid="pickem-pick-home" data-selected="true"').length - 1;
     expect(homePicked).toBe(SLATE.length);
     expect(html).toContain(`${SLATE.length} of ${SLATE.length} picked`);
     expect(html).toContain('data-testid="pickem-sheet-all-home"');
@@ -168,15 +168,25 @@ describe("the sheet, confidence ON", () => {
   });
 
   it("every row carries spread, kickoff, note and multiplier when present", () => {
+    /**
+     * ── THE KICKOFF IS THE SUB-LINE NOW, NOT A RIGHT-HAND STACK (r7 §12) ────
+     *
+     * It used to be parsed into "Sat" over "Nov 8, 7:30p" and pinned to the
+     * right edge, filling space the old select buttons had wasted. The shared
+     * card puts it where the slate modal and the results page have it — beside
+     * the note, on line 2 — so the same contest reads the same way on all
+     * three, and `pickem-row-kickoff` is gone with the stack.
+     *
+     * The two halves are still both asserted, because they are now joined into
+     * one string and a build that dropped either would still contain the other.
+     */
     const html = render();
     expect(html).toContain("-3.5");
-    // The kickoff is a two-line stack now — day over the rest — so it fills the
-    // right side the select buttons used to waste. Both halves are asserted
-    // because a split that dropped one would still contain the other.
-    expect(html).toContain('data-testid="pickem-row-kickoff"');
-    expect(html).toContain("Sat");
-    expect(html).toContain("Nov 8, 7:30p");
+    expect(html).not.toContain("pickem-row-kickoff");
+    expect(html).toContain("Sat Nov 8, 7:30p");
     expect(html).toContain("Hasn&#x27;t won in Athens since 2015");
+    // ...and on ONE line with the note, which is the arrangement §12 unified.
+    expect(html).toContain("Sat Nov 8, 7:30p · Hasn&#x27;t won in Athens since 2015");
     expect(html).toContain("2×");
     expect(html).toContain('data-testid="pickem-multiplier-badge"');
   });
@@ -223,7 +233,7 @@ describe("the sheet, confidence OFF", () => {
     // ...and the pass that DOES exist is still there, so this is not passing
     // because the component rendered nothing.
     expect(html).toContain('data-testid="pickem-sheet-row"');
-    expect(html).toContain('data-testid="pickem-team-home"');
+    expect(html).toContain('data-testid="pickem-pick-home"');
   });
 
   it("the progress count does not claim the sheet is RANKED", () => {
@@ -291,7 +301,7 @@ describe("submitted, reset and locked", () => {
   it("SUBMITTING DOES NOT LOCK — the pick controls stay live", () => {
     const html = render({ picks: filledSheet() });
     // The attribute on the button's OWN tag, not the `disabled:` Tailwind class.
-    expect(tagWith(html, 'data-testid="pickem-team-away"')).not.toContain("disabled");
+    expect(tagWith(html, 'data-testid="pickem-pick-away"')).not.toContain("disabled");
     // Submitted and unchanged: the button says so and stays refused, while the
     // rows above it stay live. "Saved · all chalk…" went with the save bar —
     // that phrasing existed to measure DEPARTURE from a pre-fill that no longer
@@ -311,7 +321,7 @@ describe("submitted, reset and locked", () => {
     expect(html).toContain('data-testid="pickem-ranking-reset"');
     expect(html).toContain("your ranking was cleared");
     // ...and the WINNERS survived, which is the half that must not be lost.
-    expect(html.split('data-testid="pickem-team-away" data-picked="true"').length - 1).toBe(
+    expect(html.split('data-testid="pickem-pick-away" data-selected="true"').length - 1).toBe(
       SLATE.length
     );
   });
@@ -331,7 +341,7 @@ describe("submitted, reset and locked", () => {
     expect(html).not.toContain("whoever");
     // The fact survives — dropping the clause must not take the banner with it.
     expect(html).toContain("Picks are closed");
-    expect(tagWith(html, 'data-testid="pickem-team-away"')).toContain("disabled");
+    expect(tagWith(html, 'data-testid="pickem-pick-away"')).toContain("disabled");
     // No save bar at all — not a disabled one.
     expect(html).not.toContain('data-testid="pickem-save-bar"');
     expect(html).not.toContain('data-testid="pickem-step-nav"');
@@ -399,7 +409,7 @@ describe("a failed save", () => {
     expect(html).toContain('data-testid="pickem-save-error"');
     expect(html).toContain("Your sheet is still here");
     expect(html.split('data-testid="pickem-sheet-row"').length - 1).toBe(SLATE.length);
-    expect(tagWith(html, 'data-testid="pickem-team-away"')).not.toContain("disabled");
+    expect(tagWith(html, 'data-testid="pickem-pick-away"')).not.toContain("disabled");
   });
 });
 

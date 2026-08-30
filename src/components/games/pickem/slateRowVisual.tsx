@@ -96,7 +96,9 @@ export interface MatchupLineGame {
   spread?: string | null;
   kickoff?: string | null;
   note?: string | null;
-  multiplier?: number;
+  /** Null is 1. The column is nullable and several callers pass it through
+   *  unmapped, so the type admits it rather than making each of them coalesce. */
+  multiplier?: number | null;
 }
 
 /** The badge a weighted game carries. Colour says "worth more", number says how
@@ -136,18 +138,35 @@ export function SpreadBadge({ spread }: { spread: string }) {
 }
 
 /**
- * "Alabama at Georgia  −3.5  2×" over "Sat Nov 8, 7:30p · Night game".
+ * "Alabama at Georgia  −3.5 ............ 2×" over
+ * "Sat Nov 8, 7:30p · Night game".
  *
  * `leading` is whatever sits to the left — the slate's ordinal, the sheet's
  * rank chip. It is a slot rather than a prop the component interprets, because
- * the two lists number their rows for opposite reasons and neither should have
- * to explain itself to this file.
+ * the lists number their rows for different reasons and none of them should
+ * have to explain itself to this file.
+ *
+ * ── THE MULTIPLIER IS RIGHT-JUSTIFIED (r7 §12) ────────────────────────────
+ *
+ * It used to sit immediately after the spread, inside a `flex-wrap` run, so its
+ * x position moved with the length of the two team names and with whether the
+ * game had a line at all. On a sixteen-row list that is sixteen different
+ * places to find the one badge that changes how you spend confidence.
+ *
+ * Pinned right, the weighted games line up in a column and the eye finds them
+ * in one pass down the edge — the same argument the stripe already makes on the
+ * other side of the row.
+ *
+ * `flex-wrap` goes with it. Wrapping is what let a long matchup push the badge
+ * onto a second line, which is the divergence §12 is about: the same game
+ * occupying one line here and two there. The matchup TRUNCATES instead, which
+ * keeps every row the same height.
  *
  * ── The sub-line truncates, and that is a known open issue ─────────────────
  * Kickoff and note share one line with `truncate`, and since Phase 2b the
  * kickoff carries a date, so the note loses more of itself at 390px than it
- * used to. Raised at the Phase 2 look and still open; kept identical in both
- * surfaces on purpose, so whatever fixes it fixes both at once.
+ * used to. Raised at the Phase 2 look and still open; kept identical in every
+ * surface on purpose, so whatever fixes it fixes them all at once.
  */
 export function MatchupLine({
   game,
@@ -163,13 +182,16 @@ export function MatchupLine({
     <div className="flex min-w-0 flex-1 items-start gap-2.5">
       {leading}
       <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-          <span style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>
+        <span className="flex items-center gap-x-1.5">
+          <span className="min-w-0 truncate" style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>
             {game.awayTeam}{" "}
             <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 500 }}>at</span>{" "}
             {game.homeTeam}
           </span>
+          {/* WITH the home team, because the line is the home team's — the one
+              badge whose position is meaningful rather than tidy. */}
           {game.spread && <SpreadBadge spread={game.spread} />}
+          <span className="flex-1" />
           {(game.multiplier ?? 1) > 1 && <MultiplierBadge multiplier={game.multiplier as number} />}
         </span>
         {meta && (

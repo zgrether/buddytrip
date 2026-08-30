@@ -7,6 +7,10 @@ import { formatDeadline } from "./PickemDeadlineRow";
 import { DatePicker } from "@/components/DatePicker";
 import { TimePicker } from "@/components/TimePicker";
 import { parseTime, toTime24, type TimeValue } from "@/lib/time";
+import { gameLifecycle, type GameLifecycleInput } from "@/lib/gameLifecycle";
+import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
+import { confirmUnresolvedFinalize, unresolvedWarning } from "@/lib/pickemFinalize";
+import { PickemFinalizePrompt } from "./PickemFinalizePrompt";
 
 /**
  * ISO instant → the two halves the shared pickers speak in.
@@ -210,6 +214,36 @@ export interface PickemPhaseStripProps {
    */
 }
 
+/**
+ * The finalize, as this panel needs it (r7 §10).
+ *
+ * It used to live at the end of the results list, and the argument for that was
+ * continuity — entering the last result and finalizing as one act. What the
+ * argument did not have available is that THIS panel's action slot is empty by
+ * then: Start picking and Close picking are both spent once results are being
+ * entered, so nothing is displaced, and the runner's other standing controls
+ * are already here.
+ */
+export interface PickemRunLifecycle extends GameLifecycleInput {
+  finalizePending: boolean;
+  correctPending: boolean;
+  onFinalize: () => void;
+  onCorrect: () => void;
+  /**
+   * Slate games with no result yet.
+   *
+   * A COUNT rather than a prepared sentence, so the sentence is built in one
+   * place (`unresolvedWarning`) and the DECISION in another
+   * (`confirmUnresolvedFinalize`) — both pure, both tested, neither derived from
+   * the other's output.
+   *
+   * Never a gate. A postponed Tuesday game must not hold the cup open, which is
+   * why `allComplete` is the picking window rather than the results; this
+   * decides whether the tap stops to ask, and how loud the button is.
+   */
+  unresolvedCount: number;
+}
+
 export function PickemPhaseStrip({
   phase,
   slateCount,
@@ -217,11 +251,36 @@ export function PickemPhaseStrip({
   busy,
   hasResults,
   deadlinePassed,
+  lifecycle,
   onOpenPicks,
   onLock,
   onUnlock,
   onDeadlineChange,
-}: PickemPhaseStripProps) {
+}: PickemPhaseStripProps & {
+  /** Absent for a reader with no finalize to offer. */
+  lifecycle?: PickemRunLifecycle;
+}) {
+  /**
+   * Does the finalize tap stop to ask, how loud is the button, and what does
+   * the question say.
+   *
+   * ── ONE CONDITION, WORN TWO WAYS ──────────────────────────────────────────
+   *
+   * `quiet` IS `needsConfirm`, and that is the point rather than a coincidence
+   * worth factoring out. The button is understated exactly when pressing it
+   * raises a question, and full-weight exactly when it does not — so its
+   * appearance is a promise about what the tap will do. Deriving them
+   * separately would let the promise come apart from the behaviour.
+   */
+  const [confirming, setConfirming] = useState(false);
+  const needsConfirm =
+    lifecycle != null &&
+    confirmUnresolvedFinalize({
+      unresolved: lifecycle.unresolvedCount,
+      canFinalize: gameLifecycle(lifecycle).canFinalize,
+    });
+  const confirmMessage = lifecycle ? unresolvedWarning(lifecycle.unresolvedCount) : null;
+
   const [editingDeadline, setEditingDeadline] = useState(false);
   /** The two halves, drafted separately because the pickers are separate. */
   const [draftDate, setDraftDate] = useState<Date | null>(null);
@@ -356,7 +415,60 @@ export function PickemPhaseStrip({
             {busy ? "…" : move.label}
           </button>
         )}
+
+        {/* IN THE SAME SLOT, not below the panel. The two are mutually
+            exclusive in practice — every phase offering a move has
+            `allComplete` false, and the phase that can finalize offers none —
+            but they are rendered as siblings rather than as an either/or,
+            because a branch asserting that would be a claim about
+            `gameLifecycle` made from over here. If both ever appear they sit
+            side by side, which is correct; hiding one would not be.
+
+            `GameLifecycleActions` with a variant, NOT a private button:
+            CLAUDE.md #24's second shape is unified state re-rendered privately,
+            and that is precisely what "the panel needs different chrome" would
+            produce if the chrome were built here. */}
+        {lifecycle && (
+          <GameLifecycleActions
+            variant="panel"
+            /* Understated while contests are unmarked — pick'em's completeness
+               input is the CLOCK, so this button is offered mid-way through the
+               list in a way golf's never is. */
+            quiet={needsConfirm}
+            canEdit={lifecycle.canEdit}
+            status={lifecycle.status}
+            correctionsOpen={lifecycle.correctionsOpen}
+            allComplete={lifecycle.allComplete}
+            finalizePending={lifecycle.finalizePending}
+            correctPending={lifecycle.correctPending}
+            /* Intercepted, not replaced: the confirm is a question ABOUT this
+               action, so it sits in front of the same handler rather than
+               becoming a second finalize path. */
+            onFinalize={needsConfirm ? () => setConfirming(true) : lifecycle.onFinalize}
+            onCorrect={lifecycle.onCorrect}
+            /* "Correct a score" is golf's word for it and pick'em has no
+               scores — the runner corrects a RESULT, which is the word every
+               other control on the results screen already uses. */
+            correctLabel="Correct a result"
+          />
+        )}
       </div>
+
+      {confirming && confirmMessage && lifecycle && (
+        <PickemFinalizePrompt
+          title="Some games have no result"
+          message={confirmMessage}
+          confirmLabel="Void and save results"
+          pendingLabel="Saving results…"
+          cancelLabel="Keep entering results"
+          pending={lifecycle.finalizePending}
+          onConfirm={() => {
+            setConfirming(false);
+            lifecycle.onFinalize();
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
 
       {/* The one sentence that is NOT a phase restatement: it says why an
           action a runner expects to find is missing, which the button cannot. */}

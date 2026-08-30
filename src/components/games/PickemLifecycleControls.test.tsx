@@ -595,3 +595,223 @@ describe("the post-lock list does not come from the write-scoped query", () => {
     expect(builder("otherColumns")).toContain("q.data.sheets");
   });
 });
+
+/**
+ * ── THE FINALIZE, ON THE PANEL (r7 §10) ───────────────────────────────────
+ *
+ * It used to sit at the end of the results list, and these cases used to live
+ * in `PickemRunView.test.tsx` with it. What moved is the CHROME and the
+ * placement; `GameLifecycleActions` still decides which of the three arms
+ * shows, and those arms have their own tests.
+ *
+ * What is asserted here is the wiring pick'em owns and could get wrong on its
+ * own: which input carries "may this be finalized", that the unresolved count
+ * changes the button's WEIGHT without gating it, and that the confirm is in
+ * front of the tap.
+ */
+describe("the finalize block", () => {
+  const lifecycle = (over: Record<string, unknown> = {}) => ({
+    canEdit: true,
+    status: "active" as string | null,
+    correctionsOpen: false,
+    allComplete: true,
+    finalizePending: false,
+    correctPending: false,
+    onFinalize: noop,
+    onCorrect: noop,
+    unresolvedCount: 0,
+    ...over,
+  });
+
+  /** The finalize button's own opening tag — not the panel around it. */
+  const cta = (html: string) => {
+    const at = html.indexOf('data-testid="game-finalize"');
+    if (at < 0) return "";
+    const btn = html.indexOf("<button", at);
+    return html.slice(btn, html.indexOf(">", btn));
+  };
+
+  const ACCENT = "background:var(--color-bt-accent)";
+  const QUIET = "background:transparent";
+
+  it("offers the finalize once picking has CLOSED, and not before", () => {
+    /**
+     * `allComplete` is pick'em's picking window, not its resolved count — the
+     * mapping the view makes, and the one thing about this block that is a
+     * pick'em decision rather than a shared one.
+     */
+    expect(strip({ lifecycle: lifecycle({ allComplete: true }) })).toContain(
+      'data-testid="game-finalize"'
+    );
+    expect(strip({ lifecycle: lifecycle({ allComplete: false }) })).not.toContain(
+      'data-testid="game-finalize"'
+    );
+  });
+
+  it("is QUIET while contests are unmarked and FULL once they are all in", () => {
+    /**
+     * §10. Golf never meets this state — `canFinalize` requires `allComplete`
+     * there, so its button only exists once the work is done — but pick'em's
+     * completeness input is the CLOCK, so the CTA is offered mid-way through
+     * the list. A full-weight primary in front of somebody with nine games left
+     * to mark urges the wrong thing.
+     *
+     * Read off the BUTTON's own tag. The panel it sits in has a background of
+     * its own and a page-wide search for either string finds that instead —
+     * which is the assertion-scope mistake this feature has now made several
+     * times.
+     */
+    expect(cta(strip({ lifecycle: lifecycle({ unresolvedCount: 2 }) }))).toContain(QUIET);
+    expect(cta(strip({ lifecycle: lifecycle({ unresolvedCount: 2 }) }))).not.toContain(ACCENT);
+    expect(cta(strip({ lifecycle: lifecycle({ unresolvedCount: 0 }) }))).toContain(ACCENT);
+  });
+
+  it("ties the weight to the QUESTION, not to a second condition", () => {
+    /**
+     * The button is understated exactly when pressing it raises a question, so
+     * its appearance is a promise about what the tap does. Asserted as the
+     * PAIR, because two separately-derived conditions pass every case above
+     * right up until they disagree.
+     *
+     * `confirmUnresolvedFinalize` is `unresolved > 0 && canFinalize`, so the
+     * state where it cannot ask — nothing finalizable — must not be quiet
+     * either. It renders no button at all, which is the same promise kept.
+     */
+    expect(cta(strip({ lifecycle: lifecycle({ unresolvedCount: 5, allComplete: false }) }))).toBe(
+      ""
+    );
+  });
+
+  it("prints NO standing warning about unresolved contests — it asks at the tap", () => {
+    /**
+     * The banner this replaced was skippable and, worse, told a runner entering
+     * results to keep entering results. The rule lives at the tap now, so the
+     * screen must be quiet about it.
+     */
+    const html = strip({ lifecycle: lifecycle({ unresolvedCount: 2 }) });
+    expect(html).not.toContain("pickem-unresolved-warning");
+    expect(html).not.toContain("score nothing for everyone");
+    expect(html).toContain('data-testid="game-finalize"');
+  });
+
+  it("does not render the prompt until the tap", () => {
+    // State-driven: a render with unresolved games shows the button and nothing
+    // else. The confirm is a response to an action, not to a state.
+    expect(strip({ lifecycle: lifecycle({ unresolvedCount: 3 }) })).not.toContain(
+      "pickem-finalize-prompt"
+    );
+  });
+
+  it("calls the correction 'a result', because pick'em has no scores", () => {
+    const html = strip({
+      phase: "locked",
+      hasResults: true,
+      lifecycle: lifecycle({ status: "complete", correctionsOpen: false }),
+    });
+    expect(html).toContain("Correct a result");
+    expect(html).not.toContain("Correct a score");
+  });
+
+  it("offers the RE-LOCK while corrections are open", () => {
+    const html = strip({
+      phase: "locked",
+      hasResults: true,
+      lifecycle: lifecycle({ status: "complete", correctionsOpen: true }),
+    });
+    expect(html).toContain('data-testid="game-relock"');
+  });
+
+  it("renders NO block at all without a lifecycle — absent, never disabled", () => {
+    const html = strip();
+    expect(html).not.toContain('data-testid="game-finalize"');
+    expect(html).not.toContain('data-testid="game-correct"');
+    // ...and the panel itself is still there, so this is not an empty render.
+    expect(html).toContain('data-testid="pickem-phase-strip"');
+  });
+
+  it("does not displace the phase move — they share the slot as siblings", () => {
+    /**
+     * The two are mutually exclusive in practice, and this asserts the panel
+     * does not ENFORCE that from over here: a branch picking one would be a
+     * claim about `gameLifecycle` made in the wrong file, and it would hide a
+     * real control if the claim ever stopped holding.
+     */
+    const html = strip({
+      phase: "picks_open",
+      lifecycle: lifecycle({ status: "complete", correctionsOpen: true }),
+    });
+    expect(html).toContain('data-testid="pickem-strip-lock"');
+    expect(html).toContain('data-testid="game-relock"');
+  });
+});
+
+/**
+ * ── SOURCE GUARD: the confirm is actually IN FRONT of the finalize ─────────
+ *
+ * Written because a mutation exposed a real hole rather than because the shape
+ * felt worth pinning. Deleting the interception entirely — so tapping Save
+ * finalizes at once and the prompt never opens — broke NOTHING behaviourally.
+ * The rule (`confirmUnresolvedFinalize`) is tested exactly and the dialog's
+ * markup is tested by rendering it, but the WIRE between them had no cover.
+ *
+ * It has none behaviourally here either, and that is a limit rather than a
+ * choice: this suite is `environment: "node"` with `renderToStaticMarkup`, so
+ * nothing clicks, and the prompt is state-driven and therefore invisible to a
+ * static render by construction.
+ *
+ * What it proves: the CTA's `onFinalize` consults `needsConfirm` rather than
+ * going straight through. What it does not prove: that the confirm button then
+ * calls the handler. That half is covered by the pure predicate plus the
+ * prompt's own render — and if this surface ever gets a Playwright spec, the
+ * tap is the thing to put in it.
+ */
+describe("the confirm sits in front of the finalize (source)", () => {
+  const SRC = readFileSync(join(__dirname, "pickem", "PickemPhaseStrip.tsx"), "utf8");
+
+  it("the scan can see the CTA at all — not passing on a renamed file", () => {
+    // The vacuity check. A guard reading the wrong file, or one whose contents
+    // moved, would otherwise assert happily about nothing. It moved once
+    // already, which is exactly the event this catches.
+    expect(SRC).toContain("GameLifecycleActions");
+    expect(SRC).toContain("confirmUnresolvedFinalize");
+  });
+
+  it("onFinalize is routed through needsConfirm", () => {
+    /**
+     * ── THIS ASSERTION USED TO BE A REGEX, AND THE REGEX WAS BROKEN ────────
+     *
+     * It read `/onFinalize={s*needsConfirms*?/` — every backslash had been
+     * eaten somewhere between being written and being saved. The whitespace
+     * classes collapsed to a literal letter s, and the escaped question mark
+     * became a lazy quantifier on it. It happened to match the current formatting and would have gone on passing
+     * against `onFinalize={needsConfirmAnything`.
+     *
+     * The exact string is the better assertion anyway: there is one correct
+     * line here and it is worth naming in full. Nothing to escape, so nothing
+     * to lose in transit.
+     */
+    expect(
+      SRC.includes(
+        "onFinalize={needsConfirm ? () => setConfirming(true) : lifecycle.onFinalize}"
+      ),
+      "GameLifecycleActions' onFinalize no longer consults needsConfirm. Tapping " +
+        "Save with unresolved contests would finalize immediately and the prompt " +
+        "would never open — which no behavioural test in this suite can see, " +
+        "because it runs in node and nothing clicks."
+    ).toBe(true);
+  });
+
+  it("the quiet flag reads the SAME condition as the confirm", () => {
+    // §10's promise: understated exactly when the tap asks. Two expressions of
+    // one condition is the shape that drifts, so there is one.
+    expect(SRC).toContain("quiet={needsConfirm}");
+  });
+
+  it("the prompt calls the SAME handler, not a second finalize path", () => {
+    // The confirm is a question about this action. A second call site would be
+    // a second aftermath to keep in step.
+    expect(SRC).toContain("lifecycle.onFinalize();");
+    // Counted by split rather than by a regex, for the reason above.
+    expect(SRC.split("lifecycle.onFinalize").length - 1).toBe(2);
+  });
+});
