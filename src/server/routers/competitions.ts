@@ -210,7 +210,7 @@ export const competitionsRouter = router({
             .eq("trip_id", tripId)
             .order("created_at", { ascending: false })
             .then((r) => r.data ?? []),
-          computeMyDelegateGameIds(ctx.supabase, tripId, ctx.user!.id, ctx.tripRole === "Owner"),
+          computeMyDelegateGameIds(ctx.supabase, ctx.user!.id),
           computeCompetitionLeaderboard(ctx.supabase, competitionId),
         ]);
 
