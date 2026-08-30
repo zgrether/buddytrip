@@ -418,6 +418,31 @@ seam, never on a calendar.
   file; for an unguarded call it is the CALL, not the file. The file is a
   convenient list, and it is the answer to neither.
 
+  **FOUR INSTANCES NOW, and the shapes are worth listing because the cause is
+  one thing wearing different clothes:**
+
+  | The unit that could fail | What was swept instead |
+  |---|---|
+  | a FUNCTION holding two calls | the file |
+  | an RPC reached by two test files | the file being edited |
+  | a TAB holding two components | the component being edited |
+  | a FUNCTION whose own RLS tests live elsewhere | the files being edited |
+
+  The third arrived one turn after this entry was written: pick'em's Other picks
+  tab renders one component before the lock and a different one after, r5 §3
+  rebuilt the second, and the first went on saying the wording §3 had retired.
+  Both halves were correct in isolation, which is why nothing caught it.
+
+  The fourth is the sharpest, because the guard existed and was simply not run:
+  migration 167 changed `pickem_sheet_status`, and its RLS tests — the only
+  tests of the function being changed — were not in the sweep.
+
+  **A NARROWER RUN SUBSTITUTED FOR A WIDER ONE IS NOT COVERAGE.** Under the
+  fourth, a combined run including that file timed out and moved to the
+  background; a narrower set was run instead and treated as the check. The
+  timeout was not the problem — accepting the substitute was. Same family as the
+  instrument note below, one level out: what ran was adjacent to what decides.
+
   **The same round produced the instrument version of it**, which is worth
   recording beside this because it is the cheapest to avoid: CI runs
   `eslint --max-warnings 0` and I was running `eslint src`, reading "0 errors, 1
@@ -425,6 +450,21 @@ seam, never on a calendar.
   in for, and the warning it tolerated was a real dead prop. **Run the gate's
   own command, not your own version of it** — for lint, for tests, for
   typecheck.
+
+  **AND A STAGING VERSION, which costs a reviewer rather than a run.** `git add
+  -A` at the end of a long stretch of edits sweeps in whatever else is lying
+  around. Twice a file has landed in a commit whose subject never mentions it —
+  once a whole unrelated module, once a scratch change — and **the diff is what
+  reviewers read**, so a file arriving under a heading that does not name it is
+  invisible. It is not caught by any check, because nothing is wrong with the
+  code.
+
+  Stage by PATH when the working tree holds more than the change you are
+  describing, and read `git status --short` before committing rather than after
+  being surprised. If it has already happened and the branch is unpushed, take
+  the file back out rather than adding-then-removing it in a later commit: the
+  second version is honest history and a confusing diff, and the diff is the
+  artefact with a reader.
 
 ## Seed Data Rules
 
