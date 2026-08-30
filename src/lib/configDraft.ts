@@ -1120,12 +1120,46 @@ export function pickemDraftToPayload(
   draft: PickemConfigDraft,
   baseline?: PickemConfigDraft
 ): SaveConfigPayload {
+  /**
+   * ── `matchesStructureDirty` MUST BE SENT, and it was not ───────────────────
+   *
+   * The RPC defaults it to TRUE when the key is absent, and absent is what this
+   * builder sent. So every pick'em save — a rename, a points total, anything —
+   * took the clean-replace branch: DELETE every `game_matches` row, re-INSERT
+   * with fresh `gen_random_uuid()` ids.
+   *
+   * Those ids are hashed AND are the sort key in `readGameConfigHash`, so the
+   * config fingerprint moved on a save that changed nothing. Measured: two
+   * identical saves through this very function gave c917f20f then c10a5608 with
+   * the row content byte-identical. That churn fires a config refetch on every
+   * other open device, and widens the optimistic-concurrency window for anyone
+   * holding a base hash from before it.
+   *
+   * ── Compared over the rows that are SENT, not the draft ───────────────────
+   *
+   * `matchesToSaveRows` drops unfilled matches (an unpaired slot is not a match),
+   * while the draft carries a placeholder row for every slot. Comparing the raw
+   * drafts would therefore report dirty forever on any game with a spare
+   * player — the 8-people-into-7-matches case — which is the same bug wearing a
+   * flag. Both sides are filtered so the comparison is over exactly what the
+   * payload carries.
+   */
+  const sent = (ms: DraftMatchConfig[]) => ms.filter(isDraftMatchFilled);
   return {
     ...baseDraftToPayload(draft, draft.pointsDistribution, baseline),
     // Only when the game HAS pairings to send. The RPC keys its structure guard
     // on the key being present, so an unconditional `matches: []` would read as
     // "clear every pairing" on a team-totals game that never had any.
-    ...(draft.matches.length > 0 ? { matches: matchesToSaveRows(draft.matches) } : {}),
+    ...(draft.matches.length > 0
+      ? {
+          matches: matchesToSaveRows(draft.matches),
+          // No baseline = first save of this page; assume dirty, which is the
+          // RPC's own default and the safe direction.
+          matchesStructureDirty: baseline
+            ? !matchesStructureEqual(sent(draft.matches), sent(baseline.matches))
+            : true,
+        }
+      : {}),
     pickem: { rollUp: draft.rollUp, useConfidence: draft.useConfidence },
   };
 }
