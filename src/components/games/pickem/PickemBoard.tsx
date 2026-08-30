@@ -157,6 +157,7 @@ export function PickemBoard({
         <PickemHeadToHead
           slate={slate}
           rows={rows}
+          useConfidence={useConfidence}
           aName={aName}
           bName={bName}
           aUserId={m.sideAId}

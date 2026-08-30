@@ -115,6 +115,7 @@ export function PickemHeadToHead({
   matchCount,
   resolved,
   picked,
+  useConfidence,
   note,
   onBack,
 }: {
@@ -132,6 +133,9 @@ export function PickemHeadToHead({
   matchCount: number;
   resolved: number;
   picked: SidesPicked;
+  /** Whether ranks mean anything here. With confidence OFF every stored rank is
+   *  null and that is normal, so the missing-rank mark below must not fire. */
+  useConfidence: boolean;
   /** The one-line state, from the shared `h2hNote`. */
   note: string;
   onBack: () => void;
@@ -279,7 +283,13 @@ export function PickemHeadToHead({
                 style={{ fontSize: TYPE_SCALE.caption }}
               >
                 <SidePick pick={r.aPick} game={g} />
-                <Conf value={r.aConfidence} hit={r.aPoints > 0} played={played} />
+                <Conf
+                  value={r.aConfidence}
+                  hit={r.aPoints > 0}
+                  played={played}
+                  picked={r.aPick != null}
+                  ranksMatter={useConfidence}
+                />
               </span>
 
               <Swing cell={cell} />
@@ -288,7 +298,13 @@ export function PickemHeadToHead({
                 className="flex min-w-0 items-center gap-1.5 truncate"
                 style={{ fontSize: TYPE_SCALE.caption }}
               >
-                <Conf value={r.bConfidence} hit={r.bPoints > 0} played={played} />
+                <Conf
+                  value={r.bConfidence}
+                  hit={r.bPoints > 0}
+                  played={played}
+                  picked={r.bPick != null}
+                  ranksMatter={useConfidence}
+                />
                 <SidePick pick={r.bPick} game={g} />
               </span>
             </span>
@@ -487,12 +503,56 @@ function Conf({
   value,
   hit,
   played,
+  picked,
+  ranksMatter,
 }: {
   value: number | null;
   hit: boolean;
   played: boolean;
+  /** Did this side pick this contest at all? A missing rank on a missing pick is
+   *  not worth marking — `SidePick` already says "No pick". */
+  picked: boolean;
+  /** Confidence ON. Every rank is null with it off, and normal. */
+  ranksMatter: boolean;
 }) {
-  if (value == null) return null;
+  /**
+   * ── A PICK WITH NO RANK IS NOT A PICK WITH NO CHIP ─────────────────────────
+   *
+   * `pickPoints` reads `confidence ?? 0` when confidence is on, so a sheet whose
+   * ranks were cleared by a reopen (migration 150) scores ZERO for every correct
+   * pick until they are re-entered. The chip simply vanished, so the row showed
+   * two team names and a zero — indistinguishable at a glance from a push, which
+   * is exactly how it was read.
+   *
+   * Two states, one appearance, again. The dash is the smallest thing that tells
+   * them apart, and it says what is true: there is no rank here.
+   *
+   * NOT a `0`. Zero is a rank somebody spent, and nobody spent this one — that
+   * would be the same conflation pointing the other way. The points are indeed
+   * zero; the RANK is absent, and this chip shows ranks.
+   */
+  if (value == null) {
+    if (!picked || !ranksMatter) return null;
+    return (
+      <span
+        className="shrink-0 text-center"
+        data-testid="pickem-conf-unranked"
+        title="No rank — this pick scores nothing until the sheet is ranked again"
+        style={{
+          minWidth: 22,
+          height: 20,
+          lineHeight: "20px",
+          borderRadius: 6,
+          fontSize: 11,
+          fontWeight: 700,
+          color: "var(--color-bt-text-dim)",
+          opacity: 0.45,
+        }}
+      >
+        –
+      </span>
+    );
+  }
   const missed = played && !hit;
   return (
     <span
