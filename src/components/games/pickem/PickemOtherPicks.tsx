@@ -102,20 +102,29 @@ export interface OtherPicksColumn {
  * and a line reading "16/16 picks submitted" on every complete row would bury
  * the two rows that are not.
  *
- * "Not a member of BuddyTrip" outranks the counts, and stays true of somebody
- * whose sheet is FULL: a placeholder cannot enter their own, so a full sheet
- * means a captain entered it for them. The label is the provenance of those
- * picks, not an apology for their absence — which is why it is said whatever
- * the count is. It replaced "Hasn't signed up", which read as a step they had
- * skipped rather than a fact about the account.
+ * ── "Not a member of BuddyTrip" explains an EMPTY sheet, and only that ────
+ *
+ * It used to be said whatever the count was, on the argument that it is the
+ * PROVENANCE of the picks rather than an apology for the person being absent.
+ * That argument holds; what it missed is that provenance has no reader here.
+ * This line is the one thing the screen says about whether a row needs
+ * attention, so a guest whose sheet was FULL read as unfinished business,
+ * sitting beside a member with an identical sheet that said nothing at all.
+ *
+ * The fact is now said exactly where it changes what somebody does: on a sheet
+ * with nothing in it, where "they have not got round to it" and "they can never
+ * do this themselves" call for opposite responses. Once any pick exists,
+ * somebody has already acted, and the live fact is how far along it is.
+ *
+ * It replaced "Hasn't signed up", which read as a step they had skipped rather
+ * than a fact about the account — that half stands.
  *
  * A null `picked` says nothing, for the same reason a finished sheet does: with
  * picks open the count is not knowable from here, and inventing a distinction
  * the data cannot support is worse than the silence.
  */
 export function sheetStateLine(s: OtherSheet): string | null {
-  if (s.isGuest) return "Not a member of BuddyTrip";
-  if (s.picked === 0) return "Nothing submitted";
+  if (s.picked === 0) return s.isGuest ? "Not a member of BuddyTrip" : "Nothing submitted";
   if (s.picked != null && s.picked < s.total) {
     return `${s.picked}/${s.total} picks submitted`;
   }

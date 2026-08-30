@@ -54,7 +54,11 @@ import {
   type OtherPicksColumn,
 } from "@/components/games/pickem/PickemOtherPicks";
 import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
-import { PickemProxyBanner, type ProxyTarget } from "@/components/games/pickem/PickemProxyPanel";
+import {
+  PickemProxyBanner,
+  sheetAuthor,
+  type ProxyTarget,
+} from "@/components/games/pickem/PickemProxyPanel";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
 import type { SubmittedPick } from "@/lib/pickemSheet";
@@ -1480,7 +1484,15 @@ export function PickemGameView() {
                   <PickemProxyBanner
                     name={proxyTarget.name}
                     isGuest={proxyTarget.isGuest}
-                    submitted={proxyTarget.submitted}
+                    /* From the ROWS, not from `proxyTarget.submitted` — which is
+                       a count and cannot say who typed them. These are the same
+                       rows the sheet below renders, so the banner cannot end up
+                       describing a sheet other than the one on screen. */
+                    author={sheetAuthor(
+                      q.data.sheets[proxyTarget.userId] ?? [],
+                      proxyTarget.userId,
+                      me?.id ?? null
+                    )}
                     onBack={() => setProxyFor(null)}
                   />
                   <PickemSheet

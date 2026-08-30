@@ -70,16 +70,17 @@ describe("sheetStateLine — the slot the team name used to hold", () => {
     expect(sheetStateLine(person({ userId: "a", name: "A" }))).toBe(null);
   });
 
-  it("puts NOT A MEMBER above the counts, because it is not a stage of them", () => {
+  it("says NOT A MEMBER on an EMPTY sheet, where the two answers differ", () => {
     /**
      * A placeholder cannot submit at all — no `auth.uid()`, so
-     * `pickem_picks_write` can never match them. That is not "0 of 16 so far",
-     * it is why the process cannot start, so it outranks the count rather than
-     * sitting beside it.
+     * `pickem_picks_write` can never match them. On an empty sheet that is not
+     * "0 of 16 so far": it is why the process cannot start on its own, and it
+     * is the difference between waiting for somebody and going and doing it for
+     * them.
      *
-     * Asserted on a guest whose count is ALSO zero: with the order reversed
-     * this reads "Nothing submitted", which is true and useless — it sends
-     * somebody off to chase a person who structurally cannot act.
+     * With the branch reversed this reads "Nothing submitted", which is true
+     * and useless — it sends somebody off to chase a person who structurally
+     * cannot act.
      */
     expect(
       sheetStateLine(person({ userId: "a", name: "A", isGuest: true, picked: 0, points: null }))
@@ -88,6 +89,39 @@ describe("sheetStateLine — the slot the team name used to hold", () => {
     expect(
       sheetStateLine(person({ userId: "a", name: "A", isGuest: true, picked: 0, points: null }))
     ).not.toContain("signed up");
+  });
+
+  /**
+   * ── r7 §8 · IT USED TO OUTRANK EVERY COUNT, AND THAT WAS THE BUG ─────────
+   *
+   * The label was returned for a guest whatever the count was, on the argument
+   * that it is the PROVENANCE of the picks. The argument holds and the slot
+   * still cannot carry it: this line is the one thing the screen says about
+   * whether a row needs attention, so a guest with a COMPLETE sheet read as
+   * unfinished business beside a member with an identical sheet that said
+   * nothing at all.
+   *
+   * Both cases below passed under the old rule for the wrong reason — it never
+   * reached the count — so they are the two that separate the builds.
+   */
+  it("says the COUNT for a guest who is part-way, not that they are a guest", () => {
+    expect(
+      sheetStateLine(
+        person({ userId: "a", name: "A", isGuest: true, picked: 9, total: 16, points: null })
+      )
+    ).toBe("9/16 picks submitted");
+  });
+
+  it("says NOTHING for a guest whose sheet is FULL — same as anybody else", () => {
+    /**
+     * The reported case. Nobody has to do anything about this row, and a line
+     * on it is a line the reader has to rule out.
+     */
+    expect(
+      sheetStateLine(
+        person({ userId: "a", name: "A", isGuest: true, picked: 16, total: 16, points: 40 })
+      )
+    ).toBe(null);
   });
 });
 
