@@ -32,6 +32,10 @@ export interface ProxyTarget {
   userId: string;
   name: string;
   submitted: boolean;
+  /** How far along, from `pickem_sheet_status` (migration 167). `submitted` is
+   *  `picked > 0` and kept because several readers only need the yes/no. */
+  picked: number;
+  total: number;
   isGuest: boolean;
   /** Their team, for the row's second line. Null when they are on none. */
   side?: string | null;

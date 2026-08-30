@@ -497,10 +497,19 @@ export const pickemRouter = router({
         p_game_id: input.gameId,
       });
       if (error) throw pickemError(error.message);
-      return ((data ?? []) as { user_id: string; submitted: boolean }[]).map((r) => ({
-        userId: r.user_id,
-        submitted: r.submitted,
-      }));
+      // A COUNT, not a boolean (migration 167). Under partial sheets "started"
+      // and "finished" are different states, and a boolean rendered them
+      // identically — so a captain chasing somebody could not tell who was
+      // halfway. `submitted` is derived here rather than returned, because
+      // several callers still only need the yes/no.
+      return ((data ?? []) as { user_id: string; picked: number; total: number }[]).map(
+        (r) => ({
+          userId: r.user_id,
+          picked: r.picked,
+          total: r.total,
+          submitted: r.picked > 0,
+        })
+      );
     }),
 
   // ── the points total ────────────────────────────────────────────────────
@@ -694,6 +703,10 @@ function pickemError(message: string): TRPCError {
    * the actionable half, and throwing it away here would undo the reason the
    * SQL bothered to look it up.
    */
+  // MATCHES_INCOMPLETE is unreachable from `set_pickem_result` (migration 167
+  // removed that gate — a result is a fact about the world and does not consult
+  // the pairings). The arm stays because `save_pickem_matches` still raises it
+  // for its own reasons, and it is the pairing surface's message there.
   if (message.includes("MATCHES_INCOMPLETE")) {
     const detail = message.split("MATCHES_INCOMPLETE:")[1]?.trim();
     return new TRPCError({
@@ -703,12 +716,19 @@ function pickemError(message: string): TRPCError {
         : "Can't record a result yet — set the matches first.",
     });
   }
-  if (message.includes("GAME_FINAL")) {
+  if (message.includes("GAME_LOCKED")) {
     return new TRPCError({
       code: "CONFLICT",
-      // Names the way back rather than only the refusal. §6.2: the reset path
-      // exists and this must not become a second one.
-      message: "This game is finalized. Reset its scores from settings to change a result.",
+      /**
+       * Names CORRECT SCORES, not Reset.
+       *
+       * It used to send the runner to Reset, which clears every result in the
+       * game — an instruction that works and costs everything, for somebody
+       * fixing a typo. Migration 167 made the refusal consult
+       * `corrections_open`, so there is now a one-tap way through that destroys
+       * nothing, and this is the sentence that has to name it.
+       */
+      message: "This game is finalized. Use Correct scores to change a result.",
     });
   }
   if (message.includes("SLATE_GAME_NOT_FOUND")) {

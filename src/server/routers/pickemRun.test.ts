@@ -172,50 +172,45 @@ describe("the completeness gate — §4 and §6.1", () => {
     });
   }
 
-  it("TEAM TOTALS has no gate — no matches at all, and it still records", async () => {
-    // Every sheet sums into its side regardless of pairings.
-    await rollUp("team_totals");
+  /**
+   * ── THE PAIRING GATE IS GONE (migration 167) ──────────────────────────────
+   *
+   * Three cases here used to assert that a result was REFUSED until every match
+   * had both sides. The rule was wrong, not merely inconvenient: a slate game's
+   * result is a fact about the WORLD, and whether Alabama covered does not
+   * depend on who has been paired against whom.
+   *
+   * The stated justification was that "the X/N split has an N of zero". It does
+   * not follow — entering a result scores every SHEET, which works with no
+   * matches at all; only the match TOTALS need matches, and those derive at
+   * read time. An unpaired match has no total yet, which the board renders as a
+   * display state rather than an error.
+   *
+   * So the three refusal cases become one acceptance case per shape. They are
+   * kept as a set rather than collapsed to one, because the old gate fired only
+   * under `individual_matches` — a suite that checked team totals alone would
+   * pass against the gate still being there.
+   */
+  it.each([
+    ["team totals, no matches", "team_totals" as const, 0],
+    ["individual matches, no matches", "individual_matches" as const, 0],
+    ["individual matches, a HALF-FILLED match", "individual_matches" as const, 1],
+  ])("records a result with %s", async (_label, shape, halfFilled) => {
+    await rollUp(shape);
+    if (halfFilled > 0) {
+      await addMatch(owner, member, 0);
+      await addMatch(planner, null, 1);
+    }
     const { error } = await setResult(slateIds[0], "away");
     expect(error).toBeNull();
+    expect((await resultsOf())[0]).toBe("away");
   });
 
-  it("individual matches REFUSES while a match is half-filled, and NAMES who", async () => {
-    // "Finalize your matches" sends someone hunting through a grid. The name is
-    // the whole point of the refusal, so the assertion checks for it rather
-    // than for the error code alone.
-    await rollUp("individual_matches");
-    await addMatch(owner, member, 0);
-    await addMatch(planner, null, 1);
-
-    const { error } = await setResult(slateIds[0], "away");
-    expect(error?.message).toContain("MATCHES_INCOMPLETE");
-    // The NAME as the DB holds it — `_pickem_incomplete_match_player` returns
-    // COALESCE(name, email, "Someone"), and asserting the real value is what
-    // distinguishes "named someone" from "said the word planner".
-    const { data: who } = await ctx.admin
-      .from("users")
-      .select("name, email")
-      .eq("id", planner)
-      .single();
-    const expected = (who?.name as string | null) ?? (who?.email as string);
-    expect(expected).toBeTruthy();
-    expect(error?.message).toContain(expected);
-    expect((await resultsOf())[0]).toBeNull();
-  });
-
-  it("individual matches ALLOWS it once every match has both sides", async () => {
+  it("still records once every match IS complete — the gate's removal took nothing", async () => {
     await rollUp("individual_matches");
     await addMatch(owner, member, 0);
     const { error } = await setResult(slateIds[0], "away");
     expect(error).toBeNull();
-  });
-
-  it("individual matches with NO matches at all is refused too", async () => {
-    // The empty set is not complete (Phase 4's predicate). Zero matches means
-    // the X/N split has an N of zero.
-    await rollUp("individual_matches");
-    const { error } = await setResult(slateIds[0], "away");
-    expect(error?.message).toContain("MATCHES_INCOMPLETE");
   });
 
   it("CLEARING is never gated — undo must not depend on the mistake's condition", async () => {
@@ -240,22 +235,54 @@ describe("editable while active, frozen at finalize — §6.2", () => {
     expect((await resultsOf())[0]).toBe("home");
   });
 
-  it("REFUSES once the game is complete, and points at the reset path", async () => {
+  it("REFUSES once the game is LOCKED, and names Correct scores", async () => {
+    /**
+     * The gate is `complete AND NOT corrections_open` (migration 167) — golf's
+     * `gameLockState.isLocked`, read the same way so the two cannot drift.
+     *
+     * It used to be `complete` alone, and its message sent the runner to Reset,
+     * which clears every result in the game. An instruction that works and
+     * costs everything, for somebody fixing a typo.
+     */
     await setResult(slateIds[0], "away");
     await ctx.admin.from("games").update({ status: "complete" }).eq("id", gameId);
 
     const { error } = await setResult(slateIds[0], "home");
-    expect(error?.message).toContain("GAME_FINAL");
+    expect(error?.message).toContain("GAME_LOCKED");
+    expect(error?.message).not.toContain("reset");
     expect((await resultsOf())[0]).toBe("away");
   });
 
-  it("a finalized game refuses a CLEAR as well", async () => {
-    // Results are history at that point — clearing one is as much a rewrite of
-    // a standing as changing it.
+  it("a LOCKED game refuses a CLEAR as well", async () => {
+    // A finalized result is history — clearing one rewrites a standing as much
+    // as changing it does.
     await setResult(slateIds[0], "away");
     await ctx.admin.from("games").update({ status: "complete" }).eq("id", gameId);
     const { error } = await setResult(slateIds[0], null);
-    expect(error?.message).toContain("GAME_FINAL");
+    expect(error?.message).toContain("GAME_LOCKED");
+  });
+
+  it("CORRECTING reopens it — the whole reason the gate reads two columns", async () => {
+    /**
+     * THE CASE THAT MAKES THE GATE A GATE RATHER THAN A WALL, and the one a
+     * status-only build cannot pass.
+     *
+     * A finalized game with corrections open is editable again, and re-locking
+     * closes it. Without this pair, "refuses when complete" is satisfied by the
+     * old rule — which is what shipped, and which had no way back except Reset.
+     */
+    await setResult(slateIds[0], "away");
+    await ctx.admin
+      .from("games")
+      .update({ status: "complete", corrections_open: true })
+      .eq("id", gameId);
+
+    expect((await setResult(slateIds[0], "home")).error).toBeNull();
+    expect((await resultsOf())[0]).toBe("home");
+
+    // ...and closing corrections locks it again.
+    await ctx.admin.from("games").update({ corrections_open: false }).eq("id", gameId);
+    expect((await setResult(slateIds[0], "away")).error?.message).toContain("GAME_LOCKED");
   });
 });
 

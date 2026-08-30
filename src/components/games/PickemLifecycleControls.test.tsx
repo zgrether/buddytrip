@@ -571,15 +571,22 @@ describe("the post-lock list does not come from the write-scoped query", () => {
       join(process.cwd(), "src/components/games/PickemGameView.tsx"),
       "utf8"
     );
-    const call = view.slice(view.indexOf("<PickemOtherPicks"));
-    // The prop is `columns` now (grouped by team), but the guard is about the
-    // SOURCE, not the shape: whatever it is called, it must not be the
-    // write-scoped query.
-    expect(call.slice(0, 300)).toContain("columns={otherColumns}");
-    expect(call.slice(0, 300)).not.toContain("proxyTargets");
-    // ...and the write-scoped list is still fed the write-scoped query, so this
-    // is not passing because the wiring vanished.
-    const list = view.slice(view.indexOf("<PickemSheetsList"));
-    expect(list.slice(0, 300)).toContain("targets={proxyTargets}");
+    /**
+     * Checked at the BUILDERS rather than at the JSX, because there are two
+     * call sites now — the same component renders on both sides of the lock —
+     * and slicing from the first `<PickemOtherPicks` checks whichever happens
+     * to appear first in the file.
+     *
+     * The invariant is about the SOURCES: the pre-lock columns come from the
+     * write-scoped query, and the post-lock ones must not.
+     */
+    const builder = (name: string) => {
+      const at = view.indexOf("const " + name + ": OtherPicksColumn[]");
+      expect(at, name).toBeGreaterThan(-1);
+      return view.slice(at, at + 1800);
+    };
+    expect(builder("proxyColumns")).toContain("proxyTargets");
+    expect(builder("otherColumns")).not.toContain("proxyTargets");
+    expect(builder("otherColumns")).toContain("q.data.sheets");
   });
 });

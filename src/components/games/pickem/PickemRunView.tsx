@@ -61,7 +61,6 @@ export function PickemRunView({
   slate,
   canEdit,
   busyId,
-  blockedReason,
   ridingOn,
   matchesPending,
   onSetResult,
@@ -70,16 +69,6 @@ export function PickemRunView({
   canEdit: boolean;
   /** The slate game currently being written, so only ITS row shows pending. */
   busyId: string | null;
-  /**
-   * Why results cannot be entered yet — the completeness gate (§6.1), already
-   * knowable when this renders.
-   *
-   * A banner beats a rejection: the state is derivable before the runner taps,
-   * so telling them first is strictly better than letting them find out. The
-   * surface is NOT blocked — they may want to read the slate — so this sits
-   * above rows that stay visible.
-   */
-  blockedReason: string | null;
   /**
    * Unresolved slate game id -> live matches it can still move (`ridingOn`).
    *
@@ -173,22 +162,10 @@ export function PickemRunView({
         )}
       </div>
 
-      {blockedReason && (
-        <p
-          data-testid="pickem-run-blocked"
-          className="rounded-xl px-3 py-2.5"
-          style={{
-            fontSize: TYPE_SCALE.caption,
-            lineHeight: 1.5,
-            fontWeight: 600,
-            color: "var(--color-bt-warning)",
-            background: "var(--color-bt-card)",
-            border: "1px solid var(--color-bt-warning-border)",
-          }}
-        >
-          {blockedReason}
-        </p>
-      )}
+      {/* NO "set the matches first" banner. Results no longer depend on
+          pairings (migration 167) — a result is a fact about the world — so
+          there is nothing here to be blocked by, and the amber banner that said
+          so was half of a double treatment with the RPC's own refusal. */}
 
       {/* NO eyebrow over the first group. A card with four unpressed buttons
           on it is a game needing a result, and the count was the same number

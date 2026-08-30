@@ -18,6 +18,7 @@ const person = (over: Partial<OtherSheet> & { userId: string; name: string }): O
   total: 16,
   isGuest: false,
   points: 30,
+  openable: true,
   ...over,
 });
 
@@ -27,14 +28,14 @@ const COLUMNS: OtherPicksColumn[] = [
     teamName: "Team Banks",
     people: [
       person({ userId: "u1", name: "Charlie", points: 53 }),
-      person({ userId: "u2", name: "Bill", picked: 0, points: null }),
+      person({ userId: "u2", name: "Bill", picked: 0, points: null, openable: false }),
       person({ userId: "u3", name: "Ann", picked: 3, points: 4 }),
     ],
   },
   {
     teamId: "t2",
     teamName: "Team Buddy",
-    people: [person({ userId: "u4", name: "Rob", isGuest: true, picked: 0, points: null })],
+    people: [person({ userId: "u4", name: "Rob", isGuest: true, picked: 0, points: null, openable: false })],
   },
 ];
 

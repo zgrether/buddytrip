@@ -47,18 +47,38 @@ import type { PicksSub } from "@/lib/pickemSurface";
 export interface OtherSheet {
   userId: string;
   name: string;
-  /** How many contests they have called, and how many there are. */
-  picked: number;
+  /**
+   * How many contests they have called — or NULL when the count is not
+   * knowable from here.
+   *
+   * Null is not zero and not "complete". While picks are open, RLS hides other
+   * people's rows, and `pickem_sheet_status` answers with a boolean rather than
+   * a count — so before the lock we know THAT somebody has started and not how
+   * far they are. Saying nothing is the honest rendering of that, and it is the
+   * same thing a finished sheet says, which is why the two share a branch.
+   */
+  picked: number | null;
   total: number;
   /**
-   * A placeholder who has never signed up. Structurally unable to submit —
-   * no `auth.uid()`, so `pickem_picks_write` can never match them — which is a
-   * different fact from having not got round to it.
+   * A placeholder who has never signed up. Structurally unable to submit for
+   * themselves — no `auth.uid()`, so `pickem_picks_write` can never match them —
+   * which is why somebody else has to, and why the label is worth saying even
+   * on a person whose sheet is full: it is where those picks came from.
    */
   isGuest: boolean;
-  /** Null when they have no sheet at all — NOT zero. A sheet that scored
-   *  nothing and a sheet that does not exist are opposite facts. */
+  /** Their total, or null when there is no figure to show — either they have no
+   *  sheet, or picks are still open and nobody may see one. */
   points: number | null;
+  /**
+   * Does tapping this row do anything?
+   *
+   * Stated rather than inferred from `points`. The two coincided after the lock
+   * — a readable sheet is one that exists — and they come apart before it: a
+   * captain may OPEN a teammate's sheet to enter for them while its contents
+   * are hidden from everyone, so there is a figure to show for nobody and a row
+   * that very much opens.
+   */
+  openable: boolean;
 }
 
 /** One team's column. `teamId` is null for the people on no team at all. */
@@ -82,15 +102,23 @@ export interface OtherPicksColumn {
  * and a line reading "16/16 picks submitted" on every complete row would bury
  * the two rows that are not.
  *
- * "Not a member of BuddyTrip" outranks the counts, because it is not a stage of
- * the same process — it is why the process cannot start. It replaced "Hasn't
- * signed up", which read as a step they had skipped rather than a fact about
- * the account.
+ * "Not a member of BuddyTrip" outranks the counts, and stays true of somebody
+ * whose sheet is FULL: a placeholder cannot enter their own, so a full sheet
+ * means a captain entered it for them. The label is the provenance of those
+ * picks, not an apology for their absence — which is why it is said whatever
+ * the count is. It replaced "Hasn't signed up", which read as a step they had
+ * skipped rather than a fact about the account.
+ *
+ * A null `picked` says nothing, for the same reason a finished sheet does: with
+ * picks open the count is not knowable from here, and inventing a distinction
+ * the data cannot support is worse than the silence.
  */
 export function sheetStateLine(s: OtherSheet): string | null {
   if (s.isGuest) return "Not a member of BuddyTrip";
   if (s.picked === 0) return "Nothing submitted";
-  if (s.picked < s.total) return `${s.picked}/${s.total} picks submitted`;
+  if (s.picked != null && s.picked < s.total) {
+    return `${s.picked}/${s.total} picks submitted`;
+  }
   return null;
 }
 
@@ -162,8 +190,7 @@ function PersonRow({
   avatar: { avatarIcon: string | null; teamColor: string | null };
   onOpen: () => void;
 }) {
-  // Nothing to open when there is no sheet. The row is still a statement.
-  const openable = s.points != null;
+  const openable = s.openable;
   const state = sheetStateLine(s);
   return (
     <button
