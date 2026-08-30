@@ -260,3 +260,114 @@ describe("progress", () => {
     expect(html).not.toContain("NaN");
   });
 });
+
+/**
+ * ── THE FINALIZE, at the end of the runner's job ───────────────────────────
+ *
+ * `GameLifecycleActions` decides WHICH of the three CTAs shows; those arms have
+ * their own tests. What is asserted here is the wiring pick'em owns and could
+ * get wrong on its own: which input carries "may this be finalized", that the
+ * unresolved count warns without gating, and that a locked game stops offering
+ * result entry.
+ */
+describe("the finalize block", () => {
+  const lifecycle = (over: Partial<Parameters<typeof PickemRunView>[0]["lifecycle"] & object> = {}) => ({
+    canEdit: true,
+    status: "active" as string | null,
+    correctionsOpen: false,
+    allComplete: true,
+    finalizePending: false,
+    correctPending: false,
+    onFinalize: () => {},
+    onCorrect: () => {},
+    unresolvedWarning: null as string | null,
+    ...over,
+  });
+
+  it("offers the finalize once picking has CLOSED, and not before", () => {
+    /**
+     * `allComplete` is pick'em's picking window, not its resolved count — the
+     * mapping the view makes and the one thing about this block that is a
+     * pick'em decision rather than a shared one.
+     */
+    expect(render({ lifecycle: lifecycle({ allComplete: true }) })).toContain(
+      'data-testid="game-finalize"'
+    );
+    expect(render({ lifecycle: lifecycle({ allComplete: false }) })).not.toContain(
+      'data-testid="game-finalize"'
+    );
+  });
+
+  it("WARNS about unresolved contests without gating on them", () => {
+    /**
+     * The pair, not just the banner. A build that turned the warning into a
+     * blocker would still render the text — so the CTA's presence beside it is
+     * the assertion that carries the rule.
+     */
+    const html = render({
+      lifecycle: lifecycle({ unresolvedWarning: "2 games have no result." }),
+    });
+    expect(html).toContain('data-testid="pickem-unresolved-warning"');
+    expect(html).toContain("2 games have no result.");
+    expect(html).toContain('data-testid="game-finalize"');
+  });
+
+  it("says nothing when every contest has a result", () => {
+    expect(render({ lifecycle: lifecycle() })).not.toContain("pickem-unresolved-warning");
+  });
+
+  it("does not warn where there is nothing to warn ABOUT — after the lock", () => {
+    // The warning is about a decision the runner is ABOUT to make. On a
+    // finalized game it is a note about the past, printed over a button that is
+    // no longer there.
+    const html = render({
+      lifecycle: lifecycle({
+        status: "complete",
+        correctionsOpen: false,
+        unresolvedWarning: "2 games have no result.",
+      }),
+    });
+    expect(html).not.toContain("pickem-unresolved-warning");
+    expect(html).toContain('data-testid="game-correct"');
+  });
+
+  it("calls the correction 'a result', because pick'em has no scores", () => {
+    const html = render({
+      lifecycle: lifecycle({ status: "complete", correctionsOpen: false }),
+    });
+    expect(html).toContain("Correct a result");
+    expect(html).not.toContain("Correct a score");
+  });
+
+  it("offers the RE-LOCK while corrections are open", () => {
+    const html = render({
+      lifecycle: lifecycle({ status: "complete", correctionsOpen: true }),
+    });
+    expect(html).toContain('data-testid="game-relock"');
+  });
+
+  it("renders NO block at all for a member — absent, never disabled", () => {
+    // The view passes no `lifecycle` at all where there is no finalize to offer.
+    const html = render();
+    expect(html).not.toContain('data-testid="game-finalize"');
+    expect(html).not.toContain('data-testid="game-correct"');
+    // ...and the results themselves are still on the screen, so this is not
+    // passing on an empty render.
+    expect(html).toContain('data-testid="pickem-run"');
+  });
+
+  it("a LOCKED game shows no outcome buttons — the CTA is the only way in", () => {
+    /**
+     * The view ANDs `canEdit` with the lock before this prop, so a locked game
+     * arrives here read-only. Asserted at this level because what a person can
+     * TAP is the observable half; `set_pickem_result` refusing is the other.
+     */
+    const locked = render({
+      canEdit: false,
+      lifecycle: lifecycle({ status: "complete", correctionsOpen: false }),
+    });
+    expect(locked).not.toContain(String.raw`data-testid="pickem-run-away"`);
+    expect(locked).not.toContain(String.raw`data-testid="pickem-run-push"`);
+    expect(locked).toContain('data-testid="game-correct"');
+  });
+});

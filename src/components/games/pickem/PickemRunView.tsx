@@ -4,6 +4,8 @@ import { useState, type CSSProperties } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { MultiplierBadge, SpreadBadge, pickemRowSurface } from "./slateRowVisual";
 import { resolvedCount, type SlateResult, type ScoredSlateGame } from "@/lib/pickemScoring";
+import { gameLifecycle, type GameLifecycleInput } from "@/lib/gameLifecycle";
+import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 
 /**
  * Screen E — the runner enters each slate game's outcome as it finishes.
@@ -57,16 +59,44 @@ const RESULT_LABEL: Record<SlateResult, string> = {
   cancelled: "Cancelled — never played",
 };
 
+/**
+ * The finalize / correct / re-lock block, as this surface receives it.
+ *
+ * `GameLifecycleInput` verbatim plus its handlers — the SHARED shape, so pick'em
+ * cannot answer "can this be finalized?" differently from the other four without
+ * changing `gameLifecycle` itself. CLAUDE.md #24 counts eight incidents of a
+ * format that decided it privately.
+ *
+ * Props only, no tRPC: this component stays persistence-agnostic (#7) and the
+ * view above owns the mutations.
+ */
+export interface PickemRunLifecycle extends GameLifecycleInput {
+  finalizePending: boolean;
+  correctPending: boolean;
+  onFinalize: () => void;
+  onCorrect: () => void;
+  /**
+   * What the runner is told before finalizing with contests outstanding, or
+   * null. A WARNING and never a gate — a postponed Tuesday game must not hold
+   * the cup open, and `allComplete` above is the picking window rather than the
+   * results, precisely so this cannot become one.
+   */
+  unresolvedWarning: string | null;
+}
+
 export function PickemRunView({
   slate,
   canEdit,
   busyId,
   ridingOn,
   matchesPending,
+  lifecycle,
   onSetResult,
 }: {
   slate: RunSlateGame[];
   canEdit: boolean;
+  /** Absent on a surface with no finalize to offer (a member's view). */
+  lifecycle?: PickemRunLifecycle;
   /** The slate game currently being written, so only ITS row shows pending. */
   busyId: string | null;
   /**
@@ -205,6 +235,47 @@ export function PickemRunView({
               onSetResult={onSetResult}
             />
           ))}
+        </>
+      )}
+
+      {/* THE END OF THE RUNNER'S JOB, at the end of the list they were working
+          down. Entering the last result and finalizing are one continuous act,
+          and a CTA anywhere else would be a second place to look for it.
+
+          `GameLifecycleActions`, not a private button: the eighth CLAUDE.md #24
+          incident was match rendering its own copy of this markup, agreeing with
+          the shared one only by coincidence of nobody having changed either. */}
+      {lifecycle && (
+        <>
+          {lifecycle.unresolvedWarning && gameLifecycle(lifecycle).canFinalize && (
+            <div
+              data-testid="pickem-unresolved-warning"
+              className="mx-1 mt-2 rounded-xl px-3 py-2.5"
+              style={{
+                background: "var(--color-bt-warning-faint)",
+                border: "1px solid var(--color-bt-warning-border)",
+                fontSize: TYPE_SCALE.caption,
+                lineHeight: 1.45,
+                color: "var(--color-bt-text)",
+              }}
+            >
+              {lifecycle.unresolvedWarning}
+            </div>
+          )}
+          <GameLifecycleActions
+            canEdit={lifecycle.canEdit}
+            status={lifecycle.status}
+            correctionsOpen={lifecycle.correctionsOpen}
+            allComplete={lifecycle.allComplete}
+            finalizePending={lifecycle.finalizePending}
+            correctPending={lifecycle.correctPending}
+            onFinalize={lifecycle.onFinalize}
+            onCorrect={lifecycle.onCorrect}
+            /* "Correct a score" is golf's word for it and pick'em has no
+               scores — the runner corrects a RESULT, which is the word every
+               other control on this screen already uses. */
+            correctLabel="Correct a result"
+          />
         </>
       )}
     </div>

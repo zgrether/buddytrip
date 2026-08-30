@@ -61,6 +61,7 @@ const CTA_BOX: React.CSSProperties = {
 export function GameLifecycleActions({
   finalizeLabel = "Save results",
   finalizePendingLabel = "Saving results…",
+  correctLabel = "Correct a score",
   finalizePending = false,
   correctPending = false,
   onFinalize,
@@ -78,6 +79,14 @@ export function GameLifecycleActions({
   finalizeLabel?: string;
   /** e.g. "Saving results…". */
   finalizePendingLabel?: string;
+  /**
+   * The correction CTA's words. A DEFAULT for the same reason `finalizeLabel` is
+   * one — four golf formats say "Correct a score" and should not each repeat the
+   * literal — but pick'em has no scores: its runner corrects a RESULT, which is
+   * the word every other control on that screen uses. An override that is
+   * visible as a decision beats a fifth copy of a string that is wrong there.
+   */
+  correctLabel?: string;
   finalizePending?: boolean;
   correctPending?: boolean;
   onFinalize: () => void;
@@ -133,7 +142,7 @@ export function GameLifecycleActions({
             fontWeight: 600,
           }}
         >
-          {correctPending ? "Opening…" : "Correct a score"}
+          {correctPending ? "Opening…" : correctLabel}
         </button>
       </div>
     );

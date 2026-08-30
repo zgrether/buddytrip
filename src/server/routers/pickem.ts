@@ -73,7 +73,10 @@ export const pickemRouter = router({
       const { data: game } = await ctx.supabase
         .from("games")
         .select(
-          "id, name, game_type_id, competition_id, status, points_total, points_distribution"
+          // `corrections_open` rides here for `gameLockState` — the finalize CTA
+          // and the read-only-when-locked behaviour both read it, and #769 is
+          // the format that shipped without it and had no way back from a lock.
+          "id, name, game_type_id, competition_id, status, corrections_open, points_total, points_distribution"
         )
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)

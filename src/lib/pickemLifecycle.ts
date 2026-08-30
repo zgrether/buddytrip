@@ -184,7 +184,32 @@ export function deadlineBlocksReopen(clock: PickemClock, now: number = Date.now(
   return deadline != null && now > deadline;
 }
 
-/** The clock phase — what every surface should branch on. */
+/**
+ * The clock phase — what every surface should branch on.
+ *
+ * ── A DIFFERENT AXIS FROM `gameLifecycle`, AND BOTH ARE TRUE AT ONCE ────────
+ *
+ * This one is about PICKS: has the slate been published, and is it still taking
+ * sheets. `gameLifecycle` / `gameLockState` (`src/lib/gameLifecycle.ts`) is about
+ * RESULTS: has the game been finalized, and is it reopened for a correction.
+ *
+ * The normal state of a pick'em game on a Saturday afternoon is *picks locked,
+ * results still open* — this axis at `locked` while the other has not started.
+ * They are also entered by different people at different times: the runner
+ * closes picking before kickoff and finalizes after the last whistle, possibly
+ * days apart.
+ *
+ * So neither derives from the other and neither may be folded in. The one place
+ * they MEET is the finalize gate — `computePickemResults` refuses while picks are
+ * open, and the pick'em view feeds `picksRevealed` in as `gameLifecycle`'s
+ * `allComplete` input, because "may this be finalized yet" is the question that
+ * input exists to answer. That is one function reading both, which is the right
+ * shape; a single combined enum would be the wrong one.
+ *
+ * CLAUDE.md #25 is the standing warning: the go-live triple was described as
+ * moving together for months, was wrong, and was wrong in the confident
+ * direction. Two axes that usually advance in the same order are not one axis.
+ */
 export function pickemPhase(clock: PickemClock, now: number = Date.now()): PickemPhase {
   if (!picksEverOpened(clock)) return "building";
   return picksOpen(clock, now) ? "picks_open" : "locked";
