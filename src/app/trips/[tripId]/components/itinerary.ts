@@ -385,6 +385,11 @@ export function summarizeLodging(
 
 // ── Sorting ───────────────────────────────────────────────────────────────
 
+// Tie-break only (see compareEvents step 3) — NOT a blanket bucket order.
+// Used when two events land at the same instant (including "both untimed"),
+// so same-time events still cluster sensibly: a stay's checkout closes
+// before that day's arrivals/departures are shown, which come before that
+// day's check-in, which comes before the agenda body.
 const KIND_PRIORITY: Record<ItineraryEvent["kind"], number> = {
   "lodging-checkout": 0,
   arrival: 1,
@@ -397,25 +402,37 @@ function compareEvents(a: ItineraryEvent, b: ItineraryEvent): number {
   // 1. Day is the only GLOBAL sort key.
   if (a.date !== b.date) return a.date < b.date ? -1 : 1;
 
-  // 2. Within a day, group by kind: lodging-checkout, arrival, lodging-checkin,
-  //    then schedule. Arrivals + check-in surface above the day's agenda body;
-  //    check-out closes the prior stay first.
-  const kindDelta = KIND_PRIORITY[a.kind] - KIND_PRIORITY[b.kind];
-  if (kindDelta !== 0) return kindDelta;
+  const bothSchedule = a.kind === "schedule" && b.kind === "schedule";
 
-  // 3a. Schedule items follow Agenda's drag order (`sort_order`). `time` is
-  //     DISPLAY-ONLY and never reorders them — a 6pm item stays below a 7pm
-  //     item if that's how the owner arranged them. Untimed-but-dated items
-  //     keep their sort_order slot too (they are NOT pushed to the end).
-  if (a.kind === "schedule" && b.kind === "schedule") {
-    return a.sortOrder - b.sortOrder;
-  }
-
-  // 3b. Arrivals / lodging within the same kind order by time (untimed last).
-  if (a.time !== b.time) {
+  // 2. Real time governs ordering whenever it can — a 1pm tee time sits
+  //    ahead of a 4pm check-in regardless of kind, and a checkout at 7am
+  //    sits ahead of a schedule item at 9am. Untimed events sort after every
+  //    timed event on the same day.
+  //
+  //    EXCEPT for two schedule items compared against each other: those
+  //    follow Agenda's drag order (`sort_order`) and time is DISPLAY-ONLY —
+  //    a 6pm item stays below a 7pm item if that's how the owner arranged
+  //    them, timed or not (see step 4). This carve-out is deliberate and the
+  //    reason it's scoped to `bothSchedule`: a lone schedule item still needs
+  //    to slot chronologically against lodging/travel, only its position
+  //    relative to OTHER schedule items is drag-order-fixed.
+  if (!bothSchedule && a.time !== b.time) {
     if (a.time === null) return 1;
     if (b.time === null) return -1;
     return a.time < b.time ? -1 : 1;
+  }
+
+  // 3. Tie (same time, both untimed, or a same-kind schedule pair where time
+  //    was deliberately skipped above) — fall back to kind priority.
+  const kindDelta = KIND_PRIORITY[a.kind] - KIND_PRIORITY[b.kind];
+  if (kindDelta !== 0) return kindDelta;
+
+  // 4. Same kind (schedule vs schedule, having skipped step 2, or e.g. two
+  //    same-time check-ins) — schedule items resolve by sort_order; nothing
+  //    further to tiebreak on for any other same-kind pair. Untimed-but-dated
+  //    schedule items keep their sort_order slot too (not pushed to the end).
+  if (bothSchedule) {
+    return a.sortOrder - b.sortOrder;
   }
   return 0;
 }

@@ -457,6 +457,135 @@ describe("buildItinerary — sorting", () => {
     // has no time — untimed agenda items sit in their drag slot, not the end.
     expect(events.map((e) => e.id)).toEqual(["s_anytime", "s_timed"]);
   });
+
+  // Regression: lodging/travel used to sort by a fixed kind-priority ahead of
+  // EVERY schedule item, ignoring the actual clock time on either side — a
+  // 1:00 PM tee time rendered below a 4:00 PM check-in, and a 7:40 AM tee
+  // time rendered below a 10:00 AM check-out. Kind priority is now a
+  // same-instant tiebreak only (see compareEvents); real time governs
+  // whenever a schedule item is compared against anything that ISN'T
+  // another schedule item.
+  it("sorts a schedule item ahead of a same-day check-in with a later time", () => {
+    const events = buildItinerary({
+      scheduleItems: [
+        scheduleItem({ id: "golf", title: "Perdido Bay Golf Course", scheduled_time: "13:00" }),
+      ],
+      logisticsItems: [
+        lodgingItem({
+          id: "dope-house",
+          title: "Dope House",
+          check_in_date: "2026-06-15",
+          check_in_time: "16:00",
+          check_out_date: null,
+        }),
+      ],
+      members: [],
+    });
+    expect(events.map((e) => e.kind)).toEqual(["schedule", "lodging-checkin"]);
+  });
+
+  it("sorts a schedule item ahead of a same-day check-out with a later time", () => {
+    const events = buildItinerary({
+      scheduleItems: [
+        scheduleItem({ id: "golf", title: "Peninsula Golf & Racquet Club", scheduled_time: "07:40" }),
+      ],
+      logisticsItems: [
+        lodgingItem({
+          id: "dope-house",
+          title: "Dope House",
+          check_in_date: null,
+          check_out_date: "2026-06-15",
+          check_out_time: "10:00",
+        }),
+      ],
+      members: [],
+    });
+    expect(events.map((e) => e.kind)).toEqual(["schedule", "lodging-checkout"]);
+  });
+
+  it("still sorts a check-in ahead of a same-day schedule item with a later time", () => {
+    // Not just "schedule always wins" — the earlier clock time wins, whichever
+    // kind it belongs to.
+    const events = buildItinerary({
+      scheduleItems: [
+        scheduleItem({ id: "dinner", scheduled_time: "19:00" }),
+      ],
+      logisticsItems: [
+        lodgingItem({
+          id: "l1",
+          check_in_date: "2026-06-15",
+          check_in_time: "16:00",
+          check_out_date: null,
+        }),
+      ],
+      members: [],
+    });
+    expect(events.map((e) => e.kind)).toEqual(["lodging-checkin", "schedule"]);
+  });
+
+  it("sorts a departure ahead of a same-day schedule item with a later time", () => {
+    const events = buildItinerary({
+      scheduleItems: [
+        scheduleItem({ id: "golf", scheduled_time: "09:00" }),
+      ],
+      logisticsItems: [],
+      members: [
+        member({
+          memberId: "u1",
+          flight_arrival_time: null, // suppress this member's default arrival — only the departure matters here
+          departure_mode: "driving",
+          departure_time: "2026-06-15T06:00:00",
+        }),
+      ],
+    });
+    expect(events.map((e) => e.kind)).toEqual(["departure", "schedule"]);
+  });
+
+  it("still keeps an untimed schedule item after a timed check-in on the same day", () => {
+    // The drag-order carve-out is scoped to schedule-vs-schedule pairs — an
+    // untimed schedule item has no clock time to compare, so it falls through
+    // to the kind-priority tiebreak same as before, landing after the timed
+    // check-in rather than fighting it for a slot it has no time to claim.
+    const events = buildItinerary({
+      scheduleItems: [
+        scheduleItem({ id: "s_anytime", scheduled_time: null }),
+      ],
+      logisticsItems: [
+        lodgingItem({
+          id: "l1",
+          check_in_date: "2026-06-15",
+          check_in_time: "16:00",
+          check_out_date: null,
+        }),
+      ],
+      members: [],
+    });
+    expect(events.map((e) => e.kind)).toEqual(["lodging-checkin", "schedule"]);
+  });
+
+  it("two schedule items never reorder by time relative to EACH OTHER, even across a lodging item's time", () => {
+    // The drag-order carve-out only applies when BOTH sides are schedule —
+    // sandwiching a timed lodging item between them must not break that.
+    const events = buildItinerary({
+      scheduleItems: [
+        scheduleItem({ id: "s_early", scheduled_time: "09:00", sort_order: 5 }),
+        scheduleItem({ id: "s_late", scheduled_time: "18:00", sort_order: 1 }),
+      ],
+      logisticsItems: [
+        lodgingItem({
+          id: "l1",
+          check_in_date: "2026-06-15",
+          check_in_time: "12:00",
+          check_out_date: null,
+        }),
+      ],
+      members: [],
+    });
+    // s_late (12:00 < ... ) sorts by TIME against the check-in, s_early does
+    // too — but relative to each other they must stay in drag order.
+    const order = events.map((e) => e.id);
+    expect(order.indexOf("s_late")).toBeLessThan(order.indexOf("s_early"));
+  });
 });
 
 // ── groupByDay / bucketDays ───────────────────────────────────────────────
