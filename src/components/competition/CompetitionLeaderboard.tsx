@@ -133,13 +133,18 @@ interface Props {
   /** Editor affordances on the board (the setup guide was retired — the board is
    *  the home now). Crew (non-editors) get none of these. */
   canEdit?: boolean;
+  /** Trip Owner only (not Organizer, not a delegate) — gates the "who did I
+   *  hand this off to" chip (§10). Delegating is the Owner's call, so they're
+   *  the one who needs the reminder; nobody else gets a roster of who's
+   *  running everyone else's games. */
+  isOwner?: boolean;
   onAddGame?: () => void;
   /** Tap a team name on the hero/list → opens Rosters focused on that team's
    *  identity editor (captain-scoped; routed by the face). Member-visible. */
   onEditTeam?: (teamId: string) => void;
 }
 
-export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline, onSettings, scoringModel = "match_play", canEdit = false, onAddGame, onEditTeam }: Props) {
+export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline, onSettings, scoringModel = "match_play", canEdit = false, isOwner = false, onAddGame, onEditTeam }: Props) {
   // Live standings: migration 096's trigger broadcasts on every score /
   // lifecycle write and this invalidates within a tick. LEADERBOARD_QUERY's
   // interval is now only the dead-socket backstop behind it (5 min), not the
@@ -153,10 +158,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 
   const data = lb as LeaderboardData | undefined;
 
-  // Games THIS user is running (§10) — an explicit delegate grant, OR (for the
-  // Owner) any game nobody has been explicitly handed (DelegatePicker: "Null =
-  // the owner") — marked on the same normal board everyone sees (no filtered
-  // view). Empty for a plain member with no grant, so the badge never shows.
+  // Games THIS user delegates (§10) — marked on the same normal board everyone
+  // sees (no filtered view). Empty for non-delegates (including the Owner on
+  // their own, undelegated games — the marker means "I'm personally running
+  // this," not "no one else is"), so the badge never shows for them either.
   const { data: myDelegateIds = [] } = trpc.games.myDelegateGameIds.useQuery(
     { tripId },
     { ...STRUCTURE_QUERY, enabled: !!tripId }
@@ -186,6 +191,44 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
       teamColor,
     };
   }, [me, assignments, data?.teams]);
+
+  // The Owner's "who did I hand this off to" chip (§10) — every explicit
+  // delegate grant across the trip, resolved to a real identity. Owner-only:
+  // fetched (and rendered) only when isOwner, since nobody else gets a roster
+  // of who's running everyone else's games.
+  const { data: delegateGrants = [] } = trpc.games.delegatesByTrip.useQuery(
+    { tripId },
+    { ...STRUCTURE_QUERY, enabled: isOwner && !!tripId }
+  );
+  const { data: members = [] } = trpc.tripMembers.list.useQuery(
+    { tripId },
+    { enabled: isOwner && !!tripId }
+  );
+  const delegateOfByGame = useMemo(() => {
+    if (!isOwner) return new Map<string, { name: string; avatarIcon: string | null; teamColor: string | null }>();
+    const memberById = new Map(
+      (members as { memberId: string; displayName: string; user?: { avatar_icon?: string | null } | null }[]).map(
+        (m) => [m.memberId, m]
+      )
+    );
+    const colorByTeam = new Map((data?.teams ?? []).map((t) => [t.id, t.color]));
+    const colorByUser = new Map<string, string>();
+    for (const a of assignments as { user_id: string; team_id: string }[]) {
+      const c = colorByTeam.get(a.team_id);
+      if (c) colorByUser.set(a.user_id, c);
+    }
+    const m = new Map<string, { name: string; avatarIcon: string | null; teamColor: string | null }>();
+    for (const grant of delegateGrants as { gameId: string; userId: string }[]) {
+      const member = memberById.get(grant.userId);
+      if (!member) continue; // e.g. the delegate has since left the trip
+      m.set(grant.gameId, {
+        name: member.displayName,
+        avatarIcon: member.user?.avatar_icon ?? null,
+        teamColor: colorByUser.get(grant.userId) ?? null,
+      });
+    }
+    return m;
+  }, [isOwner, delegateGrants, members, assignments, data?.teams]);
 
   const liveGames = useMemo(
     () => data?.games ?? [],
@@ -403,6 +446,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
+        delegateOfByGame={delegateOfByGame}
         onPrefetch={prefetchGame}
         canEdit={canEdit}
         onAddGame={onAddGame}
@@ -416,7 +460,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 function GamesSection({
-  games, competitionId, teams, cellsByGame, projections, scoringModel, tripId, mineSet, viewer, onPrefetch, canEdit, onAddGame,
+  games, competitionId, teams, cellsByGame, projections, scoringModel, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame,
 }: {
   games: LBGame[];
   competitionId: string;
@@ -427,6 +471,9 @@ function GamesSection({
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
+  /** The Owner's "who did I hand this off to" chip (§10) — empty for anyone
+   *  who isn't the Owner (see CompetitionLeaderboard). */
+  delegateOfByGame: Map<string, { name: string; avatarIcon: string | null; teamColor: string | null }>;
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
   onAddGame?: () => void;
@@ -584,6 +631,7 @@ function GamesSection({
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
+        delegateOfByGame={delegateOfByGame}
         onPrefetch={onPrefetch}
         canEdit={canEdit}
         reorderMode={reorderMode && canReorder}
@@ -718,6 +766,7 @@ function SessionBreakdown({
   tripId,
   mineSet,
   viewer,
+  delegateOfByGame,
   onPrefetch,
   canEdit,
   reorderMode,
@@ -731,6 +780,9 @@ function SessionBreakdown({
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
+  /** The Owner's "who did I hand this off to" chip (§10) — empty for anyone
+   *  who isn't the Owner (see CompetitionLeaderboard). */
+  delegateOfByGame: Map<string, { name: string; avatarIcon: string | null; teamColor: string | null }>;
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
   reorderMode: boolean;
@@ -776,11 +828,12 @@ function SessionBreakdown({
           viewerName={viewer.name}
           viewerAvatarIcon={viewer.avatarIcon}
           viewerTeamColor={viewer.teamColor}
+          delegateOf={delegateOfByGame.get(game.id) ?? null}
           onPrefetch={onPrefetch}
         />
       );
     },
-    [teams, cellsByGame, scoringModel, tripId, projections, mineSet, canEdit, viewer, onPrefetch]
+    [teams, cellsByGame, scoringModel, tripId, projections, mineSet, canEdit, viewer, delegateOfByGame, onPrefetch]
   );
 
   // Group games by board section (single source: sectionOf) — every game lands

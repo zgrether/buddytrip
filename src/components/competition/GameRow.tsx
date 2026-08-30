@@ -185,6 +185,7 @@ export function GameRow({
   viewerName,
   viewerAvatarIcon,
   viewerTeamColor,
+  delegateOf,
   onPrefetch,
 }: {
   game: LBGame;
@@ -209,6 +210,17 @@ export function GameRow({
   viewerName?: string | null;
   viewerAvatarIcon?: string | null;
   viewerTeamColor?: string | null;
+  /**
+   * The Owner's "who did I hand this to" chip — the person this game is
+   * EXPLICITLY delegated to, when that's someone other than the viewer.
+   * Owner-only (only the Owner grants delegates from the picker, and they're
+   * the one who needs the reminder — a plain member doesn't get a roster of
+   * who's running everyone else's games, by design, §10). Never set when
+   * `mine` is true — that's the self case, rendered from `viewerName` et al.
+   * instead — and never set for the Owner's own, undelegated games: running a
+   * game by default isn't something to mark.
+   */
+  delegateOf?: { name: string; avatarIcon: string | null; teamColor: string | null } | null;
   onPrefetch: (gameId: string) => void;
 }) {
   // Deep-link to SETTINGS when the viewer can edit this game (Owner/Organizer OR
@@ -261,6 +273,7 @@ export function GameRow({
   const showScorecard = isGolfFormat(game.gameTypeId) && !isFinal && section !== "on-tap";
   const scorecardOpens = showScorecard && game.hasCourse === true && !!href;
   const showDelegate = mine && !isFinal;
+  const showDelegateOf = !mine && !!delegateOf && !isFinal;
   // A row is tappable when it has a route (golf OR the non-golf manual page) —
   // gates the setting-up CTA subtitle (an inert, routeless row gets no "tap to…").
   const tappable = !!href;
@@ -392,6 +405,19 @@ export function GameRow({
               name={viewerName || "You"}
               avatarIcon={viewerAvatarIcon ?? null}
               teamColor={viewerTeamColor ?? null}
+              sizePx={20}
+              className="shrink-0"
+            />
+          )}
+          {showDelegateOf && (
+            // The Owner-only "who did I hand this to" chip — the actual
+            // delegate's avatar, not the viewer's own. Same primitive, same
+            // team-color-or-neutral treatment as the self case above; the only
+            // difference is WHOSE identity it renders.
+            <Avatar
+              name={delegateOf!.name}
+              avatarIcon={delegateOf!.avatarIcon}
+              teamColor={delegateOf!.teamColor}
               sizePx={20}
               className="shrink-0"
             />
