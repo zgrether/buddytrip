@@ -94,12 +94,28 @@ export const teamAssignmentsRouter = router({
         user_id: string;
         team_id: string;
         sort_order?: number;
+        team_visible_from?: string;
       } = {
         competition_id: input.competitionId,
         user_id: input.userId,
         team_id: input.teamId,
       };
       if (!isSameTeam) {
+        // Team chat's history floor (migration 172). Stamped on the SAME
+        // condition as sort_order and for the same reason: a genuine ADD or a
+        // MOVE puts this person into a room they were not in, and a same-team
+        // re-assign must not touch it — restamping on a reorder or a captain
+        // flip would silently wipe their history in a room they never left.
+        //
+        // Set on the ADD too, not only the MOVE: a new team member should no
+        // more see the banter from before they joined than a new trip member
+        // sees Crew's, which is the rule `chat_visible_from` already encodes.
+        //
+        // NOT `assigned_at`, which this payload deliberately still omits — it
+        // is never refreshed on the upsert's UPDATE branch, so it means "first
+        // assigned to this COMPETITION" and would hand a mover all of the new
+        // team's history. Two columns, two meanings; see migration 172.
+        payload.team_visible_from = new Date().toISOString();
         const { data: maxRow } = await ctx.supabase
           .from("team_assignments")
           .select("sort_order")

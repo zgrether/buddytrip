@@ -49,12 +49,30 @@ describe("canSeePlanningSegment", () => {
 });
 
 describe("visibleChatSegments", () => {
-  it("plain member / no-organizer trip: Crew and News only", () => {
-    expect(visibleChatSegments(false)).toEqual(["crew", "news"]);
+  const access = (canSeePlanning: boolean, hasTeam: boolean) => ({ canSeePlanning, hasTeam });
+
+  it("plain member / no-organizer trip, no team: Crew and News only", () => {
+    expect(visibleChatSegments(access(false, false))).toEqual(["crew", "news"]);
   });
 
-  it("organizer or owner on a trip with organizers: all three, Planning in the middle", () => {
-    expect(visibleChatSegments(true)).toEqual(["crew", "planning", "news"]);
+  it("organizer or owner on a trip with organizers, no team: Planning in the middle", () => {
+    expect(visibleChatSegments(access(true, false))).toEqual(["crew", "planning", "news"]);
+  });
+
+  it("a plain member ON a team gets Team, and no Planning", () => {
+    // The decisive case for "no Team tab for someone on no team": the ONLY
+    // difference from the first case is hasTeam, so a build that keyed the Team
+    // tab off anything else (role, competition existence) fails here.
+    expect(visibleChatSegments(access(false, true))).toEqual(["crew", "team", "news"]);
+  });
+
+  it("all four, in order: Crew · Team · Organizers · News", () => {
+    expect(visibleChatSegments(access(true, true))).toEqual([
+      "crew",
+      "team",
+      "planning",
+      "news",
+    ]);
   });
 });
 
@@ -65,13 +83,27 @@ describe("default segment", () => {
 });
 
 describe("resolveActiveChatSegment", () => {
+  const access = (canSeePlanning: boolean, hasTeam: boolean) => ({ canSeePlanning, hasTeam });
+
   it("keeps the current selection when it's still visible", () => {
-    expect(resolveActiveChatSegment("planning", true)).toBe("planning");
-    expect(resolveActiveChatSegment("news", false)).toBe("news");
-    expect(resolveActiveChatSegment("crew", false)).toBe("crew");
+    expect(resolveActiveChatSegment("planning", access(true, false))).toBe("planning");
+    expect(resolveActiveChatSegment("news", access(false, false))).toBe("news");
+    expect(resolveActiveChatSegment("crew", access(false, false))).toBe("crew");
+    expect(resolveActiveChatSegment("team", access(false, true))).toBe("team");
   });
 
   it("falls back to Crew when Planning was selected but access is lost (demotion)", () => {
-    expect(resolveActiveChatSegment("planning", false)).toBe("crew");
+    expect(resolveActiveChatSegment("planning", access(false, false))).toBe("crew");
+  });
+
+  /**
+   * The segment is remembered for the SESSION and chat is a trip-scoped
+   * overlay, so this is not an edge case: open chat on a trip where you have a
+   * team, then open it on one where you do not, and without this the bar would
+   * highlight a Team tab it is not rendering.
+   */
+  it("falls back to Crew when Team was selected but there is no team", () => {
+    expect(resolveActiveChatSegment("team", access(false, false))).toBe("crew");
+    expect(resolveActiveChatSegment("team", access(true, false))).toBe("crew");
   });
 });

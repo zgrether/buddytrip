@@ -4,6 +4,8 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { notifyChatMessage } from "../lib/chatNotify";
+import { viewerTeamForTrip } from "../lib/viewerTeam";
+import { ChatRoomInput, toChatRoom, chatRoomReadRow, type ChatRoom } from "@/lib/chatRoom";
 import type { TRPCContext, TripRoleString } from "../trpc";
 
 /**
@@ -100,12 +102,73 @@ export async function postSystemMessage(
  * the combined Chat tab / TopNav badges) run the SAME query — they can't
  * disagree.
  */
+/**
+ * Refuse a room the caller cannot reach — and SAY SO rather than returning an
+ * empty one.
+ *
+ * ── Why this throws instead of leaning on RLS ─────────────────────────────
+ *
+ * The team arm of `messages_select` already refuses a team the caller is not
+ * on, so a non-member's `list` came back as `[]` and rendered as a chat nobody
+ * had posted in. An empty team chat and a forbidden one are the SAME PIXELS,
+ * which is CLAUDE.md's empty-is-not-unknown shape: the two states differ in
+ * what the reader can do about them, so the screen has to separate them and the
+ * check has to distinguish them before it can.
+ *
+ * `planning` already threw for exactly this reason. `team` now matches it.
+ *
+ * The refusal names the room, not the mechanism, per CLAUDE.md's rule that a
+ * refusal must name an action the reader can take — "you are not on this team"
+ * is checkable by the reader; "row-level security refused the read" is not.
+ *
+ * ── This is a SECOND gate, not the only one ───────────────────────────────
+ *
+ * RLS remains the enforcement. This is a message. It matters that it is not
+ * load-bearing: `chat_reads`'s own policy checks only `user_id = auth.uid()`
+ * AND `is_trip_member(trip_id)` — it has no team dimension and cannot get one
+ * without reaching into `team_assignments` — so for the READ-STATE writes
+ * (`markRead` / `markViewing`) this check IS the only thing stopping a member
+ * writing a read row for a team they are not on. Harmless data, but it would
+ * be a row nothing ever reads back, and a person's read state is not somewhere
+ * to leave junk that looks meaningful.
+ */
+async function requireRoomAccess(
+  ctx: TRPCContext & { tripId: string; tripRole: TripRoleString },
+  room: ChatRoom
+): Promise<{ teamVisibleFrom: string | null } | null> {
+  if (room.kind === "planning") {
+    if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Organizer") {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Organizers chat is owner/organizer only.",
+      });
+    }
+    return null;
+  }
+
+  if (room.kind === "team") {
+    const mine = await viewerTeamForTrip(ctx.supabase, ctx.tripId, ctx.user!.id);
+    if (!mine || mine.teamId !== room.teamId) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        // Names the condition the reader can check. Deliberately identical for
+        // "on no team" and "on a different team": telling someone which other
+        // team they are not on is information about a room they cannot read.
+        message: "Team chat is for that team's members only.",
+      });
+    }
+    return { teamVisibleFrom: mine.teamVisibleFrom };
+  }
+
+  return null;
+}
+
 async function countUnreadByChannel(
   ctx: TRPCContext & { tripId: string; tripRole: TripRoleString }
-): Promise<{ crew: number; planning: number }> {
+): Promise<{ crew: number; planning: number; team: number }> {
   const canSeeOrganizers = ctx.tripRole === "Owner" || ctx.tripRole === "Organizer";
 
-  const [{ data: memberRow }, { data: readRows }] = await Promise.all([
+  const [{ data: memberRow }, { data: readRows }, myTeam] = await Promise.all([
     ctx.supabase
       .from("trip_members")
       .select("chat_visible_from, planning_visible_from")
@@ -114,9 +177,10 @@ async function countUnreadByChannel(
       .maybeSingle(),
     ctx.supabase
       .from("chat_reads")
-      .select("visibility, last_read_at")
+      .select("visibility, team_id, last_read_at")
       .eq("trip_id", ctx.tripId)
       .eq("user_id", ctx.user!.id),
+    viewerTeamForTrip(ctx.supabase, ctx.tripId, ctx.user!.id),
   ]);
 
   const floors = (memberRow ?? {}) as {
@@ -127,9 +191,19 @@ async function countUnreadByChannel(
     crew: null,
     planning: null,
   };
-  for (const row of (readRows ?? []) as { visibility: string; last_read_at: string }[]) {
+  // The team read mark is looked up by TEAM, not just by visibility: a person
+  // who changed teams still has the old team's row, and counting against it
+  // would measure the wrong room.
+  let teamReadMark: string | null = null;
+  for (const row of (readRows ?? []) as {
+    visibility: string;
+    team_id: string | null;
+    last_read_at: string;
+  }[]) {
     if (row.visibility === "crew" || row.visibility === "planning") {
       readMarks[row.visibility] = row.last_read_at;
+    } else if (row.visibility === "team" && myTeam && row.team_id === myTeam.teamId) {
+      teamReadMark = row.last_read_at;
     }
   }
 
@@ -152,21 +226,47 @@ async function countUnreadByChannel(
     return query;
   };
 
-  const [crewResult, planningResult] = await Promise.all([
+  // The team room counts on the SAME rules — others' non-system messages newer
+  // than my mark, floored at when I joined THIS team — but filtered by
+  // channel + team_id rather than by visibility, because a team message is
+  // `channel='team'` with `visibility='crew'` and filtering on visibility here
+  // would count the Crew room a second time.
+  const countTeam = (teamId: string, floor: string | null) => {
+    let query = ctx.supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("trip_id", ctx.tripId)
+      .eq("channel", "team")
+      .eq("team_id", teamId)
+      .neq("message_type", "system")
+      .neq("user_id", ctx.user!.id);
+    if (floor) query = query.gte("created_at", floor);
+    if (teamReadMark) query = query.gt("created_at", teamReadMark);
+    return query;
+  };
+
+  const [crewResult, planningResult, teamResult] = await Promise.all([
     countChannel("crew", floors.chat_visible_from),
     canSeeOrganizers
       ? countChannel("planning", floors.planning_visible_from)
       : Promise.resolve({ count: 0, error: null }),
+    myTeam
+      ? countTeam(myTeam.teamId, myTeam.teamVisibleFrom)
+      : Promise.resolve({ count: 0, error: null }),
   ]);
 
-  if (crewResult.error || planningResult.error) {
+  if (crewResult.error || planningResult.error || teamResult.error) {
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
       message: "Failed to count unread messages",
     });
   }
 
-  return { crew: crewResult.count ?? 0, planning: planningResult.count ?? 0 };
+  return {
+    crew: crewResult.count ?? 0,
+    planning: planningResult.count ?? 0,
+    team: teamResult.count ?? 0,
+  };
 }
 
 export const messagesRouter = router({
@@ -188,23 +288,37 @@ export const messagesRouter = router({
     )
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      // Organizers chat is Owner/Organizer only. Throw here for a clean
-      // error rather than relying on RLS to silently return nothing.
-      if (input.visibility === "planning") {
-        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Organizer") {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Organizers chat is owner/organizer only.",
-          });
-        }
+      if (input.channel === "team" && !input.teamId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "teamId is required for team channel",
+        });
       }
 
-      // Visibility floor: NULL = sees all history; a timestamp = only
-      // messages from that point forward (set when added/promoted).
-      const floorCol =
-        input.visibility === "crew" ? "chat_visible_from" : "planning_visible_from";
+      // Throw here for a clean error rather than relying on RLS to silently
+      // return nothing — for BOTH restricted rooms. See `requireRoomAccess`:
+      // an empty room and a forbidden one are otherwise the same pixels.
+      const room: ChatRoom =
+        input.channel === "team"
+          ? { kind: "team", teamId: input.teamId! }
+          : { kind: input.visibility };
+      const access = await requireRoomAccess(ctx, room);
+
+      // History floor: NULL = sees all history; a timestamp = only messages
+      // from that point forward.
+      //
+      // Three floors, three columns, and they are NOT interchangeable — the
+      // trip ones are per-member-per-TRIP (set when added / promoted) while the
+      // team one is per-assignment (set when this person joined THIS team). A
+      // team floor cannot be read off `trip_members` at all, which is why
+      // `requireRoomAccess` hands it back rather than this branch re-deriving
+      // it: one lookup answers "may you" and "from when".
       let visibilityFloor: string | null = null;
-      if (input.channel === "trip") {
+      if (input.channel === "team") {
+        visibilityFloor = access?.teamVisibleFrom ?? null;
+      } else {
+        const floorCol =
+          input.visibility === "crew" ? "chat_visible_from" : "planning_visible_from";
         const { data: memberRow } = await ctx.supabase
           .from("trip_members")
           .select(floorCol)
@@ -229,19 +343,16 @@ export const messagesRouter = router({
       // visibility only partitions the trip channel; team chat is flat.
       if (input.channel === "trip") {
         query = query.eq("visibility", input.visibility);
-        if (visibilityFloor) {
-          query = query.gte("created_at", visibilityFloor);
-        }
+      } else {
+        query = query.eq("team_id", input.teamId!);
       }
 
-      if (input.channel === "team") {
-        if (!input.teamId) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "teamId is required for team channel",
-          });
-        }
-        query = query.eq("team_id", input.teamId);
+      // The floor applies to BOTH channels. It used to sit inside the trip
+      // branch, which was correct while team chat had no floor to apply; it is
+      // hoisted rather than duplicated so a third room cannot be added with the
+      // gate silently omitted.
+      if (visibilityFloor) {
+        query = query.gte("created_at", visibilityFloor);
       }
 
       if (input.cursor) {
@@ -286,7 +397,7 @@ export const messagesRouter = router({
     .use(requireTripMember)
     .query(async ({ ctx }): Promise<number> => {
       const byChannel = await countUnreadByChannel(ctx);
-      return byChannel.crew + byChannel.planning;
+      return byChannel.crew + byChannel.planning + byChannel.team;
     }),
 
   // -----------------------------------------------------------------------
@@ -299,11 +410,14 @@ export const messagesRouter = router({
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx }) => {
-      const { data, error } = await ctx.supabase
-        .from("chat_reads")
-        .select("visibility, last_read_at")
-        .eq("trip_id", ctx.tripId!)
-        .eq("user_id", ctx.user!.id);
+      const [{ data, error }, myTeam] = await Promise.all([
+        ctx.supabase
+          .from("chat_reads")
+          .select("visibility, team_id, last_read_at")
+          .eq("trip_id", ctx.tripId!)
+          .eq("user_id", ctx.user!.id),
+        viewerTeamForTrip(ctx.supabase, ctx.tripId!, ctx.user!.id),
+      ]);
 
       if (error) {
         throw new TRPCError({
@@ -312,39 +426,49 @@ export const messagesRouter = router({
         });
       }
 
-      const out: { crew: string | null; planning: string | null } = {
-        crew: null,
-        planning: null,
-      };
+      const out: {
+        crew: string | null;
+        planning: string | null;
+        team: string | null;
+      } = { crew: null, planning: null, team: null };
+
       for (const row of (data ?? []) as {
         visibility: string;
+        team_id: string | null;
         last_read_at: string;
       }[]) {
         if (row.visibility === "crew" || row.visibility === "planning") {
           out[row.visibility] = row.last_read_at;
+        } else if (row.visibility === "team" && myTeam && row.team_id === myTeam.teamId) {
+          // Matched by TEAM, not merely by kind: someone who changed teams
+          // still carries the old team's row, and reading it back as "your
+          // team's read position" would hide new messages in the room they are
+          // actually in. Same reason the unread count matches by team.
+          out.team = row.last_read_at;
         }
       }
       return out;
     }),
 
   // -----------------------------------------------------------------------
-  // markRead — record that the caller has seen a channel up to now(). Upserts
-  // one (trip, user, visibility) row. Uses now() server-side (not a client
-  // timestamp) so it's monotonic and a stale device can't roll a read marker
-  // backward. Organizers chat is Owner/Organizer only, mirroring list/send.
+  // markRead — record that the caller has seen a ROOM up to now(). Upserts one
+  // (trip, user, visibility, team_key) row. Uses now() server-side (not a
+  // client timestamp) so it's monotonic and a stale device can't roll a read
+  // marker backward. Organizers is Owner/Organizer only and Team is that team's
+  // members only, mirroring list/send.
+  //
+  // The conflict target gained `team_key` with migration 172. It is a STORED
+  // GENERATED column, so it is named here and never sent — the payload carries
+  // `team_id` and the database derives the key. Naming a generated column as
+  // the conflict target is what lets PostgREST express a rule that is really
+  // over COALESCE(team_id, ''), which its `on_conflict` cannot spell.
   // -----------------------------------------------------------------------
   markRead: authedProcedure
-    .input(z.object({ tripId: z.string(), visibility: Visibility }))
+    .input(z.object({ tripId: z.string() }).and(ChatRoomInput))
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      if (input.visibility === "planning") {
-        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Organizer") {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Organizers chat is owner/organizer only.",
-          });
-        }
-      }
+      const room = toChatRoom(input);
+      await requireRoomAccess(ctx, room);
 
       // Return the DB-stored value (not the JS toISOString form) so callers and
       // readState agree on the exact string representation: Postgres timestamptz
@@ -356,10 +480,10 @@ export const messagesRouter = router({
           {
             trip_id: ctx.tripId!,
             user_id: ctx.user!.id,
-            visibility: input.visibility,
+            ...chatRoomReadRow(room),
             last_read_at: new Date().toISOString(),
           },
-          { onConflict: "trip_id,user_id,visibility" }
+          { onConflict: "trip_id,user_id,visibility,team_key" }
         )
         .select("last_read_at")
         .single();
@@ -408,29 +532,24 @@ export const messagesRouter = router({
    * property worth guarding, and `messages.chatReadsColumns.test.ts` pins it.
    */
   markViewing: authedProcedure
-    .input(z.object({ tripId: z.string(), visibility: Visibility }))
+    .input(z.object({ tripId: z.string() }).and(ChatRoomInput))
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      // Same role gate as `markRead`: Organizers is Owner/Organizer only, and a
-      // non-organizer must not be able to write a viewing mark for a channel
-      // they cannot see.
-      if (input.visibility === "planning") {
-        if (ctx.tripRole !== "Owner" && ctx.tripRole !== "Organizer") {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Organizers chat is owner/organizer only.",
-          });
-        }
-      }
+      // Same gate as `markRead`: a person must not be able to write a viewing
+      // mark for a room they cannot see. It matters more here than it looks —
+      // `viewing_at` SUPPRESSES notifications, so a writable mark for someone
+      // else's room would be a way to quiet a chat you cannot read.
+      const room = toChatRoom(input);
+      await requireRoomAccess(ctx, room);
 
       const { error } = await ctx.supabase.from("chat_reads").upsert(
         {
           trip_id: ctx.tripId!,
           user_id: ctx.user!.id,
-          visibility: input.visibility,
+          ...chatRoomReadRow(room),
           viewing_at: new Date().toISOString(),
         },
-        { onConflict: "trip_id,user_id,visibility" }
+        { onConflict: "trip_id,user_id,visibility,team_key" }
       );
       if (error) {
         throw new TRPCError({
@@ -543,18 +662,26 @@ export const messagesRouter = router({
        * whenever the gate empties the audience, which mid-burst is almost
        * always.
        *
-       * TEAM CHANNEL IS DELIBERATELY NOT NOTIFIED, and the reason is structural
-       * rather than unfinished work: the gate reads `chat_reads`, which is keyed
-       * (trip_id, user_id, visibility) and has NO team dimension (migration 010),
-       * so there is no read state to gate on. Team chat also has no UI — every
-       * caller in the app sends `channel: "trip"`. If team chat is ever built,
-       * it needs read tracking first, and the gate then follows for free.
+       * TEAM CHANNEL IS NOW NOTIFIED TOO, and this comment used to say why it
+       * could not be: "the gate reads `chat_reads`, which is keyed (trip_id,
+       * user_id, visibility) and has NO team dimension (migration 010), so
+       * there is no read state to gate on ... If team chat is ever built, it
+       * needs read tracking first, and the gate then follows for free."
+       *
+       * That was right on both counts, and it is kept rather than deleted
+       * because it is the reason the shape below is so small: migration 172
+       * added the dimension, and the gate did follow for free — `chatNotify`
+       * takes a room, and the two-timestamp verdict at its centre never knew
+       * which channel it was judging in the first place.
        */
-      if (input.channel === "trip") {
+      {
         const row = data as { id: string; created_at: string };
         await notifyChatMessage({
           tripId: ctx.tripId!,
-          visibility: input.visibility,
+          room:
+            input.channel === "team"
+              ? { kind: "team", teamId: input.teamId! }
+              : { kind: input.visibility },
           messageId: row.id,
           messageCreatedAt: row.created_at,
           senderId: ctx.user!.id,

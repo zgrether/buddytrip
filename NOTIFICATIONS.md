@@ -91,7 +91,7 @@ should not have to be re-derived. Wiring them is tracked as its own issue.
 
 ### News must NOT inherit `chat`'s category
 
-When News gets a sender it gets **its own category**. Not `chat`, and not
+News has its **own category** — `news`, wired. Not `chat`, and not
 `planning` — which is where this doc filed `news.create` until Aug 2026, and
 which the shipped UI contradicts: News is a segment of the *chat* surface
 (Crew · Organizers · News).
@@ -149,8 +149,9 @@ disappearance of that row raises the volume budget.
 | `tripMembers.updateTravel` / `updateMemberTravel` | RSVP / travel change | `invites` | **NEVER** (or heavily BATCH) | ~30–60 over trip life; low signal |
 | `tripMembers.updateRole` | Role changed | `invites` | **ELIGIBLE** | rare; notify the affected user |
 | `messages.send` (trip channel: Crew + Organizers) | New chat message | `chat` | **~~BATCH~~ 1:1 — WIRED** | **NOT coalesced.** One push per message per recipient, minus the sender and anyone viewing that channel. The BATCH marking was wrong and is struck rather than deleted — see "The reversal" below for what it cost. |
-| `messages.send` (team channel) | New team-chat message | `chat` | **not wired, structurally** | `chat_reads` has no team dimension, so there is nowhere to record whether a team panel is open; team chat also has no UI. Needs that dimension first. |
-| `news.create` | News posted | **its own category** (NOT `chat`, NOT `planning`) | **ELIGIBLE** | ~1–5/trip. See the News note above — folding it into `chat` mutes it for anyone who mutes the firehose. |
+| `messages.send` (team channel) | New team-chat message | `chat` | **1:1 — WIRED** | Same gate as the trip channel: not your own, not while you are looking. The AUDIENCE differs and is the only part that does — it comes from `team_assignments`, not from trip role, so an Owner not on the team is not in it. Volume is a fraction of Crew's (a team is half a trip, and only its own members). |
+| `news.create` | News posted | **its own category** (NOT `chat`, NOT `planning`) | **1:1 — WIRED** | ~1–5/trip. See the News note above — folding it into `chat` mutes it for anyone who mutes the firehose. Every trip member except the author; no read-state/BATCH gate (see `newsNotify.ts` — News has no `viewing_at`, and the volume that made chat's gate worth building doesn't exist here). |
+| `news.resend` | Owner/Organizer manually re-fires a post's `news` push | same `news` category | **1:1 — WIRED** | The retroactive half: `create`'s notify only fires on the create transition, so a post from before this category existed (or one someone missed) has nothing to re-send it. "Notify everyone" in the post's ⋯ menu. Excludes the post's ORIGINAL author, not the caller. |
 
 ## Open questions for Phase 3 (not blocking Phase 2)
 

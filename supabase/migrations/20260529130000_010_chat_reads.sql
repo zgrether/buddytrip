@@ -3,15 +3,25 @@
 -- Read state used to live only in each browser's localStorage, so it never
 -- followed the account: chat all week on a laptop, then open the trip on a
 -- phone, and every message looked unread because the phone had no local
--- marker. This table moves the per-channel last-read timestamp server-side,
--- keyed by (trip, user, channel), so the unread badge and the "new messages"
--- divider are correct on every device.
+-- marker. This table moves the last-read timestamp server-side so the unread
+-- badge and the "new messages" divider are correct on every device.
+--
+-- CORRECTED BY MIGRATION 172 (comment only — no schema claim in this file
+-- changed, and nothing here was re-applied). This header used to say
+-- "per-channel ... keyed by (trip, user, channel)". It was neither: the column
+-- is `visibility`, and the key had no team dimension at all. That mattered —
+-- `messages.send` stamps team messages visibility='crew', so a team read row
+-- would have collided with the Crew row and reading Team would have marked Crew
+-- read. A file describing a key it did not have is how that stayed invisible.
+-- 172 adds the dimension and re-keys.
 --
 -- Modeled on notification_reads (the existing per-user read-tracking table):
 -- RLS lets a member read/write only their OWN rows. last_read_at is set to
 -- now() each time the viewer opens a channel; unread = messages from others
 -- newer than it. Composite PK gives one row per (trip, user, visibility) and
--- makes the markRead upsert a single conflict-target write.
+-- makes the markRead upsert a single conflict-target write. (172 extends that
+-- PK with `team_key` so team rooms key separately; the upsert stays a single
+-- conflict-target write.)
 --
 -- Idempotent (IF NOT EXISTS, DROP POLICY IF EXISTS + CREATE) so it's safe on a
 -- fresh database and a no-op if re-applied. The trips/users FKs cascade, so a

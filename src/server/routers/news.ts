@@ -12,6 +12,7 @@ import {
   type NewsPost,
   type NewsTeam,
 } from "@/lib/news";
+import { notifyNewsPost } from "../lib/newsNotify";
 import { initialsFor as initialsOf } from "@/lib/initials";
 
 
@@ -353,7 +354,68 @@ export const newsRouter = router({
           message: "Post created but could not be read back",
         });
       }
+
+      // Fire the `news` push AFTER the row is durably written and read back —
+      // never before, and never allowed to affect the response either way.
+      // Awaited (not fired-and-forgotten) so it can't be killed by the
+      // function freezing before it sends; swallows its own errors (see
+      // `notifyNewsPost`), so a push failure never fails the post.
+      await notifyNewsPost({
+        tripId: ctx.tripId!,
+        postId: id,
+        blocks: input.blocks,
+        authorId: ctx.user!.id,
+        trigger: "news_posted",
+      });
+
       return toPost(data as NewsPostRow);
+    }),
+
+  // -----------------------------------------------------------------------
+  // resend — re-fire the `news` push for an EXISTING post, on request.
+  //
+  // For the post that already went out silently before this category was
+  // wired: `create`'s notify only fires on the create TRANSITION, so it does
+  // nothing for a post that predates it. This is the retroactive half —
+  // Owner/Organizer only, same guard as every other post-management action.
+  //
+  // Deliberately NOT rate-limited or logged as an anomaly: it is a real,
+  // named action ("Notify everyone" in the post's ⋯ menu), not a bug someone
+  // is exploiting, and `push_send_log`'s `trigger: 'news_resend'` already
+  // distinguishes it from the original post's own 'news_posted' record.
+  // -----------------------------------------------------------------------
+  resend: authedProcedure
+    .input(z.object({ tripId: z.string(), postId: z.string() }))
+    .use(requireTripRole("Organizer"))
+    .mutation(async ({ ctx, input }): Promise<{ audience: number }> => {
+      const { data, error } = await ctx.supabase
+        .from("news_posts")
+        .select("id, author_id, blocks")
+        .eq("id", input.postId)
+        .eq("trip_id", ctx.tripId!)
+        .maybeSingle();
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to load post: ${error.message}`,
+        });
+      }
+      if (!data) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Post not found" });
+      }
+
+      const row = data as { id: string; author_id: string; blocks: NewsBlock[] };
+      const result = await notifyNewsPost({
+        tripId: ctx.tripId!,
+        postId: row.id,
+        blocks: row.blocks,
+        // The ORIGINAL author is still excluded — a resend addressed to
+        // "everyone" means everyone but whoever already knows they wrote it,
+        // not literally every trip member including them.
+        authorId: row.author_id,
+        trigger: "news_resend",
+      });
+      return { audience: result.audience };
     }),
 
   // -----------------------------------------------------------------------

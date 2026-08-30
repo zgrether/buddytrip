@@ -119,6 +119,7 @@ and needs a reason — not a shrug.
 - `requireTripRole(min)` is **hierarchical**: Owner (3) ≥ Organizer (2) ≥ Member (1). So an Owner satisfies any Organizer-gated action; `requireTripRole("Organizer")` admits Owner **and** Organizer, not Members.
 - **Non-members are fully blocked.** There is no "outsider" / guest read role — `requireTripMember` rejects anyone without a `trip_members` row (`FORBIDDEN`). Access is all-or-nothing membership.
 - The **Organizers chat** is the one place "Organizer" is gated by message visibility (`visibility = 'planning'`) rather than the role check directly — same effect (Owner + Organizer only).
+- **Team chat is the one surface where trip ROLE grants nothing at all.** Access is a `team_assignments` row for that specific team, and the hierarchy above does not apply: an Owner who is not on the team cannot read it, and neither can an Organizer or a game delegate. This is deliberate — a private room the people running the trip can read is not a private room — and it is enforced by `messages_select`'s team arm, which carries **no staff branch**. That arm predates `pickem_picks_select` (migration 001) and is the template to copy for any future no-staff-branch policy; every OTHER policy in this schema carries `has_trip_role(...) OR is_game_delegate(...)` as an unconditional escape hatch and is the wrong one to copy here. Pinned by `teamChatPolicy.rls.test.ts`, which drives PostgREST with real JWTs and was checked against both plausible wrong builds (a staff branch, and a policy that leaks across teams).
 
 ---
 
@@ -445,8 +446,8 @@ is the Owner's"), which read as a principle and competed with the actual one.
 |--------|:-----:|:---------:|:------:|------|
 | Read / send **Crew** chat | ✓ | ✓ | ✓ | `list` / `send` *(visibility `crew`)* |
 | Read / send **Organizers** chat | ✓ | ✓ | — | `list` / `send` *(visibility `planning`)* |
-| Read / send **Team** chat | team members only | — | — | `list` / `send` *(channel `team`; team assignment required)* |
-| Mark a channel read | ✓ | ✓ | ✓ | `markRead` *(per visibility; planning = Organizer+)* |
+| Read / send **Team** chat | only if on that team | only if on that team | only if on that team | `list` / `send` *(channel `team`; a `team_assignments` row for THAT team)* |
+| Mark a room read | ✓ | ✓ | ✓ | `markRead` *(per ROOM: crew / planning / team+teamId; planning = Organizer+, team = that team's members)* |
 | Clear a channel's messages | ✓ | — | — | `clearChannel` *(Owner — sanctioned exception 5, not a deviation)* |
 
 ### Account / profile (not trip-scoped) — `users`, `feedback`

@@ -39,6 +39,10 @@ const ALLOWED: Record<string, string> = {
     "the ONE domain wire point — games.finish (all four formats) + cup clinched",
   "server/lib/chatNotify.ts":
     "the chat wire point — messages.send, READ-STATE-GATED (BATCH, never 1:1 per message)",
+  "server/lib/newsNotify.ts":
+    "the news wire point — news.create's transition, and news.resend (an explicit, " +
+    "Owner/Organizer-only re-fire for a post that predates this category). ~1-5/trip; " +
+    "no BATCH/read-state gate needed, same reasoning as the module's own comment.",
   "server/routers/notifications.ts":
     "testSend — a self-only diagnostic; can never reach another user",
 };

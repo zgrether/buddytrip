@@ -568,7 +568,7 @@ describe("messages router", () => {
     await owner.messages.send({ tripId: trip, id: genId("msg"), text: "crew ping 2" });
 
     const byChannel = await planner.messages.unreadCountByChannel({ tripId: trip });
-    expect(byChannel).toEqual({ crew: 2, planning: 1 });
+    expect(byChannel).toEqual({ crew: 2, planning: 1, team: 0 });
   });
 
   it("unreadCountByChannel — a plain member's planning share is always 0, even with unread planning messages", async () => {
@@ -587,7 +587,7 @@ describe("messages router", () => {
     await owner.messages.send({ tripId: trip, id: genId("msg"), text: "everyone" });
 
     const byChannel = await member.messages.unreadCountByChannel({ tripId: trip });
-    expect(byChannel).toEqual({ crew: 1, planning: 0 });
+    expect(byChannel).toEqual({ crew: 1, planning: 0, team: 0 });
   });
 
   it("unreadCountByChannel — sums to the same total unreadCount returns", async () => {

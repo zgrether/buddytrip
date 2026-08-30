@@ -614,9 +614,9 @@ function NotificationSettings({ onOpen }: { onOpen: () => void }) {
 /**
  * The categories that have a live sender, in registry order.
  *
- * Deliberately NOT `NOTIFICATION_KEYS` — the registry defines four and only two
- * can currently produce a notification. Rendering the other two (`planning`,
- * `invites`) would put switches on screen that mute nothing.
+ * Deliberately NOT `NOTIFICATION_KEYS` — the registry defines five and only
+ * three can currently produce a notification. Rendering the other two
+ * (`planning`, `invites`) would put switches on screen that mute nothing.
  *
  * `chat` LANDED IN THE SAME COMMIT AS ITS SENDER, and that ordering is the rule
  * rather than a coincidence. Every category defaults ON — the device toggle is
@@ -627,8 +627,11 @@ function NotificationSettings({ onOpen }: { onOpen: () => void }) {
  * outcome this whole subsystem is built to avoid, and it is reachable by
  * shipping two correct commits in the wrong order. A sender and its row go
  * together.
+ *
+ * `news` follows the same rule, in the same commit as `newsNotify.ts` and
+ * `news.create`/`news.resend`'s calls into it.
  */
-const EXPOSED_CATEGORIES: NotificationKey[] = ["game_results", "chat"];
+const EXPOSED_CATEGORIES: NotificationKey[] = ["game_results", "chat", "news"];
 
 /**
  * One category row, inside the notifications modal beneath the activation
