@@ -1280,6 +1280,43 @@ export function PickemGameView() {
              `deadlineBlocksReopen`, so the sentence and the behaviour cannot
              disagree about where the boundary is. */
           deadlinePassed={deadlineBlocksReopen(clock, now)}
+          /* ── THE FINALIZE MOVED HERE (r7 §10) ──────────────────────────
+             It was at the end of the results list. The panel's action slot is
+             empty by the time results are being entered — Start and Close are
+             both spent — and this is where the runner's other standing
+             controls already are.
+
+             `allComplete` is the CLOCK, not the results, which is why the
+             button appears mid-way through the list at all and therefore why
+             it has a quiet treatment: see `PickemRunLifecycle`. */
+          lifecycle={{
+            canEdit,
+            status: gameStatus,
+            correctionsOpen,
+            /**
+             * ── PICK'EM'S COMPLETENESS INPUT IS THE CLOCK, NOT THE RESULTS ──
+             *
+             * `allComplete` means "can the server compute a real result from
+             * this yet". For golf that is every score entered; here it is that
+             * picking has CLOSED, which is exactly what `computePickemResults`
+             * refuses on.
+             *
+             * Counting resolved contests would have been the obvious reading
+             * and it is the wrong one — it would refuse a finalize the runner
+             * is entitled to make, because a postponed Tuesday game must not
+             * hold the cup open. That case is a QUESTION at the tap, in a
+             * treatment that does not disable anything.
+             *
+             * Derived from the SAME predicate the server gates on, so the CTA
+             * cannot offer an action the RPC then refuses.
+             */
+            allComplete: picksRevealed(clock, now),
+            finalizePending,
+            correctPending,
+            onFinalize: () => void finalizeGame(),
+            onCorrect: correctGame,
+            unresolvedCount: q.data.slate.filter((g) => g.result == null).length,
+          }}
           onOpenPicks={() => setPhase.mutate({ tripId: tripId!, gameId, action: "open" })}
           onLock={() => setPhase.mutate({ tripId: tripId!, gameId, action: "lock" })}
           onUnlock={async () => {
@@ -1591,34 +1628,6 @@ export function PickemGameView() {
               busyId={busyResultId}
               ridingOn={riding.byGame}
               matchesPending={riding.matchesPending}
-              lifecycle={{
-                canEdit,
-                status: gameStatus,
-                correctionsOpen,
-                /**
-                 * ── PICK'EM'S COMPLETENESS INPUT IS THE CLOCK, NOT THE RESULTS ──
-                 *
-                 * `allComplete` means "can the server compute a real result from
-                 * this yet". For golf that is every score entered; here it is
-                 * that picking has CLOSED, which is exactly what
-                 * `computePickemResults` refuses on.
-                 *
-                 * Counting resolved contests would have been the obvious
-                 * reading and it is the wrong one — it would refuse a finalize
-                 * the runner is entitled to make, because a postponed Tuesday
-                 * game must not hold the cup open. That case is a warning
-                 * below, in a treatment that does not disable anything.
-                 *
-                 * Derived from the SAME predicate the server gates on, so the
-                 * CTA cannot offer an action the RPC then refuses.
-                 */
-                allComplete: picksRevealed(clock, now),
-                finalizePending,
-                correctPending,
-                onFinalize: () => void finalizeGame(),
-                onCorrect: correctGame,
-                unresolvedCount: q.data.slate.filter((g) => g.result == null).length,
-              }}
               onSetResult={(slateGameId, result) => {
                 setBusyResultId(slateGameId);
                 setResult.mutate({ tripId: tripId!, gameId, slateGameId, result });

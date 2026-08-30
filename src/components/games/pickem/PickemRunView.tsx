@@ -4,10 +4,6 @@ import { useState, type CSSProperties } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { MultiplierBadge, SpreadBadge, pickemRowSurface } from "./slateRowVisual";
 import { resolvedCount, type SlateResult, type ScoredSlateGame } from "@/lib/pickemScoring";
-import { gameLifecycle, type GameLifecycleInput } from "@/lib/gameLifecycle";
-import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
-import { confirmUnresolvedFinalize, unresolvedWarning } from "@/lib/pickemFinalize";
-import { PickemFinalizePrompt } from "./PickemFinalizePrompt";
 
 /**
  * Screen E — the runner enters each slate game's outcome as it finishes.
@@ -89,39 +85,16 @@ const RESULT_LABEL: Record<SlateResult, string> = {
  * Props only, no tRPC: this component stays persistence-agnostic (#7) and the
  * view above owns the mutations.
  */
-export interface PickemRunLifecycle extends GameLifecycleInput {
-  finalizePending: boolean;
-  correctPending: boolean;
-  onFinalize: () => void;
-  onCorrect: () => void;
-/**
-   * Slate games with no result yet.
-   *
-   * A COUNT rather than a prepared sentence, so the sentence is built in one
-   * place (`unresolvedWarning`) and the DECISION in another
-   * (`confirmUnresolvedFinalize`) — both pure, both tested, neither derived from
-   * the other's output.
-   *
-   * Never a gate. A postponed Tuesday game must not hold the cup open, which is
-   * why `allComplete` above is the picking window rather than the results; this
-   * only decides whether the tap stops to ask.
-   */
-  unresolvedCount: number;
-}
-
 export function PickemRunView({
   slate,
   canEdit,
   busyId,
   ridingOn,
   matchesPending,
-  lifecycle,
   onSetResult,
 }: {
   slate: RunSlateGame[];
   canEdit: boolean;
-  /** Absent on a surface with no finalize to offer (a member's view). */
-  lifecycle?: PickemRunLifecycle;
   /** The slate game currently being written, so only ITS row shows pending. */
   busyId: string | null;
   /**
@@ -151,22 +124,6 @@ export function PickemRunView({
    * state nobody asked for.
    */
   const [reopened, setReopened] = useState<string | null>(null);
-
-  /**
-   * Does the finalize tap stop to ask, and what does it say.
-   *
-   * Both derived from the ONE count the view passes, through the two pure
-   * functions that own the rule and the wording. Computed unconditionally so
-   * they cannot fall out of step with each other behind a branch.
-   */
-  const [confirming, setConfirming] = useState(false);
-  const needsConfirm =
-    lifecycle != null &&
-    confirmUnresolvedFinalize({
-      unresolved: lifecycle.unresolvedCount,
-      canFinalize: gameLifecycle(lifecycle).canFinalize,
-    });
-  const confirmMessage = lifecycle ? unresolvedWarning(lifecycle.unresolvedCount) : null;
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-run">
@@ -279,49 +236,20 @@ export function PickemRunView({
         </>
       )}
 
-      {/* THE END OF THE RUNNER'S JOB, at the end of the list they were working
-          down. Entering the last result and finalizing are one continuous act,
-          and a CTA anywhere else would be a second place to look for it.
+      {/* ── THE FINALIZE IS NOT HERE ANY MORE (r7 §10) ────────────────────
+          It sat at the end of this list, and the argument was that entering the
+          last result and finalizing are one continuous act, so a CTA anywhere
+          else would be a second place to look for it.
 
-          `GameLifecycleActions`, not a private button: the eighth CLAUDE.md #24
-          incident was match rendering its own copy of this markup, agreeing with
-          the shared one only by coincidence of nobody having changed either. */}
-      {lifecycle && (
-        <>
-          <GameLifecycleActions
-            canEdit={lifecycle.canEdit}
-            status={lifecycle.status}
-            correctionsOpen={lifecycle.correctionsOpen}
-            allComplete={lifecycle.allComplete}
-            finalizePending={lifecycle.finalizePending}
-            correctPending={lifecycle.correctPending}
-            /* Intercepted, not replaced: the confirm is a question ABOUT this
-               action, so it sits in front of the same handler rather than
-               becoming a second finalize path. */
-            onFinalize={needsConfirm ? () => setConfirming(true) : lifecycle.onFinalize}
-            onCorrect={lifecycle.onCorrect}
-            /* "Correct a score" is golf's word for it and pick'em has no
-               scores — the runner corrects a RESULT, which is the word every
-               other control on this screen already uses. */
-            correctLabel="Correct a result"
-          />
-          {confirming && confirmMessage && (
-            <PickemFinalizePrompt
-              title="Some games have no result"
-              message={confirmMessage}
-              confirmLabel="Void and save results"
-              pendingLabel="Saving results…"
-              cancelLabel="Keep entering results"
-              pending={lifecycle.finalizePending}
-              onConfirm={() => {
-                setConfirming(false);
-                lifecycle.onFinalize();
-              }}
-              onCancel={() => setConfirming(false)}
-            />
-          )}
-        </>
-      )}
+          What that argument did not have available: the runner's panel — the
+          one carrying Start picking and Close picking — has an EMPTY action
+          slot in exactly this state. Both moves are spent by the time results
+          are being entered, so the finalize is not competing for the space; it
+          is the only thing left that belongs in it.
+
+          And the panel is where the runner's OTHER standing controls are, which
+          is the stronger reading of "a second place to look": the second place
+          was this one. See `PickemPhaseStrip`. */}
     </div>
   );
 }
