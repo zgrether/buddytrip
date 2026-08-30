@@ -3,7 +3,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
   Calendar,
-  Car,
   Check,
   ChevronDown,
   ChevronUp,
@@ -11,7 +10,6 @@ import {
   Home,
   ListChecks,
   MapPin,
-  Navigation,
   Plane,
   PlaneTakeoff,
   Trophy,
@@ -23,7 +21,8 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { Avatar } from "@/components/Avatar";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { addDays, differenceInDays } from "@/lib/tripStatus";
-import { TravelChip } from "./TravelChip";
+import { TravelChip, MODE_COLOR, MODE_ICON, MODE_LABEL } from "./TravelChip";
+import { buildTravelBands, travelGroupMeta, type TravelMode } from "./travelBands";
 import { useItineraryFilters, type ItineraryFilterCategory } from "./useItineraryFilters";
 import {
   buildItinerary,
@@ -557,23 +556,52 @@ function SkeletonCard({
 
 // ── TravelGroup ───────────────────────────────────────────────────────────
 // Per-day travel summary at the top of a day — used for BOTH arrivals
-// ("Arrivals for Sep 9") and departures ("Departures for Sep 13"). The header
-// names the leg + date (no subtext); below it, the people are grouped by
-// Flying / Driving / Other (only modes with people; WHITE labels) as a stacked
-// list of shared TravelChip rows. Each chip carries its own tap-to-expand
-// Details toggle; untimed legs render "TBD" in a dashed chip.
+// ("Arrivals for Sep 9") and departures ("Departures for Sep 13"). People are
+// grouped by TIME OF DAY, not by mode: Morning / Midday / Afternoon / Evening
+// / Not set, laid out as columns on desktop and stacked on mobile by one
+// `auto-fit` grid (no JS breakpoint). Mode moves to a 13px icon at the right
+// edge of each chip, explained once by the header legend. People arriving at
+// the same time by the same means share one chip.
+//
+// At 16 crew the old mode-grouped stack was 16 full-width rows that buried the
+// thing an organizer actually wants — who is here by when.
 
-const TRAVEL_MODES: { key: "flying" | "driving" | "other"; label: string; Icon: LucideIcon }[] = [
-  { key: "flying", label: "Flying", Icon: Plane },
-  { key: "driving", label: "Driving", Icon: Car },
-  { key: "other", label: "Other", Icon: Navigation },
-];
+/** The legend — the icon key for the chips, plus the tap affordance the
+ *  per-chip "Details" label used to carry. Only modes present are shown. */
+function TravelLegend({
+  modes,
+  direction,
+  className = "",
+}: {
+  modes: TravelMode[];
+  direction: "arrival" | "departure";
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] ${className}`}
+      style={{ color: "var(--color-bt-text-dim)" }}
+    >
+      {modes.map((mode) => {
+        const Icon = MODE_ICON[direction][mode];
+        return (
+          <span key={mode} className="inline-flex items-center gap-1">
+            <Icon size={13} strokeWidth={1.75} style={{ color: MODE_COLOR[mode] }} />
+            {MODE_LABEL[mode]}
+          </span>
+        );
+      })}
+      <span>Tap anyone for details</span>
+    </div>
+  );
+}
 
 function TravelGroup({
   events,
   label,
   date,
   HeaderIcon,
+  direction,
 }: {
   events: (ArrivalEvent | DepartureEvent)[];
   /** "Arrivals" | "Departures". */
@@ -581,11 +609,11 @@ function TravelGroup({
   /** The day this group sits on (YYYY-MM-DD) — shown as "… for Sep 9". */
   date: string;
   HeaderIcon: LucideIcon;
+  /** Departures swap the flying glyph for PlaneTakeoff, in chips and legend. */
+  direction: "arrival" | "departure";
 }) {
-  const groups = TRAVEL_MODES.map((m) => ({
-    ...m,
-    people: events.filter((a) => a.mode === m.key),
-  })).filter((m) => m.people.length > 0);
+  const bands = buildTravelBands(events);
+  const meta = travelGroupMeta(events);
 
   const dateLabel = parseLocalDate(date).toLocaleDateString("en-US", {
     month: "short",
@@ -608,37 +636,46 @@ function TravelGroup({
         >
           <HeaderIcon size={18} />
         </span>
-        <span className="text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          {label} for {dateLabel}
-        </span>
+        {/* Title + meta share a line on desktop and stack on mobile. */}
+        <div className="min-w-0 flex-1 sm:flex sm:flex-wrap sm:items-baseline sm:gap-x-3">
+          <span className="block text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+            {label} for {dateLabel}
+          </span>
+          <span className="block text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            {meta.count} crew{meta.range ? ` · ${meta.range}` : ""}
+          </span>
+        </div>
+        <TravelLegend modes={meta.modes} direction={direction} className="hidden flex-none sm:flex" />
       </div>
 
-      <div className="mt-2.5 flex flex-col gap-2.5 pt-2.5" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
-        {groups.map((g) => (
-          <div key={g.key} className="flex items-start gap-2.5">
-            <span
-              className="flex w-[72px] flex-shrink-0 items-center gap-1.5 pt-1 text-xs font-semibold"
-              style={{ color: "var(--color-bt-text)" }}
-            >
-              <g.Icon size={13} />
-              {g.label}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-              {g.people.map((p) => (
-                <TravelChip
-                  key={p.memberId}
-                  person={{
-                    displayName: p.displayName,
-                    time: p.time,
-                    avatarIcon: p.avatarIcon,
-                    isGuest: p.isGuest,
-                    detail: p.subtitle,
-                  }}
-                />
+      <div className="mt-2.5 pt-2.5" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
+        {/* Below sm the legend can't fit on the header line — it wraps to its
+            own row under the divider. */}
+        <TravelLegend modes={meta.modes} direction={direction} className="mb-2.5 sm:hidden" />
+        <div
+          className="grid gap-2.5 sm:gap-[14px]"
+          // auto-fit, not repeat(4, 1fr): a fifth band ("Not set") wraps to a
+          // second row rather than squeezing the other four. Responds to the
+          // CARD's width, so a narrow column collapses it to one column.
+          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(228px, 1fr))" }}
+        >
+          {bands.map((band) => (
+            <div key={band.key} className="flex flex-col gap-1.5">
+              <p className="flex items-baseline gap-1.5">
+                <span className="text-[12px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                  {band.label}
+                </span>
+                {/* The count is PEOPLE, not chips. "Not set" shows it alone. */}
+                <span className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
+                  {band.window ? `${band.count} · ${band.window}` : band.count}
+                </span>
+              </p>
+              {band.chips.map((chip) => (
+                <TravelChip key={chip.key} chip={chip} direction={direction} />
               ))}
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1142,10 +1179,16 @@ function DaySection({
       </div>
       <div className={compact ? "space-y-1" : "space-y-1.5"}>
         {arrivals.length > 0 && (
-          <TravelGroup events={arrivals} label="Arrivals" date={date} HeaderIcon={Plane} />
+          <TravelGroup events={arrivals} label="Arrivals" date={date} HeaderIcon={Plane} direction="arrival" />
         )}
         {departures.length > 0 && (
-          <TravelGroup events={departures} label="Departures" date={date} HeaderIcon={PlaneTakeoff} />
+          <TravelGroup
+            events={departures}
+            label="Departures"
+            date={date}
+            HeaderIcon={PlaneTakeoff}
+            direction="departure"
+          />
         )}
         {events.map((event) => (
           <EventCard key={event.id} event={event} compact={compact} />

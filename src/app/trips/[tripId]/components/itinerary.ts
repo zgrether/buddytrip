@@ -100,7 +100,7 @@ export type ItineraryEvent =
       time: string | null;
       title: string;
       subtitle?: string | null;
-      /** Travel mode — drives the Flying / Driving / Other grouping. */
+      /** Travel mode — drives the chip's mode icon and the header legend. */
       mode: "driving" | "flying" | "other";
       memberId: string;
       displayName: string;
