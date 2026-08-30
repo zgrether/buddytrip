@@ -1280,6 +1280,38 @@ export function pickemDraftToPayload(
             : true,
         }
       : {}),
-    pickem: { rollUp: draft.rollUp, useConfidence: draft.useConfidence },
+    /**
+     * ── SENT ONLY WHEN IT CHANGED, and that is not a weakening ──────────────
+     *
+     * This was unconditional, on the MODIFIERS-MUST-ALWAYS-SEND reasoning: the
+     * RPC COALESCE-preserves an absent key, so omitting one silently keeps the
+     * old value and a change could be lost.
+     *
+     * But `save_game_config`'s scoring freeze fires on the PRESENCE of this key:
+     *
+     *     IF _pickem_has_results(game) THEN
+     *       IF (payload ? 'pickem') OR (payload ? 'pointsTotal' AND <changed>)
+     *         RAISE 'PICKEM_SCORED: results are in, so how this game scores is frozen'
+     *
+     * Note the asymmetry — `pointsTotal` is tested for a CHANGED VALUE and this
+     * one only for being there. So once any result existed, an always-sent key
+     * made the ENTIRE settings page unsaveable: renaming the game was refused,
+     * and told the runner that how it SCORES is frozen. Measured — a
+     * name-only save failed with exactly that.
+     *
+     * Sending it only when it differs restores the guard's intent rather than
+     * dodging it: a real scoring change still carries the key and is still
+     * refused, which is what the freeze is for. The always-send rule exists so a
+     * CHANGE is never lost, and a change is still always sent — the same shape
+     * `matchesStructureDirty` already uses two keys above.
+     *
+     * With no baseline (a first save) it is sent, which is both safe and the
+     * honest default.
+     */
+    ...(!baseline ||
+    draft.rollUp !== baseline.rollUp ||
+    draft.useConfidence !== baseline.useConfidence
+      ? { pickem: { rollUp: draft.rollUp, useConfidence: draft.useConfidence } }
+      : {}),
   };
 }
