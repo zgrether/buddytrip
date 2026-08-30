@@ -109,7 +109,9 @@ describe("the slate list is display rows, not edit rows", () => {
 
   it("the form carries the fields, so they exist exactly once", () => {
     const html = render();
-    for (const field of ["Away team", "Home team", "Game time", "Spread", "Note"]) {
+    // "Spread Home" since r7 §3 — the number is the home team's line, and the
+    // form was the one place a runner had to remember that rather than read it.
+    for (const field of ["Away team", "Home team", "Game time", "Spread Home", "Note"]) {
       expect(html.match(new RegExp(`aria-label="${field}"`, "g")), field).toHaveLength(1);
     }
   });
@@ -210,7 +212,7 @@ describe("matchup search sits inside the add form", () => {
     // Asserted on the seeded row rather than the form: a slate game carries a
     // spread, and search must never have been what put it there.
     const html = render();
-    expect(html).toContain('aria-label="Spread"');
+    expect(html).toContain('aria-label="Spread Home"');
     expect(html).toContain('aria-label="Note"');
   });
 });

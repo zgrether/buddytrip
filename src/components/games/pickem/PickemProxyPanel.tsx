@@ -65,6 +65,45 @@ export function targetStatusLabel(t: ProxyTarget): string {
 }
 
 /**
+ * WHO typed the sheet you are about to replace.
+ *
+ * ── The banner asserted this, and was wrong about it ──────────────────────
+ *
+ * It said "{name} submitted their own sheet — saving replaces it" over ANY
+ * sheet that already had rows in it, including one the reader had entered for
+ * them ninety seconds earlier. So the one screen whose job is to stop a proxy
+ * confusing whose work they are looking at was itself confusing it.
+ *
+ * ── Why "self" wins over the others ───────────────────────────────────────
+ *
+ * The states are ranked by what the reader would regret, not by how many rows
+ * each covers. Overwriting picks somebody made for themselves is the outcome
+ * this banner exists to prevent, so ANY self-entered row makes the whole sheet
+ * read as theirs — a mixed sheet (they picked three, a captain proxied the
+ * rest) still contains their work, and the warning is about that work.
+ *
+ * ── null is UNKNOWN, and must not read as "they did it" ───────────────────
+ *
+ * `entered_by` is null for every row written before migration 163, which is why
+ * that migration refused to spell self-entry as null. So a null-bearing sheet
+ * gets the attribution-free sentence: it still warns about replacement, which
+ * is the part that is certainly true, and claims nothing about the author.
+ */
+export type SheetAuthor = "none" | "self" | "you" | "someone" | "unknown";
+
+export function sheetAuthor(
+  rows: { enteredBy?: string | null }[],
+  targetUserId: string,
+  myUserId: string | null
+): SheetAuthor {
+  if (rows.length === 0) return "none";
+  if (rows.some((r) => r.enteredBy != null && r.enteredBy === targetUserId)) return "self";
+  if (rows.some((r) => r.enteredBy == null)) return "unknown";
+  if (myUserId != null && rows.every((r) => r.enteredBy === myUserId)) return "you";
+  return "someone";
+}
+
+/**
  * The banner over a proxy sheet.
  *
  * PERSISTENT, and not a subtitle. The only way this feature goes badly is
@@ -77,14 +116,15 @@ export function targetStatusLabel(t: ProxyTarget): string {
 export function PickemProxyBanner({
   name,
   isGuest,
-  submitted,
+  author,
   onBack,
 }: {
   name: string;
   isGuest: boolean;
-  /** Drives the overwrite warning — and ONLY when true. Warning on an empty
-   *  sheet is the common case, and friction there is noise. */
-  submitted: boolean;
+  /** Drives the overwrite warning — and ONLY when there is something to
+   *  overwrite. Warning on an empty sheet is the common case, and friction
+   *  there is noise. */
+  author: SheetAuthor;
   onBack: () => void;
 }) {
   return (
@@ -115,9 +155,15 @@ export function PickemProxyBanner({
         </span>
       </div>
 
-      {submitted ? (
+      {author !== "none" ? (
         <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>
-          {name} submitted their own sheet — saving replaces it.
+          {author === "self"
+            ? `${name} submitted their own sheet — saving replaces it.`
+            : author === "you"
+              ? "You entered this sheet — saving replaces it."
+              : author === "someone"
+                ? "Someone else entered this sheet — saving replaces it."
+                : /* unknown */ `${name} already has a sheet — saving replaces it.`}
         </span>
       ) : isGuest ? (
         <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>

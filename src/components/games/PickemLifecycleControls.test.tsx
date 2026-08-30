@@ -362,12 +362,17 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
   });
 
   it("EXPLAINS the missing move rather than just dropping it", () => {
-    // An absent button with no sentence reads as a bug. The line names the
-     // condition and the action that would clear it, which is the same thing
-     // the server refusal says.
+    /**
+     * An absent button with no sentence reads as a bug, so the line stays. It
+     * used to go on to name Reset scores as the way to clear the condition,
+     * and that half is gone (r7 §6): Reset scores clears every result in the
+     * game, which is an enormous move to hand somebody in passing because they
+     * wondered why one button was missing. Naming the state answers the
+     * question; naming that control answers a different one nobody asked.
+     */
     const html = strip({ phase: "locked", hasResults: true });
     expect(html).toContain("Results are in");
-    expect(html).toContain("Reset scores");
+    expect(html).not.toContain("Reset scores");
     // ...and with nothing scored the move is simply there, needing no
     // explanation. The phase-detail line that used to be asserted here went
     // with the panel restructure: it restated the phase, which the header no

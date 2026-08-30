@@ -151,7 +151,15 @@ const IS_PRIMARY: Record<PickemPhase, boolean> = {
 /** Said once results exist, in place of the unlock move — so the absence of the
  *  button is explained rather than merely noticed. */
 const LOCKED_WITH_RESULTS =
-  "Results are in, so picks stay closed. Clearing the results with Reset scores would reopen them.";
+  /**
+   * The second sentence named Reset scores — a control that clears every
+   * result in the game — as the way to reopen picks. That is a sledgehammer
+   * offered in passing to somebody who asked a much smaller question, and it
+   * described a mechanic rather than answering one.
+   *
+   * The fact on its own is what the reader needs.
+   */
+  "Results are in, picks stay closed.";
 
 export interface PickemPhaseStripProps {
   phase: PickemPhase;

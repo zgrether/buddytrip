@@ -197,7 +197,13 @@ export const pickemRouter = router({
         // never sends it.
         ctx.supabase
           .from("pickem_picks")
-          .select("user_id, slate_game_id, pick, confidence")
+          // `entered_by` rides along for the PROXY BANNER, which used to assert
+          // "{name} submitted their own sheet" over any sheet that existed —
+          // including one the reader had entered themselves a minute earlier.
+          // No new exposure: the policy above already decided the reader may
+          // see this row, and knowing who typed it is strictly less than
+          // knowing what it says.
+          .select("user_id, slate_game_id, pick, confidence, entered_by")
           .eq("game_id", input.gameId),
       ]);
 
@@ -260,17 +266,35 @@ export const pickemRouter = router({
        * all RLS returns; after it, the field's. The board renders from whatever
        * arrives rather than asking whether it is allowed to.
        */
-      const sheets: Record<string, { slateGameId: string; pick: "away" | "home"; confidence: number | null }[]> = {};
+      const sheets: Record<
+        string,
+        {
+          slateGameId: string;
+          pick: "away" | "home";
+          confidence: number | null;
+          /**
+           * Who TYPED this row — not who it belongs to. Proxy is
+           * `enteredBy !== userId` (migration 163).
+           *
+           * NULL means UNKNOWN, and specifically "written before the column
+           * existed". 163 refused to spell self-entry as null for exactly this
+           * reason, so nothing reading it may treat null as "they did it".
+           */
+          enteredBy: string | null;
+        }[]
+      > = {};
       for (const r of (allPicksRes.data ?? []) as {
         user_id: string;
         slate_game_id: string;
         pick: string;
         confidence: number | null;
+        entered_by: string | null;
       }[]) {
         (sheets[r.user_id] ??= []).push({
           slateGameId: r.slate_game_id,
           pick: r.pick as "away" | "home",
           confidence: r.confidence,
+          enteredBy: r.entered_by,
         });
       }
 

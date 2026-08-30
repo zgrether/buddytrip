@@ -316,15 +316,21 @@ describe("submitted, reset and locked", () => {
     );
   });
 
-  it("a locked sheet is read-only, and says who can change it (nobody)", () => {
+  it("a locked sheet is read-only, and does NOT claim nobody can reopen it", () => {
+    /**
+     * This case used to assert the opposite: "not even whoever's running it",
+     * once, having caught a draft that said it twice.
+     *
+     * The sentence was false. Start picking is on the runner's own panel, so
+     * the one person who could act on it was being told they could not — and
+     * everybody else was being told not to bother asking. The count assertion
+     * was a good guard on a claim that should not have been there at all.
+     */
     const html = render({ editable: false, picks: filledSheet() });
     expect(html).toContain('data-testid="pickem-sheet-locked"');
-    // Substring stops before the apostrophe: the copy now reads "whoever's
-    // running it" with a curly quote, which renders as an HTML entity.
-    // Says it ONCE — the first draft repeated "whoever's running it" across
-    // two sentences, which only showed up when rendered.
-    expect(html).toContain("not even whoever");
-    expect(html.match(/whoever/g) ?? []).toHaveLength(1);
+    expect(html).not.toContain("whoever");
+    // The fact survives — dropping the clause must not take the banner with it.
+    expect(html).toContain("Picks are closed");
     expect(tagWith(html, 'data-testid="pickem-team-away"')).toContain("disabled");
     // No save bar at all — not a disabled one.
     expect(html).not.toContain('data-testid="pickem-save-bar"');
@@ -352,16 +358,25 @@ describe("submitted, reset and locked", () => {
   });
 
   it("distinguishes a HAND LOCK from the deadline", () => {
-    // Different causes, different sentences. Telling someone the clock ran out
-    // when the runner ended it early is a small lie about why they lost the
-    // chance to change something.
+    /**
+     * Still two sentences, for the same reason as before — telling someone the
+     * clock ran out when the runner ended it early is a small lie about why
+     * they lost the chance to change something.
+     *
+     * What changed is which half carries the distinction. It used to be the
+     * words ("they were ended early"); it is now the MOMENT, which only the
+     * deadline arm can state. A hand lock's moment is not knowable here anyway,
+     * and "ended early" only read as a contrast while there was a second
+     * sentence beside it to contrast with.
+     */
     const html = render({
       editable: false,
       picks: filledSheet(),
       closure: { at: Date.now(), reason: "locked" as const },
     });
-    expect(html).toContain("ended early");
+    expect(html).toContain("Picks are closed.");
     expect(html).not.toContain("Picks closed at");
+    expect(html).not.toContain("ended early");
   });
 
   it("never renders a closed-at time while picks are OPEN", () => {

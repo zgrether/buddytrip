@@ -75,31 +75,52 @@ describe("PickemMismatchNote", () => {
     expect(html).not.toContain("swap");
   });
 
-  it("names who is on a team but in no match", () => {
+/**
+   * ── r7 §4: THE UNASSIGNED AND UNEVEN LINES ARE GONE ────────────────────────
+   *
+   * Three cases here used to assert them. They described what the pairing grid
+   * six pixels below was already showing — four empty slots, and two rosters of
+   * different lengths — so a paragraph naming the people was the longest way to
+   * say it.
+   *
+   * They are replaced by their inverse rather than deleted, because "the note
+   * renders nothing" is the whole point and needs to be asserted somewhere. The
+   * one line that stays is the one the grid CANNOT express.
+   */
+  it("says NOTHING about people who are merely unpaired — the grid shows that", () => {
     const html = render(
       [{ a: "a1", b: "b1" }],
       [team("A", "Team Buddy", ["a1", "a2"]), team("B", "Team Banks", ["b1"])]
     );
-    expect(html).toContain("Rob");
-    expect(html).toContain("not in a match yet");
+    expect(html).not.toContain("not in a match yet");
+    // Nothing at all, rather than an empty box: the note is its own container.
+    expect(html).toBe("");
   });
 
-  it("explains UNEVEN sides with both counts and the consequence", () => {
+  it("says NOTHING about uneven rosters either", () => {
     const html = render(
       [],
       [team("A", "Team Buddy", ["a1", "a2", "b1"]), team("B", "Team Banks", ["ghost"])]
     );
-    expect(html).toContain("Team Buddy has 3 and Team Banks has 1");
-    expect(html).toContain("2 players will have no opponent");
+    expect(html).not.toContain("will have no opponent");
+    expect(html).toBe("");
   });
 
-  it("blames the side that is actually LARGER", () => {
-    // Direction, not magnitude — a version that always named the first team
-    // passes an "is it uneven" check and tells the runner to cut the wrong one.
-    // The whole clause is asserted, in order, because both names appear either
-    // way. That exact assertion was decorative once and a mutation proved it.
-    const html = render([], [team("A", "Team Buddy", ["a1"]), team("B", "Team Banks", ["b1", "a2"])]);
-    expect(html).toContain("Team Banks has 2 and Team Buddy has 1");
+  it("STILL warns about somebody paired who has left the team", () => {
+    /**
+     * The line the grid cannot express, and the reason this component survives
+     * §4 rather than being deleted. An empty slot is visible; a slot holding
+     * somebody who is no longer on either team looks exactly like a correct
+     * pairing.
+     *
+     * Paired with the two above deliberately — "the note went quiet" is also
+     * true of a build that removed all three, which would lose a real warning.
+     */
+    const html = render(
+      [{ a: "ghost", b: "b1" }],
+      [team("A", "Team Buddy", ["a1"]), team("B", "Team Banks", ["b1"])]
+    );
+    expect(html).toContain("no longer on either team");
   });
 
   it("does not count an EMPTY SLOT as a person", () => {
