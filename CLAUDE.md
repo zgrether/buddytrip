@@ -244,6 +244,52 @@ seam, never on a calendar.
   checks. A mutation harness now self-checks against a known failure line before it will
   believe a green run.
 
+- **A FIXTURE THAT DOES NOT SEND WHAT THE REAL CALLER SENDS MEASURES A PATH
+  THAT DOES NOT EXIST — and it reports a confident, well-formed number while it
+  does it.** This is not a wrong measurement. It is a CORRECT measurement of
+  something the app never does, which is why nothing about the output looks
+  off — and why the numbers it produces are so persuasive.
+
+  Three instances in one week, one shape:
+
+  - **The dirty flags.** `save_game_config` gates its clean-replace of
+    `game_matches` / `play_groups` on `matchesStructureDirty` /
+    `groupsStructureDirty`, which `COALESCE` to **true when the key is absent**.
+    Hand-rolled probes sent neither, so every one of them took the destructive
+    branch. That produced a measured escalation — "three instances, two tables,
+    every format churns" — and an APPROVED MIGRATION to `save_game_config` for a
+    problem that existed only in the fixture. Match play, rack and stroke send
+    their flags and never churned.
+  - **The baseline without the stored matches.** `pickemSaveStability`'s first
+    version called `configToPickemDraft` without its fourth argument, so the
+    baseline held no pairings and the flag read dirty on every save. It FAILED
+    AGAINST CORRECT CODE, for the same reason as the bug it was written to pin.
+  - **`playerIds` where the RPC reads `userIds`.** Nobody was ever grouped, so
+    the column under investigation stayed null and the probe printed `[]` —
+    one step from being written up as "unmeasurable" for the instance that
+    decided the whole fix.
+
+  **The internal control is the useful part.** In the same session, the probe
+  that built its payload with the REAL builder (`pickemDraftToPayload`) reported
+  the churn correctly; the two that hand-rolled a payload reported a churn that
+  does not happen. Same session, same question, same database — the only
+  variable was whether the fixture went through the code the app goes through.
+
+  **How to apply:** build the payload with the app's own builder, and if there
+  isn't one, say in the test why the hand-rolled shape is faithful. Treat a
+  parameter that DEFAULTS WHEN ABSENT as the highest-risk omission there is —
+  absence is silent, and the default is usually the expensive branch. Before
+  believing a measurement that escalates the severity of a bug, check that the
+  fixture sends every key the real caller sends; that is a cheaper question than
+  the one it answers.
+
+  Kin to "absence of matches is absence of search" and to "measure the thing,
+  not the region around it", with the failure moved one step earlier: those are
+  about looking in the wrong place, this is about the SUBJECT never having been
+  put in front of the instrument. And it is the confident direction every time —
+  a fixture omitting a key exercises MORE machinery, not less, so the finding
+  comes out bigger than the truth.
+
 - **A REFUSAL MUST NAME AN ACTION THE READER CAN TAKE.** The worst message is not a
   vague one — it is a specific instruction for something that is not there. The reader
   believes it, goes looking, finds nothing, and concludes the app is broken rather than
