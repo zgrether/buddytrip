@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { ArrowUpDown, Plus, Trash2 } from "lucide-react";
 import { Sheet } from "@/components/Sheet";
-import { slateSetChanged } from "@/lib/pickemSheet";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ReorderableList } from "@/components/ReorderableList";
 import {
@@ -200,7 +199,25 @@ export function PickemSlateModal({
    * people who were about to lose nothing, and the actual edit that did the
    * damage carried no warning at all.
    */
-  const clearsRankings = rankedSheetsExist && slateSetChanged(slate, draft);
+  /**
+   * ── THE WARNING COMES FIRST NOW, BECAUSE THE WRITE DOES ───────────────────
+   *
+   * It used to be `rankedSheetsExist && slateSetChanged(slate, draft)` — shown
+   * beside the Save button once an edit had already changed the set. With every
+   * change persisting there is no such moment: by the time the set has changed,
+   * the rankings are already cleared.
+   *
+   * So it is the STATE that makes it true, not the edit that would trigger it:
+   * rankings exist and this slate is editable. That is the window where a slate
+   * change costs something — after a lock, with sheets already ranked — and it
+   * is a caution to read before touching anything rather than a confirmation
+   * after.
+   *
+   * Not per-change, deliberately. A warning that reappears on every tap is the
+   * one people learn to look past, which is the failure this feature has already
+   * corrected twice.
+   */
+  const warnAboutRankings = editable && rankedSheetsExist;
   /**
    * TWO independent forms, one component.
    *
@@ -237,9 +254,44 @@ export function PickemSlateModal({
   const ids = useMemo(() => draft.map((g) => g.id), [draft]);
   const byId = useMemo(() => new Map(draft.map((g) => [g.id, g])), [draft]);
 
+  /**
+   * ── EVERY CHANGE PERSISTS. THERE IS NO SAVE. ──────────────────────────────
+   *
+   * The modal used to draft and commit on a Save button, which meant opening it
+   * to LOOK at the slate presented a disabled control — a screen whose only
+   * affordance is greyed out reads as broken, and it had read that way for four
+   * rounds.
+   *
+   * Option A of the two on the table: close-only, write on change. The other was
+   * to stage the slate into the game-settings draft, which needs
+   * `pickem_slate_games` in `configHash` (with a total order it has no unique
+   * column for), a migration teaching `save_game_config` to write the slate, a
+   * coverage classification, and `save_pickem_config`'s slate arm retired so
+   * there are not two writers. Six things against this one.
+   *
+   * `save_pickem_config` already REPLACES the whole slate in one statement, so
+   * this needs no new endpoint and no migration — each edit sends the same
+   * payload the Save button used to send. Concurrency is unchanged rather than
+   * worsened: that write never carried a base hash either.
+   *
+   * ── NOT the updater form, and not a ref either ────────────────────────────
+   *
+   * `setDraft(prev => …)` with the write inside would fire TWICE under
+   * StrictMode, which double-invokes updaters — two whole-slate replaces per
+   * tap. A ref mirroring the draft avoids that and trips the "no refs during
+   * render" rule instead.
+   *
+   * So the next slate is computed from the render's own `draft`. Every caller is
+   * a discrete user action — add, edit, delete, drop — each of which re-renders
+   * before the next one can happen, so there is no batch for a stale closure to
+   * form in. Two mutations in one tick would be the exception, and none of these
+   * four can produce one.
+   */
   const mutate = (fn: (prev: SlateDraftGame[]) => SlateDraftGame[]) => {
+    const next = fn(draft);
+    setDraft(next);
     setTouched(true);
-    setDraft(fn);
+    onSave({ slate: next });
   };
 
   const isValid = (f: SlateDraftGame) =>
@@ -313,7 +365,6 @@ export function PickemSlateModal({
     setEditingId(id);
   }
 
-  const canSave = editable && touched && !saving;
 
   // `Sheet` renders when mounted — it has no `open` prop — so the gate is here,
   // AFTER the hooks above so their order never changes between renders.
@@ -374,6 +425,24 @@ export function PickemSlateModal({
   return (
     <Sheet onClose={onClose} title="The Picks" testId="pickem-slate-sheet">
       <div className="flex flex-col gap-3 pb-4">
+        {warnAboutRankings && (
+          <p
+            data-testid="pickem-slate-clears-rankings"
+            className="rounded-xl px-3 py-2.5"
+            style={{
+              background: "var(--color-bt-warning-faint)",
+              border: "1px solid var(--color-bt-warning-border)",
+              fontSize: TYPE_SCALE.caption,
+              lineHeight: 1.5,
+              color: "var(--color-bt-text)",
+            }}
+          >
+            Sheets are already ranked. Adding or removing a game clears
+            everyone&rsquo;s ranking — their picks are kept, but they will need to
+            put them back in order. Editing a game&rsquo;s details does not.
+          </p>
+        )}
+
         {!editable && (
           <div
             className="rounded-xl px-3 py-2.5"
@@ -531,24 +600,6 @@ export function PickemSlateModal({
           />
         )}
 
-        {/* ── save ────────────────────────────────────────────────────── */}
-        {editable && clearsRankings && (
-          <p
-            data-testid="pickem-slate-clears-rankings"
-            style={{
-              fontSize: TYPE_SCALE.caption,
-              color: "var(--color-bt-warning)",
-              fontWeight: 600,
-              lineHeight: 1.5,
-              margin: "2px 2px 0",
-            }}
-          >
-            This changes which games are on the slate, so everyone&rsquo;s ranking is
-            cleared when you save. Their picks are kept — they will need to put them
-            back in order.
-          </p>
-        )}
-
         {editable && (
           /**
            * ANCHORED to the bottom of the scroller, not placed at the end of
@@ -594,17 +645,29 @@ export function PickemSlateModal({
               borderTop: "1px solid var(--color-bt-border)",
             }}
           >
+            {/*
+              ── ONE BUTTON, AND IT ALWAYS WORKS ───────────────────────────
+
+              The Save that used to sit here was DISABLED on arrival, which is
+              what somebody opening the slate to look at it saw first. A screen
+              whose only affordance is greyed out reads as broken.
+
+              Every edit persists now, so there is nothing to commit and the one
+              control is the way out. Its label does not change with state —
+              "Done" is true whether or not a write is in flight, where "Save"
+              had to lie in one direction or the other.
+            */}
             <span
+              data-testid="pickem-slate-status"
               style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", flex: 1 }}
             >
-              {touched ? "Unsaved changes" : "Everything saved"}
+              {saving ? "Saving…" : touched ? "Changes saved" : "Changes save as you make them"}
             </span>
             <button
               type="button"
-              onClick={() => onSave({ slate: draft })}
-              disabled={!canSave}
-              data-testid="pickem-save-slate"
-              className="rounded-xl px-4 py-2 disabled:opacity-40"
+              onClick={onClose}
+              data-testid="pickem-slate-done"
+              className="rounded-xl px-4 py-2"
               style={{
                 background: "var(--color-bt-accent)",
                 color: "var(--color-bt-base)",
@@ -612,7 +675,7 @@ export function PickemSlateModal({
                 fontWeight: 700,
               }}
             >
-              {saving ? "Saving…" : "Save"}
+              Done
             </button>
           </div>
         )}
