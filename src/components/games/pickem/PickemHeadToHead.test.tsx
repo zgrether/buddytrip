@@ -278,3 +278,94 @@ describe("row emphasis", () => {
     expect(html).toContain("No pick");
   });
 });
+
+/**
+ * ── THE CONFIDENCE CHIP: THREE STATES, NO STRIKE-THROUGH ───────────────────
+ *
+ * A missed rank was struck through, which fights the digits for the same pixels
+ * at 11px — and the number is the thing worth reading, since what somebody SPENT
+ * is the interesting part of a wrong pick.
+ *
+ * The trap in "just dim it": missed and UNPLAYED were identical but for the
+ * line, so removing it without replacing it merges a rank that lost with a rank
+ * still in play. Both are "not accent" and only one is over. These cases exist
+ * to keep all three apart.
+ */
+describe("the confidence chip", () => {
+  const slateGame = (id: string, awayTeam: string, homeTeam: string) => ({
+    id,
+    awayTeam,
+    homeTeam,
+    spread: null,
+    kickoff: "Sat 3:30p",
+    note: null,
+    multiplier: 1,
+  });
+
+  const render1 = (r: BoardRow) =>
+    renderToStaticMarkup(
+      <PickemHeadToHead
+        slate={[slateGame("g1", "Alabama", "Georgia")]}
+        rows={[r]}
+        aName="Ada"
+        bName="Bo"
+        aUserId="u1"
+        bUserId="u2"
+        avatarFor={() => ({ avatarIcon: null, teamColor: null })}
+        matchIndex={1}
+        matchCount={1}
+        resolved={r.result != null ? 1 : 0}
+        picked={{ a: true, b: true }}
+        note="Live"
+        onBack={() => {}}
+      />
+    );
+
+  const BANKED = row({
+    slateGameId: "g1", result: "home", aPick: "home", aConfidence: 5, aPoints: 5, swing: 5,
+  });
+  const MISSED = row({
+    slateGameId: "g1", result: "home", aPick: "away", aConfidence: 5, aPoints: 0, swing: -1,
+  });
+  const OPEN = row({ slateGameId: "g1", aPick: "away", aConfidence: 5, upsideA: 5 });
+
+  it("does NOT strike a missed rank — the number has to stay readable", () => {
+    const html = render1(MISSED);
+    expect(html).toContain('data-testid="pickem-conf-missed"');
+    expect(html).not.toContain("line-through");
+    // The rank itself survives. Dimming must not become hiding.
+    expect(html).toContain(">5<");
+  });
+
+  it("keeps MISSED distinct from still-IN-PLAY — the state the line was carrying", () => {
+    /**
+     * THE CASE THAT SEPARATES THIS FROM DELETING A LINE. Both are "not accent",
+     * so a build that only removed the strike-through renders them identically
+     * and passes every other assertion in this block.
+     */
+    const missed = render1(MISSED);
+    const open = render1(OPEN);
+    expect(missed).toContain('data-testid="pickem-conf-missed"');
+    expect(open).toContain('data-testid="pickem-conf-open"');
+    expect(missed).toContain("opacity:0.45");
+    expect(open).not.toContain("opacity:0.45");
+  });
+
+  it("keeps BANKED unmistakable — accent is what 'points were awarded' means", () => {
+    const html = render1(BANKED);
+    expect(html).toContain('data-testid="pickem-conf-banked"');
+    expect(html).toContain("var(--color-bt-accent)");
+    expect(html).not.toContain("opacity:0.45");
+  });
+
+  it("gives the three states three different treatments", () => {
+    // Asserted as a SET, because two of them agreeing is the whole failure mode
+    // and a per-state assertion cannot see it.
+    const chips = [BANKED, MISSED, OPEN].map((r) => {
+      const html = render1(r);
+      const at = html.indexOf("pickem-conf-");
+      return html.slice(at, html.indexOf(">", at));
+    });
+    expect(new Set(chips).size).toBe(3);
+  });
+});

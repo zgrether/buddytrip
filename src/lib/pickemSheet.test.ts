@@ -16,6 +16,8 @@ import {
   type SheetPick,
   type SheetSlateGame,
   type SheetSettings,
+  confirmEmptySheetSave,
+  emptySheetWarning,
 } from "./pickemSheet";
 
 const slate = (n: number, over: Partial<SheetSlateGame>[] = []): SheetSlateGame[] =>
@@ -546,5 +548,67 @@ describe("slateSetChanged — what invalidates a ranking (migration 156)", () =>
 
   it("two empties have not changed", () => {
     expect(slateSetChanged([], [])).toBe(false);
+  });
+});
+
+/**
+ * ── SAVING AN EMPTY SHEET IS NOT SUBMITTING, AND THEY HAVE TO BE TOLD ──────
+ *
+ * `submitted` is `stored.length > 0`, so a sheet with no picks reads as "nothing
+ * submitted" everywhere it matters — the board, and the count a captain reads
+ * off `pickem_sheet_status` when deciding who to chase. Clearing your picks does
+ * not opt you out; it puts you back where you were before you picked anything.
+ *
+ * That is the model and it was already the behaviour. What was missing was
+ * anybody saying so. Pressing Save on an empty sheet was refused outright once
+ * (with the raw validation payload on screen), and then became a press that
+ * quietly did nothing — neither tells a person they are about to have no picks.
+ */
+describe("confirmEmptySheetSave", () => {
+  it("asks whenever nothing is picked, whether or not a sheet is stored", () => {
+    // Both directions matter and for different reasons: with rows stored the
+    // save DELETES them, and with none it does nothing at all. A person is
+    // owed the truth in both cases.
+    expect(confirmEmptySheetSave({ picked: 0, submitted: true })).toBe(true);
+    expect(confirmEmptySheetSave({ picked: 0, submitted: false })).toBe(true);
+  });
+
+  it("never asks when something IS picked — a partial sheet is ordinary", () => {
+    /**
+     * The case that keeps this from becoming a nag. Partial sheets are the
+     * normal way to use this screen (migration 166); a confirm on every
+     * incomplete save would be a dialog people learn to dismiss, which is worse
+     * than no dialog because it spends the one they should read.
+     */
+    expect(confirmEmptySheetSave({ picked: 1, submitted: false })).toBe(false);
+    expect(confirmEmptySheetSave({ picked: 16, submitted: true })).toBe(false);
+  });
+});
+
+describe("emptySheetWarning", () => {
+  it("names a DELETION when there is something to delete", () => {
+    const w = emptySheetWarning(true);
+    expect(w).toContain("clears the picks you saved");
+    expect(w).toContain("not having submitted");
+  });
+
+  it("does NOT claim a deletion when nothing is stored", () => {
+    /**
+     * Telling somebody their picks will be cleared when they never had any is
+     * a small lie, and small lies in warnings are how people learn to skip the
+     * next one.
+     */
+    const w = emptySheetWarning(false);
+    expect(w).not.toContain("clears");
+    expect(w).toContain("nothing will be saved");
+  });
+
+  it("ends on the SAME consequence either way — that is the fact they cannot infer", () => {
+    // The clause that differs is the cause; the clause that must not is the
+    // effect. An empty screen does not tell you what it means for your standing.
+    for (const submitted of [true, false]) {
+      expect(emptySheetWarning(submitted)).toContain("not having submitted");
+      expect(emptySheetWarning(submitted)).toContain("score nothing");
+    }
   });
 });

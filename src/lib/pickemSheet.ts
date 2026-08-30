@@ -317,6 +317,51 @@ export function reconcileSheet(
  * stored rank at all — reintroducing exactly the compaction the reconciliation
  * rule has always forbidden. The test that forbids it is what caught it.
  */
+/**
+ * Should saving stop and say that nothing is being submitted?
+ *
+ * ── Saving an empty sheet IS not submitting, and that is the point ─────────
+ *
+ * `submitted` is `stored.length > 0`, so a sheet with no picks reads as "nothing
+ * submitted" everywhere it matters — the board, and the count a captain reads
+ * off `pickem_sheet_status` when deciding who to chase. Clearing your picks does
+ * not opt you out; it puts you back where you were before you picked anything.
+ *
+ * That is the right model and it is already the behaviour. What was missing is
+ * anybody being TOLD: pressing Save on an empty sheet used to be refused outright
+ * (with the raw validation payload on screen), and once that floor came off it
+ * became a press that quietly does nothing. Neither version says the thing a
+ * person needs to hear, which is that they are about to have no picks.
+ *
+ * Fires on the ACT, not on the state — an empty sheet is a perfectly ordinary
+ * thing to be looking at, and a standing warning about it would be the banner
+ * mistake the finalize confirm already had to undo.
+ */
+export function confirmEmptySheetSave(o: {
+  /** How many picks the draft would send. */
+  picked: number;
+  /** Does the server currently hold a sheet for this person? */
+  submitted: boolean;
+}): boolean {
+  return o.picked === 0;
+}
+
+/**
+ * What they are told, which differs by whether there is anything to lose.
+ *
+ * Both sentences end on the same consequence — you will count as not having
+ * submitted — because that is the fact, and it is the one a person cannot infer
+ * from an empty screen. Only the first clause differs: one describes a deletion,
+ * the other describes an absence, and telling somebody their picks will be
+ * cleared when they never had any is the kind of small lie that makes a person
+ * distrust the next warning.
+ */
+export function emptySheetWarning(submitted: boolean): string {
+  return submitted
+    ? "This clears the picks you saved. You'll count as not having submitted, and score nothing."
+    : "You haven't picked anything, so nothing will be saved. You'll count as not having submitted, and score nothing.";
+}
+
 export function usableSubsetRanking(ranks: (number | null)[], n: number): boolean {
   const seen = new Set<number>();
   for (const r of ranks) {

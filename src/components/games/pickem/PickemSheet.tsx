@@ -6,9 +6,12 @@ import { PickemSheetRow } from "./PickemSheetRow";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import { draftOutboxRecover } from "@/lib/draftOutbox";
+import { PickemFinalizePrompt } from "./PickemFinalizePrompt";
 import {
   reconcileSheet,
   applyOrder,
+  confirmEmptySheetSave,
+  emptySheetWarning,
   fillAll,
   rankedOrder,
   setPick,
@@ -397,6 +400,21 @@ export function PickemSheet({
    * one-of-two-checks bug in this file's history.
    */
   const ready = submittablePicks(picks);
+  /**
+   * Saving nothing is legal, and nobody was telling them.
+   *
+   * It is the same as not submitting — `submitted` is `stored.length > 0`, so an
+   * empty sheet reads as "nothing submitted" on the board and in the count a
+   * captain chases from. That is the right model; the gap was that pressing Save
+   * on an empty sheet said nothing about it. Before the client floor came off it
+   * was refused with a raw validation payload; after, it was a press that
+   * quietly did nothing. Neither tells a person they are about to have no picks.
+   */
+  const [confirmingEmpty, setConfirmingEmpty] = useState(false);
+  const needsEmptyConfirm = confirmEmptySheetSave({
+    picked: ready.length,
+    submitted: server.submitted,
+  });
   const remaining = unpickedCount(picks);
 
   /**
@@ -559,7 +577,10 @@ export function PickemSheet({
             /* `ready` is the PICKED games, which is exactly what the RPC
                stores. A game left out is a game whose pick is cleared, because
                the write replaces the sheet rather than merging into it. */
-            onClick={() => onSave(ready)}
+            /* Intercepted when the sheet is empty — the confirm is a question
+               ABOUT this save, so it sits in front of the same handler rather
+               than becoming a second way to submit. */
+            onClick={() => (needsEmptyConfirm ? setConfirmingEmpty(true) : onSave(ready))}
             disabled={saving || !needsSave}
             data-testid="pickem-submit"
             className="shrink-0 rounded-xl px-4 disabled:opacity-40"
@@ -758,6 +779,24 @@ export function PickemSheet({
         }}
       />
 
+      {/* Asked at the tap, never standing on the page — an empty sheet is an
+          ordinary thing to be looking at, and a permanent notice about it would
+          be the banner mistake the finalize confirm already had to undo. */}
+      {confirmingEmpty && (
+        <PickemFinalizePrompt
+          title="No picks to save"
+          message={emptySheetWarning(server.submitted)}
+          confirmLabel={server.submitted ? "Clear my picks" : "Save an empty sheet"}
+          pendingLabel="Saving…"
+          cancelLabel="Keep picking"
+          pending={saving}
+          onConfirm={() => {
+            setConfirmingEmpty(false);
+            onSave(ready);
+          }}
+          onCancel={() => setConfirmingEmpty(false)}
+        />
+      )}
     </div>
   );
 }
