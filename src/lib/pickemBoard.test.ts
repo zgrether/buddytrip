@@ -237,18 +237,80 @@ describe("margin, remaining and the clinch", () => {
   });
 });
 
-describe("non-submitters score from defaults and appear normally", () => {
-  it("an absent sheet reads as home picks worth nothing, not as a crash", () => {
-    // §6 — they appear normally. A missing pick must not throw, and must not
-    // silently drop the row from the board either.
-    const slate = [g("x", { result: "home" }), g("y", { result: "away" })];
+describe("a side that did not pick", () => {
+  /**
+   * ── THE ROW USED TO INVENT A PICK, AND IT WAS NOT DISPLAY-ONLY ────────────
+   *
+   * `buildBoardRows` defaulted an absent pick to `"home"`, under a comment
+   * describing the pre-#1145 model where everyone had picks. So a non-submitter
+   * read as having taken the chalk in every game — and with confidence OFF the
+   * base took its `: 1` arm, so the board reported a point of UPSIDE on the
+   * table for somebody who is not playing.
+   *
+   * Scoring was always right, because `aPoints` is gated on the row existing.
+   * That is precisely why it survived: the numbers people check were correct and
+   * the numbers they infer from were not.
+   */
+  const slate = [g("x", { result: "home" }), g("y", { result: "away" })];
+
+  it("reports NO pick, rather than the home team", () => {
     const built = rows(slate, [p("x", "home", 5), p("y", "away", 3)], []);
+    // Still on the board — an absent sheet must not drop the row either.
     expect(built).toHaveLength(2);
-    expect(built[0].bPick).toBe("home");
-    // Defaulted to home and home won — but with no stored confidence the rank
-    // is 0, so they bank nothing. That is the honest reading of "never picked".
+    expect(built[0].bPick).toBeNull();
     expect(built[0].bPoints).toBe(0);
     expect(built[0].swing).toBe(5);
+  });
+
+  it("has NO UPSIDE with confidence off — the half that was not cosmetic", () => {
+    /**
+     * THE CASE THAT SEPARATES THIS FROM A LABEL CHANGE. With confidence off the
+     * base was a flat 1 for everyone, including a side with no sheet at all, so
+     * every unplayed contest reported a point they could still win.
+     *
+     * Asserted on an UNPLAYED row, because upside is only accumulated there.
+     */
+    const unplayed = [g("z")];
+    const built = rows(unplayed, [p("z", "home", null)], [], false);
+    expect(built[0].upsideA).toBe(1);
+    expect(built[0].upsideB).toBe(0);
+  });
+
+  it("gives the opponent their FULL stake, not a collapsed one", () => {
+    // Two sides that agree split only the difference in their ranks. There is no
+    // agreement with an absent pick, so the picker's whole rank is at stake —
+    // which is what the disagree branch already does, once the pick is null
+    // rather than a coincidental "home".
+    const unplayed = [g("z")];
+    const built = rows(unplayed, [p("z", "home", 4)], []);
+    expect(built[0].upsideA).toBe(4);
+    expect(built[0].upsideB).toBe(0);
+  });
+
+  it("does not call a resolved row NEITHER — nobody was wrong about it", () => {
+    /**
+     * "Neither" says two people were wrong about a contest one of them never
+     * wagered on. The zero is real; the REASON was not.
+     */
+    const built = rows(slate, [p("x", "away", 5), p("y", "away", 3)], []);
+    expect(built[0].swing).toBe(0);
+    expect(built[0].zeroKind).toBe("unpicked");
+  });
+
+  it("still says NEITHER when both DID pick and both missed", () => {
+    // The control. Without it, "unpicked" is satisfied by a build that stopped
+    // distinguishing the reasons at all.
+    const built = rows(slate, [p("x", "away", 5)], [p("x", "away", 2)]);
+    expect(built[0].swing).toBe(0);
+    expect(built[0].zeroKind).toBe("neither");
+  });
+
+  it("lets a VOID outrank the absence — that is a fact about the game", () => {
+    // Push and cancelled are about the contest and beat any fact about sheets:
+    // a voided game moved nobody whatever anyone picked, or did not pick.
+    const voided = [g("v", { result: "cancelled" })];
+    const built = rows(voided, [p("v", "home", 5)], []);
+    expect(built[0].zeroKind).toBe("cancelled");
   });
 });
 

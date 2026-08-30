@@ -46,13 +46,21 @@ export function pickemRowSurface(opts: {
   active?: boolean;
   /** Override the resting background (the sheet's read-only rows sit flatter). */
   background?: string;
-  /**
-   * No fill, subtle edge — a row for something that has not happened yet.
+/**
+   * No fill, subtle edge — the row RECEDES.
    *
-   * Two changes rather than one because they say the same thing twice: an
-   * unplayed row should not read as a record. The weighted stripe survives, so
-   * a 2x game still announces itself before it is played, which is when that
-   * matters most.
+   * Deliberately not "a row for something that has not happened yet", which is
+   * what this said and was already only half true: the run view's ENTERED rows
+   * use it for a COLLAPSED row, which has very much happened. The two callers
+   * mean different things by it and both are right, because the argument is
+   * about EMPHASIS and each screen decides what deserves it.
+   *
+   * The head-to-head now quiets its PLAYED rows, the exact inverse of what it
+   * used to do — the unplayed contests are the only ones that can still move,
+   * so they are what somebody scans a live match for.
+   *
+   * Two changes rather than one because they say the same thing twice. The
+   * weighted stripe survives either way, so a 2x game still announces itself.
    */
   quiet?: boolean;
 }): CSSProperties {
