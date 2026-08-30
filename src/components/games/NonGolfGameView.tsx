@@ -30,6 +30,8 @@ import {
   nonGolfDraftsEqual,
   type NonGolfConfigDraft,
   type CompetitionFormat,
+  type DraftMatchConfig,
+  type DraftMatchInput,
 } from "@/lib/configDraft";
 import { isPlacement, effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
@@ -44,7 +46,10 @@ import { DEFAULT_BRACKET_CONFIG, bracketFieldReady, type BracketConfig } from "@
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
-import { pointsReady } from "@/lib/matchDraft";
+import { pointsReady, sideMemberIds, type ServerSide } from "@/lib/matchDraft";
+import { MatchesBuilder } from "@/components/games/MatchesBuilder";
+import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
+import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { placementsFrom, pointsForPlacements } from "@/lib/placementGroups";
 import { reconcileOrderDraft } from "@/lib/teamDraft";
 import { bracketPlacements, teamPointsFromEntrants } from "@/lib/bracketPlacements";
@@ -376,6 +381,48 @@ export function NonGolfGameView() {
     [poolQ.data],
   );
 
+  // ── Matches (170) — the pairing grid, read through the SAME query golf's
+  // MatchGameView uses (`matches.listByGame`). Enabled unconditionally (like
+  // `poolQ` above): `serverConfigDraft` builds before anything has decided the
+  // format, and a non-Matches game simply reads back an empty pairing.
+  const matchesQ = trpc.matches.listByGame.useQuery(
+    { tripId: tripId!, gameId: urlGameId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId },
+  );
+  const serverMatchRows = useMemo(() => matchesQ.data?.matches ?? [], [matchesQ.data]);
+  const serverMatchParticipants = useMemo(() => matchesQ.data?.participants ?? [], [matchesQ.data]);
+  // 2v2 sides (play_groups) resolve to their members via participants.play_group_id —
+  // the SAME reconstruction golf's own MatchGameView does, verbatim, because a
+  // second spelling of "which side is who" is how the two would drift.
+  const membersOfSide = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const p of serverMatchParticipants) {
+      const pg = (p as { play_group_id?: string | null }).play_group_id;
+      if (!pg) continue;
+      if (!m.has(pg)) m.set(pg, []);
+      m.get(pg)!.push(p.user_id as string);
+    }
+    return m;
+  }, [serverMatchParticipants]);
+  const serverMatchInputs = useMemo<DraftMatchInput[]>(
+    () =>
+      (serverMatchRows as {
+        match_number: number | null;
+        side_a: ServerSide;
+        side_b: ServerSide;
+        point_value: number | null;
+      }[]).map((mm, i) => ({
+        matchNumber: mm.match_number ?? i + 1,
+        playersPerSide: mm.side_a?.type === "play_group" || mm.side_b?.type === "play_group" ? 2 : 1,
+        a: sideMemberIds(mm.side_a, membersOfSide),
+        b: sideMemberIds(mm.side_b, membersOfSide),
+        // No handicap UI for Matches (§5 — carried as null/0, never surfaced).
+        handicap: 0,
+        pointValue: mm.point_value ?? null,
+      })),
+    [serverMatchRows, membersOfSide],
+  );
+
   /** user id → cup team. The payload reads an entrant's team from its FIRST
    *  member (`nonGolfDraftToPayload`); this is the map it reads it out of. */
   const teamByUser = useMemo(() => {
@@ -409,6 +456,39 @@ export function NonGolfGameView() {
     return sections;
   }, [teams, teamByUser, crewQ.data]);
 
+  // ── Matches (170) — the lookups MatchesBuilder/MatchSetup take. Derived off
+  // `pickerTeams` rather than a second crew read, so the pairing grid and the
+  // team roll-up can't disagree about who is on which team. Mirrors
+  // PickemGameView's own derivation of the same maps for the same component.
+  const rosterByTeam = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const t of pickerTeams) m.set(t.id, t.players.map((p) => p.id));
+    return m;
+  }, [pickerTeams]);
+  const matchesNameMap = useMemo(
+    () => new Map(pickerTeams.flatMap((t) => t.players.map((p) => [p.id, p.name] as const))),
+    [pickerTeams],
+  );
+  const matchesAvatarIconMap = useMemo(
+    () => new Map(pickerTeams.flatMap((t) => t.players.map((p) => [p.id, p.avatarIcon] as const))),
+    [pickerTeams],
+  );
+  // A player's TEAM color from their roster assignment — team identity is the
+  // person, never the slot (the rule `MatchSetup`'s own `teamColorOf` prop
+  // documents).
+  const matchesTeamColorOf = useCallback(
+    (userId: string) => pickerTeams.find((t) => t.players.some((p) => p.id === userId))?.color,
+    [pickerTeams],
+  );
+  // `MatchSetup` also wants a per-player fallback color (`colorOf`) for when
+  // `teamColorOf` comes back undefined (a player dropped from their team) —
+  // stable per user via a fixed palette index, same recipe PickemGameView uses.
+  const matchesColorMap = useMemo(() => {
+    const ids = pickerTeams.flatMap((t) => t.players.map((p) => p.id));
+    return new Map(ids.map((id, i) => [id, PLAYER_COLORS[i % PLAYER_COLORS.length]]));
+  }, [pickerTeams]);
+  const [matchesSelector, setMatchesSelector] = useState<{ matchIdx: number; slot: "a" | "b"; memberIdx: number } | null>(null);
+
   // Draft slices — a scalar sentinel means "untouched, read the server mirror". name/
   // rules/scoring/delegates use null; format/points can BE null, so they use undefined.
   const [nameDraft, setNameDraft] = useState<string | null>(null);
@@ -423,15 +503,18 @@ export function NonGolfGameView() {
   // undefined — the same reason format/points above do.
   const [entrantsDraft, setEntrantsDraft] = useState<string[][] | null>(null);
   const [bracketConfigDraft, setBracketConfigDraft] = useState<BracketConfig | null | undefined>(undefined);
+  // Matches' one slice (170) — a list, same sentinel shape as entrants above.
+  const [matchesDraft, setMatchesDraft] = useState<DraftMatchConfig[] | null>(null);
 
   const serverConfigDraft = useMemo<NonGolfConfigDraft>(
-    () => configToNonGolfDraft((game ?? {}) as Parameters<typeof configToNonGolfDraft>[0], serverDelegates, serverEntrants),
-    [game, serverDelegates, serverEntrants],
+    () => configToNonGolfDraft((game ?? {}) as Parameters<typeof configToNonGolfDraft>[0], serverDelegates, serverEntrants, serverMatchInputs),
+    [game, serverDelegates, serverEntrants, serverMatchInputs],
   );
   const anyTouched =
     nameDraft !== null || rulesDraft !== null || scoringDraft !== null ||
     formatDraft !== undefined || pointsTotalDraft !== undefined || pointsDistDraft !== undefined ||
-    delegatesDraft !== null || entrantsDraft !== null || bracketConfigDraft !== undefined;
+    delegatesDraft !== null || entrantsDraft !== null || bracketConfigDraft !== undefined ||
+    matchesDraft !== null;
 
   const configDraft = useMemo<NonGolfConfigDraft>(
     () => ({
@@ -445,8 +528,9 @@ export function NonGolfGameView() {
       delegates: delegatesDraft ?? serverConfigDraft.delegates,
       bracketConfig: bracketConfigDraft !== undefined ? bracketConfigDraft : serverConfigDraft.bracketConfig,
       bracketEntrants: entrantsDraft ?? serverConfigDraft.bracketEntrants,
+      matches: matchesDraft ?? serverConfigDraft.matches,
     }),
-    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, entrantsDraft, bracketConfigDraft],
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, entrantsDraft, bracketConfigDraft, matchesDraft],
   );
 
   // ── The bracket's derived shape, read by everything below ───────────────────
@@ -455,6 +539,7 @@ export function NonGolfGameView() {
   // format switch takes effect everywhere at once rather than in the one place
   // that happened to be repointed (CLAUDE.md #18).
   const isBracket = configDraft.competitionFormat === "bracket";
+  const isMatches = configDraft.competitionFormat === MATCHES_COMPETITION_FORMAT;
 
   // ── The bracket's play surface (phase 3) ────────────────────────────────────
   // The DRAW as stored, resolved into occupants HERE. The server returns the
@@ -615,13 +700,14 @@ export function NonGolfGameView() {
   // Outbox bundle + slice reset/recover (format-specific; the shared hook below drives
   // the whole lifecycle off these).
   const draftBundle = useMemo(
-    () => ({ name: nameDraft, rules: rulesDraft, scoring: scoringDraft, format: formatDraft, pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, delegates: delegatesDraft, entrants: entrantsDraft, bracketConfig: bracketConfigDraft }),
-    [nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, entrantsDraft, bracketConfigDraft],
+    () => ({ name: nameDraft, rules: rulesDraft, scoring: scoringDraft, format: formatDraft, pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, delegates: delegatesDraft, entrants: entrantsDraft, bracketConfig: bracketConfigDraft, matches: matchesDraft }),
+    [nameDraft, rulesDraft, scoringDraft, formatDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, entrantsDraft, bracketConfigDraft, matchesDraft],
   );
   function resetSlices() {
     setNameDraft(null); setRulesDraft(null); setScoringDraft(null);
     setFormatDraft(undefined); setPointsTotalDraft(undefined); setPointsDistDraft(undefined);
     setDelegatesDraft(null); setEntrantsDraft(null); setBracketConfigDraft(undefined);
+    setMatchesDraft(null);
   }
   const applyBundle = useCallback((b: typeof draftBundle) => {
     if (b.name !== null) setNameDraft(b.name);
@@ -633,6 +719,7 @@ export function NonGolfGameView() {
     if (b.delegates !== null) setDelegatesDraft(b.delegates);
     if (b.entrants !== null) setEntrantsDraft(b.entrants);
     if (b.bracketConfig !== undefined) setBracketConfigDraft(b.bracketConfig);
+    if (b.matches !== null) setMatchesDraft(b.matches);
   }, []);
 
   // The settings overlay stays here (confirm-on-leave refs the shared hook writes below).
@@ -657,12 +744,13 @@ export function NonGolfGameView() {
     tripId, gameId: urlGameId, view: "nongolf", canEdit,
     showConfig, dirtyRef, discardRef,
     // EVERY query feeding serverConfigDraft (see StrokeGameView's call): the game row,
-    // orgQ (the delegates slice), poolQ (the entrants slice) — plus assignQ, which
-    // feeds no draft field but resolves every entrant's TEAM at payload time. A save
-    // that ran before it landed would send `teamId: null` for the whole field and be
-    // refused server-side ("a bracket needs a cup to score into") on a page the user
-    // filled in correctly, so it gates the baseline like the rest.
-    ready: !!game && !!orgQ.data && !!poolQ.data && (!competitionId || !!assignQ.data),
+    // orgQ (the delegates slice), poolQ (the entrants slice), matchesQ (the Matches
+    // pairing slice) — plus assignQ, which feeds no draft field but resolves every
+    // entrant's TEAM at payload time. A save that ran before it landed would send
+    // `teamId: null` for the whole field and be refused server-side ("a bracket
+    // needs a cup to score into") on a page the user filled in correctly, so it
+    // gates the baseline like the rest.
+    ready: !!game && !!orgQ.data && !!poolQ.data && !!matchesQ.data && (!competitionId || !!assignQ.data),
     serverConfigDraft, configDraft, anyTouched,
     draftsEqual: nonGolfDraftsEqual,
     toPayload: (draft, base) => nonGolfDraftToPayload(draft, base, { teamByUser }),
@@ -705,8 +793,17 @@ export function NonGolfGameView() {
     setFormatDraft(next);
     if (next === "bracket") {
       if (!configDraft.bracketConfig) setBracketConfigDraft(DEFAULT_BRACKET_CONFIG);
+      // A game is never both formats (one `competitionFormat` value) — clear
+      // the OTHER structural slice, mirroring the bracket-pool clear below.
+      setMatchesDraft([]);
+    } else if (next === MATCHES_COMPETITION_FORMAT) {
+      // No scalar config to stage the way `bracketConfig` needs (Matches has
+      // no settings beyond the pairing grid itself), so this arm only clears
+      // the slice Matches does NOT own.
+      setEntrantsDraft([]);
     } else {
       setEntrantsDraft([]);
+      setMatchesDraft([]);
     }
   }
   /** Leaving Bracket with a field built costs that field, so it asks first —
@@ -852,6 +949,28 @@ export function NonGolfGameView() {
                   consolationHasResult={resolvedDraw.some(
                     (m) => m.bracket === "consolation" && m.winnerSeed !== null,
                   )}
+                />
+              ) : null
+            }
+            // Matches' pairing grid (170) — same slot pattern as bracketRows,
+            // rendered only once the format is chosen. No staged default to
+            // wait a render for (Matches has no scalar config), so there is no
+            // gap analogous to bracket's "config lands next render".
+            matchRows={
+              isMatches ? (
+                <MatchesBuilder
+                  draft={configDraft.matches}
+                  setDraft={(fn) => setMatchesDraft(fn(configDraft.matches))}
+                  teams={teams}
+                  rosterByTeam={rosterByTeam}
+                  nameMap={matchesNameMap}
+                  colorMap={matchesColorMap}
+                  avatarIconMap={matchesAvatarIconMap}
+                  teamColorOf={matchesTeamColorOf}
+                  canEdit={canEdit}
+                  pointsTotal={configDraft.pointsTotal}
+                  selector={matchesSelector}
+                  setSelector={setMatchesSelector}
                 />
               ) : null
             }

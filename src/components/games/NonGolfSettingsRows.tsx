@@ -74,7 +74,7 @@ export function NonGolfTotalPointsRow({
 /** SETTINGS slot — Competition Format, plus the placement split for the points
  *  model. Owns the single-open accordion state shared by its two rows. */
 export function NonGolfSettingsRows({
-  game, scoringModel, draft, canEdit, capacity, bracketRows, onFormatChange, onPointsTotalChange, onPointsDistChange,
+  game, scoringModel, draft, canEdit, capacity, bracketRows, matchRows, onFormatChange, onPointsTotalChange, onPointsDistChange,
 }: {
   game: GameRow;
   scoringModel: ScoringModel;
@@ -90,6 +90,9 @@ export function NonGolfSettingsRows({
    *  parent owns, and threading all three through this component to re-emit them
    *  would make it the bracket's plumbing rather than non-golf's row list. */
   bracketRows?: React.ReactNode;
+  /** Matches' pairing grid (170) — the same slot pattern as `bracketRows`, one
+   *  per structural format. */
+  matchRows?: React.ReactNode;
   onFormatChange: (format: CompetitionFormat | null) => void;
   onPointsTotalChange: (total: number | null) => void;
   onPointsDistChange: (dist: PointsDistribution | null) => void;
@@ -112,6 +115,7 @@ export function NonGolfSettingsRows({
         onChange={onFormatChange}
       />
       {bracketRows}
+      {matchRows}
       {/* Point Distribution — the placement split.
 
           SHOWN IN EVERY CUP NOW, which retires this file's standing exception.
