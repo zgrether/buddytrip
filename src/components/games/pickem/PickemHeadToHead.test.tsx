@@ -216,6 +216,7 @@ describe("row emphasis", () => {
         matchCount={1}
         resolved={rows.filter((r) => r.result != null).length}
         picked={{ a: true, b: true }}
+        useConfidence
         note="Live"
         onBack={() => {}}
       />
@@ -316,18 +317,26 @@ describe("the confidence chip", () => {
         matchCount={1}
         resolved={r.result != null ? 1 : 0}
         picked={{ a: true, b: true }}
+        useConfidence
         note="Live"
         onBack={() => {}}
       />
     );
 
+  /**
+   * `bConfidence` is set on all three so the OTHER side renders an ordinary
+   * chip. Left null it is a picked-but-unranked pick, which now draws the dash
+   * — correctly — and a page-wide assertion about the A chip would then be
+   * reading B's. The claim here is about one chip; the fixture has to make that
+   * the only one in play.
+   */
   const BANKED = row({
-    slateGameId: "g1", result: "home", aPick: "home", aConfidence: 5, aPoints: 5, swing: 5,
+    slateGameId: "g1", result: "home", aPick: "home", aConfidence: 5, bConfidence: 2, aPoints: 5, swing: 5,
   });
   const MISSED = row({
-    slateGameId: "g1", result: "home", aPick: "away", aConfidence: 5, aPoints: 0, swing: -1,
+    slateGameId: "g1", result: "home", aPick: "away", aConfidence: 5, bConfidence: 2, aPoints: 0, swing: -1,
   });
-  const OPEN = row({ slateGameId: "g1", aPick: "away", aConfidence: 5, upsideA: 5 });
+  const OPEN = row({ slateGameId: "g1", aPick: "away", aConfidence: 5, bConfidence: 2, upsideA: 5 });
 
   it("does NOT strike a missed rank — the number has to stay readable", () => {
     const html = render1(MISSED);
@@ -347,15 +356,22 @@ describe("the confidence chip", () => {
     const open = render1(OPEN);
     expect(missed).toContain('data-testid="pickem-conf-missed"');
     expect(open).toContain('data-testid="pickem-conf-open"');
-    expect(missed).toContain("opacity:0.45");
-    expect(open).not.toContain("opacity:0.45");
+    expect(chip(missed, "missed")).toContain("opacity:0.45");
+    expect(chip(open, "open")).not.toContain("opacity:0.45");
   });
+
+  /** One chip's opening tag, by state. Both sides render a chip, so a page-wide
+   *  assertion about one of them reads the other — which is how this case first
+   *  failed against correct code. */
+  const chip = (html: string, state: "banked" | "missed" | "open" | "unranked") => {
+    const at = html.indexOf('data-testid="pickem-conf-' + state + '"');
+    return at < 0 ? "" : html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
+  };
 
   it("keeps BANKED unmistakable — accent is what 'points were awarded' means", () => {
     const html = render1(BANKED);
-    expect(html).toContain('data-testid="pickem-conf-banked"');
-    expect(html).toContain("var(--color-bt-accent)");
-    expect(html).not.toContain("opacity:0.45");
+    expect(chip(html, "banked")).toContain("var(--color-bt-accent)");
+    expect(chip(html, "banked")).not.toContain("opacity:0.45");
   });
 
   it("gives the three states three different treatments", () => {
@@ -367,5 +383,86 @@ describe("the confidence chip", () => {
       return html.slice(at, html.indexOf(">", at));
     });
     expect(new Set(chips).size).toBe(3);
+  });
+});
+
+/**
+ * ── A PICK WITH NO RANK IS NOT A PICK WITH NO CHIP ─────────────────────────
+ *
+ * `pickPoints` reads `confidence ?? 0` with confidence on, so a sheet whose
+ * ranks were cleared by a reopen scores zero for every correct pick until they
+ * are re-entered. The chip vanished, so the row showed two team names and a zero
+ * — indistinguishable at a glance from a push, which is how it was read.
+ */
+describe("a pick with no rank", () => {
+  const slateGame = {
+    id: "g1", awayTeam: "Alabama", homeTeam: "Georgia",
+    spread: null, kickoff: "Sat 3:30p", note: null, multiplier: 1,
+  };
+  const render2 = (r: BoardRow, useConfidence = true) =>
+    renderToStaticMarkup(
+      <PickemHeadToHead
+        slate={[slateGame]} rows={[r]}
+        aName="Ada" bName="Bo" aUserId="u1" bUserId="u2"
+        avatarFor={() => ({ avatarIcon: null, teamColor: null })}
+        matchIndex={1} matchCount={1} resolved={r.result != null ? 1 : 0}
+        picked={{ a: true, b: true }} useConfidence={useConfidence}
+        note="Live" onBack={() => {}}
+      />
+    );
+
+  const CLEARED = row({
+    slateGameId: "g1", result: "home",
+    aPick: "home", aConfidence: null, aPoints: 0,
+    bPick: "home", bConfidence: null, bPoints: 0,
+    swing: 0, zeroKind: "both",
+  });
+
+  it("MARKS the missing rank rather than rendering nothing", () => {
+    const html = render2(CLEARED);
+    expect(html).toContain('data-testid="pickem-conf-unranked"');
+    // Both correct, both unranked — the row that read as a push.
+    expect(html.split('data-testid="pickem-conf-unranked"').length - 1).toBe(2);
+  });
+
+  it("is NOT a zero — a rank nobody spent is absent, not spent-as-zero", () => {
+    /**
+     * The same conflation pointing the other way: the POINTS are zero, the RANK
+     * is missing, and this chip shows ranks.
+     *
+     * Scoped to the CHIP's own content. A page-wide `not.toContain(">0<")` fails
+     * on the standing in the header, which is a real zero and none of this
+     * assertion's business — measuring the page where the claim is about one
+     * element, for the third time in this file.
+     */
+    const html = render2(CLEARED);
+    const at = html.indexOf('data-testid="pickem-conf-unranked"');
+    const content = html.slice(at, html.indexOf("</span>", at));
+    // The dash by CODE POINT, not as a literal: an en dash does not survive
+    // every editor and shell it has passed through to get here, and an
+    // assertion that silently compares the wrong character is worse than none.
+    const EN_DASH = String.fromCharCode(0x2013);
+    // The slice stops AT `</span>`, so the chip's text is the tail rather than
+    // something wrapped in angle brackets — asserting `">x<"` here can never
+    // match, whatever is rendered.
+    expect(content.endsWith(">" + EN_DASH)).toBe(true);
+    expect(content).not.toMatch(/>[0-9]+$/);
+  });
+
+  it("says nothing when ranks do not apply — confidence OFF", () => {
+    /**
+     * Every rank is null there and that is normal, so a dash on all sixteen rows
+     * would be noise about a mechanic that is not in play.
+     */
+    expect(render2(CLEARED, false)).not.toContain("pickem-conf-unranked");
+  });
+
+  it("says nothing where there is no PICK — that is already labelled", () => {
+    // `SidePick` renders "No pick" there; a second mark for the same absence is
+    // two things saying one thing.
+    const noPick = row({ slateGameId: "g1", result: "home", aPick: null, aConfidence: null, bPick: "home", bConfidence: 3 });
+    const html = render2(noPick);
+    expect(html).toContain('data-testid="pickem-h2h-no-pick"');
+    expect(html).not.toContain("pickem-conf-unranked");
   });
 });
