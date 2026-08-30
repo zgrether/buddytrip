@@ -35,6 +35,7 @@ import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
 import { CHAT_FETCH_SIZE, dedupeById, olderCursor } from "@/components/chatPaging";
 import { chatRoomKey, type ChatRoom } from "@/lib/chatRoom";
+import { chatRoomShowsTopFade, chatRoomTeamHeaderStyle } from "@/lib/chatRoomPresentation";
 
 type Visibility = "crew" | "planning";
 
@@ -313,6 +314,23 @@ function FloatingChatPanelInner({
   const roomKey = chatRoomKey(activeRoom);
   const activeChannel: Visibility = activeRoom.kind === "team" ? "crew" : activeRoom.kind;
   const isTeamRoom = activeRoom.kind === "team";
+  /**
+   * Whether `ChatBody`'s top fade should render — see `chatRoomShowsTopFade`
+   * (`chatRoomPresentation.ts`) for why it's suppressed in the team room.
+   *
+   * Computed HERE, next to `activeRoom`'s other derivations, rather than inline
+   * where it's passed to `ChatBody` further down: calling an imported function
+   * on `activeRoom` from inside the JSX trips the React Compiler's escape
+   * analysis for `activeRoom` and cascades into it refusing to preserve the
+   * manual memoization on `setText`'s `useCallback` (which also derives from
+   * `activeRoom`, via `roomKey`) — a real `eslint --max-warnings 0` failure,
+   * confirmed by moving the same call here and watching it disappear. Nothing
+   * about `chatRoomShowsTopFade` is impure; this is the compiler being
+   * conservative about a value's shape once an external call touches it deep in
+   * a render. Declaring derivations of one source value in one place, early,
+   * sidesteps it — and reads better besides.
+   */
+  const showTopFade = chatRoomShowsTopFade(activeRoom);
 
   // The visible draft + writer for the active channel.
   //
@@ -970,6 +988,10 @@ function FloatingChatPanelInner({
       isPlanningChannel={isPlanningChannel}
       teamName={isTeamRoom ? (teamName ?? "Team") : null}
       teamColor={isTeamRoom ? (teamColor ?? null) : null}
+      // Derived from `activeRoom` above (not proxied off `teamColor != null`
+      // inside ChatBody) — a team whose colour failed to load is still the
+      // team room, and the fade must stay suppressed either way.
+      showTopFade={showTopFade}
       organizers={organizers}
       accentVar={accentVar}
       accentFaint={accentFaint}
@@ -1123,6 +1145,15 @@ interface ChatBodyProps {
   teamName: string | null;
   /** The team's colour, for the header dot and the glow. Null off the team room. */
   teamColor: string | null;
+  /**
+   * Should the message list's top fade render — `chatRoomShowsTopFade(room)`,
+   * computed by the caller from `activeRoom` (the authoritative source) and NOT
+   * re-derived here from `teamColor != null`. False only for the team room. A
+   * team room whose colour failed to resolve is still the team room; proxying
+   * off a value that can independently go missing would un-suppress the fade
+   * for exactly the case where the glow it defers to might also be weakest.
+   */
+  showTopFade: boolean;
   organizers: { user_id: string | null; displayName: string }[];
   accentVar: string;
   accentFaint: string;
@@ -1171,6 +1202,7 @@ function ChatBody({
   isPlanningChannel,
   teamName,
   teamColor,
+  showTopFade,
   organizers,
   accentVar,
   accentFaint,
@@ -1480,11 +1512,33 @@ function ChatBody({
              control — nothing is displaced, and the control keeps its home. That
              matters: someone who needs L in Crew needs it in Team, and removing
              it here would be a regression for the readers it was built for.
+             `min-w-0` + `truncate` on this slot is what keeps a long team name
+             from ever pushing the control off the row — the same mechanism that
+             already protects the Organizers summary line above.
+
+             MEASURED IN THE BROWSER rather than assumed, since neither claim is
+             pinned by an automated test — this codebase has no component-render
+             tests to pin CSS layout with, and these two are pure layout: the
+             control's `getBoundingClientRect()` was IDENTICAL (256–362px) with
+             the header reading "Buddy" and with it swapped for a 59-character
+             name at runtime; no overlap between the two at any point. Same
+             rect, separately, across Crew / Team / Organizers. If this class of
+             claim gets an automated pin in this file, it belongs here.
 
              Permanent, unlike the Organizers line, which is a collapsible
              explainer. "Which room am I in" is answered by the tab for the other
              three; for Team the useful fact is WHICH team, and that does not
-             become less useful on the second visit. */
+             become less useful on the second visit.
+
+             SHIPPED AT 10px UPPERCASE FIRST, AND THAT WAS WRONG. It read as a
+             section label — "you are in the Team section" — when the fact it
+             carries is closer to a name, and it is the thing telling you this
+             room is private. `chatRoomTeamHeaderStyle` (`chatRoomPresentation.ts`)
+             is the fix: 14px, the team's own colour on the TEXT rather than only
+             the dot, no `uppercase`. "Buddy" in team colour reads as an identity
+             and ties itself to the glow behind it; "BUDDY" at 10px dim read as a
+             category, which is the opposite of what a private room's own header
+             should say. */
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <span
               aria-hidden="true"
@@ -1500,8 +1554,8 @@ function ChatBody({
             />
             <span
               data-testid="chat-team-header"
-              className="truncate text-[10px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-bt-text-dim)" }}
+              className="truncate font-semibold"
+              style={chatRoomTeamHeaderStyle(teamColor)}
             >
               {teamName}
             </span>
@@ -1887,11 +1941,29 @@ function ChatBody({
             Hardcoding `card-float` was right for the sheet and visibly wrong in
             the aside — the gradient began a shade lighter than the panel behind
             it. Neither surface is the mistake; that was. The container declares
-            `--chat-surface`; the sheet's default keeps its existing behaviour. */}
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8"
-          style={{ background: "linear-gradient(to bottom, var(--chat-surface, var(--color-bt-card-float)), transparent)" }}
-        />
+            `--chat-surface`; the sheet's default keeps its existing behaviour.
+
+            SUPPRESSED IN THE TEAM ROOM — a THIRD surface the fade never had a
+            colour for. It isn't flat like the other two; it's the team glow, a
+            radial gradient strongest in the exact corner this div sits over.
+            Painted anyway, it read as a flat, off-colour rectangle laid across
+            the glow right where the transcript begins — a hard-edged band where
+            a soft one belongs. Full reasoning, and why this is one condition
+            rather than a third `--chat-surface` value or a z-index reshuffle,
+            lives at `chatRoomShowsTopFade` (`chatRoomPresentation.ts`) — one
+            place, not repeated here. `showTopFade` is computed by the caller
+            from `activeRoom` (see `ChatBodyProps.showTopFade` for why it is not
+            proxied off `teamColor`). */}
+        {showTopFade && (
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-8"
+            data-testid="chat-top-fade"
+            style={{
+              background:
+                "linear-gradient(to bottom, var(--chat-surface, var(--color-bt-card-float)), transparent)",
+            }}
+          />
+        )}
         {/* Messenger-style jump-to-latest — hovers above the message window
             whenever you're scrolled up. Neutral by default; fills with the
             channel accent (plus a badge dot) when new messages arrived while
