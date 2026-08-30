@@ -319,13 +319,40 @@ describe("pick'em proxy entry (migration 163)", () => {
     });
 
     it("validates the sheet exactly as self-entry does — one body, not two", async () => {
-      // The core is shared, so an incomplete sheet must fail identically here.
-      // If the proxy path ever grew its own copy of the validation this is what
-      // would notice, because a copy is where the two would first disagree.
+      /**
+       * The core is shared, so a rejected sheet must fail identically here. If
+       * the proxy path ever grew its own copy of the validation this is what
+       * would notice, because a copy is where the two would first disagree.
+       *
+       * It used to probe with an INCOMPLETE sheet, which migration 166 makes
+       * legal — a partial sheet is now a normal thing to save, and this case
+       * was asserting the absence of that feature from the other side of the
+       * app. It probes with a DUPLICATE instead: the check 166 had to make
+       * explicit, running through the same shared body.
+       */
+      const dup = [
+        { slateGameId: slate1, pick: "away", confidence: 2 },
+        { slateGameId: slate1, pick: "home", confidence: 1 },
+      ];
+      expect((await proxy("owner", guestId, dup)).error?.message ?? "").toContain(
+        "DUPLICATE_PICK"
+      );
+    });
+
+    it("accepts a PARTIAL sheet for somebody else, exactly as for yourself", async () => {
+      /**
+       * The pair, and the half that would otherwise go untested from this side:
+       * a captain entering for a teammate who is halfway through is the whole
+       * reason partial saves matter to proxy entry.
+       *
+       * Without this, a build that kept a completeness gate on the proxy path
+       * alone would pass everything above — which is precisely the "one body,
+       * not two" claim failing in the direction the old case could not see.
+       */
       const { error } = await proxy("owner", guestId, [
         { slateGameId: slate1, pick: "away", confidence: 1 },
       ]);
-      expect(error?.message ?? "").toContain("INCOMPLETE_SHEET");
+      expect(error).toBeNull();
     });
   });
 

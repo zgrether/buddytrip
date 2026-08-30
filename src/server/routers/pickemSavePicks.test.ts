@@ -215,18 +215,66 @@ describe("save_pickem_picks (migration 150)", () => {
     expect(count).toBe(0);
   });
 
-  // ── the sheet must be a whole sheet ──────────────────────────────────────
+  // ── a sheet may be PARTIAL, and saving one REPLACES it (166) ─────────────
 
-  it("refuses a partial sheet — spec §4 has no such state", async () => {
-    const { error } = await save(sheet().slice(0, 2));
-    expect(error?.message).toContain("INCOMPLETE_SHEET");
+  it("accepts a partial sheet, and stores exactly what was sent", async () => {
+    /**
+     * Migration 150's completeness gate came from a model where the client
+     * pre-filled every game, so "complete" was a property of every sheet. With
+     * nothing pre-filled it became a thing a person works towards, and Save has
+     * to be reachable while they are still working — otherwise the progress
+     * lives only in a localStorage draft that a lost phone takes with it.
+     */
+    expect((await save(sheet().slice(0, 2))).error).toBeNull();
+    const rows = await readSheet();
+    expect(rows.filter(Boolean)).toHaveLength(2);
   });
 
-  it("refuses a DUPLICATED game that would otherwise pass a bare count", async () => {
+  it("REPLACES the sheet — a pick left out of the payload is deleted", async () => {
+    /**
+     * THE DECISIVE CASE, and the one an upsert-only write fails.
+     *
+     * Tapping the side you already took clears it. Under partial saves an
+     * upsert would take the cleared game, find it absent from the payload, and
+     * leave the old row exactly where it was — so the pick comes back on the
+     * next read, after the person watched themselves clear it.
+     *
+     * The pair is the assertion: save four, then save two, and the other two
+     * must be GONE rather than merely un-updated. Asserting only that the two
+     * survivors are right would pass against the upsert.
+     */
+    expect((await save(sheet())).error).toBeNull();
+    expect((await readSheet()).filter(Boolean)).toHaveLength(SLATE_SIZE);
+
+    expect((await save(sheet().slice(0, 2))).error).toBeNull();
+    const rows = (await readSheet()).filter(Boolean);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r!.slate_game_id).sort()).toEqual(slateIds.slice(0, 2).sort());
+  });
+
+  it("an EMPTY payload clears the sheet entirely", async () => {
+    // Clearing every pick and saving is a legitimate act, and it has to leave
+    // "nothing submitted" rather than the sheet you had before.
+    await save(sheet());
+    expect((await save([])).error).toBeNull();
+    expect((await readSheet()).filter(Boolean)).toHaveLength(0);
+  });
+
+  it("refuses a DUPLICATED game, and names it as a duplicate", async () => {
+    /**
+     * This used to be refused by the COMPLETENESS gate, for the wrong reason:
+     * two entries for one contest dragged the distinct count below the slate
+     * count, so the payload failed as "incomplete".
+     *
+     * Relaxing that gate makes duplicates silently legal — both reach the
+     * upsert and the last one wins, with no error and no way to tell which was
+     * kept. So the check is explicit now. The message is asserted, not just the
+     * refusal: a check that happens to fire for an unrelated reason is the
+     * thing this whole migration had to go and fix.
+     */
     const dup = [...sheet().slice(0, 3), { slateGameId: slateIds[0], pick: "away", confidence: 1 }];
-    expect(dup).toHaveLength(SLATE_SIZE);
     const { error } = await save(dup);
-    expect(error?.message).toContain("INCOMPLETE_SHEET");
+    expect(error?.message).toContain("DUPLICATE_PICK");
   });
 
   it("refuses a game that belongs to a different slate", async () => {
@@ -240,10 +288,44 @@ describe("save_pickem_picks (migration 150)", () => {
     ["a hole", [4, 3, 1, 1]],
     ["a rank above N", [5, 3, 2, 1]],
     ["a null on a confidence game", [4, 3, 2, null]],
-  ])("refuses %s", async (_label, ranks) => {
+  ])("refuses %s on a COMPLETE sheet", async (_label, ranks) => {
     const picks = slateIds.map((id, i) => ({ slateGameId: id, pick: "home", confidence: ranks[i] }));
     const { error } = await save(picks);
     expect(error?.message).toContain("BAD_CONFIDENCE");
+  });
+
+  it("accepts a partial sheet whose ranks have GAPS — that is what one looks like", async () => {
+    /**
+     * The client treats the ranking as an order over the SLATE, not over the
+     * picks: every row gets a rank the moment the sheet renders, and dragging
+     * reorders all of them. So a partial sheet's ranks are a subset of 1..N
+     * with holes where the unpicked games sit — 4 and 2 out of 1..4 here.
+     *
+     * A permutation check applied to a partial sheet would refuse every one of
+     * them, which is why the rule had to split rather than relax.
+     */
+    const partial = [
+      { slateGameId: slateIds[0], pick: "home", confidence: 4 },
+      { slateGameId: slateIds[2], pick: "away", confidence: 2 },
+    ];
+    expect((await save(partial)).error).toBeNull();
+    expect((await readSheet()).filter(Boolean).map((r) => r!.confidence).sort()).toEqual([2, 4]);
+  });
+
+  it.each([
+    ["two picks share a rank", [3, 3]],
+    ["a rank above N", [9, 1]],
+    ["a rank below 1", [0, 1]],
+  ])("still refuses %s on a PARTIAL sheet", async (_label, ranks) => {
+    // The half of the rule that did NOT relax. In-range and distinct still hold
+    // whatever the count is — the pair with the case above is what makes the
+    // split a rule rather than an absence of one.
+    const partial = ranks.map((c, i) => ({
+      slateGameId: slateIds[i],
+      pick: "home",
+      confidence: c,
+    }));
+    expect((await save(partial)).error?.message).toContain("BAD_CONFIDENCE");
   });
 
   // ── confidence off ───────────────────────────────────────────────────────

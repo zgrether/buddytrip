@@ -717,16 +717,33 @@ function pickemError(message: string): TRPCError {
       message: "That game is no longer on the slate. Reload and try again.",
     });
   }
-  if (message.includes("INCOMPLETE_SHEET") || message.includes("UNKNOWN_SLATE_GAME")) {
+  // INCOMPLETE_SHEET is gone (migration 166) — a partial sheet is a normal
+  // thing to save now, so the arm that mapped it went with the error. What is
+  // left names the one thing that string still covered: the slate moved.
+  if (message.includes("UNKNOWN_SLATE_GAME")) {
     return new TRPCError({
       code: "CONFLICT",
       message: "The slate changed while you were picking. Reload and check your sheet before saving.",
     });
   }
+  /**
+   * A duplicate is not something a person can do from the sheet — the surface
+   * holds one row per contest — so this is a client bug or a stale payload, and
+   * the message says the only thing that helps rather than blaming the reader
+   * for a choice they did not make.
+   */
+  if (message.includes("DUPLICATE_PICK")) {
+    return new TRPCError({
+      code: "CONFLICT",
+      message: "That sheet had a game on it twice. Reload and save again.",
+    });
+  }
   if (message.includes("BAD_CONFIDENCE")) {
     return new TRPCError({
       code: "BAD_REQUEST",
-      message: "Every game needs its own rank, with no repeats.",
+      // Covers three server messages now (out of range, a shared rank, and a
+      // complete sheet missing one) — all three are the same instruction.
+      message: "Each pick needs its own rank, with no repeats.",
     });
   }
   if (message.includes("MATCH_DECIDED")) {
