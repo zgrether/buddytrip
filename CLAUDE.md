@@ -290,6 +290,33 @@ seam, never on a calendar.
   a fixture omitting a key exercises MORE machinery, not less, so the finding
   comes out bigger than the truth.
 
+  **THE OTHER SYMPTOM IS A RED TEST, AND IT COSTS MORE THAN A GREEN ONE.** The
+  instances above all report success about a path that does not exist. The same
+  unreachability can present as a FAILURE instead, and that is the expensive
+  version: a red test naming the wrong cause sends somebody to fix code that is
+  not broken, and they arrive confident because a test told them.
+
+  Worked instance (the validation-payload sweep). `errorFormatter` was added to
+  `initTRPC` so a zod rejection stops rendering its issue array. The natural test
+  is to call the procedure and assert the friendly message — and it would have
+  gone RED, because `createCaller` does not run `errorFormatter` at all: that
+  hook is the HTTP response boundary, and a direct caller never crosses it.
+
+  The honest reading of that red is "the harness cannot reach this layer". The
+  tempting one is "the formatter is broken", which is a wiring bug that does not
+  exist, in code that is correct. Measuring the harness FIRST — one throwaway
+  probe printing whether the formatter ran — separated the two facts before
+  either could be mistaken for the other.
+
+  **How to apply:** before asserting that a layer did something, check that your
+  harness runs that layer. "The code is wrong" and "the test cannot see the code"
+  produce the same red, and only one of them is yours to fix. When the harness
+  genuinely cannot reach it — an HTTP-boundary hook from a node suite — test what
+  the decision RESTS on (here: the code and cause tRPC really produces, the
+  predicate over them, and the client-side backstop) and say in the file what is
+  and is not covered. A test file that states its own limit is worth more than
+  one that implies coverage it does not have.
+
 - **A REFUSAL MUST NAME AN ACTION THE READER CAN TAKE.** The worst message is not a
   vague one — it is a specific instruction for something that is not there. The reader
   believes it, goes looking, finds nothing, and concludes the app is broken rather than
