@@ -17,7 +17,6 @@ import { PointsAtStake } from "./PointsAtStake";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { isMatchesGame } from "@/lib/resultStrategy";
 import { MatchesScoreboard, type MatchScoreRow } from "./MatchesScoreboard";
-import { PickemFinalizePrompt } from "./pickem/PickemFinalizePrompt";
 
 /**
  * NonGolfScoreboard — the scoring-mode body of the non-golf scoreboard page
@@ -96,7 +95,7 @@ export function NonGolfScoreboard({
    *  mutation, `matches.setResult`) rather than staging into `placements` —
    *  there is no single "the outcome" for a page with N independent match
    *  results to stage. */
-  onMatchResultPick: (matchId: string, result: "a_win" | "b_win" | "halve") => void;
+  onMatchResultPick: (matchId: string, result: "a_win" | "b_win" | "halve" | null) => void;
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
   onPosted: () => void;
@@ -115,11 +114,15 @@ export function NonGolfScoreboard({
   const dist = game.points_distribution?.type === "placement" ? game.points_distribution.values : [];
 
   const [error, setError] = useState<string | null>(null);
-  // Matches' pre-commit confirm (§ build spec, mirroring pick'em's
-  // `PickemFinalizePrompt` — see that file's header for why this is asked AT
-  // THE TAP rather than shown as a standing banner). Only relevant when
-  // `isMatches`; every other branch finalizes straight from `commit` below.
-  const [confirmFinalize, setConfirmFinalize] = useState(false);
+  // Matches' finalize used to ask a pre-commit confirm here (mirroring
+  // pick'em's `PickemFinalizePrompt`) for finalizing with matches left
+  // undecided — REVERSED per direct feedback: the button should not be
+  // reachable at all until every match has a result, matching golf match
+  // play's own "Save results" (`GameLifecycleActions`'s bare CTA, no confirm
+  // step) rather than borrowing pick'em's "declared-but-maybe-partial" shape.
+  // See `allComplete` below, which is the actual gate now — there is nothing
+  // left for a confirm to ask, because an undecided match can no longer reach
+  // this button in the first place.
   const matchesUndecidedCount = matches.filter((m) => m.result == null).length;
 
   const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(
@@ -181,15 +184,14 @@ export function NonGolfScoreboard({
   async function commit() {
     setError(null);
     if (isMatches) {
-      // Asked at the moment of the tap, not shown as a standing banner — see
-      // `PickemFinalizePrompt`'s own header for the full reasoning, reused
-      // here rather than re-argued. An undecided match's points stay unpaid
-      // (Phase 0 §3); that is permitted, so this is a confirm, not a refusal.
-      if (matchesUndecidedCount > 0) {
-        setConfirmFinalize(true);
-        return;
-      }
-      await finalizeMatches();
+      // No confirm, no branching on `matchesUndecidedCount` — `allComplete`
+      // below already refuses this button reaching a tappable state while any
+      // match is undecided, so by the time `commit` runs there is nothing left
+      // to ask about. Same shape as every golf format's own "Save results":
+      // one tap, straight to `finalize`. No `placements` — the Matches arm of
+      // `games.finish` ignores that input; it reads `game_matches.result`
+      // directly, same as every other engine strategy.
+      await finalize();
       return;
     }
     // The parent built this from the same state the header just previewed, so
@@ -202,16 +204,6 @@ export function NonGolfScoreboard({
     // living in one place. `placements` is the only per-format input
     // `games.finish` takes — the golf formats compute their result server-side.
     await finalize(placements);
-  }
-
-  /** Matches' actual finalize call — no `placements` (the Matches arm of
-   *  `games.finish` ignores that input; it reads `game_matches.result`
-   *  directly, same as every other engine strategy). Split from `commit` so
-   *  the confirm prompt's "yes, finalize anyway" has something to call that
-   *  skips straight past the undecided-count gate it already agreed to. */
-  async function finalizeMatches() {
-    setConfirmFinalize(false);
-    await finalize();
   }
 
   return (
@@ -278,39 +270,30 @@ export function NonGolfScoreboard({
           guard on ONE value, so the button cannot be live for a state that
           `commit` would refuse.
 
-          Matches reads a DIFFERENT truth for the same prop: not "has an outcome
-          been chosen" (placements is meaningless here — the Matches arm of
-          `games.finish` ignores it) but "is there at least one paired match to
-          finalize" — deliberately NOT "has every match been decided", because
-          undecided is PERMITTED (Phase 0 §3), just confirmed first (above). An
-          empty pairing grid still refuses — there is nothing for a tap on this
-          button to mean. */}
+          Matches reads a DIFFERENT truth for the same prop, and it CHANGED
+          under direct feedback: this used to be "is there at least one paired
+          match to finalize" — deliberately not "every match decided", because
+          an unpaid match was PERMITTED, just confirmed first via a borrowed
+          pick'em-style prompt. That prompt read as foreign next to golf match
+          play's own bare "Save results" button, and the button being tappable
+          at all before every match had a result was itself the complaint —
+          "Save results button should not be present until the matches are all
+          selected". So `allComplete` now means "every paired match has a
+          declared result" — the button simply isn't reachable while one is
+          missing, which is what makes it behave exactly like the golf CTA it
+          borrows: one tap, no confirm, nothing left to ask about (see `commit`
+          above). An empty pairing grid still refuses — there is nothing for a
+          tap on this button to mean either way. */}
       <GameLifecycleActions
         canEdit={canEdit}
         status={game.status}
         correctionsOpen={game.corrections_open}
-        allComplete={isMatches ? matches.length > 0 : !!placements}
+        allComplete={isMatches ? matches.length > 0 && matchesUndecidedCount === 0 : !!placements}
         finalizePending={busy}
         correctPending={correctPending}
         onFinalize={commit}
         onCorrect={handleCorrect}
       />
-
-      {confirmFinalize && (
-        <PickemFinalizePrompt
-          title={`${matchesUndecidedCount} match${matchesUndecidedCount === 1 ? "" : "es"} ${matchesUndecidedCount === 1 ? "has" : "have"} no result`}
-          message={`${matchesUndecidedCount === 1 ? "Its" : "Their"} points stay unpaid until entered — this is reversible, and you can still correct it after.`}
-          // Names the ACT and its consequence, not a shrug — same rule this
-          // component's own header states, and the same reason pick'em's
-          // caller says "Void and save results" rather than "anyway".
-          confirmLabel="Save with points unpaid"
-          pendingLabel="Saving results…"
-          cancelLabel="Keep entering results"
-          pending={busy}
-          onConfirm={finalizeMatches}
-          onCancel={() => setConfirmFinalize(false)}
-        />
-      )}
     </div>
   );
 }

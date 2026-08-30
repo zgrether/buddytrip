@@ -54,6 +54,47 @@ export interface DecidedMatch {
   result: "a_win" | "b_win" | "halve" | null;
 }
 
+/**
+ * Pure: the award rule ITSELF, with no DB in it — win takes the match's value,
+ * a draw splits it. Extracted so the persisted write below and the board's
+ * LIVE projection (`liveProjection.ts`'s Matches branch) run the exact same
+ * accumulation and can't disagree about what an in-progress board should show
+ * versus what `games.finish` will eventually write (CLAUDE.md #8's split,
+ * applied to this award instead of to a whole game's scoring). `sideTeam` is
+ * injected rather than resolved in here because the two callers build it from
+ * different reads (this file's DB queries vs. `liveProjection`'s already-
+ * bulk-fetched roster) — the resolution differs, the arithmetic must not.
+ */
+export function tallyMatchAwards(
+  matches: { side_a: unknown; side_b: unknown; result?: unknown; point_value?: unknown }[],
+  sideTeam: (s: SideRef) => string | undefined,
+  evenShareFallback: number
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const m of matches) {
+    const result = m.result as "a_win" | "b_win" | "halve" | null;
+    if (!result) continue;
+    const a = m.side_a as SideRef | null;
+    const b = m.side_b as SideRef | null;
+    if (!a?.id || !b?.id) continue;
+    const aTeam = sideTeam(a);
+    const bTeam = sideTeam(b);
+    if (!aTeam || !bTeam) continue;
+
+    // A2b award rule: this match's own override, else the even share.
+    const value = (m.point_value as number | null) ?? evenShareFallback;
+    if (result === "a_win") {
+      out[aTeam] = (out[aTeam] ?? 0) + value;
+    } else if (result === "b_win") {
+      out[bTeam] = (out[bTeam] ?? 0) + value;
+    } else {
+      // halve — each side gets half
+      out[aTeam] = (out[aTeam] ?? 0) + value / 2;
+      out[bTeam] = (out[bTeam] ?? 0) + value / 2;
+    }
+  }
+  return out;
+}
 
 /** Aggregate decided match outcomes into per-team competition points and write
  *  them to game_results (entity_type='team', raw_score=accumulated points).
@@ -113,29 +154,16 @@ export async function writeTeamMatchPoints(
   const sideTeam = (s: SideRef): string | undefined =>
     s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id);
 
-  const teamPoints = new Map<string, number>();
-  for (const m of allMatches) {
-    const result = resultByMatch.get(m.id as string);
-    if (!result) continue;
-    const a = m.side_a as SideRef | null;
-    const b = m.side_b as SideRef | null;
-    if (!a?.id || !b?.id) continue;
-    const aTeam = sideTeam(a);
-    const bTeam = sideTeam(b);
-    if (!aTeam || !bTeam) continue;
-
-    // A2b award rule: this match's own override, else the even share.
-    const value = (m.point_value as number | null) ?? evenShareFallback;
-    if (result === "a_win") {
-      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + value);
-    } else if (result === "b_win") {
-      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + value);
-    } else {
-      // halve — each side gets half
-      teamPoints.set(aTeam, (teamPoints.get(aTeam) ?? 0) + value / 2);
-      teamPoints.set(bTeam, (teamPoints.get(bTeam) ?? 0) + value / 2);
-    }
-  }
+  // Fold `resultByMatch`'s fresh-outcome overrides onto each row before handing
+  // off to the pure tally — `tallyMatchAwards` reads `m.result` verbatim, so the
+  // override has to be applied here, once, rather than duplicated inside it.
+  const withFreshResults = allMatches.map((m) => ({
+    ...m,
+    result: resultByMatch.get(m.id as string) ?? null,
+  }));
+  const teamPoints = new Map(
+    Object.entries(tallyMatchAwards(withFreshResults, sideTeam, evenShareFallback))
+  );
 
   // EVERY team in the competition gets a row — including one that won NOTHING.
   //

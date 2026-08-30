@@ -763,13 +763,26 @@ export const matchesRouter = router({
   // control is already owner/delegate-only ("Members get the read-only board").
   // Widening to member self-declare is a real, separate piece of work — a new
   // RLS policy plus the app-level check to match it — not a one-line addition.
+  //
+  // `result` is nullable — see the field's own comment. Unlike golf's hole
+  // outcome (which has a dedicated `deleteOutcome` mutation, because a hole's
+  // "undecided" state is the ABSENCE of a row), a match's undecided state is a
+  // row that already exists with `result: null` — the same row `setPairings`
+  // created — so unsetting is a second write shape on this ONE mutation, not a
+  // second procedure.
   setResult: authedProcedure
     .input(
       z.object({
         tripId: z.string(),
         gameId: z.string(),
         matchId: z.string().min(1),
-        result: z.enum(["a_win", "b_win", "halve"]),
+        // Nullable — tapping an already-selected outcome again UNSETS it
+        // (feedback: a mis-tapped match had no way back short of guessing a
+        // result you'd then have to notice and fix). `null` reverts the match
+        // to undecided rather than requiring a THIRD value; the scoreboard is
+        // the only caller and it always passes the row's own current result
+        // back when the tap is a de-select.
+        result: z.enum(["a_win", "b_win", "halve"]).nullable(),
       })
     )
     .use(requireGameEdit())
@@ -823,10 +836,16 @@ export const matchesRouter = router({
       // No margin: a declared result carries no "3&2"-style score to derive one
       // from (unlike golf's computed matches, where `matchState` produces both
       // together). `status: 'complete'` marks the MATCH decided — distinct from
-      // the GAME's own `status`, which stays whatever it already was.
+      // the GAME's own `status`, which stays whatever it already was. A `null`
+      // result reverts the match's own `status` to `'pending'` too — undoing a
+      // decide undoes ALL of what deciding wrote, not just the visible half.
       const { error } = await ctx.supabase
         .from("game_matches")
-        .update({ result: input.result, margin: null, status: "complete" })
+        .update(
+          input.result == null
+            ? { result: null, margin: null, status: "pending" }
+            : { result: input.result, margin: null, status: "complete" }
+        )
         .eq("id", input.matchId);
       if (error) {
         throw new TRPCError({
