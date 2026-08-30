@@ -46,6 +46,7 @@ import { placeCapacityFor } from "@/lib/placeCapacity";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { pointsReady } from "@/lib/matchDraft";
 import { placementsFrom, pointsForPlacements } from "@/lib/placementGroups";
+import { reconcileOrderDraft } from "@/lib/teamDraft";
 import { bracketPlacements, teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { gameLockState } from "@/lib/gameLifecycle";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
@@ -233,7 +234,23 @@ export function NonGolfGameView() {
   const [tiedDraft, setTiedDraft] = useState<ReadonlySet<string> | null>(null);
 
   const result = resultDraft ?? serverResult ?? "";
-  const order = orderDraft ?? serverOrder;
+  /**
+   * The drafted finishing order PROJECTED onto the teams that exist now — never
+   * the raw draft.
+   *
+   * `orderDraft` is a snapshot taken on the first drag, and `serverOrder` follows
+   * the live team set. Read raw, a team added to the competition after that drag
+   * is absent from `order` — so it does not render in the finishing-order editor
+   * AND it is absent from `draftPlacements`, which is the exact payload
+   * `games.finish` commits. That arm validates only that placements are present,
+   * never that they cover the field, so the game finalizes with a team scoring
+   * nothing and no error anywhere.
+   *
+   * Same defect as the team-roster order (see `reconcileOrderDraft`), failing
+   * SILENTLY instead of loudly: `teamAssignments.reorder` enforces a permutation
+   * and refuses a stale set, which is the only reason that instance was visible.
+   */
+  const order = reconcileOrderDraft(orderDraft, serverOrder) ?? serverOrder;
   const tiedWithPrev = tiedDraft ?? EMPTY_TIES;
   const toggleTie = useCallback((teamId: string) => {
     setTiedDraft((prev) => {
