@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { rollUp, placementDetail, placementPoints, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
-import { isBracketGame } from "@/lib/resultStrategy";
+import { isBracketGame, isPickemGame } from "@/lib/resultStrategy";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
 import { projectedTeamTotals } from "@/lib/gameProjection";
 import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
@@ -347,6 +347,76 @@ export async function computeCompetitionLeaderboard(
         standings: sorted,
         direction: "high_wins" as const,
         pointsTotal: (g.points_total as number | null) ?? undefined,
+      };
+    }
+
+    /**
+     * ── PICK'EM: awarded from the ENGINE, never from the distribution column ──
+     *
+     * Before the finalize arm existed, a pick'em game reached the bottom of this
+     * function and returned `distribution: null, standings: []` — contributing
+     * its `points_total` to points-available and awarding nobody anything,
+     * whatever `game_results` held. Every branch above it misses:
+     * `isManualType` is false (its `resultStrategy` is `"pickem"`), and
+     * `isPerMatch` / `isPlacement` both test a column pick'em never writes —
+     * `set_pickem_points_total` is its only points writer and it sets the total
+     * alone.
+     *
+     * So the arm is keyed on the ENGINE, resolved by the same function
+     * `games.finish` dispatches on. Keying it on the distribution instead would
+     * be keying it on a column whose value is always null.
+     *
+     * ── Two shapes, because the finalize writes two ─────────────────────────
+     *
+     * A points cup's rows carry POSITIONS, so the payout is derived HERE against
+     * the current schedule — change the total afterwards and the board follows,
+     * which is the whole reason the finalize did not snapshot it.
+     *
+     * The other two resolutions carry the points themselves: the figure IS the
+     * result of the contest, and there is no schedule to defer to. Handed back
+     * as a synthetic distribution with `high_wins`, the mechanism the bracket arm
+     * above and the `per_match` arm below both already use — `placementPoints`
+     * passes sorted values through unchanged, ties included.
+     *
+     * The discriminator is `scoringModel`, which is the same `pointsMode` input
+     * `pickemResolution` reads on the write side. One question, one answer, at
+     * both ends.
+     */
+    if (isPickemGame(g.game_type_id as string | null, g.competition_format as string | null)) {
+      const pointsTotal = (g.points_total as number | null) ?? undefined;
+      if (scoringModel === "points") {
+        return {
+          id: g.id as string,
+          // `effectiveDistribution`, not `isPlacement(d) ? d.values : []` — pick'em
+          // authors no split, so the ternary would pay nobody. Winner takes the
+          // lot is what every other format does with a null distribution.
+          distribution: effectiveDistribution(rawDist, g.points_total as number | null),
+          numTeams: teamIds.length,
+          standings,
+          direction: "low_wins" as const,
+          pointsTotal,
+        };
+      }
+      // No rows yet — not finalized. Contributes its pool and awards nothing,
+      // the pre-decision state every other format has.
+      if (standings.length === 0) {
+        return {
+          id: g.id as string,
+          distribution: null,
+          numTeams: teamIds.length,
+          standings: [],
+          direction: "high_wins" as const,
+          pointsTotal,
+        };
+      }
+      const sorted = [...standings].sort((a, b) => b.value - a.value);
+      return {
+        id: g.id as string,
+        distribution: sorted.map((s) => s.value),
+        numTeams: teamIds.length,
+        standings: sorted,
+        direction: "high_wins" as const,
+        pointsTotal,
       };
     }
 
