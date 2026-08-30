@@ -460,34 +460,62 @@ describe("pick'em proxy entry (migration 163)", () => {
   // ══ SUBMISSION STATUS ════════════════════════════════════════════════════
 
   describe("pickem_sheet_status — a count, never a sheet", () => {
-    it("tells a CAPTAIN who on their team has submitted, and nobody else", async () => {
+    it("tells a CAPTAIN HOW FAR ALONG their team is, and nobody else", async () => {
+      /**
+       * A COUNT since migration 167, where it was a boolean. Under partial
+       * sheets "started" and "finished" are different states, and a boolean
+       * rendered them identically — so a captain chasing somebody could not see
+       * who was halfway.
+       */
       await proxy("member", guestId, sheet("away", "home"));
 
-      const { data, error } = await ctx
-        .authedClient("member")
-        .rpc("pickem_sheet_status", { p_game_id: cupGameId });
-      expect(error).toBeNull();
+      const rows = ((
+        await ctx.authedClient("member").rpc("pickem_sheet_status", { p_game_id: cupGameId })
+      ).data ?? []) as { user_id: string; picked: number; total: number }[];
+      const byUser = new Map(rows.map((r) => [r.user_id, r]));
 
-      const rows = (data ?? []) as { user_id: string; submitted: boolean }[];
-      const byUser = new Map(rows.map((r) => [r.user_id, r.submitted]));
-
-      expect(byUser.get(guestId)).toBe(true);
-      expect(byUser.get(teammateId)).toBe(false);
-      // The other team is ABSENT — not present-and-false, which would still
+      expect(byUser.get(guestId)?.picked).toBe(2);
+      expect(byUser.get(guestId)?.total).toBe(2);
+      expect(byUser.get(teammateId)?.picked).toBe(0);
+      // The other team is ABSENT — not present-with-a-zero, which would still
       // answer "has the opponent submitted".
       expect(byUser.has(opponentId)).toBe(false);
     });
 
     it("returns no column that could carry a pick", async () => {
-      // §11: the count and the sheet read must not share a function. This is
-      // that rule made mechanical — if someone widens the return type to
-      // include picks "while they're in there", this fails.
+      /**
+       * §11: the count and the sheet read must not share a function. "Has Ty
+       * submitted" and "what did Ty pick" have the same answer for a captain
+       * about his own team and different answers about the other one, so one
+       * function serving both is exactly where the leak would be.
+       *
+       * ── This guard FIRED on migration 167, and it was right to ────────────
+       *
+       * It asserted the exact key set, so widening the return to
+       * (picked, total) tripped it — which is the guard doing its job: it
+       * cannot tell a count from a pick, and "I only added counts" is what
+       * somebody would say either way.
+       *
+       * Repaired by keeping the RULE rather than only the literal. The key set
+       * is still pinned, AND no returned VALUE may be a pick side — which is
+       * the property the rule is actually about, and which a future widening
+       * would violate even if whoever did it remembered to update the list.
+       */
       await proxy("member", guestId, sheet("away", "home"));
       const { data } = await ctx
         .authedClient("member")
         .rpc("pickem_sheet_status", { p_game_id: cupGameId });
-      const keys = Object.keys(((data ?? []) as object[])[0] ?? {});
-      expect(keys.sort()).toEqual(["submitted", "user_id"]);
+      const rows = (data ?? []) as Record<string, unknown>[];
+      expect(Object.keys(rows[0] ?? {}).sort()).toEqual(["picked", "total", "user_id"]);
+
+      // Counts and an id, and nothing that names a side. The sheet written
+      // above is all "away"/"home", so a leak would be visible here.
+      for (const row of rows) {
+        for (const value of Object.values(row)) {
+          expect(value).not.toBe("away");
+          expect(value).not.toBe("home");
+        }
+      }
     });
 
     it("tells a plain participant about themselves and NOBODY else", async () => {
