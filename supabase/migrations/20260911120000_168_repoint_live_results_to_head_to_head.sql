@@ -1,8 +1,9 @@
 -- ════════════════════════════════════════════════════════════════════════════
 -- 168 · The one `live_results` game becomes `head_to_head`
 --
--- Prerequisite for 169, which drops `live_results` from the CHECK. Deliberately
--- a SEPARATE migration — see "Why not one file" below.
+-- Prerequisite for 169, which drops `live_results` from the CHECK. 169 ships as
+-- its own FOLLOW-UP PR, not beside this one — see "Why not one file, and why not
+-- even one PR" below.
 --
 -- ── What the row is ────────────────────────────────────────────────────────
 -- Measured against production, not assumed: exactly one game holds
@@ -45,14 +46,23 @@
 -- an empty database, and stays correct if a second such row appears between
 -- this being written and being applied.
 --
--- ── Why not one file with 169 ──────────────────────────────────────────────
--- Because the ordering is meant to ENFORCE something, and folding the two
--- together removes exactly that. In one file the UPDATE always runs first and
--- repairs the row, so the CHECK could never refuse — the guard would be
--- decorative. Split, the drop in 169 is a real gate: it fails loudly if any row
--- still holds the value when it is applied.
+-- ── Why not one file with 169, and why not even one PR ─────────────────────
+-- Not one FILE, because the ordering is meant to ENFORCE something and folding
+-- the two together removes exactly that. In one file the UPDATE always runs
+-- first and repairs the row, so the CHECK could never refuse — the guard would
+-- be decorative. Split, the drop in 169 is a real gate: it fails loudly if any
+-- row still holds the value when it is applied.
 --
--- Note what that does and does not buy. On CI both replay against an empty
+-- Not one PR either, and that is the half found the hard way. `supabase db push
+-- --linked` reads the FILESYSTEM and has no "apply up to version N" — it
+-- applies everything pending. So two migrations sitting in one branch cannot be
+-- pushed separately without moving a file aside mid-production-write, which is
+-- controlling a prod write's scope by shuffling files: the exact trap the
+-- push-only-from-merged rule exists to prevent. CLAUDE.md 3b already prescribes
+-- the shape — for a REMOVAL, land and deploy the code that stops using it
+-- first, then the drop as its own follow-up PR — and this is why.
+--
+-- Note what the split does and does not buy. On CI both replay against an empty
 -- database, so the UPDATE is a no-op and the ADD CONSTRAINT trivially passes —
 -- a green CI run says NOTHING about this. The gate only exists on the manual
 -- prod apply, which is where the row is. Verify zero rows immediately before

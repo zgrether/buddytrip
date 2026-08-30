@@ -185,8 +185,9 @@ export function NonGolfSettingsRows({
  * Selectable: **Simple** and **Bracket**. Best of N renders as a disabled "Soon"
  * tile so the direction stays legible — its engine isn't built (DO-NOT: don't
  * implement it). Live Results was the fourth tile and is GONE rather than
- * disabled: it named a feature nobody built, and migration 169 dropped the value
- * once 168 had repointed the one production row that held it.
+ * disabled: it named a feature nobody built. Migration 168 repoints the one
+ * production row that held the value; the CHECK drops it in a follow-up (169),
+ * after this code deploys.
  *
  * Simple is the DEFAULT: a null value displays as Simple selected (non-golf
  * already runs that way when unset), so this reserves the shape without a

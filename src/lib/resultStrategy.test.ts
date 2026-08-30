@@ -49,8 +49,8 @@ describe("resolveResultStrategy — manual formats", () => {
     expect(resolveResultStrategy("gtt_generic_bar", "best_of_n")).toBeNull();
     // A non-bracket descriptor resolves to the manual arm whatever it is, and a
     // RETIRED value is exactly when that matters. `live_results` used to stand
-    // here; migration 169 removed it from the column, so the case now uses a
-    // legacy value rows genuinely still hold rather than a string nothing can be.
+    // here; it leaves the column in migration 169, so the case now uses a legacy
+    // value rows genuinely still hold rather than a string nothing can be.
     expect(resolveResultStrategy("gtt_manual", "bracket_se")).toBeNull();
   });
 

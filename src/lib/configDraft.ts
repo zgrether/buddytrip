@@ -48,10 +48,12 @@ export function isWinnerTakesAll(dist: PointsDistribution | null): boolean {
 /** `games.competition_format` values (non-golf structure). ONE definition shared by the
  *  draft, the payload, and the `saveConfig` zod so they can't drift.
  *
- *  `live_results` was removed here and in the CHECK (migration 169) after its one
- *  production row was repointed to `head_to_head` (168). It named a feature that
- *  was never built, and this column stopped being cosmetic when
- *  `resolveResultStrategy` began branching on it. It is NOT moved to
+ *  `live_results` is removed here once migration 168 has repointed the one
+ *  production row holding it to `head_to_head`; the CHECK narrows separately in a
+ *  follow-up (169), AFTER this code has deployed and zero rows are confirmed —
+ *  CLAUDE.md 3b's removal ordering. It named a feature that was never built, and
+ *  this column stopped being cosmetic when `resolveResultStrategy` began
+ *  branching on it. It is NOT moved to
  *  `LEGACY_COMPETITION_FORMATS` below: that list exists so rows which still hold a
  *  retired value stay saveable, and after 168 no row holds this one. */
 export const COMPETITION_FORMATS = ["head_to_head", "bracket", "best_of_n"] as const;
