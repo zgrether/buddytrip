@@ -744,6 +744,99 @@ export const matchesRouter = router({
       return { ok: true };
     }),
 
+  // setResult — non-golf Matches (170): DECLARE one match's result directly.
+  // The write-path counterpart to `matchOutcomes.upsertOutcome`, one level up —
+  // that records who won a HOLE and derives the match from a sequence of them;
+  // this records who won the MATCH, because a Matches game has no holes to
+  // sequence. `matchAwards.ts`'s header is the fuller version of this: Matches
+  // skips the half of match play that computes a result FROM entered data and
+  // writes the result outright.
+  //
+  // Gated on `requireGameEdit()` — Owner/Organizer/delegate — NOT the member-
+  // scoped `canWriteOutcome` golf's hole entry uses. That is a deliberate,
+  // narrower cut for this first pass, not an oversight: `game_matches`' RLS has
+  // no participant-scoped policy today (only `game_matches_write` — staff — and
+  // `game_matches_delegate`), so a member-scoped app check here would pass and
+  // then fail at the RLS layer — the broken half-permission state
+  // `matchOutcomes.ts`'s own header warns against for exactly this reason. It
+  // also matches this SURFACE's existing precedent: `NonGolfScoreboard`'s Simple
+  // control is already owner/delegate-only ("Members get the read-only board").
+  // Widening to member self-declare is a real, separate piece of work — a new
+  // RLS policy plus the app-level check to match it — not a one-line addition.
+  setResult: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        matchId: z.string().min(1),
+        result: z.enum(["a_win", "b_win", "halve"]),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { data: game } = await ctx.supabase
+        .from("games")
+        .select("id, status, corrections_open, scoring_enabled")
+        .eq("id", input.gameId)
+        .eq("trip_id", ctx.tripId)
+        .maybeSingle();
+      if (!game) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+      }
+      // Same posted/enabled gates as matchOutcomes.upsertOutcome — format-
+      // agnostic rules, not something this format needs to re-derive.
+      if (game.status === "complete" && !game.corrections_open) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "This game is posted — tap “Correct a score” on the scoreboard to reopen it for edits.",
+        });
+      }
+      if (!game.scoring_enabled) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Enable scoring before entering results.",
+        });
+      }
+
+      const { data: match } = await ctx.supabase
+        .from("game_matches")
+        .select("id, side_a, side_b")
+        .eq("id", input.matchId)
+        .eq("game_id", input.gameId)
+        .maybeSingle();
+      if (!match) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
+      }
+      // An unpaired match isn't there to resolve (Phase 0 §3 / build spec §3) —
+      // structural, not merely documented: refused here rather than accepted
+      // and silently ignored by every downstream reader of `result`.
+      const sideA = match.side_a as { type: string; id: string } | null;
+      const sideB = match.side_b as { type: string; id: string } | null;
+      if (!sideA?.id || !sideB?.id) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This match isn't paired yet — set both sides before entering a result.",
+        });
+      }
+
+      // No margin: a declared result carries no "3&2"-style score to derive one
+      // from (unlike golf's computed matches, where `matchState` produces both
+      // together). `status: 'complete'` marks the MATCH decided — distinct from
+      // the GAME's own `status`, which stays whatever it already was.
+      const { error } = await ctx.supabase
+        .from("game_matches")
+        .update({ result: input.result, margin: null, status: "complete" })
+        .eq("id", input.matchId);
+      if (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to save this match's result: ${error.message}`,
+        });
+      }
+      return { ok: true };
+    }),
+
   // listByGame — any trip member. Visibility: Owner/Organizer always see match
   // detail; a Member sees matches only once pairings are published (else the
   // "not announced yet" state).
