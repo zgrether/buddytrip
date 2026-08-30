@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { CHAT_ACTIVE_VIEWING_WINDOW_MS } from "@/lib/chatViewHeartbeat";
 import { sendPushToUsers, type SendPushToUsersResult } from "./sendPushToUsers";
 import { recordPushAttempt } from "./recordPushAttempt";
+import { chatRoomKey, chatRoomReadRow, type ChatRoom } from "@/lib/chatRoom";
 
 /**
  * The `chat` category's ONE wire point — `messages.send`.
@@ -151,13 +152,28 @@ export function buildChatPayload(args: {
   tripId: string;
   tripTitle: string;
   senderName: string;
-  visibility: "crew" | "planning";
+  room: ChatRoom;
+  /**
+   * The team's name, for the team room's title. Optional and falls back to
+   * "Team" — a push must not fail because a name lookup did, and the team's
+   * name is not a secret from its own members.
+   */
+  teamName?: string | null;
 }) {
-  const { tripId, tripTitle, senderName, visibility } = args;
+  const { tripId, tripTitle, senderName, room, teamName } = args;
+  const roomKey = chatRoomKey(room);
   return {
-    // The Organizers channel is a different room, and someone in both needs to
-    // know which one lit up before deciding whether it can wait.
-    title: visibility === "planning" ? `${tripTitle} · Organizers` : tripTitle,
+    // Every room but Crew is a different room, and someone in several needs to
+    // know which one lit up before deciding whether it can wait. Crew stays
+    // bare because it is the trip's default room — a title of "Cabo · Crew"
+    // would add a word to every notification to disambiguate the common case
+    // from the rare one.
+    title:
+      room.kind === "planning"
+        ? `${tripTitle} · Organizers`
+        : room.kind === "team"
+          ? `${tripTitle} · ${teamName ?? "Team"}`
+          : tripTitle,
     body: `${senderName} sent a message`,
     /**
      * The trip, WITH a one-shot instruction to open chat on this channel.
@@ -184,13 +200,17 @@ export function buildChatPayload(args: {
      * up, and an Organizers notification landing in Crew would be the same
      * "wrong destination" bug this exists to fix, just one tap further in.
      */
-    url: `/trips/${tripId}?chat=1&channel=${visibility}`,
+    url: `/trips/${tripId}?chat=1&channel=${roomKey}`,
     /**
-     * Replaces rather than stacks, per channel. Largely belt-and-braces given
-     * the gate already caps this at one per read-session — but the two mechanisms
+     * Replaces rather than stacks, per ROOM. Largely belt-and-braces given the
+     * gate already caps this at one per read-session — but the two mechanisms
      * are independent, and this one costs nothing.
+     *
+     * `roomKey` rather than a hand-built string so the tag and the URL cannot
+     * describe the same room differently — two rooms sharing a tag would have
+     * each replaced the other's notification.
      */
-    tag: `bt-chat-${tripId}-${visibility}`,
+    tag: `bt-chat-${tripId}-${roomKey}`,
   };
 }
 
@@ -205,7 +225,7 @@ export function buildChatPayload(args: {
  */
 export interface ChatNotifyInput {
   tripId: string;
-  visibility: "crew" | "planning";
+  room: ChatRoom;
   /** The row just inserted — used to exclude it when finding its predecessor. */
   messageId: string;
   messageCreatedAt: string;
@@ -270,11 +290,45 @@ export async function notifyChatMessage(
     };
     const members = (memberRows ?? []) as MemberRow[];
 
-    const inChannel = members.filter((m) =>
-      input.visibility === "planning"
-        ? m.role === "Owner" || m.role === "Organizer"
-        : true
-    );
+    // The TEAM room's audience is the team's roster, not the trip's — and this
+    // is the one place in the notifier where "who is in this room" is not a
+    // function of trip role.
+    //
+    // Read from `team_assignments` rather than reusing the role filter, because
+    // a team's membership has nothing to do with role: an Owner who is not on
+    // the team must not be in this audience, which is the same rule the RLS
+    // policy enforces on the read. Two mechanisms, one rule — and if they ever
+    // disagree, the person gets a notification for a chat they cannot open.
+    let teamRoster: Set<string> | null = null;
+    let teamName: string | null = null;
+    if (input.room.kind === "team") {
+      const [{ data: assignRows, error: assignErr }, { data: teamRow }] = await Promise.all([
+        admin
+          .from("team_assignments")
+          .select("user_id")
+          .eq("team_id", input.room.teamId),
+        admin.from("teams").select("name").eq("id", input.room.teamId).maybeSingle(),
+      ]);
+      // Checked, not swallowed — an unchecked error here would produce an empty
+      // roster, which reads as "nobody is on this team" and silently notifies
+      // no one. A team chat that never notifies is the failure this whole
+      // subsystem was rebuilt to stop.
+      if (assignErr) throw new Error(`team roster read failed: ${assignErr.message}`);
+      teamRoster = new Set(
+        ((assignRows ?? []) as { user_id: string }[]).map((r) => r.user_id)
+      );
+      teamName = ((teamRow ?? null) as { name: string } | null)?.name ?? null;
+    }
+
+    const inChannel = members.filter((m) => {
+      if (input.room.kind === "planning") {
+        return m.role === "Owner" || m.role === "Organizer";
+      }
+      if (input.room.kind === "team") {
+        return teamRoster!.has(m.user_id);
+      }
+      return true;
+    });
 
     // The sender is dropped here so `audience` and `eligible` describe real
     // candidates. `sendPushToUsers` is ALSO given `excludeUserId` below — its
@@ -292,12 +346,27 @@ export async function notifyChatMessage(
     //
     //     `last_read_at` is NOT selected. This module no longer has any business
     //     with the read position: it does not read it, and it does not write it.
-    const { data: viewRows, error: viewErr } = await admin
+    //
+    //     Filtered by the room's OWN read row (`chatRoomReadRow`), so a team's
+    //     viewing state cannot be read off the Crew row. Before migration 172
+    //     those were the same row — see that migration for why "reading Team
+    //     marks Crew read" was a property of the key rather than a bug in a
+    //     caller.
+    const readRow = chatRoomReadRow(input.room);
+    let viewQuery = admin
       .from("chat_reads")
       .select("user_id, viewing_at")
       .eq("trip_id", input.tripId)
-      .eq("visibility", input.visibility)
+      .eq("visibility", readRow.visibility)
       .in("user_id", audience);
+    // `.is()` not `.eq()` for the trip rooms: team_id is NULL there, and
+    // `eq(col, null)` does not match a NULL in PostgREST — it would return no
+    // rows, read as "nobody is viewing", and notify people staring at the panel.
+    viewQuery =
+      readRow.team_id === null
+        ? viewQuery.is("team_id", null)
+        : viewQuery.eq("team_id", readRow.team_id);
+    const { data: viewRows, error: viewErr } = await viewQuery;
     // Checked, not swallowed — #16's landmine was a read whose error went
     // unexamined for six weeks. An unchecked error here would read as "nobody is
     // viewing" and notify everyone including the people staring at the panel.
@@ -367,7 +436,8 @@ export async function notifyChatMessage(
         tripId: input.tripId,
         tripTitle,
         senderName,
-        visibility: input.visibility,
+        room: input.room,
+        teamName,
       }),
       {
         admin,
@@ -403,7 +473,7 @@ export async function notifyChatMessage(
     // rather than only logged, so it is still there in November.
     console.error("[notifyChatMessage] failed", {
       tripId: input.tripId,
-      visibility: input.visibility,
+      room: chatRoomKey(input.room),
       err,
     });
     try {

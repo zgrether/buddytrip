@@ -4,6 +4,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireCompetitionRole } from "../middleware";
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
 import { reconcileClinchClaim } from "../lib/gameFinishNotify";
+import { viewerTeamForTrip } from "../lib/viewerTeam";
 import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
 
 const SCOREBOARD_STYLES = [
@@ -54,35 +55,21 @@ export const competitionsRouter = router({
       // under the one-competition-per-trip MVP rule. Kept identical on purpose:
       // an avatar reading a different competition than the Cup tab would be a
       // silent inconsistency nobody would think to check.
-      const { data: comp } = await ctx.supabase
-        .from("competitions")
-        .select("id")
-        .eq("trip_id", ctx.tripId)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (!comp) return null;
-
-      const { data: assignment } = await ctx.supabase
-        .from("team_assignments")
-        .select("team_id")
-        .eq("competition_id", comp.id)
-        .eq("user_id", ctx.user!.id)
-        .maybeSingle();
-      if (!assignment?.team_id) return null;
-
-      const { data: team } = await ctx.supabase
-        .from("teams")
-        .select("id, name, color, color_dim")
-        .eq("id", assignment.team_id)
-        .maybeSingle();
+      //
+      // That "kept identical on purpose" is now MECHANICAL rather than
+      // observed: the rule moved to `viewerTeamForTrip` and team chat reads the
+      // same function, because a third hand-copy is exactly how the
+      // inconsistency this comment warns about arrives.
+      const team = await viewerTeamForTrip(ctx.supabase, ctx.tripId!, ctx.user!.id);
       if (!team) return null;
 
+      // Return shape unchanged — `teamVisibleFrom` is team chat's business and
+      // no caller of this procedure has any use for it.
       return {
-        teamId: team.id as string,
-        teamName: team.name as string,
-        color: team.color as string,
-        colorDim: team.color_dim as string,
+        teamId: team.teamId,
+        teamName: team.teamName,
+        color: team.color,
+        colorDim: team.colorDim,
       };
     }),
 
@@ -286,6 +273,25 @@ export const competitionsRouter = router({
     .mutation(async ({ ctx, input }) => {
       // MVP: only one competition per trip. The DB schema allows N for
       // future-proofing (e.g. seasonal series), but the UI is built for 1.
+      //
+      // ── TEAM CHAT DEPENDS ON THIS GUARD ───────────────────────────────────
+      // Read this before relaxing it. There is no UNIQUE(competitions.trip_id)
+      // behind it — deliberately, so the seasonal series above stays possible —
+      // which makes this `if` the only thing holding the invariant.
+      //
+      // "Your team" has to name exactly one team for the Team chat tab to be
+      // unambiguous (`src/server/lib/viewerTeam.ts`, and it says the same thing
+      // from the other end). With two competitions in a trip, one person can
+      // hold two assignments, `viewerTeamForTrip` silently picks the earliest
+      // competition's, and the Team tab shows one team's private chat while the
+      // Cup tab shows the other. The RLS policy stays correct throughout — it
+      // gates per team — so nothing errors and nothing leaks; the tab just
+      // quietly names the wrong room.
+      //
+      // Relaxing this therefore means deciding what the Team tab becomes: a
+      // picker over several team chats, or a tab that names which team. That is
+      // a feature, not a follow-up — see the team-chat work for why it was
+      // scoped out (prod had 0 trips with two competitions when it was built).
       const { data: existing } = await ctx.supabase
         .from("competitions")
         .select("id")

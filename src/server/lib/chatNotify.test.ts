@@ -142,7 +142,7 @@ describe("buildChatPayload — what reaches the lock screen", () => {
     tripId: "trip-1",
     tripTitle: "BBMI Playground",
     senderName: "Brad",
-    visibility: "crew" as const,
+    room: { kind: "crew" } as const,
   };
 
   it("names the trip and the sender, and says nothing about the message", () => {
@@ -152,7 +152,7 @@ describe("buildChatPayload — what reaches the lock screen", () => {
   });
 
   it("distinguishes the Organizers channel, which is a different room", () => {
-    expect(buildChatPayload({ ...base, visibility: "planning" }).title).toBe(
+    expect(buildChatPayload({ ...base, room: { kind: "planning" } }).title).toBe(
       "BBMI Playground · Organizers"
     );
   });
@@ -171,14 +171,14 @@ describe("buildChatPayload — what reaches the lock screen", () => {
   });
 
   it("carries the CHANNEL the message was actually in, not always crew", () => {
-    expect(buildChatPayload({ ...base, visibility: "planning" }).url).toBe(
+    expect(buildChatPayload({ ...base, room: { kind: "planning" } }).url).toBe(
       "/trips/trip-1?chat=1&channel=planning"
     );
   });
 
   it("tags per channel so a later push replaces rather than stacks", () => {
     expect(buildChatPayload(base).tag).toBe("bt-chat-trip-1-crew");
-    expect(buildChatPayload({ ...base, visibility: "planning" }).tag).toBe(
+    expect(buildChatPayload({ ...base, room: { kind: "planning" } }).tag).toBe(
       "bt-chat-trip-1-planning"
     );
   });
@@ -255,7 +255,7 @@ async function setViewing(userId: string, visibility: "crew" | "planning", iso: 
       visibility,
       viewing_at: iso,
     },
-    { onConflict: "trip_id,user_id,visibility" }
+    { onConflict: "trip_id,user_id,visibility,team_key" }
   );
   if (error) throw new Error(`set viewing: ${error.message}`);
 }
@@ -295,7 +295,7 @@ describe("notifyChatMessage — audience", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -321,7 +321,7 @@ describe("notifyChatMessage — audience", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "planning",
+        room: { kind: "planning" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -344,7 +344,7 @@ describe("notifyChatMessage — audience", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -375,7 +375,7 @@ describe("notifyChatMessage — audience", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -411,7 +411,7 @@ describe("notifyChatMessage — no coalescing, against the real DB", () => {
       const r = await notifyChatMessage(
         {
           tripId,
-          visibility: "crew",
+          room: { kind: "crew" },
           messageId: m.id,
           messageCreatedAt: m.createdAt,
           senderId: ownerId,
@@ -443,14 +443,14 @@ describe("notifyChatMessage — no coalescing, against the real DB", () => {
         last_read_at: at(29),
         viewing_at: null,
       })),
-      { onConflict: "trip_id,user_id,visibility" }
+      { onConflict: "trip_id,user_id,visibility,team_key" }
     );
     const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
 
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -471,7 +471,7 @@ describe("notifyChatMessage — no coalescing, against the real DB", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -501,7 +501,7 @@ describe("notifyChatMessage — no coalescing, against the real DB", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -525,7 +525,7 @@ describe("notifyChatMessage — no coalescing, against the real DB", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "planning",
+        room: { kind: "planning" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -560,7 +560,7 @@ describe("notifyChatMessage — preference", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -596,7 +596,7 @@ describe("notifyChatMessage — the record", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -643,7 +643,7 @@ describe("notifyChatMessage — the record", () => {
     await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -695,7 +695,7 @@ describe("notifyChatMessage — writes nothing to chat_reads", () => {
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
@@ -719,14 +719,14 @@ describe("notifyChatMessage — writes nothing to chat_reads", () => {
         last_read_at: READ_AT,
         viewing_at: null,
       },
-      { onConflict: "trip_id,user_id,visibility" }
+      { onConflict: "trip_id,user_id,visibility,team_key" }
     );
 
     const m = await seedMessage({ visibility: "crew", senderId: ownerId, minutes: 30 });
     const r = await notifyChatMessage(
       {
         tripId,
-        visibility: "crew",
+        room: { kind: "crew" },
         messageId: m.id,
         messageCreatedAt: m.createdAt,
         senderId: ownerId,
