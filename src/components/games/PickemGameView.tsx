@@ -55,6 +55,10 @@ import {
 } from "@/components/games/pickem/PickemOtherPicks";
 import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
 import {
+  PickemMatchesRequired,
+  noMatchesDrawn as noMatchesDrawnFor,
+} from "@/components/games/pickem/PickemMatchesRequired";
+import {
   PickemProxyBanner,
   sheetAuthor,
   type ProxyTarget,
@@ -454,6 +458,19 @@ export function PickemGameView() {
     () => (q.data?.matches ?? []).map((m) => ({ a: m.sideAId, b: m.sideBId })),
     [q.data?.matches]
   );
+  /**
+   * Individual matches, and nobody drawn yet — read by the Matches tab's
+   * waiting panel AND the results scrim (r7 §11). The predicate lives with the
+   * scrim; see its note for why the roll-up is part of the question.
+   */
+  const noMatchesDrawn = noMatchesDrawnFor({
+    /* The RESOLVED flag. `individualMatches` above is where the points-mode
+       override is applied, and this file is on `pickemRollUpOverride`'s
+       allowlist for exactly that — so the answer travels rather than the
+       column. */
+    individualMatches,
+    matchCount: matchPairs.length,
+  });
   /**
    * Names for the grid. `listMembers` already computes `displayName` with the
    * right priority — trip nickname → account name → email → short id — so this
@@ -1617,22 +1634,41 @@ export function PickemGameView() {
               the whole point is watching it resolve (§7). `canEdit` decides
               whether the BUTTONS are there, not whether the outcomes are. */}
           {surface.panel === "results" && (
-            <PickemRunView
-              slate={q.data.slate}
-              /* The lifecycle-narrowed answer — a locked game's results are read
-                 only. `lifecycle.canEdit` below is deliberately the RAW role
-                 answer, because `gameLifecycle` ANDs it with the lock itself and
-                 narrowing it first would make "Correct a result" unreachable on
-                 exactly the games that need it. */
-              canEdit={resultsEditable}
-              busyId={busyResultId}
-              ridingOn={riding.byGame}
-              matchesPending={riding.matchesPending}
-              onSetResult={(slateGameId, result) => {
-                setBusyResultId(slateGameId);
-                setResult.mutate({ tripId: tripId!, gameId, slateGameId, result });
-              }}
-            />
+            /* ── §11 · THE PREREQUISITE, BEFORE THE DOOR SHUTS ─────────────
+               Migration 162 freezes the pairings on the first result, so a
+               runner who enters results before drawing matches can then never
+               draw them — and the refusal they meet names a rule they can no
+               longer satisfy.
+
+               Only where there is something to draw: `noMatchesDrawn` is false
+               on team totals, which has no matches and no freeze.
+
+               Not gated on `resultsEditable`. A member arriving here would
+               otherwise see an entry list with nothing in it and no reason
+               given, and the sentence is true for them too — it is a fact about
+               the game, not an instruction only the runner can act on. The
+               second line names the gear, which a member simply does not
+               have; that is the same shape as every other "ask whoever is
+               running it" surface in the app. */
+            <div className="relative">
+              <PickemRunView
+                slate={q.data.slate}
+                /* The lifecycle-narrowed answer — a locked game's results are read
+                   only. `lifecycle.canEdit` below is deliberately the RAW role
+                   answer, because `gameLifecycle` ANDs it with the lock itself and
+                   narrowing it first would make "Correct a result" unreachable on
+                   exactly the games that need it. */
+                canEdit={resultsEditable}
+                busyId={busyResultId}
+                ridingOn={riding.byGame}
+                matchesPending={riding.matchesPending}
+                onSetResult={(slateGameId, result) => {
+                  setBusyResultId(slateGameId);
+                  setResult.mutate({ tripId: tripId!, gameId, slateGameId, result });
+                }}
+              />
+              {noMatchesDrawn && <PickemMatchesRequired />}
+            </div>
           )}
 
           {/* Behind the first TAB now, not under the other two. Never an empty
@@ -1640,7 +1676,7 @@ export function PickemGameView() {
               before the deadline (§5), so "locked, unpaired" is a normal state
               that must read as waiting rather than broken. */}
           {surface.panel === "matches" &&
-            (individualMatches && matchPairs.length === 0 ? (
+            (noMatchesDrawn ? (
             <PickemNoMatches />
           ) : (
             <PickemBoard
