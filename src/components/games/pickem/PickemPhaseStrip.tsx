@@ -3,8 +3,42 @@
 import { useState } from "react";
 import { AlertTriangle, Clock } from "lucide-react";
 import { TYPE_SCALE } from "@/lib/typeScale";
-import { toLocalInputValue, fromLocalInputValue, formatDeadline } from "./PickemDeadlineRow";
-import { formatLeadTime, type PickemPhase } from "@/lib/pickemLifecycle";
+import { formatDeadline } from "./PickemDeadlineRow";
+import { DatePicker } from "@/components/DatePicker";
+import { TimePicker } from "@/components/TimePicker";
+import { parseTime, toTime24, type TimeValue } from "@/lib/time";
+
+/**
+ * ISO instant → the two halves the shared pickers speak in.
+ *
+ * The native `datetime-local` control this replaces took one string and gave
+ * one back, which is why it was reached for. The cost was that pick'em's only
+ * date entry looked and behaved like nothing else in the app: an OS widget,
+ * different on every platform, with no presets and a 16px font imposed to stop
+ * iOS zooming the page on focus.
+ */
+function splitDeadline(iso: string | null): { date: Date | null; time: TimeValue | null } {
+  if (!iso) return { date: null, time: null };
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return { date: null, time: null };
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return { date: d, time: parseTime(hh + ":" + mm) };
+}
+
+/**
+ * ...and back. Null until BOTH halves are chosen — a date with no time is not a
+ * deadline, and defaulting the missing half would schedule a close at an hour
+ * nobody picked.
+ */
+function joinDeadline(date: Date | null, time: TimeValue | null): string | null {
+  if (!date || !time) return null;
+  const [h, m] = toTime24(time).split(":").map(Number);
+  const out = new Date(date);
+  out.setHours(h, m, 0, 0);
+  return Number.isFinite(out.getTime()) ? out.toISOString() : null;
+}
+import { type PickemPhase } from "@/lib/pickemLifecycle";
 
 /**
  * The runner's control: where this game IS, and the moves available from here.
@@ -86,8 +120,32 @@ import { formatLeadTime, type PickemPhase } from "@/lib/pickemLifecycle";
 const ACTION_LABEL: Record<PickemPhase, string> = {
   building: "Start picking",
   picks_open: "Close picking",
-  // Reopening after a lock. Absent once anything is scored — see `hasResults`.
-  locked: "Start picking",
+  /**
+   * REOPEN, not Start — and a lesser control than the other two.
+   *
+   * Once picks have closed, whether by the runner or by the deadline, the act
+   * is not starting. It is resuming something that has already run, which makes
+   * it a correction: the usual reason to press it is that somebody was missed,
+   * not that the game is beginning.
+   *
+   * Absent once anything is scored — see `hasResults`.
+   */
+  locked: "Reopen",
+};
+
+/**
+ * Is this the game's PRIMARY act, or a correction to it?
+ *
+ * Starting and closing are the two halves of running a pick'em, and they get
+ * the accent fill. Reopening is neither — it undoes the second one — so it
+ * takes an outline. The distinction is worth carrying in the treatment rather
+ * than only in the word, because the panel is scanned rather than read, and a
+ * filled button is the thing a runner's eye goes to.
+ */
+const IS_PRIMARY: Record<PickemPhase, boolean> = {
+  building: true,
+  picks_open: true,
+  locked: false,
 };
 
 /** Said once results exist, in place of the unlock move — so the absence of the
@@ -150,7 +208,9 @@ export function PickemPhaseStrip({
   now,
 }: PickemPhaseStripProps) {
   const [editingDeadline, setEditingDeadline] = useState(false);
-  const [draft, setDraft] = useState("");
+  /** The two halves, drafted separately because the pickers are separate. */
+  const [draftDate, setDraftDate] = useState<Date | null>(null);
+  const [draftTime, setDraftTime] = useState<TimeValue | null>(null);
 
   /**
    * The moves legal from HERE, and only those.
@@ -272,9 +332,10 @@ export function PickemPhaseStrip({
             style={{
               minHeight: 40,
               fontSize: TYPE_SCALE.bodyDense,
-              fontWeight: 700,
-              background: "var(--color-bt-accent)",
-              color: "var(--color-bt-base)",
+              fontWeight: IS_PRIMARY[phase] ? 700 : 600,
+              background: IS_PRIMARY[phase] ? "var(--color-bt-accent)" : "transparent",
+              border: IS_PRIMARY[phase] ? "none" : "1px solid var(--color-bt-border)",
+              color: IS_PRIMARY[phase] ? "var(--color-bt-base)" : "var(--color-bt-text)",
             }}
           >
             {busy ? "…" : move.label}
@@ -329,8 +390,8 @@ export function PickemPhaseStrip({
             lineHeight: 1.45,
           }}
         >
-          The deadline has passed, so Start picking clears it — picks stay open
-          until you close them.
+          The deadline has passed, so Reopen clears it — picks stay open until
+          you close them.
         </span>
       )}
 
@@ -340,48 +401,64 @@ export function PickemPhaseStrip({
             <DeadlineBlock
               deadline={deadline}
               phase={phase}
-              now={now}
               onEdit={() => {
-                setDraft(toLocalInputValue(deadline));
+                const { date, time } = splitDeadline(deadline);
+                setDraftDate(date);
+                setDraftTime(time);
                 setEditingDeadline(true);
               }}
             />
           ) : (
-            <div className="flex flex-col gap-2">
-              <input
-                type="datetime-local"
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                data-testid="pickem-strip-deadline-input"
-                className="rounded-lg px-3 py-2"
-                style={{
-                  // 16px or iOS zooms the page on focus.
-                  fontSize: 16,
-                  background: "var(--color-bt-card-raised)",
-                  border: "1px solid var(--color-bt-border)",
-                  color: "var(--color-bt-text)",
-                  minHeight: 44,
-                }}
-              />
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-end gap-2">
+              {/* THE SHARED PICKERS, not `<input type="datetime-local">`.
+                  The native control is a different widget on every platform,
+                  has no presets, and needed a 16px font forced on it to stop
+                  iOS zooming the page — three symptoms of one problem, which is
+                  that it was the only date entry in the app not using the
+                  app's own. */}
+              <span className="min-w-0 flex-1" style={{ minWidth: 150 }}>
+                <DatePicker
+                  mode="single"
+                  label="Closes on"
+                  value={draftDate}
+                  onChange={setDraftDate}
+                  testId="pickem-strip-deadline-date"
+                />
+              </span>
+              <span className="min-w-0 flex-1" style={{ minWidth: 130 }}>
+                <TimePicker
+                  label="At"
+                  value={draftTime}
+                  onChange={setDraftTime}
+                  testId="pickem-strip-deadline-time"
+                />
+              </span>
+
+              {/* INLINE with the pickers rather than on a line of their own.
+                  Two buttons under a full-width row is a lot of vertical space
+                  for a control that is open for a few seconds, and it pushed
+                  the slate off the screen on a phone while it was. They wrap
+                  onto a second line only when the pickers genuinely need the
+                  width. */}
+              <span className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => {
-                    onDeadlineChange(fromLocalInputValue(draft));
+                    onDeadlineChange(joinDeadline(draftDate, draftTime));
                     setEditingDeadline(false);
                   }}
-                  disabled={busy}
+                  disabled={busy || !draftDate || !draftTime}
                   data-testid="pickem-strip-deadline-save"
-                  className="rounded-lg px-3 py-2 disabled:opacity-40"
+                  className="rounded-lg px-3 disabled:opacity-40"
                   style={{
                     fontSize: TYPE_SCALE.caption,
                     fontWeight: 700,
                     background: "var(--color-bt-accent)",
                     color: "var(--color-bt-base)",
-                    minHeight: 40,
+                    minHeight: 38,
                   }}
                 >
-                  Set deadline
+                  Set
                 </button>
                 {deadline && (
                   <button
@@ -392,14 +469,14 @@ export function PickemPhaseStrip({
                     }}
                     disabled={busy}
                     data-testid="pickem-strip-deadline-clear"
-                    className="rounded-lg px-3 py-2 disabled:opacity-40"
+                    className="rounded-lg px-3 disabled:opacity-40"
                     style={{
                       fontSize: TYPE_SCALE.caption,
                       fontWeight: 600,
                       background: "transparent",
                       border: "1px solid var(--color-bt-border)",
                       color: "var(--color-bt-text-dim)",
-                      minHeight: 40,
+                      minHeight: 38,
                     }}
                   >
                     Remove
@@ -408,18 +485,18 @@ export function PickemPhaseStrip({
                 <button
                   type="button"
                   onClick={() => setEditingDeadline(false)}
-                  className="rounded-lg px-3 py-2"
+                  className="rounded-lg px-2"
                   style={{
                     fontSize: TYPE_SCALE.caption,
                     fontWeight: 600,
                     background: "transparent",
                     color: "var(--color-bt-text-dim)",
-                    minHeight: 40,
+                    minHeight: 38,
                   }}
                 >
                   Cancel
                 </button>
-              </div>
+              </span>
             </div>
           )}
         </div>
@@ -440,12 +517,10 @@ export function PickemPhaseStrip({
 function DeadlineBlock({
   deadline,
   phase,
-  now,
   onEdit,
 }: {
   deadline: string | null;
   phase: PickemPhase;
-  now: number;
   onEdit: () => void;
 }) {
   const set = deadline != null;
@@ -455,7 +530,6 @@ function DeadlineBlock({
    * Never format this server-side: the server's zone is not the reader's, and a
    * stop time an hour out is worse than no stop time.
    */
-  const lead = set ? new Date(deadline).getTime() - now : 0;
 
   /**
    * PENDING is not the same as SET, and the strip said it was.
@@ -547,11 +621,13 @@ function DeadlineBlock({
               Set button was on a closed game, and the other named the trap
               where unlocking a past-deadline game does nothing — a trap Start
               now defuses by clearing the spent deadline itself. */}
-          {!set
-            ? "Picks stay open until you close them."
-            : lead > 0
-              ? `${formatLeadTime(lead)} from now. Nobody has to do anything.`
-              : "Any moment now. Nobody has to do anything."}
+          {/* "Closes automatically Fri 11:35 PM" already carries it. The line
+              here read "4h 20m from now. Nobody has to do anything.", which is
+              the same fact subtracted plus a reassurance nobody had asked for —
+              on a panel whose whole job is telling the runner what needs doing.
+              The UNSET case keeps its line, because there the headline is "No
+              deadline set" and what happens instead is genuinely not obvious. */}
+          {!set ? "Picks stay open until you close them." : null}
         </span>
       </span>
       <button

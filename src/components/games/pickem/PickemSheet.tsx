@@ -445,7 +445,7 @@ export function PickemSheet({
       )}
 
       {editable && deadlineMs != null && (
-        <Countdown ms={deadlineMs} submitted={server.submitted} subject={subject} />
+        <Countdown ms={deadlineMs} />
       )}
 
 
@@ -493,9 +493,18 @@ export function PickemSheet({
             className="min-w-0 flex-1"
             style={{ fontSize: 11, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}
           >
+            {/* Two sentences rather than three clauses joined by middots. The
+                old line ran "Tap a team to pick it · drag to reorder — the top
+                of the list is worth 16 · line shown is the home team's", which
+                is three unrelated facts at one weight, and the one that
+                mattered least was the one with the number in it.
+
+                The spread's ownership moved out of here because it is on the
+                ROW, next to the team it belongs to — a legend for a badge
+                sitting six pixels away is a legend nobody needs. */}
             {settings.useConfidence
-              ? `Tap a team to pick it · drag to reorder — the top of the list is worth ${slate.length} · line shown is the home team's`
-              : "Tap a team to pick it · every game is worth 1 · line shown is the home team's"}
+              ? "Tap a team to make it your pick. Order with confidence where each pick earns the points shown."
+              : "Tap a team to make it your pick. Every game is worth the same."}
           </p>
           <button
             type="button"
@@ -712,15 +721,7 @@ export function PickemSheet({
  * the only honest measure of whether a sheet had been thought about. Nothing is
  * pre-filled now, so the plain count means what it says.
  */
-function Countdown({
-  ms,
-  submitted,
-  subject,
-}: {
-  ms: number;
-  submitted: boolean;
-  subject: SheetSubject;
-}) {
+function Countdown({ ms }: { ms: number }) {
   // `ms` re-derives from the page's ticking clock every second (`useNow` in
   // PickemGameView), and so does the `editable` flag that gates this whole
   // block — one source, so the timer cannot reach zero on a sheet that is still
@@ -736,18 +737,14 @@ function Countdown({
       }}
     >
       <span className="min-w-0 flex-1">
+        {/* THE EYEBROW AND THE CLOCK, and nothing else.
+            The line under it said "Change anything until then" before a sheet
+            was saved and "Your sheet is in — you can still change it" after,
+            which is the same promise twice: that nothing is final until the
+            clock runs out. That is what a countdown MEANS, and a countdown that
+            has to explain itself is one nobody would have needed. */}
         <span className="block" style={EYEBROW}>
           Picks close in
-        </span>
-        <span
-          className="mt-0.5 block"
-          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-        >
-          {submitted
-            ? subject.isSelf
-              ? "Your sheet is in — you can still change it"
-              : `${subject.name}'s sheet is in — you can still change it`
-            : "Change anything until then"}
         </span>
       </span>
       <span
