@@ -9,7 +9,7 @@ import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { liveMatchPointsPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
 import { isMatchesGame } from "@/lib/resultStrategy";
-import { tallyMatchAwards } from "@/server/lib/matchAwards";
+import { tallyMatchAwards } from "@/lib/matchAwards";
 
 /**
  * Live-game projected-points, server-side (leaderboard grid Phase 2, Path A).

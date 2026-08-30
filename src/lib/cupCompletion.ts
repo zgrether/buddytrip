@@ -90,3 +90,19 @@ export function isCupComplete(games: CupCompletionGame[], hasClincher: boolean):
   if (!anyFinalized) return false;
   return !games.some(obstructsCompletion);
 }
+
+/**
+ * How many games have NOT reached a final, locked result yet — the count the
+ * hero's "clinched, games remain" line names. Broader than
+ * `obstructsCompletion`'s set on purpose: a game nobody has armed yet still
+ * genuinely REMAINS to be played, even though it isn't obstructing completion
+ * (a never-started game doesn't block the cup from being decided, but it does
+ * count toward "how many are left"). Same `gameLockState` reasoning as
+ * `obstructsCompletion` above — one predicate, not a re-derived `status`
+ * check per caller.
+ */
+export function gamesRemaining(games: CupCompletionGame[]): number {
+  return games.filter(
+    (g) => !gameLockState({ status: g.status, correctionsOpen: g.correctionsOpen === true }).isLocked,
+  ).length;
+}

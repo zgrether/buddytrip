@@ -186,6 +186,15 @@ type ScoreEventUtils = {
       ) => unknown;
     };
   };
+  matches: {
+    listByGame: {
+      invalidate: (
+        i?: { tripId: string; gameId: string },
+        f?: undefined,
+        o?: { cancelRefetch: boolean },
+      ) => unknown;
+    };
+  };
 };
 
 /**
@@ -284,6 +293,33 @@ export function makeScoreEventHandler(
     } else {
       coalesceInvalidation(`bracketDraw:${tripId}:*`, () => {
         void utils.games.bracketDraw.invalidate(undefined, undefined, {
+          cancelRefetch: false,
+        });
+      });
+    }
+
+    /**
+     * NON-GOLF MATCHES' RESULT — the same gap as the bracket pick above, same
+     * fix. Migration 173 (`game_matches_result_broadcast`) gave a declared
+     * match's `result` a broadcast source; without a key here that event
+     * arrived and refreshed nothing the game page or another open tab reads.
+     * `matches.listByGame` also has no poll of its own and is excluded from
+     * `configHash` (CLAUDE.md #16's own reasoning: a result must never churn
+     * the config hash), so the writer's own tab was the only invalidator —
+     * a second device watching the same game (or the settings pairing grid,
+     * same query) saw nothing until a hard reload. Same `cancelRefetch: false`
+     * reasoning as bracketDraw: a remote burst can land mid-refetch of a local
+     * tap's own invalidation.
+     */
+    if (gameId) {
+      coalesceInvalidation(`matchesListByGame:${tripId}:${gameId}`, () => {
+        void utils.matches.listByGame.invalidate({ tripId, gameId }, undefined, {
+          cancelRefetch: false,
+        });
+      });
+    } else {
+      coalesceInvalidation(`matchesListByGame:${tripId}:*`, () => {
+        void utils.matches.listByGame.invalidate(undefined, undefined, {
           cancelRefetch: false,
         });
       });

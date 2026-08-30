@@ -160,6 +160,44 @@ describe("dirtiness", () => {
     expect(a.bracketEntrants).toEqual([]);
     expect(nonGolfDraftsEqual(a, configToNonGolfDraft({ name: "Cards" }, []))).toBe(true);
   });
+
+  /**
+   * Feedback: "on a fresh non-golf game that has simple as the competition
+   * format, if you tap bracket or matches and then back to simple and then
+   * try to exit settings, you are asked to save or discard your changes...
+   * but there should be no changes to save or discard."
+   *
+   * Two DIFFERENT bugs produced that one symptom, both pinned here:
+   *
+   * (1) `bracketConfig`: a fresh game's baseline is `null` (no config
+   *     configured), but tapping Bracket auto-stages `DEFAULT_BRACKET_CONFIG`
+   *     (a real object, needed so the settings rows have something to
+   *     render), and `applyFormat` never cleared it back on leaving Bracket
+   *     unless it had actually been edited — an UNTOUCHED default is not the
+   *     same as a choice the user made (see `isDefaultBracketConfig`).
+   *
+   * (2) `competitionFormat` itself: a fresh game's baseline is `null`
+   *     (nobody has saved a format yet), but the SIMPLE tile writes the
+   *     literal `"head_to_head"` string, not `null` — required by
+   *     `save_game_config`'s COALESCE-PRESERVE write (a drafted `null` means
+   *     "don't touch this column", which could never switch a game BACK to
+   *     Simple). So `null` and `"head_to_head"` are the same format read two
+   *     ways, and only a NORMALIZED compare (`effectiveCompetitionFormat`)
+   *     sees that — a strict `===` reported the round trip as still dirty
+   *     forever.
+   */
+  it("a null baseline vs the explicit head_to_head the Simple tile writes is NOT a change — same format, two representations", () => {
+    const untouched = configToNonGolfDraft({ name: "Cards" }, []);
+    expect(untouched.competitionFormat).toBeNull();
+    const tappedSimple = { ...untouched, competitionFormat: "head_to_head" as const };
+    expect(nonGolfDraftsEqual(untouched, tappedSimple)).toBe(true);
+  });
+
+  it("head_to_head vs a REAL other format is still a genuine change", () => {
+    const untouched = configToNonGolfDraft({ name: "Cards" }, []);
+    const tappedBracket = { ...untouched, competitionFormat: "bracket" as const };
+    expect(nonGolfDraftsEqual(untouched, tappedBracket)).toBe(false);
+  });
 });
 
 describe("round-trip", () => {

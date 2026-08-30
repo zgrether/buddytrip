@@ -12,7 +12,7 @@ import {
 } from "@/components/competition/CompetitionGamesPanel";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { PlaceCapacity } from "@/lib/gameConfig";
-import type { NonGolfConfigDraft, CompetitionFormat } from "@/lib/configDraft";
+import { effectiveCompetitionFormat, type NonGolfConfigDraft, type CompetitionFormat } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
@@ -283,8 +283,7 @@ function CompetitionFormatTiles({
   canEdit: boolean;
   onChange: (format: CompetitionFormat | null) => void;
 }) {
-  // Simple is the default — a null value reads as head_to_head.
-  const effective: CompetitionFormat = value ?? "head_to_head";
+  const effective: CompetitionFormat = effectiveCompetitionFormat(value);
   return (
     <div data-testid="row-competition-format">
       <div

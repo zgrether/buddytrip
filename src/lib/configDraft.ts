@@ -78,6 +78,29 @@ export type CompetitionFormat =
   | (typeof COMPETITION_FORMATS)[number]
   | (typeof LEGACY_COMPETITION_FORMATS)[number];
 
+/**
+ * `null` and `"head_to_head"` are the SAME format — "Simple" — read two ways.
+ * A never-touched game's `competition_format` column is `null` (nobody has
+ * ever saved a format for it); tapping the "Simple" tile writes the literal
+ * `"head_to_head"` (`CompetitionFormatTiles`'s own comment: "Simple is the
+ * default — a null value reads as head_to_head"), and that has to be a real
+ * string rather than `null` — `save_game_config`'s `competition_format =
+ * COALESCE(p_payload->>'competitionFormat', competition_format)` is
+ * COALESCE-PRESERVE, so a drafted `null` would mean "don't touch this column"
+ * and could never actually switch a bracket/Matches game BACK to Simple.
+ *
+ * So the two representations must both exist, and anything that needs to know
+ * "is this effectively Simple" — the tiles' own selected-state and the dirty
+ * equality check alike — normalizes through this ONE function rather than
+ * inlining `?? "head_to_head"` a second time (feedback: a fresh game's
+ * `competitionFormat` starts `null`; tapping Bracket then back to Simple sets
+ * it to `"head_to_head"`, and a strict `===` compare against the `null`
+ * baseline reported the round trip as still dirty).
+ */
+export function effectiveCompetitionFormat(format: CompetitionFormat | null): CompetitionFormat {
+  return format ?? "head_to_head";
+}
+
 /** A match inside the composite draft. Extends the pairing shape (`DraftMatch`)
  *  with the per-match point-value override (A2b) so Points derives from the draft,
  *  not `serverMatches`. `handicap` is signed: <0 → side A gets |n| strokes, >0 →
@@ -1101,7 +1124,12 @@ function baseDraftsEqual(a: BaseConfigDraft, b: BaseConfigDraft): boolean {
   return (
     a.name.trim() === b.name.trim() &&
     (a.rulesForToday?.trim() || "") === (b.rulesForToday?.trim() || "") &&
-    a.competitionFormat === b.competitionFormat &&
+    // Normalized, not `===` — `null` (never touched) and the literal
+    // `"head_to_head"` (explicitly picked via the Simple tile) are the SAME
+    // format. A strict compare left Simple → Bracket → Simple reporting dirty
+    // forever, because the round trip lands on the explicit string, not back
+    // on `null` (see `effectiveCompetitionFormat`'s own comment).
+    effectiveCompetitionFormat(a.competitionFormat) === effectiveCompetitionFormat(b.competitionFormat) &&
     // Value equality, not reference: the draft holds a fresh object every render.
     JSON.stringify(a.bracketConfig ?? null) === JSON.stringify(b.bracketConfig ?? null) &&
     a.scoringEnabled === b.scoringEnabled &&

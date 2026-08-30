@@ -9,7 +9,7 @@ import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useFirstClinchView } from "@/hooks/useFirstClinchView";
 import { useMyTeamId } from "@/hooks/useMyTeamColor";
-import { isCupComplete } from "@/lib/cupCompletion";
+import { isCupComplete, gamesRemaining } from "@/lib/cupCompletion";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, fmtPts, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
@@ -278,6 +278,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // inventing the surface first.
   const isMatchPlay = scoringModel === "match_play";
   const cupComplete = isMatchPlay && isCupComplete(data.games, !!clincher);
+  // The hero's "clinched · N games remain" line — same `data.games` +
+  // `gameLockState` reasoning `isCupComplete` already runs, so the count and
+  // the completion gate can't disagree about which games are still open.
+  const gamesLeft = gamesRemaining(data.games);
 
   /**
    * ── Who gets the burst ──────────────────────────────────────────────────
@@ -339,6 +343,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         winNumber={winNumber}
         clincher={clincher}
         cupComplete={cupComplete}
+        gamesRemaining={gamesLeft}
         // First view of THIS cup's THIS winner, on this device, BY SOMEONE WHO
         // WON. Gated on `cupComplete` so a clinched-but-unfinished cup never
         // burns the one showing — the flag must still be unspent when the cup

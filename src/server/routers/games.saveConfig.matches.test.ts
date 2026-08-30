@@ -148,7 +148,7 @@ describe("save_game_config — a decided Matches match refuses re-pairing (171)"
     expect(scoreCount).toBe(0);
 
     await expect(save(gameId, [{ matchNumber: 1, a: [member], b: [owner] }])).rejects.toThrow(
-      /already has a result/i
+      /have been decided/i
     );
     // NOT the HAS_SCORES wording — the wrong-object failure this exists to fix.
     await expect(save(gameId, [{ matchNumber: 1, a: [member], b: [owner] }])).rejects.not.toThrow(

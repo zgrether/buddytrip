@@ -26,6 +26,7 @@ function hero(props: Partial<React.ComponentProps<typeof CompetitionHero>>) {
       pointsAvailable={100}
       winNumber={40}
       clincher={null}
+      gamesRemaining={2}
       scoringModel="match_play"
       canEdit={false}
       {...props}

@@ -125,6 +125,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
         competitions: { faceBootstrap: spy("faceBootstrap"), leaderboard: spy("leaderboard") },
         scores: { listByGame: spy("scores") },
         games: { bracketDraw: spy("bracketDraw") },
+        matches: { listByGame: spy("matches") },
       },
     };
   }
@@ -207,6 +208,36 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   });
 
   /**
+   * NON-GOLF MATCHES' RESULT — same gap as the bracket pick, same fix.
+   * `game_matches_result_broadcast` (migration 173) gives a declared match's
+   * `result` a broadcast source; without a key here, the leaderboard's
+   * `faceBootstrap`/`leaderboard` DID refresh (those are unconditional above),
+   * but the GAME PAGE's own header projection and another open tab on the same
+   * game read `matches.listByGame`, which nothing here invalidated — so a
+   * remote change to a Matches result was invisible on every surface except
+   * the leaderboard until a hard reload. `matches.listByGame` has no poll of
+   * its own and is excluded from `configHash` for the same reason a bracket
+   * pick is (CLAUDE.md #16 — a result must never churn the config hash).
+   */
+  it("invalidates MATCHES' listByGame — a declared result is a result and nothing else refetches it remotely", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    flushWindow();
+
+    expect(calls).toContain('matches.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+    expect(calls.some((c) => c.includes("setData"))).toBe(false);
+  });
+
+  it("invalidates the whole matches key on a reconnect backfill too", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null);
+    flushWindow();
+    expect(calls).toContain("matches.invalidate()");
+  });
+
+  /**
    * ONE INVALIDATOR, NOT TWO LISTS THAT HAPPEN TO MATCH (CLAUDE.md #22).
    *
    * The delta between the local pick path and this one WAS the bug, and it is the
@@ -266,7 +297,10 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     // is the property this test exists to hold, and the per-query counts above are
     // what actually state it.
     expect(count("bracketDraw.invalidate")).toBe(1);
-    expect(calls).toHaveLength(4); // 219 handler calls per query → 1 refetch each
+    // Matches' listByGame joined the same way, for a declared result instead of
+    // a bracket pick. Five queries now; still one refetch each.
+    expect(count("matches.invalidate")).toBe(1);
+    expect(calls).toHaveLength(5); // 219 handler calls per query → 1 refetch each
   });
 
   it("keeps DIFFERENT games separate — the key is not too coarse", () => {
