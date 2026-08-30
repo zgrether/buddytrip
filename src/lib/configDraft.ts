@@ -719,7 +719,30 @@ export function nonGolfDraftToPayload(
   baseline?: NonGolfConfigDraft,
   bracket?: { teamByUser: Record<string, string | null> }
 ): SaveConfigPayload {
-  let payload = baseDraftToPayload(draft, draft.pointsDistribution, baseline);
+  // Matches derives its per_match SHARE from the total, the same relationship
+  // golf's `configDraftToPayload` establishes for `gtt_match_play` — but that is
+  // a DIFFERENT function, reachable only by a `ConfigDraft` (a golf game type),
+  // which a non-golf game can never hold. Reusing `isMatchPlayFormat` here would
+  // mean widening a predicate three OTHER call sites (view routing, glorious
+  // holes) correctly key on staying golf-only — so this is the parallel
+  // computation, not a shared one, gated on the FORMAT rather than the game
+  // type. Established on first setup as well as refreshed on every match
+  // add/remove, exactly like golf's version — `isPerMatch` is what
+  // `writeTeamMatchPoints` gates the award write on (via `computeCompetitionLeaderboard`'s
+  // read of the SAME column), so an unminted distribution is not a smaller
+  // award — it is the award path never firing at all.
+  let distribution = draft.pointsDistribution;
+  if (
+    draft.pointsTotal != null &&
+    draft.competitionFormat === MATCHES_COMPETITION_FORMAT &&
+    (distribution == null || distribution.type === "per_match")
+  ) {
+    const filled = draft.matches.filter(isDraftMatchFilled);
+    const overrides = filled.map((m) => m.pointValue).filter((v): v is number => v != null);
+    distribution = { type: "per_match", value: evenShare(draft.pointsTotal, overrides, filled.length) };
+  }
+
+  let payload = baseDraftToPayload(draft, distribution, baseline);
 
   // ── Bracket slice ──
   const pool = draft.competitionFormat === "bracket" ? draft.bracketEntrants.filter((e) => e.length > 0) : [];
