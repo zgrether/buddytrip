@@ -49,14 +49,14 @@ import {
   PickemOtherPicks,
   PickemPicksSubTabs,
   PickemReadingHeader,
-  sortOtherSheets,
-  type OtherSheet,
+  type OtherPicksColumn,
 } from "@/components/games/pickem/PickemOtherPicks";
 import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
 import { PickemProxyBanner, type ProxyTarget } from "@/components/games/pickem/PickemProxyPanel";
 import { PickemSheetsList } from "@/components/games/pickem/PickemSheetsList";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
+import type { SubmittedPick } from "@/lib/pickemSheet";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { ListChecks, Swords } from "lucide-react";
 import {
@@ -244,6 +244,54 @@ export function PickemGameView() {
    * somebody else's sheet.
    */
   const [picksSub, setPicksSub] = useState<PicksSub>("your");
+
+  /**
+   * ── LEAVING THE SHEET WITH UNSAVED PICKS ─────────────────────────────────
+   *
+   * The draft survives a reload through the outbox, but it does not survive
+   * being navigated away from and coming back to a different subject — and
+   * more to the point, a person who taps another tab mid-sheet has no reason
+   * to think their picks are safe. So the move is intercepted and offered
+   * back: Save, keep editing, or discard.
+   *
+   * IT MUST NOT FIRE ON AN UNTOUCHED SHEET. `dirty` inside `PickemSheet` is
+   * already the honest predicate — false until the working sheet actually
+   * differs from the server's — so simply opening the tab and leaving raises
+   * nothing. A prompt that fires on a sheet nobody edited is one people learn
+   * to dismiss without reading, which costs more than the guard is worth.
+   *
+   * Held in a REF rather than state: it is read inside handlers and never
+   * rendered, so a re-render on every keystroke-equivalent would be churn for
+   * nothing. `pendingLeave` is the state, because the prompt is what renders.
+   *
+   * `leaveSheet` is a PLAIN function, not a `useCallback`. Wrapping it tripped
+   * the React Compiler ("existing memoization could not be preserved") because
+   * it closes over a ref and stores a function in state, and nothing needs its
+   * identity to be stable — it is called from JSX handlers and appears in no
+   * dependency array. The compiler memoizes better than the hand-written hook
+   * would have.
+   */
+  const sheetDirty = useRef(false);
+  /** The draft as a payload, reported with the dirty flag so the leave prompt
+   *  can actually save it rather than only offering to. */
+  const sheetDraft = useRef<SubmittedPick[]>([]);
+  const [pendingLeave, setPendingLeave] = useState<null | (() => void)>(null);
+
+  /**
+   * Run `go` now, or hold it behind the prompt if the sheet has unsaved work.
+   *
+   * One function for every leave, so a new exit cannot forget the guard by
+   * being written somewhere the author did not think of it. Stored as a thunk
+   * inside a thunk — `setPendingLeave(() => go)` would CALL `go`, since React
+   * treats a function argument as an updater.
+   */
+  const leaveSheet = (go: () => void) => {
+    if (sheetDirty.current) {
+      setPendingLeave(() => go);
+      return;
+    }
+    go();
+  };
   const [readingSheetOf, setReadingSheetOf] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savePicks = trpc.pickem.savePicks.useMutation({
@@ -963,7 +1011,29 @@ export function PickemGameView() {
   });
 
 
-  const otherSheets: OtherSheet[] = (() => {
+  /**
+   * Everyone else, GROUPED BY TEAM and in each team's own roster order.
+   *
+   * ── The field, not the sheets ─────────────────────────────────────────────
+   *
+   * Built from the union of three sources: whoever has a visible sheet,
+   * whoever is on a team, and whoever is a side of a match. Sheets alone would
+   * render fifteen rows where there are seventeen people, and the reader has no
+   * way to tell a short field from a dropped one.
+   *
+   * ── Roster order, and it is free ─────────────────────────────────────────
+   *
+   * `teams[].memberIds` arrives ordered by `team_assignments.sort_order` — the
+   * router already sorts it — so this iterates that array rather than sorting
+   * anything. That matters beyond convenience: it is the SAME order the team is
+   * written down in everywhere else in the app, and a list that reorders itself
+   * as results land is a list nobody can learn.
+   *
+   * A trailing column holds anyone the teams do not: a person on no team, or a
+   * match side whose assignment is missing. They would otherwise vanish, which
+   * is the same short-field problem one level up.
+   */
+  const otherColumns: OtherPicksColumn[] = (() => {
     const field = new Set<string>(Object.keys(q.data.sheets));
     for (const t of q.data.teams) for (const uid of t.memberIds) field.add(uid);
     for (const m of q.data.matches) {
@@ -971,19 +1041,40 @@ export function PickemGameView() {
       if (m.sideBId) field.add(m.sideBId);
     }
     if (me?.id) field.delete(me.id);
-    return sortOtherSheets(
-      [...field].map((userId) => {
-        const picks = q.data!.sheets[userId] ?? [];
-        return {
-          userId,
-          name: nameOf(userId),
-          team: teamNameOf(userId),
-          points: picks.length
-            ? sheetPoints(q.data!.slate, picks, q.data!.settings.useConfidence)
-            : null,
-        };
-      })
+
+    const guestOf = new Map(
+      ((membersQ.data ?? []) as { memberId?: string; isGuest?: boolean }[]).map((r) => [
+        r.memberId ?? "",
+        r.isGuest ?? false,
+      ])
     );
+    const total = q.data!.slate.length;
+    const row = (userId: string) => {
+      const picks = q.data!.sheets[userId] ?? [];
+      return {
+        userId,
+        name: nameOf(userId),
+        picked: picks.length,
+        total,
+        isGuest: guestOf.get(userId) ?? false,
+        points: picks.length
+          ? sheetPoints(q.data!.slate, picks, q.data!.settings.useConfidence)
+          : null,
+      };
+    };
+
+    const placed = new Set<string>();
+    const cols: OtherPicksColumn[] = q.data.teams.map((t) => {
+      const people = t.memberIds.filter((uid) => field.has(uid));
+      for (const uid of people) placed.add(uid);
+      return { teamId: t.id, teamName: t.name, people: people.map(row) };
+    });
+
+    const loose = [...field].filter((uid) => !placed.has(uid)).sort();
+    if (loose.length > 0) {
+      cols.push({ teamId: null, teamName: "No team", people: loose.map(row) });
+    }
+    return cols;
   })();
 
   return (
@@ -1151,7 +1242,9 @@ export function PickemGameView() {
             open={openPanel}
             /* A tab bar SELECTS. Tapping the open one again is not a close —
                there is no closed state for a page to be in. */
-            onOpen={setOpenPanel}
+            /* Every tab change is a leave. The guard is here rather than in
+               the tab bar because the bar has no idea a sheet exists. */
+            onOpen={(panel) => leaveSheet(() => setOpenPanel(panel))}
           />
           )}
 
@@ -1172,7 +1265,8 @@ export function PickemGameView() {
               {surface.showPicksSubTabs && (
                 <PickemPicksSubTabs
                   open={picksSub}
-                  onOpen={(sub) => {
+                  onOpen={(sub) =>
+                    leaveSheet(() => {
                     setPicksSub(sub);
                     // Leaving the list closes whoever was open in it. Coming
                     // back to a sheet you did not choose this time is the same
@@ -1180,7 +1274,8 @@ export function PickemGameView() {
                     // for.
                     setReadingSheetOf(null);
                     setProxyFor(null);
-                  }}
+                    })
+                  }
                 />
               )}
 
@@ -1207,6 +1302,10 @@ export function PickemGameView() {
                   closedBannerHoisted
                   closure={pickemClosure(clock, now)}
                   onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
+                  onDirtyChange={(d, picks) => {
+                    sheetDirty.current = d;
+                    sheetDraft.current = picks;
+                  }}
                 />
               )}
 
@@ -1238,7 +1337,7 @@ export function PickemGameView() {
                   />
                 ) : (
                   <PickemOtherPicks
-                    sheets={otherSheets}
+                    columns={otherColumns}
                     avatarFor={avatarFor}
                     onOpen={setReadingSheetOf}
                   />
@@ -1290,6 +1389,10 @@ export function PickemGameView() {
                         targetUserId: proxyTarget.userId,
                         picks,
                       });
+                    }}
+                    onDirtyChange={(d, picks) => {
+                      sheetDirty.current = d;
+                      sheetDraft.current = picks;
                     }}
                   />
                 </>
@@ -1417,6 +1520,48 @@ export function PickemGameView() {
           Same shape as the four game-settings surfaces (`MatchGameView` is the
           reference): Save commits and then leaves, Keep editing cancels,
           Discard drops the draft. */}
+      {/* The SHEET's confirm-on-leave. Deliberately a second instance of
+          `DiscardChangesPrompt` rather than a second design: this is the
+          app's answer to "you are about to lose an edit", and a bespoke
+          dialog here would be a second thing to keep in step.
+
+          Its message names PICKS, because that is what is at stake — the
+          default copy is about game settings and would be describing the
+          wrong thing on this screen. */}
+      {pendingLeave && (
+        <DiscardChangesPrompt
+          message="Your picks haven’t been saved yet. Leaving now discards them."
+          onKeepEditing={() => setPendingLeave(null)}
+          onDiscard={() => {
+            const go = pendingLeave;
+            setPendingLeave(null);
+            sheetDirty.current = false;
+            go();
+          }}
+          onSave={() => {
+            /* It SAVES. A dialog whose Save button only dismisses would be a
+               button that lies, and this feature has spent five rounds
+               removing those. The sheet reports its draft alongside its dirty
+               flag precisely so this can reach it. Leaves on success, the same
+               shape the settings prompt uses. */
+            const go = pendingLeave;
+            void savePicks
+              .mutateAsync({ tripId: tripId!, gameId, picks: sheetDraft.current })
+              .then(() => {
+                setPendingLeave(null);
+                sheetDirty.current = false;
+                go();
+              })
+              .catch(() => {
+                /* The mutation surfaces its own error. Keep them here rather
+                   than leaving with the picks unsaved. */
+                setPendingLeave(null);
+              });
+          }}
+          saving={savePicks.isPending || savePicksFor.isPending}
+        />
+      )}
+
       {settings.confirmingClose && (
         <DiscardChangesPrompt
           onDiscard={settings.confirmDiscard}

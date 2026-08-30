@@ -174,6 +174,7 @@ export function PickemSheet({
   closedBannerHoisted = false,
   closure,
   onSave,
+  onDirtyChange,
 }: {
   gameId: string;
   slate: PickemSheetGame[];
@@ -220,6 +221,15 @@ export function PickemSheet({
    * because `tsc` will not let them express breaking it.
    */
   onSave: (picks: SubmittedPick[]) => void;
+  /**
+   * Fired when the sheet gains or loses unsaved changes.
+   *
+   * The draft lives in here — it has to, because the outbox and the
+   * fingerprint-stamped edit are this component's own machinery — so the parent
+   * cannot compute this. It is a report, not a control: nothing here changes
+   * behaviour on it.
+   */
+  onDirtyChange?: (dirty: boolean, picks: SubmittedPick[]) => void;
 }) {
   const server = useMemo(
     () => reconcileSheet(slate, serverPicks, settings),
@@ -375,6 +385,20 @@ export function PickemSheet({
    */
   const ready = submittablePicks(picks);
   const remaining = unpickedCount(picks);
+
+  /**
+   * Report the edge, not the state, and report it to a ref-stable callback.
+   *
+   * `dirty` is already the honest predicate — it is false until the working
+   * sheet actually DIFFERS from the server's, so an opened-but-untouched sheet
+   * never raises it. That is what keeps the confirm-on-leave prompt from firing
+   * on a sheet nobody edited, which is the failure that trains people to
+   * dismiss the prompt without reading it.
+   */
+  useEffect(() => {
+    onDirtyChange?.(dirty, ready);
+  }, [dirty, ready, onDirtyChange]);
+
   /**
    * SAVE ENABLES ON ANY CHANGE, not on completeness.
    *

@@ -575,7 +575,10 @@ describe("the post-lock list does not come from the write-scoped query", () => {
       "utf8"
     );
     const call = view.slice(view.indexOf("<PickemOtherPicks"));
-    expect(call.slice(0, 300)).toContain("sheets={otherSheets}");
+    // The prop is `columns` now (grouped by team), but the guard is about the
+    // SOURCE, not the shape: whatever it is called, it must not be the
+    // write-scoped query.
+    expect(call.slice(0, 300)).toContain("columns={otherColumns}");
     expect(call.slice(0, 300)).not.toContain("proxyTargets");
     // ...and the write-scoped list is still fed the write-scoped query, so this
     // is not passing because the wiring vanished.
