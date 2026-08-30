@@ -110,6 +110,7 @@ describe("notifications router", () => {
       planning: true,
       invites: true,
       chat: true,
+      news: true,
     });
   });
 
