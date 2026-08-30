@@ -59,7 +59,9 @@ vi.mock("@/lib/supabase", () => ({
 
 vi.mock("@/lib/trpc-client", () => ({ trpc: { useUtils: () => ({}) } }));
 
-const { acquire, tripChatTopic, teamChatTopic } = await import("./useRealtimeChat");
+const { acquire, tripChatTopic, teamChatTopic, belongsToRoom } = await import(
+  "./useRealtimeChat"
+);
 
 const TOPIC = tripChatTopic("trip-abc");
 const FILTER = "trip_id=eq.trip-abc";
@@ -209,5 +211,69 @@ describe("useRealtimeChat — a dead subscription is not silent", () => {
     created[0].status("SUBSCRIBED");
     expect(spy).not.toHaveBeenCalled();
     rel();
+  });
+});
+
+/**
+ * belongsToRoom — the fix for a REAL LEAK, found live on the BBMI 2026 trip
+ * and reproduced against real rows before being fixed.
+ *
+ * ── Why this exists at all ─────────────────────────────────────────────────
+ * `useRealtimeChat` the HOOK cannot be exercised here — this suite is
+ * `environment: "node"`, so there is no renderer for its `useEffect`. The
+ * guard that closes the leak is extracted as this pure function specifically
+ * so it has a test surface at all; `useRealtimeChat`'s own doc comment on
+ * `acquire` explains the same trade for the ref-counting.
+ *
+ * ── The bug, exactly ────────────────────────────────────────────────────────
+ * Realtime `postgres_changes` allows ONE column predicate, so the trip
+ * topic's filter is `trip_id=eq.{tripId}` alone — a team message shares that
+ * trip_id, so it arrives at every "trip" hook instance too (including
+ * `AppShell`'s always-mounted one). The old code trusted the HOOK's own
+ * `channel` argument to decide where to patch a row, never the ROW's own
+ * `channel` — and since team chat stores every message as `visibility='crew'`
+ * (team chat is flat; only the trip channel splits crew/planning), a team
+ * message was indistinguishable from a real Crew one to that logic. Every
+ * team's private message got patched into CREW for anyone with the app open.
+ */
+describe("belongsToRoom — closing the team-message-in-Crew leak", () => {
+  const teamRow = {
+    id: "m1",
+    trip_id: "trip-abc",
+    user_id: "u1",
+    channel: "team",
+    team_id: "team-manhattans",
+    text: "only manhattanites can see this",
+    created_at: "2026-08-30T19:24:00Z",
+    // The exact shape that made this leak possible: a team row's visibility
+    // is 'crew', identical to a real Crew message's.
+    visibility: "crew",
+    message_type: "user",
+  } as const;
+
+  const crewRow = { ...teamRow, channel: "trip", team_id: null, visibility: "crew" } as const;
+  const planningRow = { ...teamRow, channel: "trip", team_id: null, visibility: "planning" } as const;
+
+  it("REJECTS a team-channel row reaching a trip-channel hook instance — the exact leak", () => {
+    expect(belongsToRoom("trip", { type: "insert", row: teamRow })).toBe(false);
+  });
+
+  it("accepts a genuine trip-channel row (crew) at a trip-channel hook instance", () => {
+    expect(belongsToRoom("trip", { type: "insert", row: crewRow })).toBe(true);
+  });
+
+  it("accepts a genuine trip-channel row (planning) at a trip-channel hook instance — visibility never gates this", () => {
+    // Deliberately proving the ACCEPT side isn't accidentally narrowed to
+    // visibility='crew' by a fix that over-corrected.
+    expect(belongsToRoom("trip", { type: "insert", row: planningRow })).toBe(true);
+  });
+
+  it("a team-channel hook instance accepts its own team's row", () => {
+    expect(belongsToRoom("team", { type: "insert", row: teamRow })).toBe(true);
+  });
+
+  it("resync always belongs — it carries no row to be wrong about", () => {
+    expect(belongsToRoom("trip", { type: "resync" })).toBe(true);
+    expect(belongsToRoom("team", { type: "resync" })).toBe(true);
   });
 });

@@ -314,6 +314,33 @@ function FloatingChatPanelInner({
   const roomKey = chatRoomKey(activeRoom);
   const activeChannel: Visibility = activeRoom.kind === "team" ? "crew" : activeRoom.kind;
   const isTeamRoom = activeRoom.kind === "team";
+
+  /**
+   * THE team room's live subscription — and, until this line, team chat had
+   * NONE anywhere in the app. `useRealtimeChat(tripId, "trip")` is already
+   * mounted elsewhere (`AppShell`, `useChatUnreadCount`), and the shared,
+   * ref-counted registry means that ONE subscription patches every open
+   * Crew/Organizers panel's cache — no panel needs its own "trip" instance.
+   * Team chat had no equivalent: nothing anywhere ever called this hook with
+   * `"team"`, so a team room's cache was never patched by anything, and the
+   * team-scoped `team-chat:{tripId}:{teamId}` topic this hook already supports
+   * (see its own doc comment) had zero subscribers.
+   *
+   * The team room's own panel is the right place for it — it is the only
+   * component that knows `teamId` at the point this hook needs it, matching
+   * `messages.list`'s own team query, which lives here too.
+   *
+   * Passing `"trip"` + `undefined` when NOT the team room is deliberate, not a
+   * dead call: the hook already early-returns for `channel === "team"` with no
+   * `teamId` (its own `useEffect` guard), and calling it unconditionally here
+   * — rather than only while `isTeamRoom` — is what the Rules of Hooks require
+   * (this component's hook count cannot change between renders). The "trip"
+   * branch is a genuine extra subscriber for the room this component is NOT
+   * currently showing, but it is ref-counted and therefore free — no second
+   * join, no duplicate patches, per this file's own registry design.
+   */
+  useRealtimeChat(tripId, isTeamRoom ? "team" : "trip", isTeamRoom ? teamId : undefined);
+
   /**
    * Whether `ChatBody`'s top fade should render — see `chatRoomShowsTopFade`
    * (`chatRoomPresentation.ts`) for why it's suppressed in the team room.

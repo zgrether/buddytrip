@@ -36,6 +36,45 @@ export type ChatEvent =
 
 type Handler = (event: ChatEvent) => void;
 
+/**
+ * Does this event actually belong to the room a "trip"/"team" hook instance
+ * represents? A `resync` always does (it carries no row to be wrong about).
+ *
+ * THE BUG THIS EXISTS TO CATCH, found live on the BBMI 2026 trip: Realtime
+ * `postgres_changes` allows exactly ONE column predicate (this file's own doc
+ * comment on `useRealtimeChat`), so the trip topic's filter is
+ * `trip_id=eq.{tripId}` ALONE — it cannot also require `channel='trip'`. A
+ * team message carries the SAME trip_id, so it arrives at every "trip" hook
+ * instance too, including `AppShell`'s always-mounted one.
+ *
+ * The caller used to trust its OWN `channel` argument — which room IT
+ * represents — to decide where to patch an incoming row, instead of checking
+ * the ROW'S OWN `channel`. Team chat stores every message as
+ * `visibility='crew'` (channel splits crew/planning; team chat is flat — see
+ * `messages.send`), which is indistinguishable from a real Crew message once
+ * the patch logic keys off `row.visibility` alone. The result: a team's
+ * message got patched directly into the CREW cache for anyone with the app
+ * open — not just that team's members, ANYONE, since the trip topic is
+ * trip-wide, not team-scoped. Reproduced against real rows: `messages.text =
+ * 'only manhattanites can see this'`, stored correctly as `channel='team',
+ * team_id=<Manhattans>, visibility='crew'`, rendered in the Crew transcript of
+ * every open panel.
+ *
+ * The team side needs no equivalent check: `team-chat:{tripId}:{teamId}`
+ * filters on `team_id`, which is globally unique (this file's own comment on
+ * `useRealtimeChat`), so only that team's own rows can ever arrive there —
+ * included in the signature anyway so a future third room kind can't be added
+ * by widening this function's cases without the compiler noticing.
+ */
+export function belongsToRoom(
+  hookChannel: "trip" | "team",
+  event: ChatEvent
+): boolean {
+  if (event.type === "resync") return true;
+  if (hookChannel === "trip") return event.row.channel === "trip";
+  return true;
+}
+
 type Entry = {
   channel: RealtimeChannel;
   handlers: Set<Handler>;
@@ -265,6 +304,7 @@ export function useRealtimeChat(
     };
 
     const release = acquire(topic, filter, (event) => {
+      if (!belongsToRoom(channel, event)) return;
       const patched = event.type === "insert" ? prepend(event.row) : false;
       // Both paths invalidate the SAME set the post mutation does — one shared
       // helper, so the gap #762 closed can't reopen (receiving used to lag while
