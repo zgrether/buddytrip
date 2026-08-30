@@ -128,8 +128,11 @@ describe("read state is per-room", () => {
   });
 
   it("a team room requires a teamId, and a crew room refuses one", async () => {
+    // Both halves are RUNTIME refusals, not type errors — `teamId` is optional
+    // in the type and the pairing is a zod `refine`, so `tsc` accepts both calls.
+    // That is the point of asserting them: the only thing standing between a
+    // caller and a malformed read row is the refine.
     await expect(
-      // @ts-expect-error — deliberately omitting the teamId the refine requires
       ctx.callerAs("member").messages.markRead({ tripId, visibility: "team" })
     ).rejects.toThrow();
     await expect(

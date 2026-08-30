@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MessageCircle, ClipboardList, Newspaper } from "lucide-react";
+import { MessageCircle, ClipboardList, Newspaper, Shield } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
@@ -77,7 +77,27 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
    * same propagation gap the captain grant had.
    */
   const canSeePlanning = canSeePlanningSegment(role, typedMembers);
-  const segments = visibleChatSegments(canSeePlanning);
+
+  /**
+   * The viewer's team, and the ONLY thing that decides whether a Team tab
+   * exists. Null for someone on no team, and for a trip with no competition —
+   * both ordinary, and both mean the tab does not render rather than rendering
+   * and refusing.
+   *
+   * `competitions.myTeamColor` rather than a new query: it already answers this
+   * under the same one-competition-per-trip rule the server's
+   * `viewerTeamForTrip` uses (they share that function), and React Query dedupes
+   * it with the app-bar avatar's copy, so on a warm shell the Team tab costs no
+   * request. It also means the tab's colour and the avatar's cannot disagree.
+   */
+  const { data: myTeam } = trpc.competitions.myTeamColor.useQuery(
+    { tripId },
+    { ...STRUCTURE_QUERY, enabled: !!tripId }
+  );
+  const hasTeam = !!myTeam;
+
+  const segmentAccess = { canSeePlanning, hasTeam };
+  const segments = visibleChatSegments(segmentAccess);
 
   // Remembered for the SESSION. Chat opens as an overlay and closes back to the
   // tab beneath it (#756), so an organizer working out of the Organizers channel
@@ -105,7 +125,7 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
   // selected, fall back to Crew during render — the panel refuses the
   // channel anyway, so without this the segment bar would highlight a tab
   // showing someone else's content.
-  const activeSegment = resolveActiveChatSegment(selected, canSeePlanning);
+  const activeSegment = resolveActiveChatSegment(selected, segmentAccess);
 
   // The reading text-size preference (S/M/L, `chatTextSize.ts`) — LIFTED here
   // rather than owned by each `FloatingChatPanel`, because this component
@@ -137,6 +157,10 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
   const newsUnread = useNewsUnreadCount(tripId);
   const crewUnread = chatUnread?.crew ?? 0;
   const planningUnread = canSeePlanning ? (chatUnread?.planning ?? 0) : 0;
+  // Same posture as planning's: the server already returns 0 for a caller with
+  // no team, and this second guard keeps a stale cache from painting a badge on
+  // a tab that is no longer rendered.
+  const teamUnread = hasTeam ? (chatUnread?.team ?? 0) : 0;
 
   const memberNames = Object.fromEntries(
     typedMembers.map((m) => [m.user_id ?? m.memberId, m.displayName])
@@ -150,10 +174,18 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
 
   const SEGMENT_META: Record<ChatSegment, { label: string; Icon: typeof MessageCircle; unread: number }> = {
     crew: { label: "Crew", Icon: MessageCircle, unread: crewUnread },
+    // "Team", not the team's NAME. The name is on the header inside the panel
+    // where it has room; a tab reading "Banks" would put a proper noun in a row
+    // of common ones and stop looking like a channel.
+    team: { label: "Team", Icon: Shield, unread: teamUnread },
     // "Organizers" is the established term for this channel everywhere else
     // (FloatingChatPanel's own internal tabs, the glossary) — `planning` is
     // only the code-identifier/DB-value; the display string was never meant
     // to change.
+    //
+    // It is NOT shortened to "Orgs" to make a fourth tab fit. That is the drift
+    // that produced Void/Cancelled and Total Points/Game Points, and the bar is
+    // the thing that gives — see the tab row's own note on how four fit.
     planning: { label: "Organizers", Icon: ClipboardList, unread: planningUnread },
     news: { label: "News", Icon: Newspaper, unread: newsUnread },
   };
@@ -197,7 +229,31 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
           already the ONLY top gap there, and forking it per-container would
           mean two implementations of one tab row for a few pixels neither
           side asked to keep. */}
-      <div className="flex flex-shrink-0 items-center gap-1 px-4 pt-1 pb-3" role="tablist">
+      {/* FITTING FOUR. Team makes this a four-tab row. Measured on the rendered
+          row at a 375px viewport (scrollWidth vs clientWidth, client = 373):
+
+            old padding, no badge    373 / 373   fits, with ZERO slack
+            old padding, one badge   376 / 373   OVERFLOWS
+            shipped padding, badge   373 / 373   fits (content ends at 322)
+
+          The interesting number is the first one. The old `px-4` container +
+          `px-3` buttons + `gap-1` fit four tabs EXACTLY, so any unread badge
+          tipped it over — and a two-digit or "99+" badge more so. A row that
+          fits until someone gets a message is not a row that fits.
+
+          "Organizers" is a ratified term (glossary, NOTIFICATIONS.md, this
+          file's own note below) so shortening it to "Orgs" was not on the table;
+          that is the drift that produced Void/Cancelled. The BAR gives instead —
+          container `px-3`, buttons `px-2`, `gap-0.5`, which leaves 51px of slack
+          with a badge showing.
+
+          Applied at every segment count rather than only at four, deliberately.
+          A count-conditional padding would be two tab rows in one, and this
+          file's neighbouring comment already refuses that trade for the same
+          reason ("two implementations of one tab row for a few pixels neither
+          side asked to keep"). At two or three tabs the change is a few pixels
+          of breathing room, which nobody asked to keep either. */}
+      <div className="flex flex-shrink-0 items-center gap-0.5 px-3 pt-1 pb-3" role="tablist">
         {segments.map((id) => {
           const { label, Icon, unread } = SEGMENT_META[id];
           const selectedTab = activeSegment === id;
@@ -209,7 +265,7 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
               aria-selected={selectedTab}
               onClick={() => pickSegment(id)}
               data-testid={`chat-stream-${id}`}
-              className="flex items-center gap-1.5 px-3 pb-1.5 pt-1 text-[12.5px] font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-2 pb-1.5 pt-1 text-[12.5px] font-semibold transition-colors"
               style={{
                 // TABS, drawn as tabs. These were `rounded-lg` with a
                 // `card-raised` fill when selected, which is the same rounded
@@ -269,6 +325,29 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
           onChangeTextSize={setTextSize}
         />
       </div>
+      {/* Team is a FOURTH mounted panel, and `active` is why that is safe.
+          `ChatView` hides rather than unmounts, so every panel's effects keep
+          running — and two of those assert something about a person's ATTENTION.
+          Production once wrote Crew's and Organizers' `viewing_at` 2ms apart,
+          which no human can do: opening one marked the other viewed, suppressing
+          its notifications and marking it read. A third panel would have been a
+          third way to do that. */}
+      {myTeam && (
+        <div className="flex min-h-0 flex-1 flex-col" hidden={activeSegment !== "team"}>
+          <FloatingChatPanel
+            tripId={tripId}
+            isOpen
+            active={activeSegment === "team"}
+            channel="team"
+            teamId={myTeam.teamId}
+            teamName={myTeam.teamName}
+            teamColor={myTeam.color}
+            memberNames={memberNames}
+            textSize={textSize}
+            onChangeTextSize={setTextSize}
+          />
+        </div>
+      )}
       {canSeePlanning && (
         <div className="flex min-h-0 flex-1 flex-col" hidden={activeSegment !== "planning"}>
           <FloatingChatPanel

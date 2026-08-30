@@ -34,8 +34,17 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
 
 import { CHAT_FETCH_SIZE, dedupeById, olderCursor } from "@/components/chatPaging";
+import { chatRoomKey, type ChatRoom } from "@/lib/chatRoom";
 
 type Visibility = "crew" | "planning";
+
+/**
+ * Which ROOM this panel is showing. "crew" and "planning" are sub-channels of
+ * `messages.channel = trip`; "team" is `channel = team` and needs a `teamId`
+ * alongside it, which is why the panel takes both rather than one union value —
+ * see `src/lib/chatRoom.ts` for the vocabulary hazard between these two columns.
+ */
+type PanelChannel = Visibility | "team";
 
 interface ChatMessage {
   id: string;
@@ -93,7 +102,20 @@ interface FloatingChatPanelProps {
    * for anyone who isn't currently an organizer, so this cannot be used to reach
    * a channel the caller can't read.
    */
-  channel?: Visibility;
+  channel?: PanelChannel;
+  /**
+   * The team this panel is showing, when `channel === "team"`. Supplied by
+   * `ChatView` from `competitions.myTeamColor`, which is the one derivation of
+   * "your team" the app has — the same rule the server's `viewerTeamForTrip`
+   * uses, so the tab, the header and the avatar cannot name different teams.
+   *
+   * `teamName` and `teamColor` are for the header and its glow. They are not a
+   * permission of any kind: the RLS policy decides what this panel can read, and
+   * passing a team you are not on gets an explicit refusal from `messages.list`.
+   */
+  teamId?: string;
+  teamName?: string;
+  teamColor?: string;
   memberNames: Record<string, string>;
   /**
    * The reading text size for the transcript (S/M/L, `chatTextSize.ts`) and
@@ -134,6 +156,9 @@ export function FloatingChatPanel({
   active = true,
   ideaStage,
   channel,
+  teamId,
+  teamName,
+  teamColor,
   memberNames,
   textSize,
   onChangeTextSize,
@@ -145,6 +170,9 @@ export function FloatingChatPanel({
       active={active}
       ideaStage={ideaStage}
       channel={channel}
+      teamId={teamId}
+      teamName={teamName}
+      teamColor={teamColor}
       memberNames={memberNames}
       textSize={textSize}
       onChangeTextSize={onChangeTextSize}
@@ -157,6 +185,9 @@ function FloatingChatPanelInner({
   active,
   ideaStage = false,
   channel,
+  teamId,
+  teamName,
+  teamColor,
   memberNames,
   textSize: textSizeProp,
   onChangeTextSize: onChangeTextSizeProp,
@@ -164,7 +195,10 @@ function FloatingChatPanelInner({
   tripId: string;
   active: boolean;
   ideaStage?: boolean;
-  channel?: Visibility;
+  channel?: PanelChannel;
+  teamId?: string;
+  teamName?: string;
+  teamColor?: string;
   memberNames: Record<string, string>;
   textSize?: ChatTextSize;
   onChangeTextSize?: (size: ChatTextSize) => void;
@@ -200,7 +234,7 @@ function FloatingChatPanelInner({
   // state goes with it — so closing the panel used to discard whatever was
   // typed. Read once in a lazy initializer, like the `seed` below: this is
   // localStorage, and re-reading per render would cost for no gain.
-  const [drafts, setDrafts] = useState<Record<Visibility, string>>(() => ({
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => ({
     crew: readChatDraft(tripId, "crew"),
     planning: readChatDraft(tripId, "planning"),
   }));
@@ -242,11 +276,43 @@ function FloatingChatPanelInner({
   // useTripRole -> tripMembers.list, which useRealtimeMembers invalidates on any
   // trip_members change — so a promotion or demotion re-derives live, with no
   // remount.
-  const activeChannel: Visibility = ideaSolo
-    ? "planning"
-    : canSeeOrganizers
-      ? (channel ?? selectedChannel)
-      : "crew";
+  /**
+   * The room this panel is actually showing.
+   *
+   * Team is checked FIRST and does not pass through the organizer guard below —
+   * that guard exists to stop a demoted person resolving to `planning`, and
+   * applying it to team would have made team chat visible only to organizers,
+   * which is the exact inversion of the feature. A team room still cannot be
+   * reached by asking: `messages.list` refuses a team you are not on, and the
+   * RLS policy refuses it again underneath.
+   *
+   * A "team" request with no `teamId` falls back to Crew rather than rendering a
+   * broken room. That is unreachable from `ChatView` (it only passes the channel
+   * alongside a team it has) and is here so the two props cannot disagree.
+   */
+  const activeRoom: ChatRoom =
+    channel === "team" && teamId
+      ? { kind: "team", teamId }
+      : {
+          kind: ideaSolo
+            ? "planning"
+            : canSeeOrganizers
+              ? (((channel === "team" ? "crew" : channel) ?? selectedChannel) as Visibility)
+              : "crew",
+        };
+  /**
+   * The room's storage/state key — "crew", "planning" or "team:<id>".
+   *
+   * Everything per-room in this component keys off this ONE string: the draft,
+   * the failed outbox, the divider snapshot, the last-marked ref. They used to
+   * key off the channel name, which worked while a channel and a room were the
+   * same thing. Deriving them all from `chatRoomKey` is what stops a fifth room
+   * being added with one of the four silently left sharing another room's slot —
+   * which is the read-state collision migration 172 fixed, one layer up.
+   */
+  const roomKey = chatRoomKey(activeRoom);
+  const activeChannel: Visibility = activeRoom.kind === "team" ? "crew" : activeRoom.kind;
+  const isTeamRoom = activeRoom.kind === "team";
 
   // The visible draft + writer for the active channel.
   //
@@ -256,13 +322,15 @@ function FloatingChatPanelInner({
   // storing a blank one). A separate "save the draft" effect would be a second
   // list of moments to keep in step with this one, which is the shape that made
   // chat's invalidation bug (CLAUDE.md #22) take three sessions to find.
-  const text = drafts[activeChannel];
+  // Keyed by ROOM, so a team draft is its own — and lazily read, because the
+  // team room's key is not known at mount time the way crew/planning are.
+  const text = drafts[roomKey] ?? readChatDraft(tripId, roomKey);
   const setText = useCallback(
     (value: string) => {
-      setDrafts((d) => ({ ...d, [activeChannel]: value }));
-      writeChatDraft(tripId, activeChannel, value);
+      setDrafts((d) => ({ ...d, [roomKey]: value }));
+      writeChatDraft(tripId, roomKey, value);
     },
-    [tripId, activeChannel]
+    [tripId, roomKey]
   );
 
   // Chat history is paginated, not loaded all at once: each page is the newest
@@ -307,6 +375,22 @@ function FloatingChatPanelInner({
     { tripId, channel: "trip", visibility: "planning", limit: CHAT_FETCH_SIZE },
     { enabled: canSeeOrganizers, getNextPageParam: olderCursor, ...seedFor(seed.planning) }
   );
+  /**
+   * The team room. A third parallel query rather than a swapped input, matching
+   * how crew and planning already work — each keeps its own pages and cursor, so
+   * switching tabs does not refetch.
+   *
+   * NOT seeded from the localStorage cache. `readChatCache` is keyed by
+   * visibility and every team message carries visibility='crew', so seeding from
+   * it would paint CREW's cached messages into the team room for one frame —
+   * the read-state collision's exact shape, arriving through a different door.
+   * A team room opens on a spinner once and is warm from then on; that is a much
+   * smaller cost than showing the wrong room's contents.
+   */
+  const teamQuery = trpc.messages.list.useInfiniteQuery(
+    { tripId, channel: "team", teamId: teamId ?? "", limit: CHAT_FETCH_SIZE },
+    { enabled: isTeamRoom && !!teamId, getNextPageParam: olderCursor }
+  );
 
   // Pages come back newest-first within each page and progressively older across
   // pages, so the flattened list is fully created_at DESC. buildDisplayed
@@ -325,6 +409,10 @@ function FloatingChatPanelInner({
     () => dedupeById((planningQuery.data?.pages.flat() ?? []) as ChatMessage[]),
     [planningQuery.data]
   );
+  const teamMessages = useMemo(
+    () => dedupeById((teamQuery.data?.pages.flat() ?? []) as ChatMessage[]),
+    [teamQuery.data]
+  );
 
   // Roster of the people who can see the Organizers channel — Owner + Planners
   // who are actually on the trip. Powers the explainer at the top of that tab.
@@ -337,12 +425,28 @@ function FloatingChatPanelInner({
   );
 
   // Merge in any not-yet-confirmed optimistic messages for a channel.
+  /**
+   * Which room a message belongs to, from the message itself.
+   *
+   * Derived rather than compared field-by-field, because the naive check —
+   * `m.visibility === visibility` — is TRUE for every team message when the
+   * crew room asks, since `send` stamps team messages visibility='crew'. An
+   * optimistic team bubble would have appeared in Crew while it was in flight.
+   */
+  const messageRoomKey = useCallback(
+    (m: ChatMessage): string =>
+      m.channel === "team" && m.team_id
+        ? chatRoomKey({ kind: "team", teamId: m.team_id })
+        : chatRoomKey({ kind: (m.visibility ?? "crew") as Visibility }),
+    []
+  );
+
   const buildDisplayed = useCallback(
-    (real: ChatMessage[], visibility: Visibility): ChatMessage[] => {
+    (real: ChatMessage[], forRoomKey: string): ChatMessage[] => {
       const realIds = new Set(real.map((m) => m.id));
       const pending = optimisticMessages.filter(
         (m) =>
-          m.visibility === visibility &&
+          messageRoomKey(m) === forRoomKey &&
           // The id dedup that retires an optimistic row once its real one
           // arrives — by realtime, by refetch, or from another device. It is
           // also what makes a RETRY safe to render: the retried message carries
@@ -356,7 +460,7 @@ function FloatingChatPanelInner({
       );
       return real.slice().reverse().concat(pending);
     },
-    [optimisticMessages, currentUser?.id]
+    [optimisticMessages, currentUser?.id, messageRoomKey]
   );
 
   /**
@@ -380,11 +484,25 @@ function FloatingChatPanelInner({
     if (planningConfirmed) writeChatCache(tripId, "planning", planningMessages as CachedMessage[]);
   }, [tripId, planningConfirmed, planningMessages]);
 
+  const teamConfirmed = teamQuery.dataUpdatedAt > 0;
+
   const crewDisplayed = buildDisplayed(crewMessages as ChatMessage[], "crew");
   const planningDisplayed = buildDisplayed(planningMessages as ChatMessage[], "planning");
-  const displayed = activeChannel === "crew" ? crewDisplayed : planningDisplayed;
-  /** Has the ACTIVE channel been confirmed by the server this mount? */
-  const confirmed = activeChannel === "crew" ? crewConfirmed : planningConfirmed;
+  const teamDisplayed = buildDisplayed(teamMessages as ChatMessage[], roomKey);
+  // Selected by ROOM, not by `activeChannel` — a team message carries
+  // visibility='crew', so branching on the channel here would show Crew's
+  // transcript inside the team room.
+  const displayed = isTeamRoom
+    ? teamDisplayed
+    : activeChannel === "crew"
+      ? crewDisplayed
+      : planningDisplayed;
+  /** Has the ACTIVE room been confirmed by the server this mount? */
+  const confirmed = isTeamRoom
+    ? teamConfirmed
+    : activeChannel === "crew"
+      ? crewConfirmed
+      : planningConfirmed;
   /**
    * Is what this device is showing still being kept up to date?
    *
@@ -418,11 +536,18 @@ function FloatingChatPanelInner({
   // the first message from someone else newer than it. It stays put for the
   // whole session even as we mark the channel read. null = never read / unknown
   // at open, so no divider is drawn.
-  const [dividerSnapshots] = useState<Record<Visibility, string | null>>(() => {
+  const [dividerSnapshots] = useState<Record<string, string | null>>(() => {
     const cached = utils.messages.readState.getData({ tripId });
-    return { crew: cached?.crew ?? null, planning: cached?.planning ?? null };
+    return {
+      crew: cached?.crew ?? null,
+      planning: cached?.planning ?? null,
+      // Keyed by the ROOM, and `readState.team` is already scoped to the
+      // viewer's own team server-side — it matches by team_id, so someone who
+      // changed teams gets null here rather than the old team's position.
+      ...(teamId ? { [chatRoomKey({ kind: "team", teamId })]: cached?.team ?? null } : {}),
+    };
   });
-  const dividerSnapshot = dividerSnapshots[activeChannel];
+  const dividerSnapshot = dividerSnapshots[roomKey] ?? null;
 
   // Mark the active channel read whenever it's shown and new messages arrive.
   // markRead stamps the server clock; on success it invalidates readState
@@ -476,7 +601,7 @@ function FloatingChatPanelInner({
   const { mutate: markViewingMutate } = trpc.messages.markViewing.useMutation({
     meta: { suppressErrorToast: true },
   });
-  const lastMarkedRef = useRef<Record<Visibility, string | null>>({
+  const lastMarkedRef = useRef<Record<string, string | null>>({
     crew: null,
     planning: null,
   });
@@ -524,10 +649,28 @@ function FloatingChatPanelInner({
     const latest = displayed[displayed.length - 1];
     const ts = latest?.created_at;
     if (!ts) return;
-    if (lastMarkedRef.current[activeChannel] === ts) return; // already marked
-    lastMarkedRef.current[activeChannel] = ts;
-    markReadMutate({ tripId, visibility: activeChannel });
-  }, [tripId, active, activeChannel, confirmed, displayed, markReadMutate]);
+    if (lastMarkedRef.current[roomKey] === ts) return; // already marked
+    lastMarkedRef.current[roomKey] = ts;
+    // Keyed by room in BOTH halves — the ref and the mutation. Sending
+    // `visibility: activeChannel` here would have marked CREW read whenever the
+    // team room caught up, which is the collision migration 172 removed from the
+    // schema; sending the room is what stops the client re-creating it.
+    markReadMutate(
+      isTeamRoom
+        ? { tripId, visibility: "team", teamId: teamId! }
+        : { tripId, visibility: activeChannel }
+    );
+  }, [
+    tripId,
+    active,
+    activeChannel,
+    roomKey,
+    isTeamRoom,
+    teamId,
+    confirmed,
+    displayed,
+    markReadMutate,
+  ]);
 
   // ── Viewing heartbeat — the ONLY suppression chat push has left ──────────
   //
@@ -586,7 +729,11 @@ function FloatingChatPanelInner({
       const now = Date.now();
       if (now - heartbeatAtRef.current < CHAT_VIEW_HEARTBEAT_MS) return;
       heartbeatAtRef.current = now;
-      markViewingMutate({ tripId, visibility: activeChannel });
+      markViewingMutate(
+        isTeamRoom
+          ? { tripId, visibility: "team", teamId: teamId! }
+          : { tripId, visibility: activeChannel }
+      );
     };
     // Beat IMMEDIATELY on mount as well as on the interval. `setInterval` alone
     // means the first stamp lands a full interval after the panel opens, so
@@ -596,7 +743,11 @@ function FloatingChatPanelInner({
     beat();
     const id = setInterval(beat, CHAT_VIEW_HEARTBEAT_MS);
     return () => clearInterval(id);
-  }, [tripId, active, activeChannel, viewIsCurrent, markViewingMutate]);
+    // `isTeamRoom` and `teamId` are in here because the beat now names a ROOM.
+    // Without them a panel that switched rooms would keep stamping the old
+    // one's `viewing_at` — suppressing notifications for a room nobody is
+    // looking at, and leaving the one on screen unsuppressed.
+  }, [tripId, active, activeChannel, isTeamRoom, teamId, viewIsCurrent, markViewingMutate]);
 
   /**
    * Callbacks live in `postMessage` below, not here.
@@ -631,15 +782,22 @@ function FloatingChatPanelInner({
   const postMessage = useCallback(
     async (
       msg: { id: string; text: string; createdAt: string; userId: string },
-      visibility: Visibility
+      room: ChatRoom
     ) => {
+      // The outbox, the invalidation and the send all take the ROOM. They used
+      // to take `visibility`, which is the same thing for the trip channel and
+      // wrong for a team: every team message carries visibility='crew', so a
+      // failed team send would have been stored under Crew's outbox key and
+      // recovered into Crew's transcript on the next mount.
+      const key = chatRoomKey(room);
+      const isTeam = room.kind === "team";
       // Un-mark first: a retry of a failed bubble should stop looking failed the
       // instant it is tapped, or the control appears not to have fired.
       setOptimisticMessages((prev) =>
         prev.map((m) => (m.id === msg.id ? { ...m, _failed: false } : m))
       );
       const settled = () => {
-        clearFailedMessage(tripId, visibility, msg.id);
+        clearFailedMessage(tripId, key, msg.id);
         // The SAME set the realtime INSERT handler invalidates — one shared
         // helper, because the delta between these two lists WAS the bug (see
         // chatQueryInvalidation.ts). Do not inline a key list here again.
@@ -647,14 +805,20 @@ function FloatingChatPanelInner({
         // The refetch it triggers is also what RETIRES the optimistic row:
         // `buildDisplayed` drops any optimistic message whose id is in the real
         // set, and the real row carries the id we sent.
-        invalidateChatQueries(utils, { tripId, channel: "trip", visibility });
+        invalidateChatQueries(
+          utils,
+          isTeam
+            ? { tripId, channel: "team", teamId: room.teamId }
+            : { tripId, channel: "trip", visibility: room.kind }
+        );
       };
       try {
         await sendMessage.mutateAsync({
           tripId,
           id: msg.id,
-          channel: "trip",
-          visibility,
+          ...(isTeam
+            ? { channel: "team" as const, teamId: room.teamId }
+            : { channel: "trip" as const, visibility: room.kind }),
           text: msg.text,
         });
         settled();
@@ -669,7 +833,7 @@ function FloatingChatPanelInner({
         // CLAUDE.md #15: keep the value, flag the error, never roll back to
         // blank. The durable write happens HERE rather than in a state updater,
         // because updaters run twice under StrictMode.
-        putFailedMessage(tripId, visibility, msg);
+        putFailedMessage(tripId, key, msg);
         setOptimisticMessages((prev) =>
           prev.map((m) => (m.id === msg.id ? { ...m, _failed: true } : m))
         );
@@ -682,9 +846,15 @@ function FloatingChatPanelInner({
   const retryMessage = useCallback(
     (msg: ChatMessage) => {
       if (!msg.user_id) return;
+      // The room comes from the MESSAGE, not from whichever room is on screen —
+      // a retry re-sends it where it was written. Reading `activeRoom` here
+      // would move a failed team message into Crew if the reader had switched
+      // tabs before tapping retry.
       void postMessage(
         { id: msg.id, text: msg.text, createdAt: msg.created_at, userId: msg.user_id },
-        (msg.visibility ?? "crew") as Visibility
+        msg.channel === "team" && msg.team_id
+          ? { kind: "team", teamId: msg.team_id }
+          : { kind: (msg.visibility ?? "crew") as Visibility }
       );
     },
     [postMessage]
@@ -716,8 +886,11 @@ function FloatingChatPanelInner({
         id,
         trip_id: tripId,
         user_id: currentUser.id,
-        channel: "trip",
-        team_id: null,
+        // The optimistic row carries the SAME shape the server will write, so
+        // `messageRoomKey` places it in the room it was typed in and the real
+        // row that replaces it lands in the same place.
+        channel: isTeamRoom ? "team" : "trip",
+        team_id: isTeamRoom ? teamId! : null,
         text: trimmed,
         created_at: createdAt,
         visibility: activeChannel,
@@ -727,10 +900,7 @@ function FloatingChatPanelInner({
     ]);
 
     setText("");
-    void postMessage(
-      { id, text: trimmed, createdAt, userId: currentUser.id },
-      activeChannel
-    );
+    void postMessage({ id, text: trimmed, createdAt, userId: currentUser.id }, activeRoom);
   };
 
   // Active-channel accent — mirrors the CrewTab section headers: Organizers
@@ -783,7 +953,11 @@ function FloatingChatPanelInner({
   // Panel body — shared content between desktop + mobile wrappers. It MUST be
   // its own component (not inline JSX rendered twice) so each of the two
   // simultaneously-mounted wrappers gets independent scroll/textarea refs.
-  const activeQuery = activeChannel === "crew" ? crewQuery : planningQuery;
+  const activeQuery = isTeamRoom
+    ? teamQuery
+    : activeChannel === "crew"
+      ? crewQuery
+      : planningQuery;
   const body = (
     <ChatBody
       displayed={displayed}
@@ -794,6 +968,8 @@ function FloatingChatPanelInner({
       lastReadSnapshot={dividerSnapshot}
       memberNames={memberNames}
       isPlanningChannel={isPlanningChannel}
+      teamName={isTeamRoom ? (teamName ?? "Team") : null}
+      teamColor={isTeamRoom ? (teamColor ?? null) : null}
       organizers={organizers}
       accentVar={accentVar}
       accentFaint={accentFaint}
@@ -827,7 +1003,34 @@ function FloatingChatPanelInner({
   // ChatView's own segment row (inline with Crew/Organizers/News) — it's a
   // single per-account preference, not per-channel, so it doesn't belong to
   // any one panel instance.
-  return <div className="flex h-full min-h-0 flex-col">{body}</div>;
+  /**
+   * THE TEAM GLOW — top-left, in the team's colour.
+   *
+   * Geometry and alpha lifted verbatim from `CompetitionHero`'s `teamGlow` (the
+   * `135% 135% at 0% 0%` / `13%` / `transparent 56%` triple), so the team reads
+   * the same here as it does on the board rather than being a second
+   * interpretation of the same idea.
+   *
+   * Composited over `transparent`, NOT over `--color-bt-card` the way the hero
+   * is: the hero IS a card and this panel sits directly on the page ground, so
+   * naming a card colour here would paint a card-coloured rectangle behind the
+   * transcript and break the surface hierarchy (STYLE_GUIDE §1). The gradient
+   * alone tints whatever the container's ground already is.
+   */
+  const teamGlowBackground =
+    isTeamRoom && teamColor
+      ? `radial-gradient(135% 135% at 0% 0%, color-mix(in srgb, ${teamColor} 13%, transparent), transparent 56%)`
+      : undefined;
+
+  return (
+    <div
+      className="flex h-full min-h-0 flex-col"
+      data-testid={isTeamRoom ? "chat-team-room" : undefined}
+      style={teamGlowBackground ? { background: teamGlowBackground } : undefined}
+    >
+      {body}
+    </div>
+  );
 }
 
 /**
@@ -916,6 +1119,10 @@ interface ChatBodyProps {
   lastReadSnapshot: string | null;
   memberNames: Record<string, string>;
   isPlanningChannel: boolean;
+  /** The team's name when this is the team room, else null. */
+  teamName: string | null;
+  /** The team's colour, for the header dot and the glow. Null off the team room. */
+  teamColor: string | null;
   organizers: { user_id: string | null; displayName: string }[];
   accentVar: string;
   accentFaint: string;
@@ -962,6 +1169,8 @@ function ChatBody({
   lastReadSnapshot,
   memberNames,
   isPlanningChannel,
+  teamName,
+  teamColor,
   organizers,
   accentVar,
   accentFaint,
@@ -1261,6 +1470,42 @@ function ChatBody({
               }}
             />
           </button>
+        ) : teamName ? (
+          /* THE TEAM HEADER, and it takes the slot Crew was wasting.
+
+             This row was already built for exactly this: a flexible left slot
+             with the size control right-aligned, where Organizers puts a summary
+             and Crew puts an empty spacer purely to stop the control moving
+             between tabs. So the team's name and colour COEXIST with the S/M/L
+             control — nothing is displaced, and the control keeps its home. That
+             matters: someone who needs L in Crew needs it in Team, and removing
+             it here would be a regression for the readers it was built for.
+
+             Permanent, unlike the Organizers line, which is a collapsible
+             explainer. "Which room am I in" is answered by the tab for the other
+             three; for Team the useful fact is WHICH team, and that does not
+             become less useful on the second visit. */
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                flexShrink: 0,
+                // The team's own colour, the same value the leaderboard and the
+                // app-bar avatar use — all three read `competitions.myTeamColor`.
+                background: teamColor ?? "var(--color-bt-accent)",
+              }}
+            />
+            <span
+              data-testid="chat-team-header"
+              className="truncate text-[10px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-bt-text-dim)" }}
+            >
+              {teamName}
+            </span>
+          </div>
         ) : (
           // Crew: nothing to summarize (see above) — an empty flexible
           // spacer keeps the size control right-aligned exactly as it is on
