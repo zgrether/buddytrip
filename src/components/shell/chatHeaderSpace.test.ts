@@ -50,10 +50,31 @@ describe("the tab row's own top padding is what was actually cut", () => {
     expect(tabRow).not.toMatch(/\bpt-3\b/);
   });
 
-  /** The tab BUTTON's own padding is a separate concern (its own tap
-   *  cushion) and was deliberately left alone — pinned so the two don't get
-   *  conflated in a future "tidy up the spacing" pass. */
-  it("leaves the individual tab button's own padding alone", () => {
-    expect(chatViewSrc).toContain("px-3 pb-1.5 pt-1 text-[12.5px]");
+  /**
+   * THIS TEST PREVIOUSLY ASSERTED `px-3 pb-1.5 pt-1` — "leaves the individual
+   * tab button's own padding alone." That held while the row carried three
+   * tabs. Team chat made it four, and at 375px the three-tab padding fit with
+   * zero slack (measured: 373/373px, client/scroll — see the "FITTING FOUR"
+   * comment on this line in ChatView.tsx) and OVERFLOWED the instant an unread
+   * badge appeared (376/373px). So the button's own padding was the thing that
+   * had to give — the row already refused a count-conditional padding for the
+   * same "two implementations of one tab row" reason this file's neighbouring
+   * comment names — and this assertion is what needed to reverse, per
+   * CLAUDE.md's rule that a reversal cites what it reverses.
+   *
+   * What's still true, and still worth pinning: the button's VERTICAL padding
+   * (`pb-1.5 pt-1`, its own tap cushion) is untouched — only the HORIZONTAL
+   * padding shrank (`px-3` → `px-2`), and only that. A future edit that also
+   * shrinks the vertical cushion, or that touches this without touching the
+   * row's own gap/padding in step (`gap-0.5 px-3` — see the test above this
+   * one's sibling in ChatView.tsx), is the thing THIS version of the test
+   * exists to catch.
+   */
+  it("shrinks only the button's horizontal padding for the four-tab fit — vertical cushion untouched", () => {
+    expect(chatViewSrc).toContain("px-2 pb-1.5 pt-1 text-[12.5px]");
+    // The OLD value must be gone, not just the new one present — a build that
+    // left both strings in the file (e.g. a stray second button) would pass a
+    // toContain-only check.
+    expect(chatViewSrc).not.toContain("px-3 pb-1.5 pt-1 text-[12.5px]");
   });
 });
