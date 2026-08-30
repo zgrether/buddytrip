@@ -72,7 +72,7 @@ export type ResolvedResultStrategy = ResultStrategy | "bracket" | "matches" | nu
  * refusal to `competition_format = 'bracket'` for the same reason. The two
  * are the same claim about the same rows and are kept deliberately in step.
  */
-export const BRACKET_COMPETITION_FORMAT = "bracket";
+export const BRACKET_COMPETITION_FORMAT = "bracket" as const;
 
 /**
  * The ONE `competition_format` value that resolves to the per-match engine.
@@ -85,7 +85,7 @@ export const BRACKET_COMPETITION_FORMAT = "bracket";
  * holding the old value, on a COMPLETE game, which reusing it would have
  * re-routed away from the manual arm that wrote its results.
  */
-export const MATCHES_COMPETITION_FORMAT = "matches";
+export const MATCHES_COMPETITION_FORMAT = "matches" as const;
 
 /**
  * The engine that finalizes this game.
