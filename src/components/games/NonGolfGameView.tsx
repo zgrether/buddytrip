@@ -35,7 +35,7 @@ import {
   type DraftMatchInput,
 } from "@/lib/configDraft";
 import type { PointsMatch } from "@/components/games/MatchPointsRow";
-import { isPlacement, effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
+import { isPlacement, effectiveDistribution, liveMatchPointsPerMatch, type PointsDistribution } from "@/lib/pointsDistribution";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
 import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
 import { BracketScoringSurface } from "@/components/games/bracket/BracketScoringSurface";
@@ -572,6 +572,36 @@ export function NonGolfGameView() {
   };
 
   // ── The SCOREBOARD's matches (170) — SERVER rows, not the draft ────────────
+  // matchId → override, for the header's "what this match is worth" chip
+  // (feedback: golf shows this on its own MatchCard header, Matches showed
+  // nothing anywhere on the scoreboard). Same map shape as golf's own
+  // `pointValueByMatch` in MatchGameView.
+  const matchesPointValueByMatch = useMemo(() => {
+    const m = new Map<string, number | null>();
+    for (const mm of serverMatchRows as { id: string; point_value: number | null }[]) {
+      m.set(mm.id, mm.point_value ?? null);
+    }
+    return m;
+  }, [serverMatchRows]);
+  // The game's LIVE even share (#1031) — recomputed from `serverMatchRows` +
+  // `points_total` via the SAME `liveMatchPointsPerMatch` golf's MatchGameView
+  // calls, never read from the persisted `points_distribution.value` snapshot,
+  // for the exact reason golf's own comment gives: a match dropping out of
+  // the pairing outside a settings Save must not leave this stale.
+  const matchesPointsPerMatch = useMemo(() => {
+    const dist = game?.points_distribution as PointsDistribution | null | undefined;
+    if (dist?.type !== "per_match") return 0;
+    return liveMatchPointsPerMatch(
+      (game?.points_total as number | null) ?? null,
+      (serverMatchRows as { side_a: ServerSide; side_b: ServerSide; point_value: number | null }[]).map((mm) => ({
+        sideAId: mm.side_a?.id ?? null,
+        sideBId: mm.side_b?.id ?? null,
+        pointValue: mm.point_value ?? null,
+      })),
+      dist.value
+    );
+  }, [game?.points_distribution, game?.points_total, serverMatchRows]);
+
   // The settings-side `matchesPointsMatches` above is keyed by DRAFT INDEX
   // because a not-yet-saved match has no server id; declaring a result is the
   // opposite case — a match MUST already be persisted to have a result
@@ -587,6 +617,7 @@ export function NonGolfGameView() {
         side_a: ServerSide;
         side_b: ServerSide;
         result: "a_win" | "b_win" | "halve" | null;
+        point_value: number | null;
       }[])
         .map((mm, i) => ({
           id: mm.id,
@@ -602,13 +633,14 @@ export function NonGolfGameView() {
             teamColor: matchesTeamColorOf(u) ?? matchesColorMap.get(u),
           })),
           result: mm.result,
+          pointValue: matchesPointValueByMatch.get(mm.id) ?? matchesPointsPerMatch,
         }))
         // Same rule as everywhere else in this format (§3): an unpaired match
         // isn't there to resolve, so it doesn't reach the entry surface at all
         // — no refusal to write because there's nothing to tap in the first
         // place.
         .filter((m) => m.aPlayers.length > 0 && m.bPlayers.length > 0),
-    [serverMatchRows, membersOfSide, matchesNameMap, matchesColorMap, matchesTeamColorOf],
+    [serverMatchRows, membersOfSide, matchesNameMap, matchesColorMap, matchesTeamColorOf, matchesPointValueByMatch, matchesPointsPerMatch],
   );
   const setMatchResult = trpc.matches.setResult.useMutation({
     onSuccess: () => {
@@ -616,11 +648,31 @@ export function NonGolfGameView() {
       // invalidate refreshes both surfaces of this one game. Realtime
       // (`useRealtimeGame`, CLAUDE.md #19) covers OTHER devices; this is for
       // the tab that just wrote, which cannot rely on its own broadcast
-      // round-tripping back to itself promptly.
+      // round-tripping back to itself promptly. Also the RECONCILE step for
+      // the optimistic patch below — the refetch it triggers is what pulls
+      // real server truth back over the optimistic guess.
+      utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: urlGameId! });
+    },
+    // Feedback: "slow to update after pressing it" — this mutation had no
+    // optimistic patch, so every tap waited a full round trip before the row
+    // moved. Rolled back the same way (CLAUDE.md Enforced Pattern #1 for this
+    // directory): invalidate/refetch to pull real server truth over the wrong
+    // guess, not a snapshot-restore.
+    onError: () => {
       utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: urlGameId! });
     },
   });
-  const onMatchResultPick = (matchId: string, result: "a_win" | "b_win" | "halve") => {
+  const onMatchResultPick = (matchId: string, result: "a_win" | "b_win" | "halve" | null) => {
+    const key = { tripId: tripId!, gameId: urlGameId! };
+    const prev = utils.matches.listByGame.getData(key);
+    if (prev) {
+      utils.matches.listByGame.setData(key, {
+        ...prev,
+        matches: (prev.matches as { id: string }[]).map((mm) =>
+          mm.id === matchId ? { ...mm, result } : mm
+        ),
+      });
+    }
     setMatchResult.mutate({ tripId: tripId!, gameId: urlGameId!, matchId, result });
   };
 

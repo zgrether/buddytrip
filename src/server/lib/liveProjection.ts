@@ -8,6 +8,8 @@ import { playerStats, rackProjectedTeamPoints, type RackPlayer, type Team } from
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { liveMatchPointsPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
+import { isMatchesGame } from "@/lib/resultStrategy";
+import { tallyMatchAwards } from "@/server/lib/matchAwards";
 
 /**
  * Live-game projected-points, server-side (leaderboard grid Phase 2, Path A).
@@ -30,8 +32,19 @@ import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
  *    mirrors the decided path's `teamPoints × value`). Both the board and the rack
  *    game page call that shared helper, so they can't diverge.
  *
- * Only match singles/doubles + rack live games project; stroke has no on-page
- * rollup and non-golf never runs live (it posts straight to complete).
+ * Match singles/doubles, rack, and non-golf **Matches** (`competition_format =
+ * 'matches'`) live games project; stroke has no on-page rollup and every other
+ * non-golf shape (placement, Simple win/tie) posts straight to complete with
+ * nothing to preview in between.
+ *
+ * Matches' projection is simpler than golf's: there is no partial "leading"
+ * state to credit (a match is declared or it isn't — see `matchAwards.ts`'s
+ * header for why it skips the whole hole-sequence half of match play), so it
+ * sums only DECIDED matches via the exact same `tallyMatchAwards` the eventual
+ * `games.finish` write calls (CLAUDE.md #8's split, one level down from a whole
+ * game). READ-ONLY here too: entering a result never touches `game_results` or
+ * the leaderboard's persisted state — only `games.finish` does that, same as
+ * every other format this file projects.
  */
 
 interface SideRef {
@@ -45,6 +58,10 @@ interface SchemaShape {
 export interface LiveProjectionInput {
   id: string;
   gameTypeId: string | null;
+  /** `games.competition_format` — the ONLY way to tell a Matches game apart
+   *  from every other non-golf shape; `gameTypeId` alone can't (Phase 0 §1,
+   *  same reason `resolveResultStrategy` reads it too). Null for golf/rack. */
+  competitionFormat?: string | null;
   /** The owner-set total this game is worth. #1031: the per-match/per-slot
    *  value is derived from this LIVE (from the current assigned matches / grouped
    *  roster in `GameProjectionData`), never read from a persisted
@@ -71,8 +88,10 @@ export interface LiveProjectionInput {
 export interface GameProjectionData {
   schema: SchemaShape | null;
   modifiers: ModifiersMap | null;
-  /** A2b: `point_value` is the per-match override (null → the even share). */
-  matches: { id: string; side_a: SideRef | null; side_b: SideRef | null; point_value?: number | null }[];
+  /** A2b: `point_value` is the per-match override (null → the even share).
+   *  `result` is Matches-only (undefined for golf, which derives its own
+   *  standing from holes/outcomes below rather than a stored result). */
+  matches: { id: string; side_a: SideRef | null; side_b: SideRef | null; point_value?: number | null; result?: "a_win" | "b_win" | "halve" | null }[];
   parts: { user_id: string; play_group_id: string | null; handicap_strokes: number | null }[];
   playGroups: { id: string; handicap_strokes: number | null }[];
   /** participant_id → { unit_label: gross }. Score-mode only. */
@@ -92,6 +111,10 @@ export type LiveProjections = Record<string, Record<string, number>>;
  *  reads. Unknown/stroke/non-golf types return null (no live projection). */
 export function projectGame(input: LiveProjectionInput, data: GameProjectionData): Record<string, number> | null {
   const t = input.gameTypeId;
+  // Matches decides FIRST — same reason `NonGolfScoreboard` checks it before
+  // `winLoseTie`: `gameTypeId` alone (a generic non-golf card type) says
+  // nothing about how this game resolves, only `competition_format` does.
+  if (isMatchesGame(t, input.competitionFormat)) return projectMatches(input, data);
   if (t && MATCH_PLAY_TYPES.has(t)) return projectMatch(input, data);
   if (t === RACK_TYPE) return projectRack(input, data);
   return null;
@@ -112,7 +135,7 @@ export async function computeLiveProjections(
   const [gamesMetaRes, matchRowsRes, participantRowsRes, playGroupRowsRes, entryRowsRes, outcomeRowsRes, assignRes] =
     await Promise.all([
       supabase.from("games").select("id, scorecard_schema, modifiers").in("id", gameIds),
-      supabase.from("game_matches").select("id, game_id, side_a, side_b, point_value").in("game_id", gameIds),
+      supabase.from("game_matches").select("id, game_id, side_a, side_b, point_value, result").in("game_id", gameIds),
       supabase
         .from("game_participants")
         .select("game_id, user_id, play_group_id, handicap_strokes")
@@ -141,7 +164,10 @@ export async function computeLiveProjections(
     });
   }
 
-  const matchesByGame = new Map<string, { id: string; side_a: SideRef | null; side_b: SideRef | null; point_value: number | null }[]>();
+  const matchesByGame = new Map<
+    string,
+    { id: string; side_a: SideRef | null; side_b: SideRef | null; point_value: number | null; result: "a_win" | "b_win" | "halve" | null }[]
+  >();
   for (const m of matchRowsRes.data ?? []) {
     const arr = matchesByGame.get(m.game_id as string) ?? [];
     arr.push({
@@ -149,6 +175,7 @@ export async function computeLiveProjections(
       side_a: (m.side_a as SideRef | null) ?? null,
       side_b: (m.side_b as SideRef | null) ?? null,
       point_value: (m.point_value as number | null) ?? null,
+      result: (m.result as "a_win" | "b_win" | "halve" | null) ?? null,
     });
     matchesByGame.set(m.game_id as string, arr);
   }
@@ -291,6 +318,41 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Record<
       )
     : 0;
   return rollupMatchPlay(projMatches, pointsPerMatch);
+}
+
+/** Non-golf Matches → sum only the DECIDED matches' awards via the exact same
+ *  `tallyMatchAwards` `writeTeamMatchPoints` will eventually call — an
+ *  undecided match contributes nothing (there is no partial "leading" state
+ *  for a declared-outright result to be partway toward), unlike golf's
+ *  in-progress matches above, which credit a live leader. Side→team
+ *  resolution mirrors `projectMatch`'s (2v2 resolves via a play_group's
+ *  member), duplicated rather than shared because the two run over
+ *  differently-shaped match rows (this one carries `result`, golf's carries
+ *  hole data) and a shared helper would need to abstract over both for no
+ *  reader's benefit. */
+function projectMatches(g: LiveProjectionInput, data: GameProjectionData): Record<string, number> | null {
+  const { matches, parts, userTeam } = data;
+
+  const pgTeam = new Map<string, string>();
+  for (const p of parts) {
+    if (!p.play_group_id || pgTeam.has(p.play_group_id)) continue;
+    const t = userTeam.get(p.user_id);
+    if (t) pgTeam.set(p.play_group_id, t);
+  }
+  const sideTeam = (s: SideRef): string | undefined =>
+    (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? undefined;
+
+  // #1031's rule, same as golf's projectMatch: the even share is derived LIVE
+  // from the CURRENT assigned matches, never a persisted snapshot.
+  const pointsPerMatch = g.isPerMatch
+    ? liveMatchPointsPerMatch(
+        g.pointsTotal,
+        matches.map((m) => ({ sideAId: m.side_a?.id ?? null, sideBId: m.side_b?.id ?? null, pointValue: m.point_value ?? null })),
+        g.legacyValue
+      )
+    : 0;
+
+  return tallyMatchAwards(matches, sideTeam, pointsPerMatch);
 }
 
 /** Rack → the same read-model `computeRackNStackResults` builds, but in

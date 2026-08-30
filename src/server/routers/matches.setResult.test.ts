@@ -93,6 +93,25 @@ describe("matches.setResult — declares a match's result", () => {
     expect((await matchRow(matchId))?.result).toBe("halve");
   });
 
+  it("a null result UNSETS a declared match back to undecided — result, margin and status all revert (feedback: a mis-tap needs a way back)", async () => {
+    const { gameId, matchId } = await freshDecidableGame("Unsets");
+    await ctx.caller().matches.setResult({ tripId, gameId, matchId, result: "a_win" });
+    expect((await matchRow(matchId))?.status).toBe("complete");
+    await ctx.caller().matches.setResult({ tripId, gameId, matchId, result: null });
+    const row = await matchRow(matchId);
+    expect(row?.result).toBeNull();
+    expect(row?.margin).toBeNull();
+    expect(row?.status).toBe("pending");
+  });
+
+  it("unsetting an already-undecided match is a harmless no-op", async () => {
+    const { gameId, matchId } = await freshDecidableGame("Unset no-op");
+    await ctx.caller().matches.setResult({ tripId, gameId, matchId, result: null });
+    const row = await matchRow(matchId);
+    expect(row?.result).toBeNull();
+    expect(row?.status).toBe("pending");
+  });
+
   it("an unpaired match refuses — nothing to resolve (Phase 0 §3)", async () => {
     const game = await ctx.caller().games.create({ tripId, gameTypeId: CARD, name: "Unpaired refuses" });
     const gameId = game.id as string;

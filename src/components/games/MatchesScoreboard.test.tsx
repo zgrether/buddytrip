@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MatchesScoreboard, type MatchScoreRow } from "./MatchesScoreboard";
+import { MatchesScoreboard, toggleMatchResult, type MatchScoreRow } from "./MatchesScoreboard";
 
 /**
  * The scoreboard-page counterpart to `NonGolfSettingsRows.matches.test.tsx` —
@@ -14,12 +14,19 @@ import { MatchesScoreboard, type MatchScoreRow } from "./MatchesScoreboard";
  * ONCE the branch is taken.
  */
 
-const singles = (id: string, aId: string, bId: string, result: MatchScoreRow["result"] = null): MatchScoreRow => ({
+const singles = (
+  id: string,
+  aId: string,
+  bId: string,
+  result: MatchScoreRow["result"] = null,
+  pointValue: number | null = null
+): MatchScoreRow => ({
   id,
   number: Number(id) + 1,
   aPlayers: [{ id: aId, name: `A${aId}`, teamColor: "#ef4444" }],
   bPlayers: [{ id: bId, name: `B${bId}`, teamColor: "#3b82f6" }],
   result,
+  pointValue,
 });
 
 const doubles = (id: string, result: MatchScoreRow["result"] = null): MatchScoreRow => ({
@@ -34,6 +41,7 @@ const doubles = (id: string, result: MatchScoreRow["result"] = null): MatchScore
     { id: `${id}b2`, name: "Blue Two", teamColor: "#3b82f6" },
   ],
   result,
+  pointValue: null,
 });
 
 const render = (matches: MatchScoreRow[], canEdit = true) =>
@@ -94,5 +102,42 @@ describe("MatchesScoreboard", () => {
   it("!canEdit disables every choice (a viewer, not an editor)", () => {
     const html = render([singles("0", "u1", "u2")], false);
     expect((html.match(/aria-disabled="true"/g) ?? []).length).toBe(3); // all 3 rows
+  });
+
+  it("each match is its own bordered card with a header showing MATCH N, FINAL once decided, and its point value (feedback: separation + the golf header line)", () => {
+    const decided = render([singles("0", "u1", "u2", "a_win", 6)]);
+    expect(decided).toContain("Match 1");
+    expect(decided).toContain("FINAL");
+    expect(decided).toContain('data-testid="points-at-stake"');
+    expect(decided).toContain(">6<"); // PointsAtStake's value span
+    // The card boundary itself — background+border+radius on the match's own
+    // wrapper, not just the eyebrow that used to float above three bare rows.
+    expect(decided).toMatch(/data-testid="matches-scoreboard-match-0"[^]{0,80}border:1px solid var\(--color-bt-border\)/);
+
+    const undecided = render([singles("0", "u1", "u2", null, 6)]);
+    expect(undecided).not.toContain("FINAL");
+    expect(undecided).toContain('data-testid="points-at-stake"'); // still worth showing pre-decision
+  });
+
+  it("a match worth nothing (no override, no even share) renders no points chip — PointsAtStake's own null-for-zero contract", () => {
+    const html = render([singles("0", "u1", "u2", null, 0)]);
+    expect(html).not.toContain('data-testid="points-at-stake"');
+  });
+});
+
+describe("toggleMatchResult — tap-again-to-clear (feedback: no way to undo a mis-tap)", () => {
+  it("tapping an undecided match's choice selects it", () => {
+    expect(toggleMatchResult(null, "a_win")).toBe("a_win");
+  });
+
+  it("tapping the ALREADY-selected choice again clears it back to undecided", () => {
+    expect(toggleMatchResult("a_win", "a_win")).toBeNull();
+    expect(toggleMatchResult("halve", "halve")).toBeNull();
+    expect(toggleMatchResult("b_win", "b_win")).toBeNull();
+  });
+
+  it("tapping a DIFFERENT choice switches to it — does not clear", () => {
+    expect(toggleMatchResult("a_win", "b_win")).toBe("b_win");
+    expect(toggleMatchResult("a_win", "halve")).toBe("halve");
   });
 });
