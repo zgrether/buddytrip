@@ -96,11 +96,26 @@ export function invalidateChatQueries(
     utils.messages.list.invalidate({ tripId, channel, teamId }, { refetchType });
   }
 
-  // Unread counts are trip-scoped and summed server-side, so ONE invalidation
-  // per insert refreshes the combined total regardless of sub-channel. Team chat
-  // has no unread badge, so it has nothing to refresh here.
-  if (channel === "trip") {
-    utils.messages.unreadCount.invalidate({ tripId });
-    utils.messages.unreadCountByChannel.invalidate({ tripId });
-  }
+  // Unread counts are trip-scoped and summed server-side (crew + planning +
+  // TEAM, since messages.unreadCount's own countUnreadByChannel sums all
+  // three — see messages.ts), so ONE invalidation per insert refreshes the
+  // combined total regardless of which channel changed.
+  //
+  // THIS WAS GATED ON `channel === "trip"` UNTIL A LIVE REPORT FOUND THE GAP:
+  // a team message landed with the recipient's chat panel closed and the
+  // bottom-nav Chat dot never lit, even though the server's own
+  // `messages.unreadCount` was already correctly returning a non-zero count —
+  // proven directly against a real query before touching this file. The old
+  // comment here ("Team chat has no unread badge, so it has nothing to
+  // refresh here") was TRUE when it was written and became false the moment
+  // the server side was extended to sum Team's count too, and nothing
+  // updated this gate to match — the exact shape CLAUDE.md's "an extraction
+  // moves the control and leaves the message behind" entry describes, one
+  // more time, in the query-invalidation layer rather than a component.
+  //
+  // `unreadCountByChannel`'s OWN per-segment Team dot depends on this too —
+  // it reads the SAME server function, so gating this call by channel would
+  // silently stale that dot as well, not only the combined one.
+  utils.messages.unreadCount.invalidate({ tripId });
+  utils.messages.unreadCountByChannel.invalidate({ tripId });
 }
