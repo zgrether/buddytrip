@@ -277,7 +277,6 @@ const strip = (over: Partial<Parameters<typeof PickemPhaseStrip>[0]> = {}) =>
       onLock={noop}
       onUnlock={noop}
       onDeadlineChange={noop}
-      now={Date.parse("2026-09-03T13:00:00.000Z")}
       {...over}
     />
   );
@@ -409,7 +408,6 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     const set = strip({
       phase: "picks_open",
       deadline: "2026-09-05T17:00:00.000Z",
-      now: Date.parse("2026-09-03T13:00:00.000Z"),
     });
     expect(set).toContain("Closes automatically ");
     expect(set).not.toContain("Auto-locks");
@@ -447,7 +445,6 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
           phase: "locked",
           deadline,
           hasResults,
-          now: Date.parse("2026-09-03T13:00:00.000Z"),
         });
         for (const claim of OPEN_CLAIMS) {
           expect(html, `locked / deadline=${deadline} / results=${hasResults}`).not.toContain(

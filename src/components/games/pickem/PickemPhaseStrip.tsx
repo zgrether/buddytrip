@@ -183,15 +183,23 @@ export interface PickemPhaseStripProps {
   onUnlock: () => void;
   onDeadlineChange: (isoOrNull: string | null) => void;
   /**
-   * The page's ticking clock, passed in rather than read here.
+   * ── `now` IS GONE, and the reason it existed is still honoured ───────────
    *
-   * REQUIRED, and not because of the tests. `Date.now()` in a render body is
-   * impure — the same props would paint two different lead times — and the game
-   * page already owns a `useNow` that every other derivation on the screen
-   * reads. Sharing it means the strip's "4h 33m from now" and the countdown
-   * below it cannot disagree, which two independent clocks eventually would.
+   * The page's ticking clock used to be passed in here so the strip could
+   * render "4h 33m from now" against the same instant as the countdown below
+   * it — two independent clocks eventually disagree, and `Date.now()` in a
+   * render body is impure besides.
+   *
+   * That lead time is gone (§7: the headline "Closes automatically Fri 11:35
+   * PM" already said it), and with it the last reader of the clock in this
+   * component. The one remaining time-dependent fact — whether the deadline has
+   * passed — arrives as `deadlinePassed`, which the VIEW derives from that same
+   * `useNow` through `deadlineBlocksReopen`.
+   *
+   * So the sharing rule survives the prop: there is still exactly one clock
+   * behind everything on this screen. It is read one level up now, which is
+   * also what lets the view act on the same answer the strip displays.
    */
-  now: number;
 }
 
 export function PickemPhaseStrip({
@@ -205,7 +213,6 @@ export function PickemPhaseStrip({
   onLock,
   onUnlock,
   onDeadlineChange,
-  now,
 }: PickemPhaseStripProps) {
   const [editingDeadline, setEditingDeadline] = useState(false);
   /** The two halves, drafted separately because the pickers are separate. */
