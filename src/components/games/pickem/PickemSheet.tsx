@@ -582,14 +582,32 @@ export function PickemSheet({
               nothing at all.
 
               `ready` separates them, and it is checked FIRST for that reason.
+
+              ── AND CLEARING IS NOT SAVING ──────────────────────────────────
+
+              An empty sheet over stored rows is a real act — "I have unpicked
+              everything" — and the write replaces rather than merges, so
+              pressing it DELETES what the server holds. That must not look
+              identical to saving a full sheet.
+
+              Gated on `server.submitted` as well as on the sheet being empty,
+              because with nothing stored there is nothing to clear: the same
+              press would then be an ordinary first save of nothing, and
+              offering to clear would name an act that does not happen.
+
+              (Until this change the press was refused outright — the client
+              schema carried a `min(1)` the server never had — and the refusal
+              rendered the raw zod payload on screen. Both halves are gone.)
             */}
             {saving
               ? "Saving…"
               : !needsSave
                 ? "Saved"
-                : server.submitted
-                  ? "Save changes"
-                  : "Save picks"}
+                : ready.length === 0 && server.submitted
+                  ? "Clear my picks"
+                  : server.submitted
+                    ? "Save changes"
+                    : "Save picks"}
           </button>
         </div>
       )}

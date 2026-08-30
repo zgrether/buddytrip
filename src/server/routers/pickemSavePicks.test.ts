@@ -260,6 +260,29 @@ describe("save_pickem_picks (migration 150)", () => {
     expect((await readSheet()).filter(Boolean)).toHaveLength(0);
   });
 
+  it("...and the ROUTER lets it through — the client schema was the stricter one", async () => {
+    /**
+     * The RPC has always accepted this; `pickem.savePicks` carried a `min(1)` the
+     * server never had, so the act the case above proves is legal was refused
+     * one layer up.
+     *
+     * It refused it badly, too. tRPC makes a validation failure's message the
+     * zod ISSUE ARRAY, so pressing Save on an emptied sheet printed the payload
+     * on screen above the app's own error. Both halves are gone: the floor here,
+     * and the leak at the boundary (`errorFormatter` in `server/trpc.ts`).
+     *
+     * Through the CALLER rather than the RPC, because the caller is where the
+     * schema lives and the RPC path could never have caught this.
+     */
+    await save(sheet());
+    expect((await readSheet()).filter(Boolean)).toHaveLength(SLATE_SIZE);
+
+    await expect(
+      ctx.callerAs("member").pickem.savePicks({ tripId, gameId, picks: [] })
+    ).resolves.toEqual({ ok: true });
+    expect((await readSheet()).filter(Boolean)).toHaveLength(0);
+  });
+
   it("refuses a DUPLICATED game, and names it as a duplicate", async () => {
     /**
      * This used to be refused by the COMPLETENESS gate, for the wrong reason:
