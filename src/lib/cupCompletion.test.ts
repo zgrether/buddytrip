@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isCupComplete, obstructsCompletion, type CupCompletionGame } from "./cupCompletion";
+import { isCupComplete, obstructsCompletion, gamesRemaining, type CupCompletionGame } from "./cupCompletion";
 
 const locked = (over: Partial<CupCompletionGame> = {}): CupCompletionGame => ({
   status: "complete",
@@ -75,5 +75,28 @@ describe("isCupComplete", () => {
       { status: "pending", started: false, scoringEnabled: false },
     ];
     expect(isCupComplete(games, true)).toBe(false);
+  });
+});
+
+describe("gamesRemaining — the hero's 'clinched · N games remain' count", () => {
+  it("counts every game NOT locked, including one nobody has armed yet — broader than obstructsCompletion", () => {
+    const games = [
+      locked(), // done
+      { status: "active", started: true, scoringEnabled: true }, // underway
+      { status: "pending", started: false, scoringEnabled: false }, // never armed — still counts as remaining
+    ];
+    expect(gamesRemaining(games)).toBe(2);
+  });
+
+  it("a fully locked cup has zero remaining", () => {
+    expect(gamesRemaining([locked(), locked()])).toBe(0);
+  });
+
+  it("a game reopened for correction counts as remaining again", () => {
+    expect(gamesRemaining([locked({ correctionsOpen: true })])).toBe(1);
+  });
+
+  it("zero games → zero remaining, not a crash on an empty cup", () => {
+    expect(gamesRemaining([])).toBe(0);
   });
 });

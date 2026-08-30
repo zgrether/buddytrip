@@ -101,6 +101,7 @@ export function CompetitionHero({
   pointsAvailable,
   winNumber,
   clincher,
+  gamesRemaining,
   scoringModel,
   canEdit,
   onSettings,
@@ -125,6 +126,13 @@ export function CompetitionHero({
   pointsAvailable: number;
   winNumber: number;
   clincher: LBTeam | null;
+  /** How many games have NOT reached a final, locked result — the count the
+   *  "clinched · N games remain" line names (`gamesRemaining` from
+   *  `@/lib/cupCompletion`, same `data.games` the `cupComplete` gate reads).
+   *  Only consulted when `clincher` is set and `cupComplete` is false — the
+   *  message previously read the literal words "games remain" with no count
+   *  interpolated at all. */
+  gamesRemaining: number;
   scoringModel: ScoringModel;
   /** Editors get the gear (opens competition settings via the #522 history-back
    *  overlay — same handler, so back-nav is unchanged). */
@@ -346,7 +354,7 @@ export function CompetitionHero({
               {clincher
                 ? cupComplete
                   ? `Final · ${clincher.name} wins`
-                  : `${clincher.name} has clinched · games remain`
+                  : `${clincher.name} has clinched · ${gamesRemaining} game${gamesRemaining === 1 ? "" : "s"} remain${gamesRemaining === 1 ? "s" : ""}`
                 : pointsAvailable > 0
                 ? `First to ${fmtPts(winNumber)} wins`
                 : "No points in play yet"}

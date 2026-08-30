@@ -36,6 +36,7 @@ import {
 } from "@/lib/configDraft";
 import type { PointsMatch } from "@/components/games/MatchPointsRow";
 import { isPlacement, effectiveDistribution, liveMatchPointsPerMatch, type PointsDistribution } from "@/lib/pointsDistribution";
+import { tallyMatchAwards, type SideRef as MatchSideRef } from "@/lib/matchAwards";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
 import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
 import { BracketScoringSurface } from "@/components/games/bracket/BracketScoringSurface";
@@ -44,7 +45,7 @@ import type { BracketSide } from "@/lib/bracket";
 import { resolveDoubleDraw, lossesBySeed, isMustWin } from "@/lib/bracketDoubleAdvance";
 import { doubleBracketPlacements, doublePositionsAwarded, doubleSettledPlaces } from "@/lib/bracketDoublePlacements";
 import { stakesFromPositions } from "@/lib/bracketStakes";
-import { DEFAULT_BRACKET_CONFIG, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
+import { DEFAULT_BRACKET_CONFIG, isDefaultBracketConfig, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
@@ -684,6 +685,45 @@ export function NonGolfGameView() {
   const isBracket = configDraft.competitionFormat === "bracket";
   const isMatches = configDraft.competitionFormat === MATCHES_COMPETITION_FORMAT;
 
+  // #533 header projection (row 2), Matches' counterpart to golf's own
+  // `projectionPerTeam` (MatchGameView.tsx: "a presentation rollup of the
+  // match strips ALREADY on this page... No engine call, no fetch"). This was
+  // MISSING entirely — `GamePageHeader`'s `projection` prop only ever read
+  // `draftProjection` (win/lose/tie or placement) or `bracketProjection`, and
+  // Matches has neither: it declares each match's result directly, with no
+  // staged draft to preview. Same shape as `projectGame` (`liveProjection.ts`)
+  // originally missing a Matches arm — a format allowlist that predated the
+  // format (feedback, and the same root cause as #1120).
+  //
+  // Reads `serverMatchRows` — already reflecting the optimistic patch a tap
+  // applies (`onMatchResultPick`) — through the SAME pure `tallyMatchAwards`
+  // the persisted write and the board's own live projection call, so this
+  // row, the board pill, and the eventual saved result can't disagree about
+  // the award rule itself (CLAUDE.md #8). `sideTeam`'s 2v2 resolution (a
+  // side's team via its play_group's first member) mirrors the server-side
+  // version in `matchAwards.ts`/`liveProjection.ts` exactly.
+  const matchesProjection = useMemo(() => {
+    if (!isMatches) return null;
+    const pgTeam = new Map<string, string>();
+    for (const [pg, members] of membersOfSide) {
+      const first = members[0];
+      const t = first ? teamByUser[first] : null;
+      if (t) pgTeam.set(pg, t);
+    }
+    const sideTeam = (s: MatchSideRef): string | undefined =>
+      (s.type === "play_group" ? pgTeam.get(s.id) : teamByUser[s.id]) ?? undefined;
+    return tallyMatchAwards(
+      serverMatchRows as {
+        side_a: ServerSide;
+        side_b: ServerSide;
+        result: "a_win" | "b_win" | "halve" | null;
+        point_value: number | null;
+      }[],
+      sideTeam,
+      matchesPointsPerMatch
+    );
+  }, [isMatches, serverMatchRows, membersOfSide, teamByUser, matchesPointsPerMatch]);
+
   // ── The bracket's play surface (phase 3) ────────────────────────────────────
   // The DRAW as stored, resolved into occupants HERE. The server returns the
   // stored rows and leaves advancement to the reader on purpose, so this runs
@@ -934,6 +974,19 @@ export function NonGolfGameView() {
    */
   function applyFormat(next: CompetitionFormat | null) {
     setFormatDraft(next);
+    // Leaving Bracket for anything else: an UNTOUCHED auto-staged default
+    // must not survive the switch — only a config the user actually edited
+    // gets to (see the "OUT of a bracket" comment above for why a REAL one
+    // does). Comparing against `DEFAULT_BRACKET_CONFIG` is what tells the two
+    // apart. Without this, tapping Bracket then back to Simple (or Matches)
+    // left `bracketConfig` a real, non-null object while the server's
+    // baseline has none — `nonGolfDraftsEqual` then reported dirty forever,
+    // even though `competitionFormat` and everything else had round-tripped
+    // back to exactly what was on the server (feedback: "there should be no
+    // changes to save or discard").
+    if (next !== "bracket" && isDefaultBracketConfig(configDraft.bracketConfig)) {
+      setBracketConfigDraft(null);
+    }
     if (next === "bracket") {
       if (!configDraft.bracketConfig) setBracketConfigDraft(DEFAULT_BRACKET_CONFIG);
       // A game is never both formats (one `competitionFormat` value) — clear
@@ -1281,8 +1334,16 @@ export function NonGolfGameView() {
           // that state IS — a typed order there, the resolved draw here. Reading
           // `draftProjection` for a bracket meant reading a per-team split
           // derived from ROSTER order, which is what this replaces.
-          !resultLocked && (isBracket ? bracketProjection : draftProjection)
-            ? { perTeam: (isBracket ? bracketProjection : draftProjection)!, gameName, final: false }
+          //
+          // MATCHES substitutes ITS OWN live preview too, the same way — no
+          // staged draft, no resolved draw, just the current `game_matches.result`
+          // set (already reflecting an optimistic tap). Unlike bracket/win-tie,
+          // this one is intentionally shown even at all-zero: like golf's own
+          // `projectionPerTeam`, a Matches game only reaches this screen once
+          // it's live and paired, so "0–0 so far" is a true statement about an
+          // in-progress cup, not a claim about a game nobody has played.
+          !resultLocked && (isBracket ? bracketProjection : isMatches ? matchesProjection : draftProjection)
+            ? { perTeam: (isBracket ? bracketProjection : isMatches ? matchesProjection : draftProjection)!, gameName, final: false }
             : isManualGameType(game.game_type_id) && !resultFinal
               ? undefined
               : {

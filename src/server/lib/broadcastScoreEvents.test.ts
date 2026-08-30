@@ -546,6 +546,117 @@ describe("118 broadcast trigger — a bracket pick", () => {
   }, 60_000);
 });
 
+describe("173 broadcast trigger — a Matches result", () => {
+  /** A bare row is enough — `result` is the only column this trigger reads,
+   *  and `side_a`/`side_b` are nullable, so no roster/pairing setup is needed
+   *  to exercise it. Same "minimal seed, own trigger" instinct as `seedDraw`
+   *  above, one table simpler. */
+  async function seedMatch(gameId: string): Promise<string> {
+    const matchId = rid("gm");
+    const m = await ctx.admin.from("game_matches").insert({ id: matchId, game_id: gameId });
+    if (m.error) throw new Error(`seed match: ${m.error.message}`);
+    return matchId;
+  }
+
+  it("broadcasts when a result is declared, changed, and cleared", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const matchId = await seedMatch(compGameId);
+    await settle(1500);
+    received = [];
+
+    for (const result of ["a_win", "b_win", "halve", null]) {
+      const u = await ctx.admin.from("game_matches").update({ result }).eq("id", matchId);
+      expect(u.error).toBeNull();
+    }
+
+    // Clearing (the unselect arm) is a real change too — see `matches.setResult`'s
+    // own comment on why undoing a decide undoes all of what deciding wrote.
+    await waitFor(4);
+    expect(received.length).toBe(4);
+    expect(received.every((p) => p.gameId === compGameId && p.competitionId === competitionId)).toBe(true);
+
+    await ctx.admin.from("game_matches").delete().eq("id", matchId);
+  }, 60_000);
+
+  it("carries a SIGNAL ONLY — the result never reaches an anonymous subscriber", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const matchId = await seedMatch(compGameId);
+    await settle(1500);
+    received = [];
+
+    await ctx.admin.from("game_matches").update({ result: "a_win" }).eq("id", matchId);
+    await waitFor(1);
+    expect(received).toHaveLength(1);
+    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId", "id"]);
+
+    await ctx.admin.from("game_matches").delete().eq("id", matchId);
+  }, 60_000);
+
+  it("stays silent on the pairing REBUILD (save_game_config's clean-replace) — that is the config hash's job", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    // INSERT of a fresh, undecided row only happens during a re-pair, which the
+    // config hash already covers (side_a/side_b are hashed). Firing on INSERT
+    // too would broadcast once per match on every re-pair of an N-match game.
+    const matchId = await seedMatch(compGameId);
+    await settle();
+    expect(received).toEqual([]);
+
+    const del = await ctx.admin.from("game_matches").delete().eq("id", matchId);
+    expect(del.error).toBeNull();
+    await settle();
+    expect(received).toEqual([]);
+  }, 60_000);
+
+  it("does not re-broadcast when the result is written to its current value", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const matchId = await seedMatch(compGameId);
+    await ctx.admin.from("game_matches").update({ result: "a_win" }).eq("id", matchId);
+    await waitFor(1);
+    await settle(1500);
+    received = [];
+
+    await ctx.admin.from("game_matches").update({ result: "a_win" }).eq("id", matchId);
+    await settle();
+    expect(received).toEqual([]);
+
+    await ctx.admin.from("game_matches").delete().eq("id", matchId);
+  }, 60_000);
+
+  it("a point_value-only edit (the FIELDS-only settings path) stays silent — config, not a result", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const matchId = await seedMatch(compGameId);
+    await settle(1500);
+    received = [];
+
+    const u = await ctx.admin.from("game_matches").update({ point_value: 6 }).eq("id", matchId);
+    expect(u.error).toBeNull();
+    await settle();
+    expect(received).toEqual([]);
+
+    await ctx.admin.from("game_matches").delete().eq("id", matchId);
+  }, 60_000);
+
+  it("stays silent for a STANDALONE game", async (t) => {
+    if (!requireRealtime(t)) return;
+
+    const matchId = await seedMatch(soloGameId);
+    await settle(1500);
+    received = [];
+
+    const u = await ctx.admin.from("game_matches").update({ result: "a_win" }).eq("id", matchId);
+    expect(u.error).toBeNull();
+    await settle();
+    expect(received).toEqual([]);
+
+    await ctx.admin.from("game_matches").delete().eq("id", matchId);
+  }, 60_000);
+});
+
 describe("160 broadcast trigger — a pick'em result", () => {
   /**
    * The gap this closes was live: results land in `pickem_slate_games.result`

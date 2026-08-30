@@ -10,6 +10,8 @@ import {
   entrantLabel,
   pairMembers,
   unpairEntrant,
+  isDefaultBracketConfig,
+  DEFAULT_BRACKET_CONFIG,
 } from "./bracketDraft";
 import type { BracketConfig } from "./configDraft";
 
@@ -302,5 +304,25 @@ describe("pairMembers / unpairEntrant — the manual half of pairing", () => {
     const pool = [["a1"], ["b1", "b2"]];
     expect(unpairEntrant(pool, 0)).toEqual(pool);
     expect(unpairEntrant(pool, 9)).toEqual(pool);
+  });
+});
+
+describe("isDefaultBracketConfig — the auto-stage vs a real choice (feedback: Simple → Bracket → Simple left a false dirty)", () => {
+  it("the exact default object reads as untouched", () => {
+    expect(isDefaultBracketConfig(DEFAULT_BRACKET_CONFIG)).toBe(true);
+    // A FRESH object with the same values — value equality, not reference —
+    // matching the real caller, which re-derives the draft every render.
+    expect(isDefaultBracketConfig({ elimination: "single", entrants: "singles", seeding: "manual", consolation: false })).toBe(true);
+  });
+
+  it("null is not the default — it's already cleared", () => {
+    expect(isDefaultBracketConfig(null)).toBe(false);
+  });
+
+  it("changing ANY one field is enough to count as a real, user-made choice", () => {
+    expect(isDefaultBracketConfig({ ...DEFAULT_BRACKET_CONFIG, elimination: "double" })).toBe(false);
+    expect(isDefaultBracketConfig({ ...DEFAULT_BRACKET_CONFIG, entrants: "partners" })).toBe(false);
+    expect(isDefaultBracketConfig({ ...DEFAULT_BRACKET_CONFIG, seeding: "random" })).toBe(false);
+    expect(isDefaultBracketConfig({ ...DEFAULT_BRACKET_CONFIG, consolation: true })).toBe(false);
   });
 });

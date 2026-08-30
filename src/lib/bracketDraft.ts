@@ -25,6 +25,23 @@ export const DEFAULT_BRACKET_CONFIG: BracketConfig = {
 };
 
 /**
+ * Is this the untouched default — the stub a format switch auto-stages, not
+ * a choice the user made? Drives whether leaving Bracket clears the config
+ * back to `null` (an auto-stage that was never edited) or keeps it (a real
+ * config the user built, which must survive a round trip through another
+ * format — see `applyFormat`'s "OUT of a bracket" comment).
+ *
+ * Pure and pulled out of the view for exactly one reason: this repo has no
+ * component-test precedent for `NonGolfGameView.tsx`'s inline logic, and this
+ * one predicate is what decided whether "Simple → Bracket → Simple leaves no
+ * changes to save" actually holds (feedback) — worth a real test rather than
+ * only a browser check.
+ */
+export function isDefaultBracketConfig(config: BracketConfig | null): boolean {
+  return config != null && JSON.stringify(config) === JSON.stringify(DEFAULT_BRACKET_CONFIG);
+}
+
+/**
  * The smallest field with a game in it.
  *
  * One entrant has nobody to play: `buildDraw(1)` produces no match, so a

@@ -1,38 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { tallyMatchAwards, type SideRef } from "@/lib/matchAwards";
 
 /**
- * The per-match TEAM AWARD — the half of match-play scoring that knows nothing
- * about holes.
- *
- * ── Why this is its own module ─────────────────────────────────────────────
- *
- * It lived inside `matchPlay.ts`, which is correct for golf and wrong the moment
- * a second format needs it. Non-golf **Matches** (`competition_format = 'matches'`)
- * declares each match's result outright — there is no hole sequence to derive one
- * from — so it skips the entire first half of that file and reuses only this.
- *
- * Left where it was, every non-golf finalize would `import … from "./matchPlay"`,
- * and the next reader would reasonably conclude that Matches IS match play. It
- * is not: they share an AWARD RULE (win takes the match's value, a draw splits
- * it) and share nothing else. A shared rule belongs in a module named for the
- * rule.
+ * The DB-WRITE half of the per-match team award — see `@/lib/matchAwards` for
+ * the pure rule itself (win takes the match's value, a draw splits it) and why
+ * it's split out this way (CLAUDE.md pattern #8: one pure fn, three callers —
+ * this write, the board's live projection, and the game page's own live
+ * projection, none of which may disagree).
  *
  * ── What it reads, and what it deliberately does not ───────────────────────
  *
  * Only `game_matches.result` + `point_value`, plus the roster tables needed to
  * resolve a side to its cup team. No `score_entries`, no `match_hole_outcomes`,
  * no scorecard schema, no stroke index, no handicaps. That is what makes it
- * servable by a format with no holes at all — and it was already true before the
- * extraction, which is why this is a move rather than a rewrite.
+ * servable by a format with no holes at all.
  */
-
-/** A `game_matches.side_a`/`side_b` JSONB ref. A 1v1 side is a user; a 2v2 side
- *  is a minted `play_group` (CLAUDE.md #27 — a side is not a person). */
-interface SideRef {
-  type: string;
-  id: string;
-}
 
 /**
  * A match whose result is known — the only thing this module needs from whatever
@@ -52,48 +35,6 @@ interface SideRef {
 export interface DecidedMatch {
   matchId: string;
   result: "a_win" | "b_win" | "halve" | null;
-}
-
-/**
- * Pure: the award rule ITSELF, with no DB in it — win takes the match's value,
- * a draw splits it. Extracted so the persisted write below and the board's
- * LIVE projection (`liveProjection.ts`'s Matches branch) run the exact same
- * accumulation and can't disagree about what an in-progress board should show
- * versus what `games.finish` will eventually write (CLAUDE.md #8's split,
- * applied to this award instead of to a whole game's scoring). `sideTeam` is
- * injected rather than resolved in here because the two callers build it from
- * different reads (this file's DB queries vs. `liveProjection`'s already-
- * bulk-fetched roster) — the resolution differs, the arithmetic must not.
- */
-export function tallyMatchAwards(
-  matches: { side_a: unknown; side_b: unknown; result?: unknown; point_value?: unknown }[],
-  sideTeam: (s: SideRef) => string | undefined,
-  evenShareFallback: number
-): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const m of matches) {
-    const result = m.result as "a_win" | "b_win" | "halve" | null;
-    if (!result) continue;
-    const a = m.side_a as SideRef | null;
-    const b = m.side_b as SideRef | null;
-    if (!a?.id || !b?.id) continue;
-    const aTeam = sideTeam(a);
-    const bTeam = sideTeam(b);
-    if (!aTeam || !bTeam) continue;
-
-    // A2b award rule: this match's own override, else the even share.
-    const value = (m.point_value as number | null) ?? evenShareFallback;
-    if (result === "a_win") {
-      out[aTeam] = (out[aTeam] ?? 0) + value;
-    } else if (result === "b_win") {
-      out[bTeam] = (out[bTeam] ?? 0) + value;
-    } else {
-      // halve — each side gets half
-      out[aTeam] = (out[aTeam] ?? 0) + value / 2;
-      out[bTeam] = (out[bTeam] ?? 0) + value / 2;
-    }
-  }
-  return out;
 }
 
 /** Aggregate decided match outcomes into per-team competition points and write

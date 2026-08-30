@@ -29,6 +29,7 @@ function hero(props: Partial<React.ComponentProps<typeof CompetitionHero>>) {
       pointsAvailable={100}
       winNumber={50.5}
       clincher={null}
+      gamesRemaining={2}
       scoringModel="match_play"
       canEdit={false}
       {...props}
@@ -41,14 +42,22 @@ const GLOW = /data-testid="clinch-glow"/;
 
 describe("the two states", () => {
   it("clinched with games remaining → no glow, no burst, and honest wording", () => {
+    // `gamesRemaining` defaults to 2 in `hero()`'s base props — asserted as the
+    // EXACT count (not a `.toContain("games remain")` substring, which the old
+    // template-with-no-number bug would also have satisfied) so a regression
+    // back to an empty slot fails this test rather than passing it.
     const html = hero({ clincher: teams[1], cupComplete: false, celebrateFirstView: true });
     expect(html).not.toMatch(GLOW);
     expect(html).not.toMatch(SPARKS);
     // The copy bug this feature exposed: "Final" used to appear the moment
     // anyone clinched, while play continued.
     expect(html).not.toContain("Final ·");
-    expect(html).toContain("has clinched");
-    expect(html).toContain("games remain");
+    expect(html).toContain("Centurions has clinched · 2 games remain");
+  });
+
+  it("exactly one game remaining reads singular, not \"1 games remain\"", () => {
+    const html = hero({ clincher: teams[1], cupComplete: false, gamesRemaining: 1 });
+    expect(html).toContain("Centurions has clinched · 1 game remains");
   });
 
   it("clinched AND complete, first view → glow, burst, and Final", () => {
@@ -129,6 +138,7 @@ describe("the two-instance gate", () => {
         pointsAvailable={100}
         winNumber={50.5}
         clincher={teams[1]}
+        gamesRemaining={0}
         cupComplete
         celebrateFirstView
         scoringModel="match_play"
