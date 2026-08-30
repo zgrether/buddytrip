@@ -380,6 +380,39 @@ seam, never on a calendar.
   not, the display has to separate them — and the check has to distinguish empty from
   missing before the display can.
 
+  **TENTH INSTANCE, AND THE FIRST WHERE THE DISTINCTION LIVED IN A STYLE
+  PROPERTY RATHER THAN IN A VALUE.** Every case above is a value that resolved
+  to nothing rendering as one not yet known. This one is not reachable from the
+  data at all.
+
+  The head-to-head's confidence chip had three states — a rank that BANKED, one
+  still IN PLAY, one that MISSED. Banked took the accent. The other two were
+  identical in every respect but `textDecoration`: missed was struck through, in
+  play was not. Asked to drop the strike-through (it fights the digits at 11px),
+  the obvious edit merges two states — a rank that lost and a rank still live
+  become the same chip, and nothing about the values changed, because the values
+  were never the same. `aPoints`, `result` and `hit` all still distinguish them
+  perfectly. Only the screen stopped.
+
+  **So the guard has to mutate the STYLE.** This is the part worth carrying,
+  because every mechanism this project has built for this family is blind to it:
+  the configHash coverage guard watches COLUMNS, the exhaustive `Record<K,V>`
+  maps watch KEYS, and mutation testing as practised here changes VALUES and
+  predicates. A distinction carried by `textDecoration`, `opacity`, a border or a
+  background is invisible to all three — there is no column, no key, and no
+  value to break. What caught it was deliberately mutating the style property
+  itself (setting `opacity` back to 1) and finding that every other assertion in
+  the block still passed.
+
+  The fix, for the record, was a ladder with a different amount of ink at each
+  step rather than one distinction doing two jobs: accent for banked, the
+  ordinary dim for in play, a further fade with no fill for missed.
+
+  **How to apply:** when two states differ only in how they are PAINTED, write
+  the case that renders both and compares them, and mutate the paint to prove it
+  fails. "It looks different" is not a property any of the value-level guards can
+  hold, so it has to be asserted where it lives.
+
 - **AN EXTRACTION MOVES THE CONTROL AND LEAVES THE MESSAGE BEHIND.** Twice in
   three PRs, and the cause is the same both times: an extraction is scoped by
   *what code sits here*, while a message's correct home is decided by *who needs
