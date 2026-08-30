@@ -27,7 +27,7 @@ import {
 } from "@/lib/placementGroups";
 import {
   Plus, X, ListTree,
-  Target, Swords, Radio, Check, Users, Info,
+  Target, Swords, Check, Users, Info,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -113,7 +113,10 @@ export const COMP_FORMATS = [
   // look like two different formats.
   { key: "bracket", label: "Bracket", desc: "We support single and double elimination.", Icon: ListTree },
   { key: "best_of_n", label: "Best of N", desc: "First to win the majority of games.", Icon: Target },
-  { key: "live_results", label: "Live Results", desc: "A running tally that updates as it plays (e.g. Pick'em).", Icon: Radio },
+  // `live_results` used to sit here. It was FREELY SELECTABLE until the tiles
+  // rework disabled it, and one production game was created holding it — which
+  // is why removing it needed a repoint (migration 168) before the CHECK could
+  // drop it (169), rather than just deleting the line.
 ] as const;
 
 /**
