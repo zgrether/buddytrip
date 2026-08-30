@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Calendar,
+  ChevronDown,
   Clock,
   Flag,
   Home,
@@ -14,6 +15,8 @@ import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { Avatar } from "@/components/Avatar";
+import { useTextOverflow } from "@/hooks/useTextOverflow";
+import { shouldShowExpandAffordance } from "@/lib/textOverflow";
 import {
   buildItinerary,
   groupByDay,
@@ -125,9 +128,33 @@ function EventRow({
   const happeningNow = highlightToday && isHappeningNow(event.date, event.time);
   const arrival = event.kind === "arrival";
 
+  // Tap-to-expand a truncated note. Title isn't truncated in this (legacy,
+  // read-only past-trip) row — it shares a flex-wrap line with the time and
+  // status pills and just wraps — so only the note needs detection here,
+  // unlike the active ItineraryView's EventCard which truncates both.
+  const [expanded, setExpanded] = useState(false);
+  const subtitleRef = useRef<HTMLParagraphElement>(null);
+  const subtitleOverflowing = useTextOverflow(subtitleRef, event.subtitle ?? null);
+  const showExpand = shouldShowExpandAffordance(subtitleOverflowing, expanded);
+
   return (
     <div
-      className="flex items-start gap-3 rounded-xl px-3 py-2.5"
+      role={showExpand ? "button" : undefined}
+      tabIndex={showExpand ? 0 : undefined}
+      aria-expanded={showExpand ? expanded : undefined}
+      onClick={showExpand ? () => setExpanded((v) => !v) : undefined}
+      onKeyDown={
+        showExpand
+          ? (e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setExpanded((v) => !v);
+              }
+            }
+          : undefined
+      }
+      className={`flex items-start gap-3 rounded-xl px-3 py-2.5 ${showExpand ? "cursor-pointer" : ""}`}
       style={{
         background: "var(--color-bt-card)",
         border: highlightToday
@@ -161,13 +188,25 @@ function EventRow({
         </div>
         {event.subtitle && (
           <p
-            className="mt-0.5 truncate text-xs"
+            ref={subtitleRef}
+            className={`mt-0.5 text-xs ${expanded ? "" : "truncate"}`}
             style={{ color: "var(--color-bt-text-dim)" }}
           >
             {event.subtitle}
           </p>
         )}
       </div>
+      {showExpand && (
+        <ChevronDown
+          size={14}
+          className="mt-0.5 flex-shrink-0 self-start transition-transform duration-200"
+          style={{
+            color: "var(--color-bt-text-dim)",
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+          }}
+          aria-hidden
+        />
+      )}
     </div>
   );
 }

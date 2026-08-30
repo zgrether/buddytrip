@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Calendar,
   Check,
@@ -24,6 +24,8 @@ import { addDays, differenceInDays } from "@/lib/tripStatus";
 import { TravelChip, MODE_COLOR, MODE_ICON, MODE_LABEL } from "./TravelChip";
 import { buildTravelBands, travelGroupMeta, type TravelMode } from "./travelBands";
 import { useItineraryFilters, type ItineraryFilterCategory } from "./useItineraryFilters";
+import { useTextOverflow } from "@/hooks/useTextOverflow";
+import { shouldShowExpandAffordance } from "@/lib/textOverflow";
 import {
   buildItinerary,
   groupByDay,
@@ -1208,6 +1210,18 @@ function DaySection({
 function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?: boolean }) {
   const category = categoryOf(event);
 
+  // Tap-to-expand a truncated title or note. Detected, not guessed — string
+  // length can't tell you whether a given title/note fits its column at the
+  // reader's actual width (see useTextOverflow). One `expanded` flag covers
+  // both lines: they sit in the same card, so there's one thing to tap and
+  // one thing to collapse, not two independent affordances.
+  const [expanded, setExpanded] = useState(false);
+  const titleRef = useRef<HTMLParagraphElement>(null);
+  const subtitleRef = useRef<HTMLParagraphElement>(null);
+  const titleOverflowing = useTextOverflow(titleRef, event.title);
+  const subtitleOverflowing = useTextOverflow(subtitleRef, event.subtitle ?? null);
+  const showExpand = shouldShowExpandAffordance(titleOverflowing || subtitleOverflowing, expanded);
+
   // Golf: show tee times or "Walk on"; everything else shows the stored
   // time, or "Anytime" when untimed-but-dated (time is display-only — the
   // item's slot is set by Agenda drag order, not the clock).
@@ -1258,9 +1272,29 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
   // the design's `.re-ico` recipe (and the lodging block tile).
   const tilePx = compact ? 30 : 36;
 
+  const showMap = !!address && event.kind !== "lodging-checkout";
+
   return (
     <div
-      className={`flex items-center gap-3.5 rounded-xl px-4 ${compact ? "py-2" : "py-3"}`}
+      role={showExpand ? "button" : undefined}
+      tabIndex={showExpand ? 0 : undefined}
+      aria-expanded={showExpand ? expanded : undefined}
+      onClick={showExpand ? () => setExpanded((v) => !v) : undefined}
+      onKeyDown={
+        showExpand
+          ? (e) => {
+              // Ignore a key bubbled up from the nested Map link — only a
+              // press on the row itself toggles expand (mirrors the Map
+              // link's own onClick stopPropagation, for the keyboard path).
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setExpanded((v) => !v);
+              }
+            }
+          : undefined
+      }
+      className={`flex items-center gap-3.5 rounded-xl px-4 ${compact ? "py-2" : "py-3"} ${showExpand ? "cursor-pointer" : ""}`}
       style={{
         background: "var(--color-bt-card)",
         // No full outline — the 3px colored left stripe alone marks the
@@ -1282,11 +1316,19 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
         <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
           {timeLabel}
         </p>
-        <p className="truncate text-[15px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        <p
+          ref={titleRef}
+          className={`text-[15px] font-semibold ${expanded ? "" : "truncate"}`}
+          style={{ color: "var(--color-bt-text)" }}
+        >
           {event.title}
         </p>
         {event.subtitle && (
-          <p className="truncate text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          <p
+            ref={subtitleRef}
+            className={`text-[12.5px] ${expanded ? "" : "truncate"}`}
+            style={{ color: "var(--color-bt-text-dim)" }}
+          >
             {event.subtitle}
           </p>
         )}
@@ -1299,19 +1341,34 @@ function EventCard({ event, compact = false }: { event: ItineraryEvent; compact?
           </div>
         ))}
       </div>
-      {address && event.kind !== "lodging-checkout" && (
-        <a
-          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="flex flex-shrink-0 items-center gap-1 self-center text-[12px] font-semibold"
-          style={{ color: "var(--color-bt-planning)" }}
-          aria-label={`Open ${event.title} in Google Maps`}
-        >
-          <MapPin size={13} />
-          Map →
-        </a>
+      {(showMap || showExpand) && (
+        <div className="flex flex-shrink-0 items-center gap-2.5 self-center">
+          {showMap && (
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address as string)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex flex-shrink-0 items-center gap-1 text-[12px] font-semibold"
+              style={{ color: "var(--color-bt-planning)" }}
+              aria-label={`Open ${event.title} in Google Maps`}
+            >
+              <MapPin size={13} />
+              Map →
+            </a>
+          )}
+          {showExpand && (
+            <ChevronDown
+              size={16}
+              className="flex-shrink-0 transition-transform duration-200"
+              style={{
+                color: "var(--color-bt-text-dim)",
+                transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+              }}
+              aria-hidden
+            />
+          )}
+        </div>
       )}
     </div>
   );
