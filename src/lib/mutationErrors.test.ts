@@ -74,3 +74,73 @@ describe("mutationErrorMessage", () => {
     );
   });
 });
+
+/**
+ * ── A SERIALIZED PAYLOAD IS NOT A MESSAGE ──────────────────────────────────
+ *
+ * tRPC makes an input-validation failure's `message` the zod issue array, so
+ * without a filter the payload is what a surface renders. It reached a screen:
+ * saving a pick'em sheet with nothing picked printed the issue list above the
+ * app's own "Your sheet is still here".
+ *
+ * The primary fix is the server's `errorFormatter` (`server/trpc.ts`), which
+ * replaces the message before it leaves. This is the client-side backstop, and
+ * it earns its place because this function also sees errors that never came
+ * through tRPC — by which point the `cause` the formatter keys on is gone.
+ */
+describe("mutationErrorMessage — payloads", () => {
+  const ZOD_ISSUES = JSON.stringify(
+    [
+      {
+        origin: "array",
+        code: "too_small",
+        minimum: 1,
+        inclusive: true,
+        path: ["picks"],
+        message: "Too small: expected array to have >=1 items",
+      },
+    ],
+    null,
+    2
+  );
+
+  it("does not render a zod issue ARRAY", () => {
+    expect(mutationErrorMessage(new Error(ZOD_ISSUES))).toBe(GENERIC_MUTATION_ERROR);
+  });
+
+  it("does not render a JSON OBJECT either — the rule is JSON, not zod", () => {
+    // Keyed on JSON-ness so the next payload shape is covered without anyone
+    // noticing it. Sniffing for "too_small" would fix one instance.
+    expect(mutationErrorMessage(new Error('{"code":"23514","details":null}'))).toBe(
+      GENERIC_MUTATION_ERROR
+    );
+  });
+
+  it("KEEPS a real sentence that merely starts with a bracket", () => {
+    /**
+     * The case that stops this over-reaching. A message can legitimately open
+     * with a bracket, and it is not JSON — so it parses as a failure and is
+     * kept. Without this the filter would be "looks technical", which is the
+     * judgement this module's header explicitly refuses to make.
+     */
+    const sentence = "[Rack] Still saving scores — try again in a moment.";
+    expect(mutationErrorMessage(new Error(sentence))).toBe(sentence);
+  });
+
+  it("KEEPS every ordinary server sentence — the filter must not widen", () => {
+    for (const msg of [
+      "This game is finalized. Use Correct scores to change a result.",
+      "Close picking before finalizing — sheets are still being entered.",
+      "That idea isn't in your archive.",
+    ]) {
+      expect(mutationErrorMessage(new Error(msg))).toBe(msg);
+    }
+  });
+
+  it("does not swallow a bare JSON scalar — those are not payloads", () => {
+    // "null", "42" and a quoted string all parse, and none of them starts with
+    // a bracket or a brace, so the shape check keeps them out of scope.
+    expect(mutationErrorMessage(new Error("42"))).toBe("42");
+    expect(mutationErrorMessage(new Error("null"))).toBe("null");
+  });
+});

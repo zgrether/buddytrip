@@ -53,14 +53,59 @@ export function isConnectivityError(error: unknown): boolean {
 export const GENERIC_MUTATION_ERROR = "That didn't save — please try again.";
 
 /**
+ * Is this "message" actually a serialized PAYLOAD?
+ *
+ * ── The rule, and why it is about JSON rather than about Zod ───────────────
+ *
+ * tRPC turns an input-validation failure into a `TRPCError` whose `message` is
+ * `JSON.stringify(zodError.issues)` — so the message a surface renders is the
+ * issue array itself. Saving a pick'em sheet with nothing picked put this on
+ * screen, above the app's own "your sheet is still here":
+ *
+ *     [ { "origin": "array", "code": "too_small", "minimum": 1,
+ *         "inclusive": true, "path": [ "picks" ],
+ *         "message": "Too small: expected array to have >=1 items" } ]
+ *
+ * That is not a pick'em bug. EVERY mutation in the app carries a zod input
+ * schema, and every one of them renders like this when the schema rejects, so
+ * the fix belongs here rather than at the one call site that was noticed.
+ *
+ * Keyed on JSON-ness, not on Zod's vocabulary. A message that parses as JSON is
+ * a machine payload whatever produced it — an array of issues today, an object
+ * from some other layer tomorrow — and no message written for a person parses.
+ * Sniffing for `"too_small"` or `"invalid_type"` would fix this instance and
+ * miss the next one, which is exactly the shape of the gap.
+ *
+ * ── What the reader gets instead ───────────────────────────────────────────
+ *
+ * The generic sentence. A validation failure means the client sent something
+ * the schema refuses, which is a contract bug rather than a condition the person
+ * can do anything about — and the issue's own `message` ("expected array to have
+ * >=1 items") is written for whoever wrote the schema. When such a rejection is
+ * something a person SHOULD be able to act on, the fix is a real guard with a
+ * real sentence, not a nicer rendering of the payload.
+ */
+function isSerializedPayload(msg: string): boolean {
+  const first = msg[0];
+  if (first !== "[" && first !== "{") return false;
+  try {
+    const parsed = JSON.parse(msg);
+    return typeof parsed === "object" && parsed !== null;
+  } catch {
+    // Starts like JSON and is not — a real sentence in brackets, so keep it.
+    return false;
+  }
+}
+
+/**
  * What to show for a mutation the SERVER rejected.
  *
  * Prefers the server's own message: these are written for people
  * ("Still saving scores — try again in a moment", "That idea isn't in your
  * archive") and are far more useful than a generic string. Falls back only when
- * the message is missing or is obvious internals.
+ * the message is missing, is obvious internals, or is a serialized payload.
  *
- * Deliberately NOT filtered for "technical-looking" text beyond the empty case.
+ * Deliberately NOT filtered for "technical-looking" text beyond those cases.
  * A slightly raw message is recoverable; silence is not, and silence is the
  * failure mode this module exists to end.
  */
@@ -70,5 +115,7 @@ export function mutationErrorMessage(error: unknown): string {
   if (!msg) return GENERIC_MUTATION_ERROR;
   // A stack trace or a bare object stringification helps nobody.
   if (msg.startsWith("[object ") || msg.includes("\n    at ")) return GENERIC_MUTATION_ERROR;
+  // Neither does a validation payload — see `isSerializedPayload`.
+  if (isSerializedPayload(msg)) return GENERIC_MUTATION_ERROR;
   return msg;
 }

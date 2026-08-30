@@ -187,8 +187,76 @@ export const createTRPCContext = async (): Promise<TRPCContext> => {
 // tRPC init
 // ---------------------------------------------------------------------------
 
+/**
+ * What a person is told when the SCHEMA refused the request.
+ *
+ * Not a description of the failure: a validation error means the client sent
+ * something the input schema does not admit, which is a contract bug rather
+ * than a condition the reader can act on. Where such a rejection IS something
+ * they should be able to fix, the answer is a real guard with a real sentence —
+ * not a nicer rendering of the issue list.
+ */
+export const VALIDATION_MESSAGE = "That change couldn't be saved. Reload and try again.";
+
+/**
+ * Did the input SCHEMA refuse this, as opposed to the procedure?
+ *
+ * Both facts are measured rather than assumed — tRPC gives a validation failure
+ * `code: "BAD_REQUEST"` and attaches the `ZodError` as `cause`, and
+ * `trpcValidationError.test.ts` pins that against a real procedure rather than
+ * against this description of one. If tRPC ever changed either, the test fails
+ * here rather than the payload quietly reappearing on a screen.
+ *
+ * Exported for that test. `errorFormatter` itself is NOT reachable from a
+ * `createCaller` — it runs on the HTTP response boundary only, which is
+ * measured in the same file — so the predicate is the part that can be checked,
+ * and the client-side backstop in `mutationErrorMessage` covers what the
+ * formatter cannot see.
+ */
+export function isSchemaValidationError(error: {
+  code: string;
+  cause?: unknown;
+}): boolean {
+  const cause = error.cause as { name?: unknown } | null | undefined;
+  return error.code === "BAD_REQUEST" && cause?.name === "ZodError";
+}
+
+/**
+ * ── THE ONE PLACE A VALIDATION PAYLOAD IS TURNED INTO A SENTENCE ────────────
+ *
+ * tRPC builds a `TRPCError` whose `message` is `JSON.stringify(zodError.issues)`,
+ * so without this the ISSUE ARRAY is the message every surface receives. Saving
+ * a pick'em sheet with nothing picked put this on screen, above the app's own
+ * "Your sheet is still here":
+ *
+ *     [ { "origin": "array", "code": "too_small", "minimum": 1,
+ *         "inclusive": true, "path": [ "picks" ],
+ *         "message": "Too small: expected array to have >=1 items" } ]
+ *
+ * ── Why HERE and not at the twenty places that render it ───────────────────
+ *
+ * That was one call site noticing. Every mutation in the app carries a zod
+ * input schema, and `20 surfaces set an inline error from `e.message` directly,
+ * so the same payload renders on all of them — and on the next surface somebody
+ * writes. Patching the readers is a sweep that has to be repeated; the message
+ * only becomes a payload in one place, which is where it stops being one.
+ *
+ * Keyed on `error.cause` being a `ZodError` rather than on the message's shape,
+ * because here the cause is still attached. (`mutationErrorMessage` keeps a
+ * JSON-shape check as well: it sees errors that never came through tRPC, and by
+ * then the cause is gone.)
+ *
+ * The message is REPLACED rather than added alongside — a `data.zodError` field
+ * would put the payload back on the wire for the next component to render.
+ * Nothing in the app renders per-field validation, so there is nothing to serve
+ * by shipping it.
+ */
 const t = initTRPC.context<TRPCContext>().create({
   transformer: superjson,
+  errorFormatter({ shape, error }) {
+    if (!isSchemaValidationError(error)) return shape;
+    return { ...shape, message: VALIDATION_MESSAGE };
+  },
 });
 
 export const router = t.router;

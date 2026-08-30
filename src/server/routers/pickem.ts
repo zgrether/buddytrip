@@ -425,7 +425,21 @@ export const pickemRouter = router({
               confidence: z.number().int().min(1).nullable(),
             })
           )
-          .min(1)
+          /**
+           * NO `min(1)` — an EMPTY sheet is a legitimate save.
+           *
+           * The RPC replaces the sheet, so an empty payload clears it, and
+           * under partial sheets (migration 166) "I have unpicked everything"
+           * is a real act rather than a malformed request. The client schema
+           * was stricter than the server for no stated reason, and the cost was
+           * not merely a refusal: tRPC's rejection message IS the zod issue
+           * array, so the raw payload rendered on screen above the app's own
+           * error. (That leak is fixed at the boundary too — see
+           * `errorFormatter` in `server/trpc.ts` — because it was never a
+           * pick'em problem.)
+           *
+           * The `max` stays: a bounded slate is a real invariant.
+           */
           .max(200),
       })
     )
@@ -465,7 +479,21 @@ export const pickemRouter = router({
               confidence: z.number().int().min(1).nullable(),
             })
           )
-          .min(1)
+          /**
+           * NO `min(1)` — an EMPTY sheet is a legitimate save.
+           *
+           * The RPC replaces the sheet, so an empty payload clears it, and
+           * under partial sheets (migration 166) "I have unpicked everything"
+           * is a real act rather than a malformed request. The client schema
+           * was stricter than the server for no stated reason, and the cost was
+           * not merely a refusal: tRPC's rejection message IS the zod issue
+           * array, so the raw payload rendered on screen above the app's own
+           * error. (That leak is fixed at the boundary too — see
+           * `errorFormatter` in `server/trpc.ts` — because it was never a
+           * pick'em problem.)
+           *
+           * The `max` stays: a bounded slate is a real invariant.
+           */
           .max(200),
       })
     )
