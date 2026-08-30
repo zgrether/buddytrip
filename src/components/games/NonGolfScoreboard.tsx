@@ -307,6 +307,19 @@ export function NonGolfScoreboard({
  * pre-decided) and the outcome feeds the existing path (a team id = that side
  * won; "tie" = halved/split).
  */
+/**
+ * Pure — tap-again-to-clear for the Simple win/lose/tie draft, the same rule
+ * `toggleMatchResult` gives Matches (`MatchesScoreboard.tsx`), extracted for
+ * the same reason: unit-testable without a DOM (this repo has no RTL/jsdom).
+ * `""` is this control's "nothing declared" sentinel — the SAME shape
+ * `hasDeclaredOutcome`/`draftPlacements` already read elsewhere in
+ * `NonGolfGameView.tsx`, so toggling back to it is toggling back to exactly
+ * the untouched state, not a new one.
+ */
+export function toggleWinLoseTie(current: string, tapped: string): string {
+  return current === tapped ? "" : tapped;
+}
+
 function NonGolfMatchControl({
   teams, result, onPick, canEdit,
 }: {
@@ -316,6 +329,7 @@ function NonGolfMatchControl({
   const aId = a?.id ?? "";
   const bId = b?.id ?? "";
   const anySelected = result !== "";
+  const pick = (r: string) => onPick(toggleWinLoseTie(result, r));
 
   return (
     <div role="radiogroup" aria-label="Match outcome" className="flex flex-col" style={{ gap: 9 }}>
@@ -325,7 +339,7 @@ function NonGolfMatchControl({
         color={a?.color}
         avatarName={a?.name}
         label={a?.name ?? "Team A"}
-        onClick={() => onPick(aId)}
+        onClick={() => pick(aId)}
         disabled={!canEdit}
         testId={`match-win-${aId}`}
       />
@@ -334,7 +348,7 @@ function NonGolfMatchControl({
         dim={anySelected && result !== "tie"}
         neutral
         label="Halved"
-        onClick={() => onPick("tie")}
+        onClick={() => pick("tie")}
         disabled={!canEdit}
         testId="match-draw"
       />
@@ -344,7 +358,7 @@ function NonGolfMatchControl({
         color={b?.color}
         avatarName={b?.name}
         label={b?.name ?? "Team B"}
-        onClick={() => onPick(bId)}
+        onClick={() => pick(bId)}
         disabled={!canEdit}
         testId={`match-win-${bId}`}
       />
