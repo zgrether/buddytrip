@@ -13,6 +13,7 @@ import { useIsChatColumn } from "./breakpoints";
 import { CONTENT_INSET, CONTENT_INSET_AT_GAME_DEPTH } from "./contentArea";
 import { useCupPanel, isTwoPane } from "@/hooks/useCupPanel";
 import { useRealtimeChat } from "@/hooks/useRealtimeChat";
+import { useMyTeamId } from "@/hooks/useMyTeamColor";
 import { CHAT_SEGMENT_KEY } from "@/lib/chatSegments";
 
 /**
@@ -296,8 +297,25 @@ export function AppShell({
    * breakpoint), so a subscription living there would double-subscribe to
    * the same `trip-chat:{tripId}` topic. AppShell is the one component
    * guaranteed to mount exactly once per scoped session.
+   *
+   * TEAM CHAT HAD NO EQUIVALENT, and it is what this paragraph's own rule —
+   * "the subscription can't be scoped to 'chat is open'" — was written to
+   * prevent, arriving anyway through a different door. Team's first realtime
+   * subscription was added inside `FloatingChatPanelInner`, the panel
+   * component itself — correct for keeping the OPEN team room live, wrong for
+   * the unread dot, because `ChatSheet` unmounts every panel entirely when
+   * chat closes (`if (!open) return null`). So the dot updated live only
+   * while chat happened to be open on the Team tab, and sat stale — no live
+   * update, no realtime-driven badge — the rest of the time. Reported live:
+   * a team message landed with the recipient's chat panel closed and the
+   * bottom-nav Chat dot never lit.
    */
+  // `scoped` is `!!tripId` — `useMyTeamId(tripId)` already degrades to "no
+  // team" for a null tripId on its own, so this reads as `tripId` plainly
+  // rather than through a tautological ternary.
+  const myTeamId = useMyTeamId(tripId);
   useRealtimeChat(tripId ?? "", "trip");
+  useRealtimeChat(tripId ?? "", "team", myTeamId ?? undefined);
 
   /**
    * Chat's placement, independent of `effectiveView` (Phase 6): a persistent
