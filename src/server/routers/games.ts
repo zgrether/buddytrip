@@ -1900,12 +1900,33 @@ export const gamesRouter = router({
             message: "This game already has scores. Reset scores in the game's Danger zone before changing how it's scored.",
           });
         }
-        // 084 verify-on-skip-path: the in-place field write found the match set no
-        // longer matches what the client sent — another device changed it. Reload.
+/**
+         * ── A DIFFERENT SENTENCE FROM THE baseHash CONFLICT, DELIBERATELY ────
+         *
+         * These two said the same thing, and the sameness cost real time. The
+         * baseHash check above means somebody else wrote while this page was
+         * open — TRANSIENT, and reloading genuinely fixes it. This one means the
+         * match set the client described is not the one on disk, which on the
+         * pick'em path was PERMANENT: the client renumbered stored matches by
+         * position while the RPC looks them up by `match_number`, so a gap left
+         * by a dropped row made every unchanged save fail, forever.
+         *
+         * "Reload before saving" was then advice that could not work — nothing
+         * about reading again changes a number that was never stored — and the
+         * error read as a concurrency blip on a game nobody else had open.
+         *
+         * The cause is fixed (`pickem.get` returns `match_number` now), so this
+         * arm should be genuinely rare. It still needs its own words: two
+         * conditions with different remedies must not share a sentence, or the
+         * next one to fire gets diagnosed as the other for as long as it takes
+         * somebody to read the SQL.
+         */
         if (msg.includes("STRUCTURE_MISMATCH")) {
           throw new TRPCError({
             code: "CONFLICT",
-            message: "This game changed on another device — reload before saving.",
+            message:
+              "The matches on this game don't match what this page is showing. " +
+              "Reload it — and if that doesn't clear it, re-pair the matches.",
           });
         }
         if (msg.includes("NOT_AUTHORIZED")) {
