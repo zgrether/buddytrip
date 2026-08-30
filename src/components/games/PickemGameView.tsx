@@ -53,7 +53,6 @@ import {
 } from "@/components/games/pickem/PickemOtherPicks";
 import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
 import { PickemProxyBanner, type ProxyTarget } from "@/components/games/pickem/PickemProxyPanel";
-import { PickemSheetsList } from "@/components/games/pickem/PickemSheetsList";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
 import type { SubmittedPick } from "@/lib/pickemSheet";
@@ -1033,6 +1032,62 @@ export function PickemGameView() {
    * match side whose assignment is missing. They would otherwise vanish, which
    * is the same short-field problem one level up.
    */
+  /**
+   * ── THE SAME SURFACE ON BOTH SIDES OF THE LOCK ───────────────────────────
+   *
+   * While picks are open, Other picks used to be a different component
+   * entirely: a flat list with the team name under each person and the retired
+   * "Hasn't signed up" wording. Two shapes in one tab, and only the post-lock
+   * one had been brought up to date — which is the layout deviation §2 exists
+   * to remove, and the phrase §3 explicitly retired, both still on screen.
+   *
+   * Same columns, same roster order, same state lines. What differs is the
+   * SOURCE and what a tap does, which is the only thing that should differ:
+   * before the lock these are people you may enter FOR, so tapping opens their
+   * sheet to write; after it, people whose sheet you may read.
+   *
+   * ── What is NOT knowable before the lock ─────────────────────────────────
+   *
+   * Their totals (RLS hides other people's picks) and how far along they are —
+   * `pickem_sheet_status` answers with a boolean rather than a count. So
+   * `points` is null and `picked` is null-for-started, which the state line
+   * renders as silence rather than as a guess. A count needs that function to
+   * return one; until then, saying nothing is the honest half.
+   */
+  const proxyColumns: OtherPicksColumn[] = (() => {
+    const byUser = new Map(proxyTargets.map((t) => [t.userId, t]));
+    const total = q.data.slate.length;
+    const row = (t: ProxyTarget) => ({
+      userId: t.userId,
+      name: t.name,
+      // Started, but not how far — see above. Zero when they have not.
+      picked: t.submitted ? null : 0,
+      total,
+      isGuest: t.isGuest,
+      points: null,
+      // Every one of these is somebody the SERVER said this viewer may enter
+      // for. The row count is the permission, exactly as it was when this list
+      // was a page.
+      openable: true,
+    });
+
+    const placed = new Set<string>();
+    const cols: OtherPicksColumn[] = q.data.teams.map((t) => {
+      const people = t.memberIds.filter((uid) => byUser.has(uid));
+      for (const uid of people) placed.add(uid);
+      return {
+        teamId: t.id,
+        teamName: t.name,
+        people: people.map((uid) => row(byUser.get(uid)!)),
+      };
+    });
+    const loose = proxyTargets.filter((t) => !placed.has(t.userId));
+    if (loose.length > 0) {
+      cols.push({ teamId: null, teamName: "No team", people: loose.map(row) });
+    }
+    return cols;
+  })();
+
   const otherColumns: OtherPicksColumn[] = (() => {
     const field = new Set<string>(Object.keys(q.data.sheets));
     for (const t of q.data.teams) for (const uid of t.memberIds) field.add(uid);
@@ -1060,6 +1115,8 @@ export function PickemGameView() {
         points: picks.length
           ? sheetPoints(q.data!.slate, picks, q.data!.settings.useConfidence)
           : null,
+        // After the lock a sheet is readable exactly when it exists.
+        openable: picks.length > 0,
       };
     };
 
@@ -1317,18 +1374,16 @@ export function PickemGameView() {
                   would empty this tab for every member on a locked game. */}
               {surface.sub === "other" && readingSheetOf == null && !proxyTarget && (
                 picksOpen(clock, now) ? (
-                  <PickemSheetsList
-                    targets={proxyTargets}
-                    /* A LABEL, not a gate — it names the list and admits
-                       nobody. Nothing filters `targets` here and nothing may:
-                       the list is the permission, and a client-side role check
-                       would be a second copy of a policy that already exists in
-                       one place. */
-                    runner={canEdit}
-                    scopeName={me?.id ? teamNameOf(me.id) : null}
+                  <PickemOtherPicks
+                    /* The same component the locked phase uses. Nothing filters
+                       these columns here and nothing may: they are built from
+                       what `pickem_sheet_status` returned, the list IS the
+                       permission, and a client-side role check would be a
+                       second copy of a policy that lives in one place. */
+                    columns={proxyColumns}
                     avatarFor={avatarFor}
-                    onPick={(t) => {
-                      setProxyFor(t.userId);
+                    onOpen={(userId) => {
+                      setProxyFor(userId);
                       setSaveError(null);
                     }}
                   />
