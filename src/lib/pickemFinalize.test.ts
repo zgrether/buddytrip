@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  confirmUnresolvedFinalize,
   pickemFinalize,
   pickemResolution,
   unresolvedWarning,
@@ -443,5 +444,55 @@ describe("the persisted shape", () => {
         expect(row.points, rollUp + " / " + row.entityId).toBe(out.awards.get(row.entityId));
       }
     }
+  });
+});
+
+/**
+ * ── WHETHER THE FINALIZE STOPS TO ASK ──────────────────────────────────────
+ *
+ * The rule lives here rather than in the component because the component suite
+ * runs in `node` with `renderToStaticMarkup` — nothing clicks, so "tapping Save
+ * opens the prompt" is not a question that file can answer. Extracting the
+ * predicate makes it one that can be answered exactly, which is better than an
+ * approximation of it rendered.
+ */
+describe("confirmUnresolvedFinalize", () => {
+  it("asks when contests are outstanding, and not otherwise", () => {
+    expect(confirmUnresolvedFinalize({ unresolved: 2, canFinalize: true })).toBe(true);
+    expect(confirmUnresolvedFinalize({ unresolved: 0, canFinalize: true })).toBe(false);
+  });
+
+  it("does NOT ask on the re-lock — that decision has already been taken", () => {
+    /**
+     * `canFinalize` and `canRelock` are mutually exclusive, so a false here IS
+     * the re-lock arm. Somebody who reopened a finalized game, made corrections
+     * and is closing it again has already answered this question; asking twice
+     * is friction on a decision, not a safeguard.
+     *
+     * This is the case that separates the build from the obvious wrong one
+     * (`unresolved > 0` alone), and it is the only case in the file that does.
+     */
+    expect(confirmUnresolvedFinalize({ unresolved: 2, canFinalize: false })).toBe(false);
+  });
+
+  it("never fires where there is no finalize on offer at all", () => {
+    // A member's view, or a game still taking picks. Both reach here with
+    // canFinalize false and must not raise a dialog nobody can act on.
+    expect(confirmUnresolvedFinalize({ unresolved: 5, canFinalize: false })).toBe(false);
+  });
+
+  it("has a sentence to show wherever it fires", () => {
+    /**
+     * The pair, asserted together: a build where the predicate says yes and the
+     * wording says null renders an EMPTY dialog, which is worse than no dialog —
+     * it stops the finalize and explains nothing. They read the same count, and
+     * this is what pins that they agree about it.
+     */
+    for (const unresolved of [1, 2, 16]) {
+      expect(confirmUnresolvedFinalize({ unresolved, canFinalize: true })).toBe(true);
+      expect(unresolvedWarning(unresolved)).toBeTruthy();
+    }
+    expect(confirmUnresolvedFinalize({ unresolved: 0, canFinalize: true })).toBe(false);
+    expect(unresolvedWarning(0)).toBeNull();
   });
 });

@@ -279,7 +279,34 @@ export function pickemFinalize(input: PickemFinalizeInput): PickemFinalizeResult
 }
 
 /**
- * What the runner is told before finalizing with contests outstanding.
+ * Should finalizing STOP and ask first?
+ *
+ * ── Asked at the tap, not printed above it ─────────────────────────────────
+ *
+ * This used to be a standing banner over the finalize button. Two problems, and
+ * the second is the real one: a block of colour that has been on screen all
+ * session stops being read, AND it was telling a runner entering results to keep
+ * entering results. "2 games have no result" is not news to the person whose job
+ * that is — it is only information at the moment they try to stop early.
+ *
+ * ── The FIRST finalize only ────────────────────────────────────────────────
+ *
+ * `canFinalize` and `canRelock` are mutually exclusive, so keying on the first
+ * scopes this to the original decision. A re-lock is somebody returning to a
+ * state they already chose — they reopened, made their corrections, and are
+ * closing it again — and asking the same question a second time is friction on a
+ * decision that has already been taken.
+ */
+export function confirmUnresolvedFinalize(o: {
+  unresolved: number;
+  /** `gameLifecycle(...).canFinalize` — the FIRST finalize, never the re-lock. */
+  canFinalize: boolean;
+}): boolean {
+  return o.canFinalize && o.unresolved > 0;
+}
+
+/**
+ * What the runner is told when it does.
  *
  * Null when there is nothing to warn about. A WARNING and never a refusal —
  * a postponed Tuesday game should not hold the cup open, and the runner is

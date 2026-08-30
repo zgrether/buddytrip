@@ -18,7 +18,6 @@ import { useGameSurfaceChrome } from "@/components/games/GameChrome";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
-import { unresolvedWarning } from "@/lib/pickemFinalize";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useNow } from "@/hooks/useNow";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
@@ -1590,9 +1589,7 @@ export function PickemGameView() {
                 correctPending,
                 onFinalize: () => void finalizeGame(),
                 onCorrect: correctGame,
-                unresolvedWarning: unresolvedWarning(
-                  q.data.slate.filter((g) => g.result == null).length
-                ),
+                unresolvedCount: q.data.slate.filter((g) => g.result == null).length,
               }}
               onSetResult={(slateGameId, result) => {
                 setBusyResultId(slateGameId);

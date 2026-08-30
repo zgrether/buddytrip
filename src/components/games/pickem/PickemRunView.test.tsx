@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PickemRunView, segmentStyle, type RunSlateGame } from "./PickemRunView";
 
@@ -280,7 +282,7 @@ describe("the finalize block", () => {
     correctPending: false,
     onFinalize: () => {},
     onCorrect: () => {},
-    unresolvedWarning: null as string | null,
+    unresolvedCount: 0,
     ...over,
   });
 
@@ -298,37 +300,28 @@ describe("the finalize block", () => {
     );
   });
 
-  it("WARNS about unresolved contests without gating on them", () => {
+  it("prints NO standing warning about unresolved contests — it asks at the tap", () => {
     /**
-     * The pair, not just the banner. A build that turned the warning into a
-     * blocker would still render the text — so the CTA's presence beside it is
-     * the assertion that carries the rule.
+     * The banner this replaces was skippable and, worse, it told a runner
+     * entering results to keep entering results. The rule now lives at the tap
+     * (`confirmUnresolvedFinalize`), so the screen must be quiet about it.
+     *
+     * Asserted with unresolved games present, which is the only state the old
+     * banner rendered in — a build that kept it fails here and nowhere else.
      */
-    const html = render({
-      lifecycle: lifecycle({ unresolvedWarning: "2 games have no result." }),
-    });
-    expect(html).toContain('data-testid="pickem-unresolved-warning"');
-    expect(html).toContain("2 games have no result.");
+    const html = render({ lifecycle: lifecycle({ unresolvedCount: 2 }) });
+    expect(html).not.toContain("pickem-unresolved-warning");
+    expect(html).not.toContain("score nothing for everyone");
+    // ...and the CTA is there, unblocked. Outstanding contests never gate.
     expect(html).toContain('data-testid="game-finalize"');
   });
 
-  it("says nothing when every contest has a result", () => {
-    expect(render({ lifecycle: lifecycle() })).not.toContain("pickem-unresolved-warning");
-  });
-
-  it("does not warn where there is nothing to warn ABOUT — after the lock", () => {
-    // The warning is about a decision the runner is ABOUT to make. On a
-    // finalized game it is a note about the past, printed over a button that is
-    // no longer there.
-    const html = render({
-      lifecycle: lifecycle({
-        status: "complete",
-        correctionsOpen: false,
-        unresolvedWarning: "2 games have no result.",
-      }),
-    });
-    expect(html).not.toContain("pickem-unresolved-warning");
-    expect(html).toContain('data-testid="game-correct"');
+  it("does not render the prompt until the tap", () => {
+    // It is state-driven, so a render with unresolved games shows the button
+    // and nothing else. The confirm is a response to an action, not a state.
+    expect(render({ lifecycle: lifecycle({ unresolvedCount: 3 }) })).not.toContain(
+      "pickem-finalize-prompt"
+    );
   });
 
   it("calls the correction 'a result', because pick'em has no scores", () => {
@@ -369,5 +362,55 @@ describe("the finalize block", () => {
     expect(locked).not.toContain(String.raw`data-testid="pickem-run-away"`);
     expect(locked).not.toContain(String.raw`data-testid="pickem-run-push"`);
     expect(locked).toContain('data-testid="game-correct"');
+  });
+});
+
+/**
+ * ── SOURCE GUARD: the confirm is actually IN FRONT of the finalize ─────────
+ *
+ * Written because a mutation exposed a real hole rather than because the shape
+ * felt worth pinning. Deleting the interception entirely — so tapping Save
+ * finalizes at once and the prompt never opens — broke NOTHING in this file or
+ * in the pure suite. The rule (`confirmUnresolvedFinalize`) is tested exactly,
+ * and the dialog's markup is tested by rendering it, but the WIRE between them
+ * had no cover at all.
+ *
+ * It has none behaviourally either, and that is a limit rather than a choice:
+ * this suite is `environment: "node"` with `renderToStaticMarkup`, so nothing
+ * clicks, and the prompt is state-driven and therefore invisible to a static
+ * render by construction. A guard over the source is what is available.
+ *
+ * What it proves: the CTA's `onFinalize` consults `needsConfirm` rather than
+ * going straight through. What it does not prove: that the confirm button then
+ * calls the handler. That second half is covered by the pure predicate plus the
+ * prompt's own render — and if this surface ever gets a Playwright spec, the tap
+ * is the thing to put in it.
+ */
+describe("the confirm sits in front of the finalize (source)", () => {
+  const SRC = readFileSync(resolve(__dirname, "PickemRunView.tsx"), "utf8");
+
+  it("the scan can see the CTA at all — not passing on a renamed file", () => {
+    // The vacuity check. A guard that reads the wrong file, or a file whose
+    // contents moved, would otherwise assert happily about nothing.
+    expect(SRC).toContain("GameLifecycleActions");
+    expect(SRC).toContain("confirmUnresolvedFinalize");
+  });
+
+  it("onFinalize is routed through needsConfirm", () => {
+    expect(
+      /onFinalize={s*needsConfirms*?/.test(SRC),
+      "GameLifecycleActions' onFinalize no longer consults needsConfirm. Tapping " +
+        "Save with unresolved contests would finalize immediately and the prompt " +
+        "would never open — which no behavioural test in this suite can see, " +
+        "because it runs in node and nothing clicks."
+    ).toBe(true);
+  });
+
+  it("the prompt calls the SAME handler, not a second finalize path", () => {
+    // The confirm is a question about this action. A second call site would be
+    // a second aftermath to keep in step — the shape `oneFinalizePath` exists
+    // to prevent one level up.
+    expect(SRC).toContain("lifecycle.onFinalize();");
+    expect((SRC.match(/lifecycle.onFinalize/g) ?? []).length).toBe(2);
   });
 });
