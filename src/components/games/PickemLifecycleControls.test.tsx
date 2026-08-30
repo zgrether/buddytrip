@@ -92,7 +92,37 @@ describe("ONE runner panel, persisting across every phase", () => {
 
     const locked = strip({ phase: "locked", hasResults: false });
     expect(locked).toContain('data-testid="pickem-strip-unlock"');
-    expect(locked).toContain(">Start picking<");
+    expect(locked).toContain(">Reopen<");
+  });
+
+  it("REOPEN is not Start, and does not look like it either", () => {
+    /**
+     * Once picks have closed — by the runner or by the deadline — the act is
+     * not starting. It is resuming something that has already run, and the
+     * usual reason to press it is that somebody was missed. That is a
+     * correction, not the primary act.
+     *
+     * So the word changes AND the treatment does. The pair is the assertion,
+     * and it has to be a pair: a build that renamed the label and left it
+     * accent-filled would pass a word-only check while still being the loudest
+     * thing on a panel, which is what the demotion is for.
+     */
+    const locked = strip({ phase: "locked", hasResults: false });
+    const btnOf = (html: string, tid: string) => {
+      const at = html.indexOf('data-testid="' + tid + '"');
+      return html.slice(html.lastIndexOf("<button", at), at + 400);
+    };
+    const reopen = btnOf(locked, "pickem-strip-unlock");
+    expect(reopen).not.toContain("background:var(--color-bt-accent)");
+    expect(reopen).toContain("border:1px solid var(--color-bt-border)");
+
+    // ...while the two PRIMARY acts keep the fill.
+    expect(btnOf(strip({ phase: "building", slateCount: 2 }), "pickem-strip-open")).toContain(
+      "background:var(--color-bt-accent)"
+    );
+    expect(btnOf(strip({ phase: "picks_open" }), "pickem-strip-lock")).toContain(
+      "background:var(--color-bt-accent)"
+    );
   });
 
   it("stops restating the phase, and drops the consequence copy", () => {
@@ -185,13 +215,13 @@ describe("ONE runner panel, persisting across every phase", () => {
      */
     expect(
       strip({ phase: "locked", deadlinePassed: true, deadline: "2026-08-01T12:00:00.000Z" })
-    ).toContain("Start picking clears it");
+    ).toContain("Reopen clears it");
     expect(
       strip({ phase: "locked", deadlinePassed: false, deadline: "2027-08-01T12:00:00.000Z" })
-    ).not.toContain("Start picking clears it");
+    ).not.toContain("Reopen clears it");
     // ...and never where there is no Start to qualify.
     expect(strip({ phase: "locked", hasResults: true, deadlinePassed: true })).not.toContain(
-      "Start picking clears it"
+      "Reopen clears it"
     );
   });
 
@@ -247,7 +277,6 @@ const strip = (over: Partial<Parameters<typeof PickemPhaseStrip>[0]> = {}) =>
       onLock={noop}
       onUnlock={noop}
       onDeadlineChange={noop}
-      now={Date.parse("2026-09-03T13:00:00.000Z")}
       {...over}
     />
   );
@@ -379,14 +408,21 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
     const set = strip({
       phase: "picks_open",
       deadline: "2026-09-05T17:00:00.000Z",
-      now: Date.parse("2026-09-03T13:00:00.000Z"),
     });
     expect(set).toContain("Closes automatically ");
     expect(set).not.toContain("Auto-locks");
-    // The lead time, and the sentence that is the whole point of the redesign:
-    // the runner does not have to be holding the phone when this fires.
-    expect(set).toContain("2d 4h from now");
-    expect(set).toContain("Nobody has to do anything");
+    /**
+     * NO helper line under a scheduled close. It read "2d 4h from now. Nobody
+     * has to do anything." — the same fact the headline gives, subtracted, plus
+     * a reassurance nobody asked for on a panel whose job is saying what needs
+     * doing.
+     *
+     * The UNSET case above keeps its line, and that pair is the point: there
+     * the headline is "No deadline set", and what happens instead is genuinely
+     * not derivable from it.
+     */
+    expect(set).not.toContain("from now");
+    expect(set).not.toContain("Nobody has to do anything");
   });
 
   it("never says picks are OPEN on a locked game — every combination", () => {
@@ -409,7 +445,6 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
           phase: "locked",
           deadline,
           hasResults,
-          now: Date.parse("2026-09-03T13:00:00.000Z"),
         });
         for (const claim of OPEN_CLAIMS) {
           expect(html, `locked / deadline=${deadline} / results=${hasResults}`).not.toContain(
@@ -537,7 +572,10 @@ describe("the post-lock list does not come from the write-scoped query", () => {
       "utf8"
     );
     const call = view.slice(view.indexOf("<PickemOtherPicks"));
-    expect(call.slice(0, 300)).toContain("sheets={otherSheets}");
+    // The prop is `columns` now (grouped by team), but the guard is about the
+    // SOURCE, not the shape: whatever it is called, it must not be the
+    // write-scoped query.
+    expect(call.slice(0, 300)).toContain("columns={otherColumns}");
     expect(call.slice(0, 300)).not.toContain("proxyTargets");
     // ...and the write-scoped list is still fed the write-scoped query, so this
     // is not passing because the wiring vanished.

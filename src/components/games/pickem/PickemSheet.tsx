@@ -9,11 +9,11 @@ import { draftOutboxRecover } from "@/lib/draftOutbox";
 import {
   reconcileSheet,
   applyOrder,
-  completedPicks,
   fillAll,
   rankedOrder,
   setPick,
   sheetsEqual,
+  submittablePicks,
   unpickedCount,
   type PickSide,
   type SheetPick,
@@ -174,6 +174,7 @@ export function PickemSheet({
   closedBannerHoisted = false,
   closure,
   onSave,
+  onDirtyChange,
 }: {
   gameId: string;
   slate: PickemSheetGame[];
@@ -220,6 +221,15 @@ export function PickemSheet({
    * because `tsc` will not let them express breaking it.
    */
   onSave: (picks: SubmittedPick[]) => void;
+  /**
+   * Fired when the sheet gains or loses unsaved changes.
+   *
+   * The draft lives in here — it has to, because the outbox and the
+   * fingerprint-stamped edit are this component's own machinery — so the parent
+   * cannot compute this. It is a report, not a control: nothing here changes
+   * behaviour on it.
+   */
+  onDirtyChange?: (dirty: boolean, picks: SubmittedPick[]) => void;
 }) {
   const server = useMemo(
     () => reconcileSheet(slate, serverPicks, settings),
@@ -367,16 +377,41 @@ export function PickemSheet({
 
 
   /**
-   * The sheet as a PAYLOAD, or null while any game is still uncalled.
+   * The sheet as a PAYLOAD — the games actually picked, and only those.
    *
    * Computed once and threaded to both the gate and the handler, so "can I
-   * save" and "what do I save" cannot answer differently — which is the shape
-   * of every one-of-two-checks bug in this file's history.
+   * save" and "what do I save" cannot answer differently — the shape of every
+   * one-of-two-checks bug in this file's history.
    */
-  const ready = completedPicks(picks);
+  const ready = submittablePicks(picks);
   const remaining = unpickedCount(picks);
-  const needsSave =
-    editable && ready != null && (!server.submitted || server.rankingReset || dirty);
+
+  /**
+   * Report the edge, not the state, and report it to a ref-stable callback.
+   *
+   * `dirty` is already the honest predicate — it is false until the working
+   * sheet actually DIFFERS from the server's, so an opened-but-untouched sheet
+   * never raises it. That is what keeps the confirm-on-leave prompt from firing
+   * on a sheet nobody edited, which is the failure that trains people to
+   * dismiss the prompt without reading it.
+   */
+  useEffect(() => {
+    onDirtyChange?.(dirty, ready);
+  }, [dirty, ready, onDirtyChange]);
+
+  /**
+   * SAVE ENABLES ON ANY CHANGE, not on completeness.
+   *
+   * It used to require a full sheet, which is what migration 150's server gate
+   * demanded. Both are gone (166): a sheet can be saved at any point, so
+   * progress lives on the server rather than only in a localStorage draft that
+   * a lost phone takes with it.
+   *
+   * The condition is unchanged apart from dropping that requirement — there
+   * still has to be something to save, or the button is offering to write what
+   * is already there.
+   */
+  const needsSave = editable && (!server.submitted || server.rankingReset || dirty);
 
   return (
     /**
@@ -445,7 +480,7 @@ export function PickemSheet({
       )}
 
       {editable && deadlineMs != null && (
-        <Countdown ms={deadlineMs} submitted={server.submitted} subject={subject} />
+        <Countdown ms={deadlineMs} />
       )}
 
 
@@ -493,13 +528,25 @@ export function PickemSheet({
             className="min-w-0 flex-1"
             style={{ fontSize: 11, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}
           >
+            {/* Two sentences rather than three clauses joined by middots. The
+                old line ran "Tap a team to pick it · drag to reorder — the top
+                of the list is worth 16 · line shown is the home team's", which
+                is three unrelated facts at one weight, and the one that
+                mattered least was the one with the number in it.
+
+                The spread's ownership moved out of here because it is on the
+                ROW, next to the team it belongs to — a legend for a badge
+                sitting six pixels away is a legend nobody needs. */}
             {settings.useConfidence
-              ? `Tap a team to pick it · drag to reorder — the top of the list is worth ${slate.length} · line shown is the home team's`
-              : "Tap a team to pick it · every game is worth 1 · line shown is the home team's"}
+              ? "Tap a team to make it your pick. Order with confidence where each pick earns the points shown."
+              : "Tap a team to make it your pick. Every game is worth the same."}
           </p>
           <button
             type="button"
-            onClick={() => ready && onSave(ready)}
+            /* `ready` is the PICKED games, which is exactly what the RPC
+               stores. A game left out is a game whose pick is cleared, because
+               the write replaces the sheet rather than merging into it. */
+            onClick={() => onSave(ready)}
             disabled={saving || !needsSave}
             data-testid="pickem-submit"
             className="shrink-0 rounded-xl px-4 disabled:opacity-40"
@@ -525,13 +572,11 @@ export function PickemSheet({
             */}
             {saving
               ? "Saving…"
-              : ready == null
-                ? "Save picks"
-                : !needsSave
-                  ? "Saved"
-                  : server.submitted
-                    ? "Save changes"
-                    : "Save picks"}
+              : !needsSave
+                ? "Saved"
+                : server.submitted
+                  ? "Save changes"
+                  : "Save picks"}
           </button>
         </div>
       )}
@@ -712,15 +757,7 @@ export function PickemSheet({
  * the only honest measure of whether a sheet had been thought about. Nothing is
  * pre-filled now, so the plain count means what it says.
  */
-function Countdown({
-  ms,
-  submitted,
-  subject,
-}: {
-  ms: number;
-  submitted: boolean;
-  subject: SheetSubject;
-}) {
+function Countdown({ ms }: { ms: number }) {
   // `ms` re-derives from the page's ticking clock every second (`useNow` in
   // PickemGameView), and so does the `editable` flag that gates this whole
   // block — one source, so the timer cannot reach zero on a sheet that is still
@@ -736,18 +773,14 @@ function Countdown({
       }}
     >
       <span className="min-w-0 flex-1">
+        {/* THE EYEBROW AND THE CLOCK, and nothing else.
+            The line under it said "Change anything until then" before a sheet
+            was saved and "Your sheet is in — you can still change it" after,
+            which is the same promise twice: that nothing is final until the
+            clock runs out. That is what a countdown MEANS, and a countdown that
+            has to explain itself is one nobody would have needed. */}
         <span className="block" style={EYEBROW}>
           Picks close in
-        </span>
-        <span
-          className="mt-0.5 block"
-          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-        >
-          {submitted
-            ? subject.isSelf
-              ? "Your sheet is in — you can still change it"
-              : `${subject.name}'s sheet is in — you can still change it`
-            : "Change anything until then"}
         </span>
       </span>
       <span

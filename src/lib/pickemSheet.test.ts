@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  completedPicks,
   emptySheet,
   fillAll,
+  sheetComplete,
+  submittablePicks,
   unpickedCount,
   reconcileSheet,
   isCompleteRanking,
@@ -108,29 +109,57 @@ describe("the shortcuts", () => {
   });
 });
 
-describe("completedPicks — a partial sheet cannot become a payload", () => {
-  it("returns null while ANY game is uncalled", () => {
+describe("submittablePicks — what there is to send", () => {
+  it("DROPS the unpicked games rather than sending them as nulls", () => {
     /**
-     * The narrowing is the enforcement, not the disabled button. A disabled
-     * button is a promise a caller can forget to keep; this one `tsc` holds
-     * them to at the only place a payload is built.
+     * The server cannot store them: `pickem_picks.pick` is NOT NULL, so a row
+     * exists only for a game with a pick.
      *
-     * One hole is enough, and it is asserted at the END of the sheet — a
-     * short-circuit that only checked the first row would pass otherwise.
+     * Dropping them is also what makes the write a REPLACE — the RPC deletes
+     * rows the sheet holds that the payload does not name, so a game left out
+     * here is a game whose pick is cleared. Sending nulls would have needed a
+     * second convention for the same fact.
      */
-    const nearly = fillAll(emptySheet(slate(3)), "home");
-    expect(completedPicks(nearly)).not.toBe(null);
-    expect(completedPicks(setPick(nearly, "g3", null))).toBe(null);
-    expect(completedPicks(emptySheet(slate(3)))).toBe(null);
+    const partial = setPick(setPick(emptySheet(slate(4)), "g1", "away"), "g3", "home");
+    expect(submittablePicks(partial)).toEqual([
+      { slateGameId: "g1", pick: "away", confidence: 4 },
+      { slateGameId: "g3", pick: "home", confidence: 2 },
+    ]);
+  });
+
+  it("sends nothing at all for a sheet with nothing on it", () => {
+    // A legitimate payload: clearing every pick and saving leaves "nothing
+    // submitted", which is what the RPC's empty-payload path produces.
+    expect(submittablePicks(emptySheet(slate(3)))).toEqual([]);
   });
 
   it("carries the ranking through untouched", () => {
     const done = fillAll(emptySheet(slate(3)), "away");
-    expect(completedPicks(done)).toEqual([
+    expect(submittablePicks(done)).toEqual([
       { slateGameId: "g1", pick: "away", confidence: 3 },
       { slateGameId: "g2", pick: "away", confidence: 2 },
       { slateGameId: "g3", pick: "away", confidence: 1 },
     ]);
+  });
+
+  it("keeps GAPS in the ranks, which is what a partial sheet looks like", () => {
+    // The ranking is an order over the SLATE, so a partial sheet's ranks are a
+    // subset of 1..N. Migration 166's rank rule is written to admit exactly
+    // this, and compacting them here would send something it would refuse.
+    const partial = setPick(emptySheet(slate(4)), "g2", "home");
+    expect(submittablePicks(partial).map((p) => p.confidence)).toEqual([3]);
+  });
+});
+
+describe("sheetComplete", () => {
+  it("is true only when every game is called", () => {
+    expect(sheetComplete(emptySheet(slate(3)))).toBe(false);
+    expect(sheetComplete(setPick(emptySheet(slate(3)), "g1", "home"))).toBe(false);
+    expect(sheetComplete(fillAll(emptySheet(slate(3)), "home"))).toBe(true);
+  });
+
+  it("is false for an empty slate — there is nothing to have completed", () => {
+    expect(sheetComplete([])).toBe(false);
   });
 });
 
@@ -223,9 +252,18 @@ describe("reconcileSheet", () => {
       ["g2", "away"],
       ["g3", null],
     ]);
-    expect(r.rankingReset).toBe(true);
-    // ...and it cannot be sent until they answer it.
-    expect(completedPicks(r.picks)).toBe(null);
+    /**
+     * NOT a reset, and this changed with partial sheets.
+     *
+     * The stored ranks (2 and 1 over a three-game slate) are in range and
+     * distinct — a sparse ranking of THIS slate, which is what a partial sheet
+     * has. Nothing of the person's ordering was lost: g1 and g2 keep their
+     * relative places and the new game slots in where its slate position says.
+     * Announcing a reset here would report a loss that did not happen.
+     */
+    expect(r.rankingReset).toBe(false);
+    expect(r.picks.map((p) => p.confidence)).toEqual([3, 2, 1]);
+    // ...and it is still incomplete, which is what the count says.
     expect(unpickedCount(r.picks)).toBe(1);
   });
 
@@ -248,6 +286,52 @@ describe("reconcileSheet", () => {
     // Compaction would have produced [1, 2, 3] here. Slate order produces [3, 2, 1].
     expect(r.picks.map((p) => p.confidence)).toEqual([3, 2, 1]);
     expect(r.rankingReset).toBe(true);
+  });
+
+  it("tells a rank OUT OF RANGE apart from a sparse one, which is the same trap", () => {
+    /**
+     * The case above is why the partial rebuild had to be GATED, and this is
+     * the pair that pins the distinction.
+     *
+     * A rank outside 1..N is not a sparse ranking of this slate — it is a
+     * ranking of a bigger slate, left behind when games were removed. Sorting
+     * by it yields a complete, plausible order nobody chose, which is exactly
+     * the compaction this rule has always forbidden.
+     *
+     * A rank INSIDE 1..N with gaps is a partial sheet and must be kept. The
+     * first build of the rebuild re-sorted by any stored rank at all and lost
+     * that distinction; the case above caught it.
+     */
+    const outOfRange = reconcileSheet(
+      slate(3),
+      [{ slateGameId: "g2", pick: "home", confidence: 9 }],
+      ON
+    );
+    expect(outOfRange.rankingReset).toBe(true);
+    expect(outOfRange.picks.map((p) => p.confidence)).toEqual([3, 2, 1]);
+
+    const sparse = reconcileSheet(
+      slate(3),
+      [{ slateGameId: "g2", pick: "home", confidence: 1 }],
+      ON
+    );
+    expect(sparse.rankingReset).toBe(false);
+    /**
+     * g2 was ranked 1 — last — and lands at 2 rather than at 1, which is worth
+     * pinning because it is the tie-break doing its job rather than the rule
+     * failing.
+     *
+     * Each game sorts by the rank it HAS: g2 by its stored 1, g1 and g3 by
+     * their slate-order defaults of 3 and 1. g2 and g3 tie on 1, and slate
+     * position breaks it, so the game the person never touched ends up below
+     * the one they did. Both statements survive: g2 is below g1, where they put
+     * it, and g3 is last, where the slate puts it.
+     */
+    expect(sparse.picks.map((p) => [p.slateGameId, p.confidence])).toEqual([
+      ["g1", 3],
+      ["g2", 2],
+      ["g3", 1],
+    ]);
   });
 
   it("confidence OFF never reports a ranking reset, whatever is stored", () => {

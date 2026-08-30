@@ -249,8 +249,35 @@ function PointsSubtitle({
     );
   }
 
+  /**
+   * NO MATCHES YET — and the old line here was a sentence with no number in it.
+   *
+   * It read "Set the matches and each one's share appears here", which is 46
+   * characters of instruction in a subtitle that truncates at about 40, so what
+   * a runner actually saw was "Set the matches and each one's share ap…". The
+   * one thing a Total Points row exists to show — the figure — was absent
+   * before it was cut off.
+   *
+   * The per-match share genuinely does not exist yet: the divisor is VALID
+   * matches, and there are none. So this says the number that DOES exist, the
+   * total, and names what is missing in the fewest words that can carry it.
+   * Inventing a divisor from the roster would produce a figure that changes the
+   * moment anybody is paired — which is the mistake rack's Total Points made
+   * and had to have undone.
+   */
   if (validMatches === 0) {
-    return <>Set the matches and each one&rsquo;s share appears here.</>;
+    // `!total` rather than `== null`: a zero total is the same state as no
+    // total for this line — nothing to split — and the row's own `state` prop
+    // already treats them alike. Splitting them here would print "0 to split
+    // once matches are set", which is a figure that decides nothing.
+    return !total ? (
+      <>Set a total to split across the matches.</>
+    ) : (
+      <span data-testid="pickem-per-match-pending">
+        <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>{total}</span> to
+        split once matches are set
+      </span>
+    );
   }
 
   return (

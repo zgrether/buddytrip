@@ -134,19 +134,34 @@ export function unpickedCount(picks: SheetPick[]): number {
 }
 
 /**
- * The payload, or null if the sheet is not finished.
+ * The payload — the games actually picked, and only those.
  *
- * `_pickem_write_sheet` refuses an incomplete sheet, so this is the client half
- * of a rule the server already holds — and it is a NARROWING rather than a
- * check, so the incomplete case cannot reach a mutation by being forgotten.
+ * ── It used to return null for an unfinished sheet ────────────────────────
+ *
+ * That was the client half of migration 150's completeness gate, and both are
+ * gone (migration 166). A sheet may now be saved at any point, so the question
+ * this answers changed from "is it sendable" to "what is there to send".
+ *
+ * Unpicked games are DROPPED rather than sent as nulls, because the server
+ * cannot store them — `pickem_picks.pick` is NOT NULL, so a row exists only for
+ * a game with a pick. Dropping them is also what makes the write a REPLACE: the
+ * RPC deletes rows this sheet holds that the payload does not name, so a game
+ * left out here is a game whose pick is cleared. Sending nulls would have
+ * needed a second convention for the same fact.
  */
-export function completedPicks(picks: SheetPick[]): SubmittedPick[] | null {
+export function submittablePicks(picks: SheetPick[]): SubmittedPick[] {
   const out: SubmittedPick[] = [];
   for (const p of picks) {
-    if (p.pick == null) return null;
+    if (p.pick == null) continue;
     out.push({ slateGameId: p.slateGameId, pick: p.pick, confidence: p.confidence });
   }
   return out;
+}
+
+/** Is every game called? Still worth naming — it decides the RANK rule the
+ *  server applies, and nothing else now. */
+export function sheetComplete(picks: SheetPick[]): boolean {
+  return picks.length > 0 && picks.every((p) => p.pick != null);
 }
 
 export interface ReconciledSheet {
@@ -226,10 +241,91 @@ export function reconcileSheet(
     };
   }
 
+  /**
+   * ── A PARTIAL SHEET HAS A PARTIAL RANKING, AND THAT IS NORMAL ────────────
+   *
+   * Ranks for unpicked games are not stored and cannot be: `pick` is NOT NULL,
+   * so no row exists for a game with no pick (migration 166). A sheet with
+   * three of sixteen picked therefore comes back with three ranks and thirteen
+   * nulls — which `isCompleteRanking` correctly rejects, and which is not a
+   * reset, a loss, or anything the person did.
+   *
+   * Before this, that fell through to the branch below and raised
+   * `rankingReset` on every reload of every partial sheet — announcing a loss
+   * that had not happened, every time. Sixth instance of empty-versus-something
+   * in this feature, and it arrived through a predicate that was correct when
+   * it was written: partial sheets could not exist then.
+   *
+   * So the order is REBUILT rather than defaulted. Each game sorts by the rank
+   * it has — its stored one if it was picked, its slate-order default if it was
+   * not — and the result is renumbered N..1. A picked game keeps its place
+   * relative to the others; an unpicked game lands where it would have started.
+   *
+   * That is the honest half of the trade: the person's drag of an unpicked row
+   * is not restored, because it was never stored, and showing a remembered
+   * order that cannot be reproduced is worse than showing the default. An
+   * unpicked game's rank is not a preference anyway — confidence is how sure
+   * you are about a pick.
+   */
+  if (usableSubsetRanking(storedRanks, slate.length)) {
+    const bySortKey = slate
+      .map((g, i) => ({
+        id: g.id,
+        // The rank it holds, or the one it would have started with.
+        key: byGame.get(g.id)?.confidence ?? slate.length - i,
+        // Ties are possible — a stored 14 beside an unpicked game whose default
+        // is also 14 — and slate order breaks them, which is the same rule the
+        // default itself follows.
+        at: i,
+      }))
+      .sort((a, b) => b.key - a.key || a.at - b.at);
+    const rank = new Map(bySortKey.map((x, i) => [x.id, slate.length - i]));
+    return {
+      picks: winners.map((p) => ({ ...p, confidence: rank.get(p.slateGameId) ?? p.confidence })),
+      // NOT a reset. Nothing was lost that was ever kept.
+      rankingReset: false,
+      submitted,
+    };
+  }
+
   // Defaults are already on `winners`. The person is told only if they HAD
   // something to lose — a first-time picker has not had a ranking reset, they
   // have simply not ranked yet, and telling them otherwise is confusing.
+  //
+  // Reached now only when a sheet HAS rows and NONE of them carries a rank,
+  // which is what migration 150's reopen left behind: the winners survived and
+  // every rank was nulled. That is a real reset and still says so.
   return { picks: winners, rankingReset: submitted, submitted };
+}
+
+/**
+ * Are the ranks that ARE present usable as a partial ranking of this slate?
+ *
+ * In range, and no two the same — the weaker of migration 166's two rules, and
+ * deliberately the same one. A partial sheet's ranks are a subset of 1..N with
+ * gaps where the unpicked games sit, and that is a ranking of this slate.
+ *
+ * ── The distinction this draws, which is the whole point ──────────────────
+ *
+ * A rank OUTSIDE 1..N is not a sparse ranking of this slate; it is a ranking of
+ * a DIFFERENT slate, left behind when games were removed. Rank 4 over three
+ * games cannot be salvaged, and the salvage is what makes it dangerous:
+ * re-sorting by it produces a complete, plausible order that the person did not
+ * choose and cannot tell apart from one they did.
+ *
+ * The first build of the partial rebuild missed this and re-sorted by any
+ * stored rank at all — reintroducing exactly the compaction the reconciliation
+ * rule has always forbidden. The test that forbids it is what caught it.
+ */
+export function usableSubsetRanking(ranks: (number | null)[], n: number): boolean {
+  const seen = new Set<number>();
+  for (const r of ranks) {
+    if (r == null) continue;
+    if (!Number.isInteger(r) || r < 1 || r > n) return false;
+    if (seen.has(r)) return false;
+    seen.add(r);
+  }
+  return seen.size > 0;
 }
 
 /** Exactly 1..N, each once, no nulls. The same set test `save_pickem_picks`

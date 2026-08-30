@@ -116,9 +116,10 @@ describe("total points — the setting that decides whether any of this matters"
     // moment the runner has not got there.
     const html = indiv({ pointsTotal: 0, matches: [] });
     expect(html).not.toContain("the game decides nothing");
-    // Substring chosen to avoid the apostrophe, which renders as &#x27; — the
-    // same escaping that bit an earlier assertion on a note containing "Hasn't".
-    expect(html).toContain("Set the matches and each one");
+    // With no total AND no matches there is no figure to show, so this is the
+    // one branch that is still a sentence — and it is short enough to survive
+    // the subtitle's width, which the old one was not.
+    expect(html).toContain("Set a total to split across the matches");
   });
 
   it("points stay editable once picks are OPEN — they are not frozen with the slate", () => {
@@ -294,14 +295,30 @@ describe("the per-match line — the helper slot that carried the false sentence
     expect(html).toContain("the game decides nothing");
   });
 
-  it("the empty state promises something that then happens", () => {
-    // "Set the matches and each one's share appears here" — and it does. The
-    // pair is the assertion: a promise checked only in its own state is a
-    // promise nobody verified.
+  it("carries the number that EXISTS before any match is paired", () => {
+    /**
+     * It read "Set the matches and each one's share appears here" — 46
+     * characters of instruction in a subtitle that truncates around 40, so what
+     * a runner saw was "Set the matches and each one's share ap…". The one
+     * figure a Total Points row exists to show was absent before it was even
+     * cut off.
+     *
+     * The per-match share genuinely does not exist yet — the divisor is valid
+     * matches and there are none — so this shows the TOTAL and names what is
+     * missing. Deriving a divisor from the roster would produce a figure that
+     * moves the instant anybody is paired, which is the mistake rack's Total
+     * Points made and had to have undone.
+     *
+     * The pair is the assertion: the promise made here is checked in the state
+     * it promises.
+     */
     const empty = points({ rollUp: "individual_matches", pointsTotal: 8, matches: [] });
-    expect(empty).toContain("Set the matches and each one");
+    expect(empty).toContain("8");
+    expect(empty).toContain("to split once matches are set");
+    expect(empty).not.toContain("share appears here");
+
     const filled = points({ rollUp: "individual_matches", pointsTotal: 8, matches: paired(2) });
-    expect(filled).not.toContain("Set the matches and each one");
+    expect(filled).not.toContain("to split once matches are set");
     expect(filled).toContain("4.00");
   });
 });
