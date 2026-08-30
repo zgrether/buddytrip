@@ -330,6 +330,7 @@ export function CompetitionFace({
         tagline={competition.tagline}
         onSettings={canEdit ? openSettings : undefined}
         canEdit={canEdit}
+        isOwner={isOwner}
         // The board layout is selected by the FROZEN scoring_model, not team
         // count (PR 2): match_play → Ryder hero, points → standings + matrix.
         scoringModel={scoringModel}

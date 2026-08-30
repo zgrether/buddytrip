@@ -144,11 +144,28 @@ describe("per-game organizer delegation (§8)", () => {
     expect(memberIds).toContain(mine);
     expect(memberIds).not.toContain(notMine);
 
-    // The owner has explicitly handed `mine` off, so it's not flagged as theirs
-    // any more — but `notMine` has no delegate at all, so the owner IMPLICITLY
-    // runs it (DelegatePicker: "Null = the owner") and should still see it.
+    // The owner (no game-level grant) doesn't see EITHER flagged as "theirs" —
+    // the marker means "I'm personally running this," and the owner running a
+    // game by default is the ordinary case, not something to self-mark.
     const ownerIds = await ctx.caller().games.myDelegateGameIds({ tripId });
     expect(ownerIds).not.toContain(mine);
-    expect(ownerIds).toContain(notMine);
+    expect(ownerIds).not.toContain(notMine);
+  });
+
+  it("delegatesByTrip surfaces every explicit grant, for the Owner's 'who did I hand this off to' chip", async () => {
+    const delegated = await newGame(DIST_96, "Delegated-BJ");
+    const undelegated = await newGame(DIST_96, "Undelegated");
+    await ctx.caller().games.addOrganizer({ tripId, gameId: delegated, userId: memberId });
+
+    const grants = (await ctx.caller().games.delegatesByTrip({ tripId })) as { gameId: string; userId: string }[];
+    expect(grants).toContainEqual({ gameId: delegated, userId: memberId });
+    // The undelegated game has no row at all — it's the Owner's implicit
+    // default, not a grant to surface.
+    expect(grants.some((g) => g.gameId === undelegated)).toBe(false);
+
+    // Any trip member can read it (matches game_delegates_select) — the UI is
+    // what restricts rendering to the Owner, not the data.
+    const asMember = (await ctx.callerAs("member").games.delegatesByTrip({ tripId })) as { gameId: string; userId: string }[];
+    expect(asMember).toContainEqual({ gameId: delegated, userId: memberId });
   });
 });

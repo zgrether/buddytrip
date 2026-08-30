@@ -2377,18 +2377,43 @@ export const gamesRouter = router({
       return data ?? [];
     }),
 
-  // myDelegateGameIds — the games the CURRENT user is running (§10). Powers the
-  // leaderboard's "you're running this" marking: the board intersects this set
-  // with the games it shows, so whoever runs a game sees it flagged on the same
-  // normal board everyone sees (no filtered view). Includes the Owner's
-  // IMPLICIT games (no explicit `game_delegates` row) — see
-  // `myDelegateGameIds` (server/lib) for why that's not optional.
+  // myDelegateGameIds — the games the CURRENT user is an EXPLICIT delegate of
+  // (§10). Powers the leaderboard's "you're running this" marking: the board
+  // intersects this set with the games it shows, so a delegate sees their
+  // games flagged on the same normal board everyone sees (no filtered view).
+  // Deliberately excludes the Owner's implicit games — see `myDelegateGameIds`
+  // (server/lib) for why.
   myDelegateGameIds: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
-    .query(({ ctx, input }) =>
-      computeMyDelegateGameIds(ctx.supabase, input.tripId, ctx.user!.id, ctx.tripRole === "Owner")
-    ),
+    .query(({ ctx }) => computeMyDelegateGameIds(ctx.supabase, ctx.user!.id)),
+
+  // delegatesByTrip — every EXPLICIT delegate grant across the trip's games,
+  // in one round trip (§10). The Owner's board reads this to render "who did I
+  // hand this off to" — the reminder they asked for, distinct from
+  // myDelegateGameIds' self-only "am I running this" marker. Any trip member
+  // can read this (`game_delegates_select` already permits it — same access
+  // `listOrganizers` grants per-game); the client only RENDERS it for the
+  // Owner, since delegating is the Owner's call.
+  delegatesByTrip: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => {
+      const { data: games } = await ctx.supabase
+        .from("games")
+        .select("id")
+        .eq("trip_id", input.tripId);
+      const gameIds = (games ?? []).map((g) => g.id as string);
+      if (gameIds.length === 0) return [];
+      const { data } = await ctx.supabase
+        .from("game_delegates")
+        .select("game_id, user_id")
+        .in("game_id", gameIds);
+      return (data ?? []).map((r) => ({
+        gameId: r.game_id as string,
+        userId: r.user_id as string,
+      }));
+    }),
 
   // resetScoring — Organizer+ (#786), ONE game. Clears this game's RESULTS back
   // to unscored; keeps config + identity (incl. its per-match point value). The
