@@ -291,11 +291,61 @@ describe("formatKickoff", () => {
 });
 
 describe("leagues are config", () => {
-  it("ships NFL and College Football, and both resolve", () => {
-    expect(MATCHUP_LEAGUES.map((l) => l.id)).toEqual(["nfl", "cfb"]);
-    expect(MATCHUP_LEAGUES.map((l) => l.label)).toEqual(["NFL", "College Football"]);
-    expect(leagueById("cfb")?.espnPath).toBe("football/college-football");
+  it("ships NFL, CFB and MLB, and all three resolve", () => {
+    expect(MATCHUP_LEAGUES.map((l) => l.id)).toEqual(["nfl", "cfb", "mlb"]);
+    expect(MATCHUP_LEAGUES.map((l) => l.label)).toEqual(["NFL", "CFB", "MLB"]);
     expect(leagueById("nope")).toBeUndefined();
+  });
+
+  it("pins every ESPN PATH, because a typo here fails to SILENCE", () => {
+    /**
+     * The module's stated contract is that it "fails to EMPTY, never to an
+     * error the surface cannot continue past" — a defence against ESPN changing
+     * shape, and the reason a wrong path is the most dangerous edit in this
+     * file. A bad segment 404s, the route returns nothing, and the search shows
+     * "no teams" with no error anywhere. It reads as an out-of-season league.
+     *
+     * So the paths are asserted exactly, per league, rather than by shape. Each
+     * was fetched live on 2026-08-30 while adding MLB.
+     */
+    const paths = Object.fromEntries(MATCHUP_LEAGUES.map((l) => [l.id, l.espnPath]));
+    expect(paths).toEqual({
+      nfl: "football/nfl",
+      cfb: "football/college-football",
+      mlb: "baseball/mlb",
+    });
+  });
+
+  it("keeps the id stable while the LABEL changes — cfb was renamed", () => {
+    /**
+     * "College Football" became "CFB": a display-string change, made because
+     * these are toggles in a row on a 390px screen and one label three times
+     * the length of its neighbours sets the width of the row.
+     *
+     * The `id` is the URL parameter, the cache key and what `leagueById`
+     * matches, so it must NOT have moved with it. Asserted together, because
+     * the failure mode is renaming both and silently orphaning every stored
+     * slate and cached index.
+     */
+    const cfb = leagueById("cfb");
+    expect(cfb?.label).toBe("CFB");
+    expect(cfb?.espnPath).toBe("football/college-football");
+  });
+
+  it("labels are all ABBREVIATIONS — a set, not one heading and two chips", () => {
+    /**
+     * The rename as a rule rather than a one-off, so a fourth league does not
+     * arrive as "National Basketball Association".
+     *
+     * NOT a width guard, and the difference matters: measured at 390px the
+     * long label did NOT overflow — 200px of a 330px row, one line — so a test
+     * claiming it breaks the layout would be asserting something false. What it
+     * did was take half the used width for one of three equal choices. This
+     * pins the CONVENTION, which is the thing actually being kept.
+     */
+    for (const l of MATCHUP_LEAGUES) {
+      expect(l.label.length, l.id + " label is not an abbreviation").toBeLessThanOrEqual(4);
+    }
   });
 
   it("the teams URL asks for the FULL list, not ESPN's default page", () => {
@@ -309,6 +359,23 @@ describe("leagues are config", () => {
     expect(scheduleUrl(leagueById("nfl")!, "22")).toBe(
       "https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/22/schedule?seasontype=2"
     );
+  });
+
+  it("asks EVERY league for the regular season, baseball included", () => {
+    /**
+     * `seasontype=2` exists because the NFL's default in August is the
+     * PRESEASON, which returned only games in the past. MLB was measured rather
+     * than assumed when it was added (2026-08-30): its default is already
+     * seasontype 2, 163 events, so the parameter is redundant there rather than
+     * wrong — and sending it uniformly is what keeps this one URL builder
+     * instead of a per-league branch.
+     *
+     * Asserted across the whole list so a league added later cannot quietly
+     * miss it.
+     */
+    for (const l of MATCHUP_LEAGUES) {
+      expect(scheduleUrl(l, "1"), l.id).toContain("seasontype=2");
+    }
   });
 });
 
