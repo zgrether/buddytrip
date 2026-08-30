@@ -31,15 +31,20 @@ import type { BoardSlateGame } from "./PickemBoard";
  * neither was — and a reader wants to know which, because only one of them is
  * anybody's fault.
  *
- * `Void` rather than `Cancelled` here while the row's own result chip says
- * `Cancelled`: the chip is about the GAME and this is about the STAKE. The game
- * was cancelled, so the stake voided.
+ * `Void` here and `Voided` on the row's own result chip — the same word, short
+ * where 52px will not hold the longer one. It used to be `Void` against
+ * `Cancelled`, on the reasoning that the chip was about the GAME and this about
+ * the STAKE; see the chip for why that split no longer holds.
  */
 const ZERO_SHORT: Record<ZeroKind, string> = {
   push: "Push",
   cancelled: "Void",
   both: "Both",
   neither: "Neither",
+  // Not a fifth kind of wrong. "Neither" says two people were wrong about a
+  // contest one of them never wagered on — which is the row this label exists
+  // to stop describing as a contest at all.
+  unpicked: "No pick",
 };
 
 export type SwingDirection = "a" | "b" | "both" | "zero" | "none";
@@ -220,7 +225,31 @@ export function PickemHeadToHead({
             data-testid="pickem-board-row"
             className="flex flex-col gap-1.5"
             style={{
-              ...pickemRowSurface({ weighted: r.multiplier > 1, quiet: !played }),
+              /**
+               * ── THE UNPLAYED ROWS ARE THE RAISED ONES ────────────────────
+               *
+               * The inverse of what this was. Played rows carried the fill and
+               * unplayed ones were flat, so the only contests that can still
+               * change were the quietest thing on the screen — and they are
+               * what somebody opens a live match to look at.
+               *
+               * Same reasoning that put the outstanding games above the ENTERED
+               * list on the results page: what is left to do gets the
+               * emphasis, and what is settled keeps its record without
+               * shouting. That page marks a resolved row with a BADGE rather
+               * than by making the row loud, and this borrows the rule rather
+               * than the styling — the two screens answer different questions.
+               *
+               * The swing column is why this screen exists, and it does not
+               * recede with the row: `Swing` carries its own accent colour and
+               * accent-faint fill, independent of the surface underneath. On a
+               * flattened row it stands out MORE, not less.
+               *
+               * A match with nothing left is then all-flat, which is correct —
+               * a settled match should read as a record rather than as a board
+               * with nothing highlighted on it.
+               */
+              ...pickemRowSurface({ weighted: r.multiplier > 1, quiet: played }),
               borderRadius: 11,
               padding: "7px 10px",
             }}
@@ -249,7 +278,7 @@ export function PickemHeadToHead({
                 className="flex min-w-0 items-center justify-end gap-1.5 truncate"
                 style={{ fontSize: TYPE_SCALE.caption }}
               >
-                <span className="truncate">{r.aPick === "away" ? g.awayTeam : g.homeTeam}</span>
+                <SidePick pick={r.aPick} game={g} />
                 <Conf value={r.aConfidence} hit={r.aPoints > 0} played={played} />
               </span>
 
@@ -260,7 +289,7 @@ export function PickemHeadToHead({
                 style={{ fontSize: TYPE_SCALE.caption }}
               >
                 <Conf value={r.bConfidence} hit={r.bPoints > 0} played={played} />
-                <span className="truncate">{r.bPick === "away" ? g.awayTeam : g.homeTeam}</span>
+                <SidePick pick={r.bPick} game={g} />
               </span>
             </span>
           </div>
@@ -345,11 +374,29 @@ function ResultChip({
   result: BoardRow["result"];
   game: BoardSlateGame;
 }) {
+  /**
+   * ── `Voided`, not `Cancelled` — and this REVERSES a twice-settled split ────
+   *
+   * The glossary ratified two names for one DB value: `Cancelled` where the GAME
+   * is the subject, `Void` where the STAKE is. That was correct while a runner
+   * pressing Void was the only producer of `cancelled` — they were asserting the
+   * contest did not happen.
+   *
+   * Finalizing with contests outstanding is a second producer, and those games
+   * were probably PLAYED; the runner just never entered a result. So the
+   * game-subject fact the split depended on — "this did not happen" — is no
+   * longer knowable from the value. Only the stake-subject fact survives, and
+   * one surviving fact does not need two names.
+   *
+   * The premise changed; the decision follows it. CLAUDE.md's glossary row is
+   * updated in the same change and cites this. Display-string tier: the DB value
+   * is untouched.
+   */
   const label =
     result === "push"
       ? "Push"
       : result === "cancelled"
-        ? "Cancelled"
+        ? "Voided"
         : `${result === "away" ? game.awayTeam : game.homeTeam} covered`;
   return (
     <span
@@ -366,6 +413,32 @@ function ResultChip({
       {label}
     </span>
   );
+}
+
+/**
+ * What this side took — or that they took nothing.
+ *
+ * A null pick used to render as the HOME TEAM, because `buildBoardRows`
+ * defaulted it. So a non-submitter read as having taken the chalk in every
+ * game, which is a specific claim about somebody who is not playing.
+ *
+ * Dimmed and in the same slot rather than blanked: the column has to stay
+ * readable down the page, and an empty cell is the ambiguity this feature keeps
+ * having to remove — "they didn't pick" against "this hasn't loaded".
+ */
+function SidePick({ pick, game }: { pick: BoardRow["aPick"]; game: BoardSlateGame }) {
+  if (pick == null) {
+    return (
+      <span
+        className="truncate"
+        data-testid="pickem-h2h-no-pick"
+        style={{ color: "var(--color-bt-text-dim)", fontStyle: "italic" }}
+      >
+        No pick
+      </span>
+    );
+  }
+  return <span className="truncate">{pick === "away" ? game.awayTeam : game.homeTeam}</span>;
 }
 
 /** The rank somebody spent. Struck through when it missed — the number stays

@@ -35,16 +35,25 @@ import {
  * different facts — one is a result, the other is an absence. A display that
  * collapsed them would be telling the reader a game was played when it was not.
  */
-export type ZeroKind = "both" | "neither" | "push" | "cancelled";
+export type ZeroKind = "both" | "neither" | "push" | "cancelled" | "unpicked";
 
 export interface BoardRow {
   slateGameId: string;
   /** Null until played. */
   result: SlateResult | null;
   multiplier: number;
-  /** What each side picked, and at what rank. */
-  aPick: "away" | "home";
-  bPick: "away" | "home";
+  /**
+   * What each side picked, and at what rank — NULL when they did not pick it.
+   *
+   * Null covers two cases that are the same fact here: no sheet at all, and a
+   * partial sheet that left this contest alone (migration 166 stores only the
+   * games somebody actually picked, so both arrive as a missing row).
+   *
+   * It used to default to `"home"`, so a non-submitter read as having taken the
+   * home team in every game — see `buildBoardRows`.
+   */
+  aPick: "away" | "home" | null;
+  bPick: "away" | "home" | null;
   aConfidence: number | null;
   bConfidence: number | null;
   /** Points each actually banked on this game. */
@@ -78,8 +87,11 @@ export interface BoardRow {
  * Disagreeing, the full rank is genuinely at stake for whoever is right.
  */
 export function upsideFor(
-  aPick: "away" | "home",
-  bPick: "away" | "home",
+  /** Null = did not pick this contest. Falls into the disagree branch against
+   *  any real pick, which is right: there is no agreement to collapse the stake
+   *  with, and the absent side's own base is 0 so it stands to gain nothing. */
+  aPick: "away" | "home" | null,
+  bPick: "away" | "home" | null,
   aBase: number,
   bBase: number,
   multiplier: number
@@ -92,14 +104,26 @@ export function upsideFor(
   return { upsideA: aBase * w, upsideB: bBase * w };
 }
 
-/** Why a played row moved nobody. */
+/**
+ * Why a played row moved nobody.
+ *
+ * `unpicked` is checked ahead of both/neither because those two describe a
+ * CONTEST — "both were right", "neither was" — and a row where somebody did not
+ * pick is not one. Calling it "Neither" says two people were wrong about a game
+ * one of them never wagered on.
+ *
+ * Below push and cancelled, which are facts about the GAME and outrank any fact
+ * about the sheets: a voided contest moved nobody whatever anyone picked.
+ */
 function zeroKindFor(
   result: SlateResult,
   aHit: boolean,
-  bHit: boolean
+  bHit: boolean,
+  bothPicked: boolean
 ): ZeroKind {
   if (result === "push") return "push";
   if (result === "cancelled") return "cancelled";
+  if (!bothPicked) return "unpicked";
   return aHit && bHit ? "both" : "neither";
 }
 
@@ -122,13 +146,33 @@ export function buildBoardRows(
   return slate.map((g) => {
     const a = aBy.get(g.id);
     const b = bBy.get(g.id);
-    // A non-submitter scores from defaults and appears normally — home, and the
-    // slate's own order as their ranking. Absent picks are the same case.
-    const aPick = a?.pick ?? "home";
-    const bPick = b?.pick ?? "home";
+    /**
+     * ── AN ABSENT PICK IS ABSENT, NOT A PICK OF THE HOME TEAM ───────────────
+     *
+     * This defaulted to `"home"`, under a comment describing a model that no
+     * longer exists: "a non-submitter scores from defaults and appears normally".
+     * Nobody has picks until they submit (#1145), and partial sheets store only
+     * the games somebody actually picked (migration 166), so a missing row is
+     * now the common case rather than the never-submitted edge.
+     *
+     * The display was the visible half — a non-submitter read as having taken
+     * the home team in all sixteen games — but it was NOT display-only:
+     *
+     *   `aBase` took the `: 1` arm with confidence OFF for a side with no sheet
+     *   AT ALL, so the board reported a point of upside on the table for
+     *   somebody who is not playing. Measured: `upsideA: 1` against an empty
+     *   sheet. Scoring stayed correct because `aPoints` is gated on `a`, which
+     *   is exactly why nobody noticed — the numbers people check were right and
+     *   the numbers they infer from were wrong.
+     *
+     * So the base is gated on the row's EXISTENCE, the same gate `aPoints` has
+     * always used. One question, one answer.
+     */
+    const aPick = a?.pick ?? null;
+    const bPick = b?.pick ?? null;
     const mult = g.multiplier ?? 1;
-    const aBase = useConfidence ? (a?.confidence ?? 0) : 1;
-    const bBase = useConfidence ? (b?.confidence ?? 0) : 1;
+    const aBase = a ? (useConfidence ? a.confidence ?? 0 : 1) : 0;
+    const bBase = b ? (useConfidence ? b.confidence ?? 0 : 1) : 0;
 
     const aPoints = a ? pickPoints(g, a, useConfidence) : 0;
     const bPoints = b ? pickPoints(g, b, useConfidence) : 0;
@@ -136,7 +180,12 @@ export function buildBoardRows(
 
     const zeroKind =
       isResolved(g) && swing === 0
-        ? zeroKindFor(g.result as SlateResult, paysOut(g.result) && aPick === g.result, paysOut(g.result) && bPick === g.result)
+        ? zeroKindFor(
+            g.result as SlateResult,
+            paysOut(g.result) && aPick === g.result,
+            paysOut(g.result) && bPick === g.result,
+            aPick != null && bPick != null
+          )
         : null;
 
     const { upsideA, upsideB } = isResolved(g)

@@ -111,7 +111,11 @@ export function PickemFinalizePrompt({
             }}
             data-testid="pickem-finalize-prompt-confirm"
           >
-            {pending ? "Saving results…" : "Save results anyway"}
+            {/* Names the ACT, not the reluctance. "Save results anyway" was
+                written when the consequence was vaguer — it read as "yes, I
+                know, proceed", which is a shrug rather than a decision. The
+                voiding is the thing being agreed to, so the button says it. */}
+            {pending ? "Saving results…" : "Void and save results"}
           </button>
         </div>
       </div>

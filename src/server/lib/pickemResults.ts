@@ -145,6 +145,50 @@ export async function computePickemResults(
     readCompetition(supabase, (game.competition_id as string | null) ?? null),
   ]);
 
+  /**
+   * ── UNRESOLVED CONTESTS ARE VOIDED, AND THE VOID IS WRITTEN ────────────────
+   *
+   * Finalizing used to leave them exactly as they were: no result. Arithmetically
+   * that was already correct — an unresolved contest and a voided one both pay
+   * nobody — but it left a FOURTH state on the screen. The rows sat above the
+   * ENTERED list with no controls and no label, entered as nothing: not unplayed
+   * (the game is over), not void (nothing said so).
+   *
+   * WRITTEN, never derived. "Had no result when this was finalized" is not
+   * something the data remembers — finalize time is not a column, and a later
+   * correction would make any derivation from `status` wrong. The runner agreed
+   * to the void in the confirm; this records what they agreed to.
+   *
+   * `cancelled` is the existing value for a contest that pays nobody, so this
+   * adds no DB state. It is REVERSIBLE by design: Correct a result reopens the
+   * game, the runner enters the real outcome over the void, and re-finalizing
+   * recomputes. That is what makes finalizing early a decision rather than a
+   * loss.
+   *
+   * Before the compute, so what is scored is what is stored — the alternative
+   * scores from one set of values and persists another, which is the seam this
+   * feature keeps finding.
+   */
+  const unresolvedIds = (slateRes.data ?? [])
+    .filter((g) => (g.result as string | null) == null)
+    .map((g) => g.id as string);
+  if (unresolvedIds.length > 0) {
+    const { error: voidErr } = await supabase
+      .from("pickem_slate_games")
+      .update({ result: "cancelled" })
+      .in("id", unresolvedIds);
+    if (voidErr) {
+      // Loud: a finalize that scored these as void but failed to record it
+      // leaves the board disagreeing with the results table, which is the exact
+      // silence this write exists to remove.
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to void unresolved games: " + voidErr.message,
+      });
+    }
+  }
+  const voidedIds = new Set(unresolvedIds);
+
   const sheets: Record<string, ScoredPick[]> = {};
   for (const row of picksRes.data ?? []) {
     const pick = row.pick as "away" | "home" | null;
@@ -163,7 +207,11 @@ export async function computePickemResults(
   const input: PickemFinalizeInput = {
     slate: (slateRes.data ?? []).map((g) => ({
       id: g.id as string,
-      result: (g.result as PickemFinalizeInput["slate"][number]["result"]) ?? null,
+      // The just-written void, folded in here rather than re-read: one round
+      // trip fewer, and the scored value is provably the stored one.
+      result: voidedIds.has(g.id as string)
+        ? ("cancelled" as const)
+        : ((g.result as PickemFinalizeInput["slate"][number]["result"]) ?? null),
       multiplier: (g.multiplier as number | null) ?? 1,
     })),
     sheets,

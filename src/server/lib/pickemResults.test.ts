@@ -351,6 +351,101 @@ describe("what gets persisted, and what the cup then pays", () => {
     expect((await totals(f))[f.teamA]).toBe(0);
   });
 
+  it("VOIDS the contests that had no result, and writes it", async () => {
+    /**
+     * WRITTEN, not derived. Leaving them at NULL was arithmetically identical —
+     * both pay nobody — but it left a fourth state on the screen: rows above the
+     * ENTERED list with no label and no controls, entered as nothing.
+     *
+     * "Had no result at finalize time" is not something the data remembers, so
+     * there is nothing to derive it from later. The runner agreed to the void in
+     * the confirm; this is the record of it.
+     */
+    f = await makeFixture({ rollUp: "team_totals", pointsTotal: 10 });
+    await ctx.admin
+      .from("pickem_slate_games")
+      .update({ result: null })
+      .eq("game_id", f.gameId)
+      .in("id", [f.slateIds[2], f.slateIds[3]]);
+    await seedSheet(f, owner, [0, 1, 2, 3]);
+    await seedSheet(f, member, [2, 3]);
+    await finish(f);
+
+    const { data } = await ctx.admin
+      .from("pickem_slate_games")
+      .select("id, result")
+      .eq("game_id", f.gameId);
+    const byId = new Map((data ?? []).map((r) => [r.id as string, r.result as string | null]));
+    expect(byId.get(f.slateIds[2])).toBe("cancelled");
+    expect(byId.get(f.slateIds[3])).toBe("cancelled");
+    // The ones that HAD a result keep it — voiding is for the outstanding ones,
+    // not a sweep of the slate.
+    expect(byId.get(f.slateIds[0])).toBe("home");
+    expect(byId.get(f.slateIds[1])).toBe("home");
+    // Nothing is left unresolved afterwards, which is the state the screen had
+    // no way to render.
+    expect([...byId.values()].filter((r) => r == null)).toHaveLength(0);
+  });
+
+  it("a CORRECTION un-voids it and the game recomputes — the reversibility", async () => {
+    /**
+     * THE CASE THAT MAKES FINALIZING EARLY A DECISION RATHER THAN A LOSS, and
+     * the one worth proving rather than asserting in principle: Correct a result
+     * reopens the game, the runner enters the real outcome over the void, and
+     * re-finalizing pays it out.
+     *
+     * The award moves as a result — a build where the void stuck, or where the
+     * recompute read the old value, would leave the totals where they were.
+     */
+    f = await makeFixture({ rollUp: "team_totals", pointsTotal: 10 });
+    // Only the last contest resolves; the other three are voided at finalize.
+    await ctx.admin
+      .from("pickem_slate_games")
+      .update({ result: null })
+      .eq("game_id", f.gameId)
+      .in("id", [f.slateIds[0], f.slateIds[1], f.slateIds[2]]);
+    // The member's whole sheet rides on the games that will be voided.
+    await seedSheet(f, owner, [3]);
+    await seedSheet(f, member, [0, 1, 2]);
+
+    await finish(f);
+    expect((await totals(f))[f.teamA]).toBe(10);
+    expect((await totals(f))[f.teamB]).toBe(0);
+
+    /**
+     * The row is VOID before the correction — asserted, because without it this
+     * case passes against a build that never voided anything. It would then be
+     * testing "a result can be entered and the game recomputes", which is true
+     * of the pre-void behaviour and is not what this is for.
+     */
+    const voided = await ctx.admin
+      .from("pickem_slate_games")
+      .select("result")
+      .eq("id", f.slateIds[0])
+      .single();
+    expect(voided.data?.result).toBe("cancelled");
+
+    // Reopen, enter the real outcome over the void, re-lock.
+    await ctx.admin.from("games").update({ corrections_open: true }).eq("id", f.gameId);
+    const { error } = await ctx.authedClient("owner").rpc("set_pickem_result", {
+      p_game_id: f.gameId,
+      p_slate_game_id: f.slateIds[0],
+      p_result: "home",
+    });
+    expect(error).toBeNull();
+    await finish(f);
+
+    const { data } = await ctx.admin
+      .from("pickem_slate_games")
+      .select("result")
+      .eq("id", f.slateIds[0])
+      .single();
+    expect(data?.result).toBe("home");
+    // The member's top-ranked pick now pays, and the cup follows.
+    expect((await totals(f))[f.teamB]).toBe(10);
+    expect((await totals(f))[f.teamA]).toBe(0);
+  });
+
   it("finalizes with contests UNRESOLVED — they score nothing, and nothing refuses", async () => {
     // A postponed Tuesday game must not hold the cup open. The runner is warned
     // (`unresolvedWarning`) and allowed to mean it.

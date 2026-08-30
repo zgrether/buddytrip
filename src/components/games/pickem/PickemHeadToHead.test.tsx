@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { swingCell, h2hPill } from "./PickemHeadToHead";
+import { renderToStaticMarkup } from "react-dom/server";
+import { PickemHeadToHead, swingCell, h2hPill } from "./PickemHeadToHead";
 import { h2hNote } from "./PickemMatchCard";
 import type { BoardRow, MatchStanding } from "@/lib/pickemBoard";
 
@@ -37,15 +38,19 @@ describe("swingCell — played", () => {
 
   it("gives each of the four zeros its own word, never a dash", () => {
     /**
-     * Four different FACTS that all produce nothing, and only one of them is
-     * anybody's fault. A dash for all four would tell the reader a cancelled
-     * game was played.
+     * Five different FACTS that all produce nothing, and only one of them is
+     * anybody's fault. A dash for all of them would tell the reader a voided
+     * game was played, and a shared label would merge a missing sheet with a
+     * pair of wrong picks.
      */
     const cases: [BoardRow["zeroKind"], string][] = [
       ["push", "Push"],
       ["cancelled", "Void"],
       ["both", "Both"],
       ["neither", "Neither"],
+      // The fifth: somebody did not pick it. Not a kind of WRONG — "Neither"
+      // says two people missed a contest one of them never wagered on.
+      ["unpicked", "No pick"],
     ];
     const seen = new Set<string>();
     for (const [zeroKind, text] of cases) {
@@ -55,7 +60,7 @@ describe("swingCell — played", () => {
     }
     // Four distinct strings — a map that collapsed two of them would satisfy
     // every assertion above if they happened to share a value.
-    expect(seen.size).toBe(4);
+    expect(seen.size).toBe(5);
   });
 });
 
@@ -173,5 +178,103 @@ describe("h2hPill", () => {
     expect(h2hPill(decided, 1, { a: true, b: false })).toBe("Final");
     const live = [row({ result: "home", swing: 40 }), row({ upsideA: 0, upsideB: 1 })];
     expect(h2hPill(live, 1, { a: true, b: false })).toBe("Nothing submitted");
+  });
+});
+
+/**
+ * ── WHAT THE ROW SURFACE EMPHASISES ────────────────────────────────────────
+ *
+ * Inverted: the UNPLAYED contests carry the raised fill, because they are the
+ * only ones that can still move and they are what somebody opens a live match
+ * to scan. Played rows go flat and keep their record.
+ *
+ * Asserted per ROW — "the page contains a raised background" is true of almost
+ * any build, and the whole question is which rows have it.
+ */
+describe("row emphasis", () => {
+  const slateGame = (id: string, awayTeam: string, homeTeam: string) => ({
+    id,
+    awayTeam,
+    homeTeam,
+    spread: null,
+    kickoff: "Sat 3:30p",
+    note: null,
+    multiplier: 1,
+  });
+
+  const render = (slate: Parameters<typeof PickemHeadToHead>[0]["slate"], rows: BoardRow[]) =>
+    renderToStaticMarkup(
+      <PickemHeadToHead
+        slate={slate}
+        rows={rows}
+        aName="Ada"
+        bName="Bo"
+        aUserId="u1"
+        bUserId="u2"
+        avatarFor={() => ({ avatarIcon: null, teamColor: null })}
+        matchIndex={1}
+        matchCount={1}
+        resolved={rows.filter((r) => r.result != null).length}
+        picked={{ a: true, b: true }}
+        note="Live"
+        onBack={() => {}}
+      />
+    );
+
+  /** One row's markup, found by a team name. */
+  const rowFor = (html: string, team: string) =>
+    html.split('data-testid="pickem-board-row"').slice(1).find((p) => p.includes(team)) ?? "";
+
+  const RAISED = "background:var(--color-bt-card)";
+  const FLAT = "background:transparent";
+
+  const PLAYED = row({ slateGameId: "g1", result: "home", aPick: "home", bPick: "away", swing: 4 });
+  const UNPLAYED = row({ slateGameId: "g2", aPick: "home", bPick: "away", upsideA: 3, upsideB: 2 });
+  const SLATE = [slateGame("g1", "Alabama", "Georgia"), slateGame("g2", "Texas", "Oklahoma")];
+
+  it("PLAYED rows go flat and UNPLAYED rows are raised", () => {
+    const html = render(SLATE, [PLAYED, UNPLAYED]);
+    expect(rowFor(html, "Alabama")).toContain(FLAT);
+    expect(rowFor(html, "Alabama")).not.toContain(RAISED);
+    expect(rowFor(html, "Texas")).toContain(RAISED);
+  });
+
+  it("keeps the SWING legible on a flattened row — the row recedes, the number does not", () => {
+    /**
+     * The caution this change had to respect. The swing column is why the
+     * screen exists, so it must not fade with the surface underneath: it
+     * carries its own accent colour and accent-faint fill.
+     */
+    const html = render([SLATE[0]], [PLAYED]);
+    const only = rowFor(html, "Alabama");
+    expect(only).toContain(FLAT);
+    expect(only).toContain("var(--color-bt-accent)");
+    expect(only).toContain("var(--color-bt-accent-faint)");
+  });
+
+  it("a match with NOTHING left is all flat, and that is a settled match", () => {
+    // Not a broken board — every row a record, nothing highlighted, because
+    // there is nothing left to look at.
+    const html = render(SLATE, [
+      PLAYED,
+      row({ slateGameId: "g2", result: "away", aPick: "home", bPick: "away", swing: -2 }),
+    ]);
+    const rowMarkup = html.split('data-testid="pickem-board-row"').slice(1);
+    expect(rowMarkup).toHaveLength(2);
+    // Scoped to the ROWS. A page-wide assertion fails on the header and the
+    // note block, which legitimately sit on the card surface — measuring the
+    // page where the claim is about rows.
+    for (const m of rowMarkup) {
+      expect(m).toContain(FLAT);
+      expect(m.slice(0, m.indexOf(">"))).not.toContain(RAISED);
+    }
+  });
+
+  it("renders NO PICK rather than a team name for an absent pick — §2 on screen", () => {
+    // The pure half is in pickemBoard.test.ts; this is the assertion that it
+    // reaches the column somebody reads.
+    const html = render([SLATE[0]], [row({ slateGameId: "g1", result: "home", aPick: null, bPick: "away" })]);
+    expect(html).toContain('data-testid="pickem-h2h-no-pick"');
+    expect(html).toContain("No pick");
   });
 });

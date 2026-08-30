@@ -304,12 +304,29 @@ describe("unresolved games", () => {
     expect(pickemFinalize(halfCancelled).unresolved).toBe(0);
   });
 
-  it("names the count and the consequence, and says nothing when there is none", () => {
-    // "Are you sure" without either is a dialog people confirm without reading.
+  it("names the count, the ACT, and its consequence — and nothing when there is none", () => {
+    // "Are you sure" without them is a dialog people confirm without reading.
     expect(unresolvedWarning(0)).toBe(null);
     expect(unresolvedWarning(4)).toContain("4 games have no result");
-    expect(unresolvedWarning(4)).toContain("score nothing for everyone");
-    expect(unresolvedWarning(1)).toContain("1 game has no result");
+    // The ACT, not only its arithmetic. Finalizing WRITES the void now, so the
+    // sentence names what the runner is authorising — "scores nothing" sounds
+    // like something that could still change, and "voided" is a decision.
+    expect(unresolvedWarning(4)).toContain("voided");
+    expect(unresolvedWarning(4)).toContain("no points assigned for correct picks");
+  });
+
+  it("handles the SINGULAR, which is the likely slate and not the edge one", () => {
+    const one = unresolvedWarning(1) as string;
+    expect(one).toContain("1 game has no result");
+    expect(one).toContain("It will be voided");
+    // No plural agreement left over — the failure a template with one branch
+    // produces is "1 games have", which reads as a bug in the app.
+    expect(one).not.toContain("games");
+    expect(one).not.toContain("They");
+
+    const many = unresolvedWarning(3) as string;
+    expect(many).toContain("3 games have no result");
+    expect(many).toContain("They will be voided");
   });
 });
 

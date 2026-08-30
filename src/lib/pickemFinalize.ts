@@ -312,12 +312,24 @@ export function confirmUnresolvedFinalize(o: {
  * a postponed Tuesday game should not hold the cup open, and the runner is
  * allowed to mean it.
  *
- * It names the COUNT and the consequence, because "are you sure" without either
+ * It names the COUNT and the CONSEQUENCE, because "are you sure" without either
  * is a dialog people learn to confirm without reading.
+ *
+ * ── It says VOIDED now, because that is what happens ──────────────────────
+ *
+ * This used to read "they'll score nothing for everyone" — true, and it
+ * described an ARITHMETIC outcome for contests that were left in no state at
+ * all. Finalizing now WRITES the void, so the sentence names the act the runner
+ * is authorising rather than its side effect. The difference matters at the one
+ * moment this is read: "scores nothing" sounds like something that could still
+ * change, and "voided" is a decision.
+ *
+ * Singular is handled because a slate with one unresolved game is the likely
+ * case, not the edge one.
  */
 export function unresolvedWarning(unresolved: number): string | null {
   if (unresolved <= 0) return null;
-  return `${unresolved} game${unresolved === 1 ? " has" : "s have"} no result. ${
-    unresolved === 1 ? "It" : "They"
-  }'ll score nothing for everyone.`;
+  return unresolved === 1
+    ? "1 game has no result. It will be voided, and no points assigned for correct picks."
+    : `${unresolved} games have no result. They will be voided, and no points assigned for correct picks.`;
 }
