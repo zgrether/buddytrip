@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isPickemGame } from "../../lib/resultStrategy";
 import { startedGameIds } from "./gameStarted";
 
 /**
@@ -141,6 +142,15 @@ export interface GameBlocker {
   reasons: BlockReason[];
   /** Real per-hole scores exist for THEM. The half that is irreplaceable. */
   hasScores: boolean;
+  /**
+   * Drives the refusal's suggested next move, and nothing else.
+   *
+   * A pick'em has no score to enter — the equivalent affordance is proxy pick
+   * entry (`save_pickem_picks_for`). The message named only the golf one until
+   * #1151 made this branch reachable, which is a refusal pointing at a button
+   * that does not exist on the screen the reader would go to.
+   */
+  isPickem: boolean;
 }
 
 export interface ContributionBlockers {
@@ -170,7 +180,15 @@ export async function findContributionBlockers(
   userId: string
 ): Promise<ContributionBlockers> {
   const [{ data: games, error: gamesErr }, paid, splits] = await Promise.all([
-    supabase.from("games").select("id, name").eq("trip_id", tripId),
+    // `game_type_id` + `competition_format` are the two inputs `isPickemGame`
+    // takes. Only the refusal's suggested-move clause reads them; no predicate
+    // in this guard branches on format, and none should — "does a result
+    // involve this person" is format-independent, which is what let the view
+    // absorb the format question in the first place.
+    supabase
+      .from("games")
+      .select("id, name, game_type_id, competition_format")
+      .eq("trip_id", tripId),
     supabase
       .from("expenses")
       .select("id", { count: "exact", head: true })
@@ -359,11 +377,22 @@ export async function findContributionBlockers(
   const nameOf = new Map(
     (games ?? []).map((g) => [g.id as string, (g.name as string | null) ?? "Untitled game"])
   );
+  // Through the shared resolver, not a `game_type_id === "gtt_pickem"` literal:
+  // the one answer to "is this a pick'em" lives in `resultStrategy.ts`, and a
+  // second copy here is the drift this whole PR is about, one layer up.
+  const pickemIds = new Set(
+    (games ?? [])
+      .filter((g) =>
+        isPickemGame(g.game_type_id as string | null, g.competition_format as string | null)
+      )
+      .map((g) => g.id as string)
+  );
   const blockers: GameBlocker[] = [...reasons.entries()].map(([gameId, set]) => ({
     gameId,
     gameName: nameOf.get(gameId) ?? "Untitled game",
     reasons: [...set],
     hasScores: scoredGameIds.has(gameId),
+    isPickem: pickemIds.has(gameId),
   }));
 
   return { games: blockers, ...money };
@@ -417,13 +446,39 @@ export function contributionRefusalMessage(
       ? clauses[0]
       : `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}`;
 
-  // The next move is category-aware. "Enter a score for them" is the documented
+  // ── The next move is category-aware, and now FORMAT-aware ─────────────────
+  //
+  // The category half came first: "enter a score for them" is the documented
   // workaround (GAME_FORMATS.md) for someone who can't play, and it is real
   // advice when a GAME is the blocker — but it is nonsense when the blocker is
   // a receipt, and a suggestion that doesn't apply is the same dead end as no
   // suggestion at all.
+  //
+  // The FORMAT half is #1151. A pick'em has no score to enter; its equivalent
+  // is proxy pick entry (`save_pickem_picks_for`). Until this PR a pick'em
+  // could not block at all, so the golf-only clause was never wrong on screen —
+  // making it reachable is what turned it into a refusal that sends the reader
+  // looking for a control that is not there, which is the failure CLAUDE.md
+  // records under "a refusal must name an action the reader can take".
+  //
+  // ONE clause covering both actions rather than two list items. The blocking
+  // games are named directly above this sentence with their own markers, so a
+  // reader going looking finds the right affordance per game; splitting it
+  // would make a three-item list read as four unrelated options and cost
+  // scannability for precision nobody needs. A generic "enter their results for
+  // them" was the other candidate and is worse than either — it names no button
+  // at all, which is the very thing this clause exists to avoid.
+  const anyPickem = b.games.some((g) => g.isPickem);
+  const anyOther = b.games.some((g) => !g.isPickem);
+  const enterClause =
+    anyPickem && anyOther
+      ? "enter a score or picks for them if they can't play"
+      : anyPickem
+        ? "enter picks for them if they can't play"
+        : "enter a score for them if they can't play";
+
   const moves = [
-    b.games.length > 0 ? "enter a score for them if they can't play" : null,
+    b.games.length > 0 ? enterClause : null,
     "rename them if the name is wrong",
     "leave them on the roster",
   ].filter((x): x is string => x !== null);

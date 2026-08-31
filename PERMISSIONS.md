@@ -279,12 +279,13 @@ is the Owner's"), which read as a principle and competed with the actual one.
 > link; the unit check is already the clean boundary to widen.
 
 > **Roster-removal lock once scoring starts (team-identity).** Once a competition
-> has **any entered score** (`score_entries` exists for any of its games), its team
+> has **any recorded result** (`public.game_started` — golf scores, outcome-mode
+> holes, pick'em slate results, or a declared match result), its team
 > rosters are **locked for REMOVALS** — `teamAssignments.remove`, a *move/trade*
 > (`teamAssignments.assign` to a **different** team), and `teams.delete` all throw
 > (`PRECONDITION_FAILED`). **Adding** a player to a team (`assign` with no prior
 > membership) stays allowed — an add can't orphan anyone in an existing match.
-> Before the first score, full roster editing per the role gates above. Enforced
+> Before the first result, full roster editing per the role gates above. Enforced
 > server-side (`assertRosterUnlocked`); the Rosters sheet disables the removal
 > controls with an explanation (the add path stays live). Leaderboard standings are
 > never gated — they stay visible to all roles. Mid-competition trades are parked in
