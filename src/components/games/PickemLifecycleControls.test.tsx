@@ -815,3 +815,38 @@ describe("the confirm sits in front of the finalize (source)", () => {
     expect(SRC.split("lifecycle.onFinalize").length - 1).toBe(2);
   });
 });
+
+/**
+ * ── STOPGAP, AND THE TEST SAYS SO (#1208) ──────────────────────────────────
+ *
+ * The slate writes on change; every other control on the settings page is a
+ * draft the bottom bar commits. So Cancel reverts the switches and keeps the
+ * games — a partial undo on edits made seconds apart, which is what a person
+ * hit and reported.
+ *
+ * The real fix is that the slate is CONTENT and belongs in the game page's
+ * admin panel rather than behind the settings door; that is a navigation
+ * change plus a design pass and is not being done nine days out. This line is
+ * expectation management only.
+ *
+ * DELETE THIS BLOCK WITH THE LINE when the slate moves. A test that outlives
+ * what it guards is how a stopgap becomes permanent.
+ */
+describe("the slate row warns that it does not share the page's Save", () => {
+  it("says it saves as you go, and names Cancel", () => {
+    const html = settingsRows();
+    // Both halves asserted. "Saves as you go" alone leaves the reader to draw
+    // their own conclusion about the button, and the button is the thing that
+    // misled somebody.
+    expect(html).toContain("Saves as you go");
+    expect(html).toContain("Cancel");
+  });
+
+  it("warns on an EMPTY slate too — that reader is the one about to be caught", () => {
+    // The empty state is exactly who is about to add games and then look for a
+    // Save. An earlier shape put the note only on the populated branch.
+    const html = settingsRows({ slateCount: 0 });
+    expect(html).toContain("No games yet");
+    expect(html).toContain("Saves as you go");
+  });
+});
