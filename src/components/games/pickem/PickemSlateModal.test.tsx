@@ -272,7 +272,9 @@ describe("delete is inside the form, not beside the row", () => {
 describe("frozen", () => {
   it("removes every control rather than disabling them", () => {
     const html = render({ editable: false });
-    expect(html).toContain("the slate is frozen");
+    // Reads the banner only to confirm we are in the frozen state; the wording
+    // itself is asserted in the banner block above.
+    expect(html).toContain("the slate is locked");
     expect(html).not.toContain("pickem-slate-form");
     expect(html).not.toContain("pickem-add-game");
     // The footer goes with the controls: there is nothing to save and nothing
