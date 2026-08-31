@@ -75,8 +75,14 @@ type Arm = {
 export const PICKEM_ERRORS: Record<PickemErrorCode, Arm> = {
   SLATE_LOCKED: {
     code: "CONFLICT",
+    // The tail used to read "nothing is lost unless the slate itself changes",
+    // which 174 falsified (an ADD costs nothing) and 175 made moot (a REMOVE
+    // that would cost something is refused by its own code, SLATE_RANKED).
+    // Dropped rather than re-hedged: this arm is about a write refused for a
+    // DIFFERENT reason — picks being open — and explaining a second rule here
+    // is how one behaviour ends up described in three places.
     message:
-      "Picks are open, so the slate and its scoring settings are frozen. Close picking first — nothing is lost unless the slate itself changes.",
+      "Picks are open, so the slate and its scoring settings are frozen. Close picking first.",
   },
   SLATE_RANKED: {
     code: "CONFLICT",

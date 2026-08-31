@@ -44,7 +44,6 @@ const render = (over: Partial<Parameters<typeof PickemSlateModal>[0]> = {}) =>
       onClose={() => {}}
       slate={SLATE}
       editable
-      rankedSheetsExist={false}
       saving={false}
       onSave={() => {}}
       {...over}
@@ -286,77 +285,69 @@ describe("frozen", () => {
   });
 });
 
-describe("the ranking warning sits with the edit that causes it (migration 156)", () => {
+describe("the slate modal carries ONE banner, and it is about the lock", () => {
   /**
-   * It used to hang off "Reopen the slate" — a mode change that cleared every
-   * ranking whether or not the runner went on to change anything. So the
-   * warning fired for people about to lose nothing, and the edit that actually
-   * destroyed the rankings carried no warning at all. Both halves were wrong,
-   * in opposite directions.
+   * ── The ranking warning is GONE, and its absence is the assertion ────────
    *
-   * What a STATIC render can show is the quiet cases, because the draft is
-   * seeded from the `slate` prop and therefore always equals it on first
-   * paint. The interesting half — a draft that has diverged — is the
-   * `slateSetChanged` predicate, tested directly in `pickemSheet.test.ts`
-   * against the same cases the server's own test drives. Splitting it that way
-   * rather than writing a render test that cannot reach the state is the point:
-   * a test named for a path it does not take is worse than no test.
+   * There were two banners. The post-lock one told the runner that adding or
+   * removing a contest clears everyone's ranking and they would need to put
+   * them back in order. Migration 174 falsified the first half — an add costs
+   * nothing — and 175 answered the second: a removal that would destroy
+   * rankings is now REFUSED at the tap (`SLATE_RANKED`), and that refusal names
+   * its own way out.
+   *
+   * So the warning had nothing left to warn about, and it was deleted rather
+   * than reworded. A standing caution read on the way in cannot be more
+   * accurate than a refusal delivered at the moment of the action, and keeping
+   * both is how two statements about one rule drift apart — which is exactly
+   * what happened to these two strings across 174.
+   *
+   * These cases assert the DELETION, in both states, because a component test
+   * cannot see a banner that is no longer rendered and would otherwise pass
+   * vacuously for the wrong reason.
    */
 
-  it("stays quiet when nothing is at stake", () => {
-    // Nothing ranked yet — the runner is still building.
-    expect(render({ rankedSheetsExist: false })).not.toContain(
+  it("renders no ranking warning while the slate is editable", () => {
+    expect(render({ editable: true })).not.toContain(
       'data-testid="pickem-slate-clears-rankings"'
     );
   });
 
-  it("WARNS as soon as ranked sheets exist — because the write is immediate", () => {
-    /**
-     * ── This REVERSES the case that used to be here, and the reason is the
-     *    write model rather than the taste ────────────────────────────────
-     *
-     * It read "stays quiet when ranked sheets exist and the slate is UNCHANGED",
-     * on the reasoning that opening the editor and changing nothing must not
-     * threaten to cost anything. That was right while a Save button existed:
-     * the warning could sit beside it and fire only once an edit had changed
-     * the set, which is the moment the runner still had a choice.
-     *
-     * Every change persists now. By the time the set HAS changed the rankings
-     * are already cleared, so a warning keyed on that is a report of something
-     * that already happened. It has to precede the edit, which means keying it
-     * on the STATE that makes it true: rankings exist and this slate is
-     * editable.
-     *
-     * The cost is that somebody who opens the editor to look reads a caution
-     * about something they may not do. That is the right side to err on — the
-     * alternative is telling them afterwards.
-     */
-    expect(render({ rankedSheetsExist: true })).toContain(
+  it("renders no ranking warning while the slate is frozen either", () => {
+    expect(render({ editable: false })).not.toContain(
       'data-testid="pickem-slate-clears-rankings"'
     );
   });
 
-  it("says which edits cost the ranking and which do not", () => {
-    // "Adding or removing" versus editing a game's details. Without the second
-    // half it reads as "do not touch this", which is not true and is the kind
-    // of over-warning that gets ignored wholesale.
-    const html = render({ rankedSheetsExist: true });
-    expect(html).toContain("Adding or removing");
-    expect(html).toContain("does not");
+  it("no longer claims an ADD costs anyone their ranking", () => {
+    // The exact clause 174 falsified, in either banner. Asserted as text rather
+    // than by testid: the testid could be reused, the claim is the defect.
+    for (const editable of [true, false]) {
+      const html = render({ editable });
+      expect(html).not.toContain("Adding or removing");
+      expect(html).not.toContain("clears everyone");
+      expect(html).not.toContain("put them back in order");
+    }
   });
 
-  it("stays quiet on a FROZEN slate — nothing can be changed there", () => {
-    // A caution about the cost of editing, on a screen with no editing on it,
-    // is noise about a mechanic that is not in play.
-    expect(render({ rankedSheetsExist: true, editable: false })).not.toContain(
-      'data-testid="pickem-slate-clears-rankings"'
-    );
+  it("the frozen banner names the lock and stops there", () => {
+    const html = render({ editable: false });
+    expect(html).toContain("Picks are open, the slate is locked.");
+    expect(html).toContain("Close picking on the game");
+    // It used to carry a second rule — what a slate change costs — which is
+    // now the RPC's to state, and only when it actually refuses.
+    expect(html).not.toContain("Nothing is lost");
+  });
+
+  it("says nothing about the lock while the slate IS editable", () => {
+    // The banner is the frozen state's, not a permanent header.
+    expect(render({ editable: true })).not.toContain("the slate is locked");
   });
 
   it("shows no stale reopen affordance anywhere in the modal", () => {
     // The action is gone from the server (BAD_ACTION) — a button still offering
     // it here would be an error the runner can only discover by tapping it.
-    const html = render({ rankedSheetsExist: true });
+    const html = render({ editable: true });
     expect(html).not.toContain("Reopen the slate");
     expect(html).not.toContain('data-testid="pickem-reopen-slate"');
   });
