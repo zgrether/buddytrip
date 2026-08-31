@@ -137,8 +137,8 @@ const render = (over: Partial<Parameters<typeof PickemTeamRollUp>[0]> = {}) =>
         u2: [pick("g1", "away", 2), pick("g2", "away", 4)],
       }}
       teams={[
-        { id: "t1", name: "Team Buddy" },
-        { id: "t2", name: "Team Banks" },
+        { id: "t1", name: "Team Buddy", shortName: "BUD" },
+        { id: "t2", name: "Team Banks", shortName: "BNK" },
       ]}
       teamOf={(u) => (u === "u1" ? "t1" : u === "u2" ? "t2" : null)}
       nameOf={(u) => (u === "u1" ? "Zach" : u === "u2" ? "Ty" : "Guest")}
@@ -154,10 +154,30 @@ const render = (over: Partial<Parameters<typeof PickemTeamRollUp>[0]> = {}) =>
 describe("PickemTeamRollUp", () => {
   it("renders a card per side, ordered by total", () => {
     const html = render();
-    expect(html).toContain("Team Buddy");
-    expect(html).toContain("Team Banks");
+    // The CARDS carry the SHORT name — a stack of ranked cards read against each
+    // other is a label slot. Asserting the short name here rather than the full
+    // one is what makes this fail against a build that reverted to `team.name`;
+    // `toContain("Team Buddy")` would pass either way, because the prose note
+    // below the cards legitimately still spells the full name out.
+    expect(html).toContain("BUD");
+    expect(html).toContain("BNK");
     // u1 scored on g1, u2 did not — so Buddy leads and comes first.
-    expect(html.indexOf("Team Buddy")).toBeLessThan(html.indexOf("Team Banks"));
+    expect(html.indexOf("BUD")).toBeLessThan(html.indexOf("BNK"));
+  });
+
+  it("spells the full name in the prose note and nowhere else", () => {
+    /**
+     * The two halves of the slot rule, in one place, on one render — the note is
+     * a sentence about a team (subject) and the cards are keys to rows (label).
+     * A build that used one name everywhere fails this whichever name it picked.
+     */
+    const html = render();
+    const note = html.slice(html.indexOf('data-testid="pickem-rollup-note"'));
+    expect(note).toContain("Team Buddy");
+
+    const cards = html.slice(html.indexOf('data-testid="pickem-board-side"'));
+    expect(cards).not.toContain("Team Buddy");
+    expect(cards).not.toContain("Team Banks");
   });
 
   it("grows past two sides rather than dropping them", () => {
@@ -168,13 +188,13 @@ describe("PickemTeamRollUp", () => {
      */
     const html = render({
       teams: [
-        { id: "t1", name: "Alpha" },
-        { id: "t2", name: "Bravo" },
-        { id: "t3", name: "Charlie" },
-        { id: "t4", name: "Delta" },
+        { id: "t1", name: "Alpha", shortName: "ALP" },
+        { id: "t2", name: "Bravo", shortName: "BRA" },
+        { id: "t3", name: "Charlie", shortName: "CHA" },
+        { id: "t4", name: "Delta", shortName: "DEL" },
       ],
     });
-    for (const n of ["Alpha", "Bravo", "Charlie", "Delta"]) {
+    for (const n of ["ALP", "BRA", "CHA", "DEL"]) {
       expect(html, n).toContain(n);
     }
     expect(html.split('data-testid="pickem-board-side"').length - 1).toBe(4);

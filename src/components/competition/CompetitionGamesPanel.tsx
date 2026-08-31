@@ -793,8 +793,11 @@ function PlacementRowBody({
         {showPlace ? place : ""}
       </span>
       <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ background: team?.color ?? "var(--color-bt-text-dim)" }} />
+      {/* SHORT name — a placement row is a set of peers read against each other,
+          which makes it a label slot (STYLE_GUIDE "Team names — subject slots vs
+          label slots"), same as the cup standings row it mirrors. */}
       <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-        {team?.name ?? "Team"}
+        {team?.short_name ?? "Team"}
       </span>
       {/* Points inline and prominent — the number that decides the cup. */}
       <span

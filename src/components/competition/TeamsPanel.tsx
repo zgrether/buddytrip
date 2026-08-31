@@ -39,6 +39,7 @@ import { Avatar } from "@/components/Avatar";
 import { RowNumber } from "@/components/games/RowNumber";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
+import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
 import {
   identityDiffers,
   orderDiffers,
@@ -1791,12 +1792,12 @@ export function TeamSheet({
           {/* Team name (most of the row) + a narrow short-name box, side by side. */}
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-          <Field label="Team Name" required>
+          <Field label="Team Name" required counter={{ value: name.length, max: TEAM_NAME_MAX }}>
             <input
               value={name}
               onChange={(e) => handleNameChange(e.target.value)}
               placeholder="e.g. Team Hammer"
-              maxLength={100}
+              maxLength={TEAM_NAME_MAX}
               disabled={!identityEditable}
               readOnly={!identityEditable}
               className="w-full rounded-lg px-3 py-2 text-sm outline-none disabled:opacity-70"
@@ -1862,7 +1863,7 @@ export function TeamSheet({
           </Field>
             </div>
             <div className="flex-shrink-0" style={{ width: 92 }}>
-          <Field label="Short" required>
+          <Field label="Short" required counter={{ value: shortName.length, max: TEAM_SHORT_MAX }}>
             <input
               value={shortName}
               onChange={(e) => {
@@ -1870,7 +1871,7 @@ export function TeamSheet({
                 setShortNameDirty(true);
               }}
               placeholder="HAM"
-              maxLength={4}
+              maxLength={TEAM_SHORT_MAX}
               disabled={!identityEditable}
               readOnly={!identityEditable}
               // The `uppercase` class below is COSMETIC — `onChange` above already
@@ -2724,11 +2725,17 @@ function Field({
   label,
   required,
   helper,
+  counter,
   children,
 }: {
   label: string;
   required?: boolean;
   helper?: string;
+  /** Renders "12/34" under the input. A cap the typist cannot see reads as the
+   *  field being broken when it stops accepting characters, so every capped
+   *  field here shows one. Below the input rather than beside the label: the
+   *  Short field's label row is 92px wide and already carries "required". */
+  counter?: { value: number; max: number };
   children: React.ReactNode;
 }) {
   return (
@@ -2750,6 +2757,18 @@ function Field({
       {helper && (
         <p className="mt-1 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
           {helper}
+        </p>
+      )}
+      {counter && (
+        // `aria-hidden`: the input's own `maxLength` already tells assistive tech
+        // the limit, and a count that changes on every keystroke is noise there.
+        <p
+          className="mt-1 text-right text-[11px] tabular-nums"
+          style={{ color: "var(--color-bt-text-dim)" }}
+          aria-hidden
+          data-testid={`field-counter-${label.toLowerCase().split(" ").join("-")}`}
+        >
+          {counter.value}/{counter.max}
         </p>
       )}
     </div>

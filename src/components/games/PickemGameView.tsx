@@ -853,7 +853,7 @@ export function PickemGameView() {
   const teamForSlot = useCallback(
     (slot: "a" | "b") => {
       const t = (q.data?.teams ?? [])[slot === "a" ? 0 : 1];
-      return t ? { id: t.id, name: t.name, color: t.color } : undefined;
+      return t ? { id: t.id, name: t.name, short_name: t.shortName, color: t.color } : undefined;
     },
     [q.data?.teams]
   );
@@ -1227,8 +1227,12 @@ export function PickemGameView() {
       const people = t.memberIds.filter((uid) => byUser.has(uid));
       for (const uid of people) placed.add(uid);
       return {
+        // SHORT — a column eyebrow over a list of that team's people. The team
+        // labels the column; the people are its content. Label slot, and the
+        // columns floor at 150px, where a full name wrapped and left the
+        // columns at different heights.
         teamId: t.id,
-        teamName: t.name,
+        teamName: t.shortName,
         people: people.map((uid) => row(byUser.get(uid)!)),
       };
     });
@@ -1275,7 +1279,9 @@ export function PickemGameView() {
     const cols: OtherPicksColumn[] = q.data.teams.map((t) => {
       const people = t.memberIds.filter((uid) => field.has(uid));
       for (const uid of people) placed.add(uid);
-      return { teamId: t.id, teamName: t.name, people: people.map(row) };
+      // SHORT — same column eyebrow, post-lock shape. See the pre-lock branch
+      // above; these two render the same surface and must not disagree.
+      return { teamId: t.id, teamName: t.shortName, people: people.map(row) };
     });
 
     const loose = [...field].filter((uid) => !placed.has(uid)).sort();

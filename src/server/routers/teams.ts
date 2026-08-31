@@ -5,6 +5,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireCompetitionRole, requireTeamIdentityEdit } from "../middleware";
 import { assertRosterUnlocked } from "../lib/rosterLock";
 import { reconcileClinchClaim } from "../lib/gameFinishNotify";
+import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
 
 /**
  * teams — competition-scoped teams.
@@ -48,8 +49,8 @@ export const teamsRouter = router({
       z.object({
         tripId: z.string(),
         competitionId: z.string(),
-        name: z.string().min(1).max(100),
-        shortName: z.string().min(1).max(4),
+        name: z.string().min(1).max(TEAM_NAME_MAX),
+        shortName: z.string().min(1).max(TEAM_SHORT_MAX),
         color: z.string().min(1).max(20),
         colorDim: z.string().min(1).max(20),
       })
@@ -101,8 +102,8 @@ export const teamsRouter = router({
       z.object({
         tripId: z.string(),
         teamId: z.string(),
-        name: z.string().min(1).max(100).optional(),
-        shortName: z.string().min(1).max(4).optional(),
+        name: z.string().min(1).max(TEAM_NAME_MAX).optional(),
+        shortName: z.string().min(1).max(TEAM_SHORT_MAX).optional(),
         color: z.string().min(1).max(20).optional(),
         colorDim: z.string().min(1).max(20).optional(),
       })

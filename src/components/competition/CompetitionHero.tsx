@@ -267,9 +267,16 @@ export function CompetitionHero({
 
         {showScores && (
           <>
-            {/* Team names row — FULL names (dedicated-row → full-name rule),
-                team-colored, each on its side, tappable → that team's editor. */}
-            <div className="mt-4 flex items-center justify-between gap-3">
+            {/* Team names row — FULL names: this is a SUBJECT slot, the one
+                place the crew's own names are the content rather than a key
+                (STYLE_GUIDE "Team names — subject slots vs label slots").
+                Team-colored, each on its side, tappable → that team's editor.
+
+                `mt-3` here and `mt-2` on the progress bar below (both were
+                `mt-4`) pay for most of the second reserved name line: 20px of
+                new height against 12px of reclaimed slack, so the panel grows
+                ~8px rather than ~20px. */}
+            <div className="mt-3 flex items-center justify-between gap-3">
               <TeamName team={a} onEditTeam={onEditTeam} align="left" />
               <TeamName team={b} onEditTeam={onEditTeam} align="right" />
             </div>
@@ -322,7 +329,7 @@ export function CompetitionHero({
 
             {/* Clinch bar — track + each team's end-fill + a lead marker. */}
             <div
-              className="relative mt-4 flex h-2 w-full overflow-hidden rounded-full"
+              className="relative mt-2 flex h-2 w-full overflow-hidden rounded-full"
               style={{ background: "var(--color-bt-card-raised)" }}
             >
               <div
@@ -754,7 +761,20 @@ function MiniName({
       style={{ maxWidth: "38%" }}
       data-testid={`comp-team-name-collapsed-${align === "left" ? "a" : "b"}`}
     >
-      <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: team.color }}>{team.name}</span>
+      {/* Same two-line reserve as the expanded hero's `TeamName`, for the same
+          reason and at this component's own size. This is the SECOND component
+          of one surface: the sticky bar and the expanded card are both the cup
+          header, and fixing only the one that was reported would leave a long
+          name wrapping unpinned here — visible the moment anyone scrolls
+          mid-round, which is when this bar is the only header on screen. */}
+      <span className="flex w-full items-end" style={{ fontSize: 14, minHeight: "2.4em" }}>
+        <span
+          className="line-clamp-2 w-full break-words"
+          style={{ fontWeight: 600, lineHeight: 1.2, color: team.color }}
+        >
+          {team.name}
+        </span>
+      </span>
       {onEditTeam && <RosterLabel size={9} />}
     </button>
   );
@@ -907,9 +927,32 @@ function TeamName({
       data-testid={`comp-team-name-${align === "left" ? "a" : "b"}`}
     >
       {/* 17 (was 15) — the name carries the block now that the icon is gone, and
-          it has to stay the dominant element over the ROSTER label beneath it. */}
-      <span className="w-full truncate" style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.2, color: team.color }}>
-        {team.name}
+          it has to stay the dominant element over the ROSTER label beneath it.
+
+          TWO-LINE RESERVE, and the reserve is the point rather than the wrap.
+          These are the crew's own names — the joke IS the content — so the name
+          wraps instead of truncating. That makes the block's height depend on
+          the name unless something pins it, and if one side wrapped while the
+          other did not, `ROSTER` and the two big scores below would land on
+          different baselines: worse than the truncation this replaces. So the
+          block reserves two lines whether or not the second is used, bottom-
+          aligns its content so a short name sits against the ROSTER label
+          rather than floating above it, and clamps at two as the ellipsis
+          floor. With the 34-char input cap the clamp should never fire; it is
+          here so a longer legacy name degrades to the old behaviour instead of
+          pushing the panel around.
+
+          UNCONDITIONAL at every width. The hero has no breakpoint and fills a
+          content column up to 1280px, where nothing wraps and this leaves a
+          quiet dead line. A panel that changes height across breakpoints is a
+          thing you notice; 20px of desktop space is not. */}
+      <span className="flex w-full items-end" style={{ fontSize: 17, minHeight: "2.4em" }}>
+        <span
+          className="line-clamp-2 w-full break-words"
+          style={{ fontWeight: 600, lineHeight: 1.2, color: team.color }}
+        >
+          {team.name}
+        </span>
       </span>
       {onEditTeam && <RosterLabel />}
     </button>

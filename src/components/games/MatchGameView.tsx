@@ -568,8 +568,14 @@ export function MatchGameView() {
   // roster (team_assignments), so moving a player's team re-attributes their
   // match automatically. The two teams are ordered (created_at); the binding is
   // by index so it's consistent across every match.
+  // `short_name` is NOT NULL with a CHECK(<= 4) since migration 001, and
+  // `teams.list` selects the row wholesale — so the cast that said
+  // `string | null` was simply wrong about the column. Narrowed here because
+  // the pairing header now renders it as a label and the honest alternative
+  // would have been a fallback for a state four mechanisms prevent. The two
+  // dead `?? t.name` fallbacks elsewhere are #1211, and are left alone.
   const teams = useMemo(
-    () => (teamsQ.data ?? []) as { id: string; name: string; short_name: string | null; color: string }[],
+    () => (teamsQ.data ?? []) as { id: string; name: string; short_name: string; color: string }[],
     [teamsQ.data]
   );
   // Team binding applies only to a game that's actually IN the competition (a
@@ -586,7 +592,7 @@ export function MatchGameView() {
   const teamForSlot = (slot: "a" | "b") => (twoTeams ? teams[slot === "a" ? 0 : 1] : undefined);
   // A side's team, DERIVED from its player(s): a user side → that user's team; a
   // pair side → its members' team (both members share one, enforced at setup).
-  const teamOfSide = (sideId: string): { id: string; name: string; short_name: string | null; color: string } | undefined => {
+  const teamOfSide = (sideId: string): { id: string; name: string; short_name: string; color: string } | undefined => {
     // Per-match (A2a): resolve the side's type from the data, not a game flag — a
     // 2v2 side is a play_group (in `membersOfSide`) → its first member's team; a
     // 1v1 side IS the user. So one game can mix both.

@@ -67,7 +67,7 @@ export function MatchesAccordionRow({
   colorOf: Map<string, string>;
   teamColorOf: (userId: string) => string | undefined;
   avatarIconOf: Map<string, string | null>;
-  teamForSlot: (slot: "a" | "b") => { name: string; color: string } | undefined;
+  teamForSlot: (slot: "a" | "b") => { name: string; short_name: string; color: string } | undefined;
   maxMatches: number;
   /** Is this a 2-team competition? Gates the roster-validity half of `invalid` —
    *  a standalone game has no teams to fall out of. */

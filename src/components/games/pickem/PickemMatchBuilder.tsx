@@ -106,7 +106,7 @@ export function PickemMatchBuilder({
   colorMap: Map<string, string>;
   avatarIconMap: Map<string, string | null>;
   teamColorOf: (userId: string) => string | undefined;
-  teamForSlot: (slot: "a" | "b") => { id: string; name: string; color: string } | undefined;
+  teamForSlot: (slot: "a" | "b") => { id: string; name: string; short_name: string; color: string } | undefined;
   canEdit: boolean;
   pointsTotal: number | null;
   selector: { matchIdx: number; slot: "a" | "b"; memberIdx: number } | null;
