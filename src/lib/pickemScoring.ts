@@ -61,6 +61,32 @@ export function paysOut(result: SlateResult | null | undefined): result is "away
  * design — they differ as FACTS, not as arithmetic, which is why the difference
  * lives on the screen and in the column rather than here.
  */
+/**
+ * What a stored rank is worth, on its own — never what the CALLER should use.
+ *
+ * `pick.confidence ?? 1`. Migration 146's column comment already says scoring
+ * reads `COALESCE(confidence, 1)`; every call site here read `?? 0` instead,
+ * which is #1216 — a wiped or never-ranked sheet scored zero where the
+ * documented design (and the confidence-off path two lines below) says one.
+ * A null rank now degrades to a flat, un-weighted pick — the mode this app
+ * already ships for confidence off — instead of annihilating the pick.
+ *
+ * Deliberately ONE argument. `useConfidence` decides whether a rank applies
+ * AT ALL, which is a property of the GAME right now — and it is NOT implied
+ * by whether this pick happens to carry one: turning confidence off does not
+ * null ranks already stored (`save_pickem_config`'s settings arm writes only
+ * `pickem_games`), so a toggled-off game can still hold real numbers here. A
+ * one-argument helper that also read `useConfidence` would have two branches
+ * returning the same answer whenever confidence is genuinely off — dead
+ * weight, and exactly the kind of parameter that later grows a real branch
+ * behind it. Every call site keeps its own `useConfidence ? pickConfidence(p)
+ * : 1`, which is what forces the flat score on a toggled-off game regardless
+ * of what is still sitting in the column.
+ */
+export function pickConfidence(pick: ScoredPick): number {
+  return pick.confidence ?? 1;
+}
+
 export function pickPoints(
   game: ScoredSlateGame,
   pick: ScoredPick,
@@ -70,7 +96,7 @@ export function pickPoints(
   if (pick.pick !== game.result) return 0;
   const weight = game.multiplier ?? 1;
   // Confidence off: every correct pick is worth one, before weighting.
-  const base = useConfidence ? (pick.confidence ?? 0) : 1;
+  const base = useConfidence ? pickConfidence(pick) : 1;
   return base * weight;
 }
 
@@ -118,7 +144,7 @@ export function remainingUpside(
   return picks.reduce((sum, p) => {
     const g = byGame.get(p.slateGameId);
     if (!g || isResolved(g)) return sum;
-    const base = useConfidence ? (p.confidence ?? 0) : 1;
+    const base = useConfidence ? pickConfidence(p) : 1;
     return sum + base * (g.multiplier ?? 1);
   }, 0);
 }
