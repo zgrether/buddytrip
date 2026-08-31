@@ -234,6 +234,129 @@ describe("save_pickem_config / set_pickem_phase", () => {
     expect(count).toBe(1);
   });
 
+  // ── which slate changes destroy a ranking (#1150, migration 174) ──────────
+
+  /**
+   * The asymmetry migration 174 introduced, and why it is not arbitrary.
+   *
+   * 166 made a PARTIAL sheet legal: ranks must be within 1..N and distinct
+   * (166:130-143), and exactly-1..N is demanded only when the sheet is COMPLETE
+   * (166:154-159). So growing the slate leaves every existing rank valid — it is
+   * a partial sheet now — while shrinking it can strand a rank above the new N.
+   *
+   * Both directions are asserted here because only asserting the ADD would pass
+   * against a build that stopped clearing altogether, which is the tempting
+   * over-correction and a worse bug than the one being fixed: it would leave an
+   * out-of-range rank in the table and move the corruption downstream.
+   */
+
+  /** A locked game with one complete 4-game sheet, ranks 1..4 by slate order. */
+  const lockedSheetOfFour = async () => {
+    const games = [0, 1, 2, 3].map((i) => slateItem({ awayTeam: `Away${i}` }));
+    await save({ slate: games });
+    await phase("open");
+    await ctx.admin.from("pickem_picks").insert(
+      games.map((g, i) => ({
+        id: genId("p"),
+        game_id: gameId,
+        slate_game_id: g.id,
+        user_id: ctx.getUser("member").id,
+        pick: "away",
+        confidence: i + 1,
+      }))
+    );
+    await phase("lock");
+    return games;
+  };
+
+  /** slate_game_id -> confidence, so each rank is asserted by name. */
+  const ranks = async () => {
+    const { data } = await ctx.admin
+      .from("pickem_picks")
+      .select("slate_game_id, confidence")
+      .eq("game_id", gameId);
+    return Object.fromEntries((data ?? []).map((r) => [r.slate_game_id, r.confidence]));
+  };
+
+  it("an ADD after the lock keeps every ranking — #1150", async () => {
+    const games = await lockedSheetOfFour();
+
+    // The whole bug, in one call: the runner adds the late game somebody asked
+    // about, on a surface they are meant to use, with picks already locked.
+    const late = slateItem({ awayTeam: "Late", homeTeam: "Addition" });
+    const { error } = await save({ slate: [...games, late] });
+    expect(error).toBeNull();
+
+    // Each rank by VALUE, not `not.toBeNull()` — a build that rewrote every
+    // confidence to 1 would pass a null check and be just as wrong.
+    expect(await ranks()).toEqual({
+      [games[0].id]: 1,
+      [games[1].id]: 2,
+      [games[2].id]: 3,
+      [games[3].id]: 4,
+    });
+
+    // And the sheet is still one 166 would accept: 4 picks against a slate of
+    // 5, every rank in 1..5, none repeated, completeness not required.
+    const { count } = await ctx.admin
+      .from("pickem_slate_games")
+      .select("*", { count: "exact", head: true })
+      .eq("game_id", gameId);
+    expect(count).toBe(5);
+  });
+
+  it("a REMOVE after the lock still clears them — the guard against over-narrowing", async () => {
+    const games = await lockedSheetOfFour();
+
+    // Dropping game index 1 strands its rank, and leaves rank 4 above the new
+    // N=3. That sheet is genuinely invalid, so today's clear is kept.
+    const { error } = await save({ slate: [games[0], games[2], games[3]] });
+    expect(error).toBeNull();
+
+    expect(await ranks()).toEqual({
+      [games[0].id]: null,
+      [games[2].id]: null,
+      [games[3].id]: null,
+    });
+  });
+
+  it("a REPLACE clears too — it removes an id, whatever else it also does", async () => {
+    // Not a third arm. Swap lands in the clear arm because something LEFT, and
+    // this pins that rather than leaving it to be inferred from the two above.
+    const games = await lockedSheetOfFour();
+    const swapped = slateItem({ awayTeam: "Swapped" });
+
+    const { error } = await save({ slate: [games[0], games[1], games[2], swapped] });
+    expect(error).toBeNull();
+
+    const r = await ranks();
+    expect(r[games[0].id]).toBeNull();
+    expect(r[games[1].id]).toBeNull();
+    expect(r[games[2].id]).toBeNull();
+  });
+
+  it("a REORDER and an EDIT still keep them — 174 narrowed the clear, it did not widen it", async () => {
+    // 157 already had these free, and the set-difference must not regress them.
+    const games = await lockedSheetOfFour();
+
+    const { error } = await save({
+      slate: [
+        { ...games[3], awayTeam: "Renamed", spread: "-7.5" },
+        games[2],
+        games[1],
+        games[0],
+      ],
+    });
+    expect(error).toBeNull();
+
+    expect(await ranks()).toEqual({
+      [games[0].id]: 1,
+      [games[1].id]: 2,
+      [games[2].id]: 3,
+      [games[3].id]: 4,
+    });
+  });
+
   // ── the lock ─────────────────────────────────────────────────────────────
 
   it("refuses a SLATE edit once picks are open, and allows it again once locked", async () => {

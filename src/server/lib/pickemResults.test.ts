@@ -268,6 +268,61 @@ describe("what gets persisted, and what the cup then pays", () => {
     expect(t[f.teamB]).toBe(0);
   });
 
+  it("a post-lock slate ADD does not change what the cup pays — #1150 end to end", async () => {
+    /**
+     * The only assertion that matters, and the one a column check cannot make.
+     *
+     * The RPC-level tests in `pickemSlateSave.test.ts` prove the ranks survive
+     * the save. This proves the SCORE does — a build where confidence survives
+     * the write but something downstream still reads it as zero would pass
+     * those and fail here, and that is the failure the issue actually reported:
+     * a decisive result silently becoming a tie and the cup splitting points
+     * somebody won.
+     *
+     * Deliberately the ADD path only. A REMOVE assertion would depend on what a
+     * null rank scores on a confidence-ON game, which is an open question
+     * (`pickemScoring.ts:73` reads `?? 0`; `pickem_picks.confidence`'s own
+     * comment at 146:217 says `COALESCE(confidence, 1)`) and is filed
+     * separately. Nothing null enters this test: the added game has no
+     * `pickem_picks` row for anyone, because nobody ranked a game that did not
+     * exist when they filled the sheet in.
+     */
+    f = await makeFixture({ rollUp: "team_totals", pointsTotal: 10 });
+    await seedSheet(f, owner, [0, 1, 2, 3]); // all four right -> 4+3+2+1 = 10
+    await seedSheet(f, member, [3]); // one right, at rank 1 -> 1
+
+    // The runner adds a late game AFTER the lock. Through the real RPC, with
+    // the real payload shape — a hand-rolled UPDATE would not exercise the
+    // classification this is here to test.
+    const late = genId("sg");
+    await ctx.caller().pickem.saveConfig({
+      tripId,
+      gameId: f.gameId,
+      slate: [
+        ...f.slateIds.map((id, i) => ({
+          id,
+          awayTeam: `Away${i}`,
+          homeTeam: `Home${i}`,
+          multiplier: 1,
+        })),
+        { id: late, awayTeam: "Late", homeTeam: "Addition", multiplier: 1 },
+      ],
+    });
+
+    await finish(f);
+
+    // 10 vs 1 is decisive, so team_totals hands Alpha the whole pot. Under the
+    // bug every rank was nulled, both sides scored 0, and this read 5 / 5.
+    const t = await totals(f);
+    expect(t[f.teamA]).toBe(10);
+    expect(t[f.teamB]).toBe(0);
+
+    // The added contest had no result and nobody picked it: it voids and pays
+    // nothing, rather than dragging a phantom entrant into the standings.
+    const rows = await resultRows(f);
+    expect(rows).toHaveLength(2);
+  });
+
   it("A POINTS CUP stores POSITIONS, and the payout re-derives from the total", async () => {
     /**
      * The case a build that wrote points everywhere would pass at the rows and
