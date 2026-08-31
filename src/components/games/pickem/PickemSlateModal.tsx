@@ -12,6 +12,7 @@ import {
   splitKickoffDay,
 } from "@/lib/pickemSlateDays";
 import { Stepper } from "@/components/games/Stepper";
+import { FieldLabel } from "@/components/games/FieldChrome";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { MatchupSearch } from "@/components/matchup/MatchupSearch";
 import { formatKickoff } from "@/lib/matchupApi";
@@ -840,51 +841,102 @@ function SlateForm({
         </div>
       )}
 
-      <div className="mb-2 flex items-center gap-2">
-        <input
-          aria-label="Away team"
-          value={form.awayTeam}
-          placeholder="Away"
-          onChange={(e) => onChange({ awayTeam: e.target.value })}
-          style={field}
-        />
-        <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>at</span>
-        <input
-          aria-label="Home team"
-          value={form.homeTeam}
-          placeholder="Home"
-          onChange={(e) => onChange({ homeTeam: e.target.value })}
-          style={field}
-        />
+      {/* ── THE TITLE IS ABOVE THE BOX, NOT INSIDE IT ─────────────────────────
+          Every field named itself with a PLACEHOLDER, which is the one piece of
+          text guaranteed to be gone exactly when it is needed: the moment there
+          is a value to check, the thing telling you what the value means has
+          been replaced by it. Sixteen games in, a runner scanning back over a
+          half-filled form has five boxes and no titles.
+
+          It also made the placeholder do two jobs at once, and the widths were
+          set by the longer one — "Spread Home" in a 96px box rendered as
+          "Spread Ho", so the half that said WHOSE line it was is the half that
+          got cut. Splitting the jobs fixes the width as a side effect: the
+          label names the field and the placeholder is free to be a short
+          example of the format.
+
+          `FieldLabel` rather than a local span — it is the app's shared
+          small-caps field label (STYLE_GUIDE §2b eyebrow recipe), already used
+          by Quick Play's setup and the side-bet form.
+
+          `aria-label` stays on every input, unchanged. It is the accessible
+          name today and three tests pin these exact strings; the visible label
+          is additive, not a replacement. */}
+      <div className="mb-2 flex items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <FieldLabel>Away team</FieldLabel>
+          <input
+            aria-label="Away team"
+            value={form.awayTeam}
+            onChange={(e) => onChange({ awayTeam: e.target.value })}
+            style={field}
+          />
+        </div>
+        {/* Aligned to the INPUTS, not to the labels — hence `items-end` on the
+            row and a matching height here, so "at" sits on the boxes' centre
+            line instead of floating up beside the titles. */}
+        <span
+          style={{
+            fontSize: TYPE_SCALE.caption,
+            color: "var(--color-bt-text-dim)",
+            height: 42,
+            display: "flex",
+            alignItems: "center",
+            flexShrink: 0,
+          }}
+        >
+          at
+        </span>
+        <div className="min-w-0 flex-1">
+          <FieldLabel>Home team</FieldLabel>
+          <input
+            aria-label="Home team"
+            value={form.homeTeam}
+            onChange={(e) => onChange({ homeTeam: e.target.value })}
+            style={field}
+          />
+        </div>
       </div>
 
+      {/* An even split. The time used to take all the slack and the spread was
+          pinned to a fixed 96px; "Sat 3:30p" never needed the room it was
+          being given. */}
       <div className="mb-2 flex gap-2">
-        <input
-          aria-label="Game time"
-          value={form.kickoff ?? ""}
-          placeholder="Sat 3:30p"
-          onChange={(e) => onChange({ kickoff: e.target.value || null })}
-          style={{ ...field, flex: "1 1 0" }}
-        />
-        <input
-          /* WHOSE line it is, in the label — it is shown beside the home team
-             everywhere it is read, and the form was the one place that made a
-             runner remember which side the number was for. */
-          aria-label="Spread Home"
-          value={form.spread ?? ""}
-          placeholder="Spread Home"
-          onChange={(e) => onChange({ spread: e.target.value || null })}
-          style={{ ...field, flex: "0 0 96px" }}
-        />
+        <div className="min-w-0 flex-1">
+          <FieldLabel>Game time</FieldLabel>
+          <input
+            aria-label="Game time"
+            value={form.kickoff ?? ""}
+            placeholder="Sat 3:30p"
+            onChange={(e) => onChange({ kickoff: e.target.value || null })}
+            style={field}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          {/* WHOSE line it is, in the label — it is shown beside the home team
+              everywhere it is read, and the form was the one place that made a
+              runner remember which side the number was for. */}
+          <FieldLabel>Spread Home</FieldLabel>
+          <input
+            aria-label="Spread Home"
+            value={form.spread ?? ""}
+            placeholder="-3.5"
+            onChange={(e) => onChange({ spread: e.target.value || null })}
+            style={field}
+          />
+        </div>
       </div>
 
-      <input
-        aria-label="Note"
-        value={form.note ?? ""}
-        placeholder="Note (optional)"
-        onChange={(e) => onChange({ note: e.target.value || null })}
-        style={field}
-      />
+      <div>
+        <FieldLabel>Note</FieldLabel>
+        <input
+          aria-label="Note"
+          value={form.note ?? ""}
+          placeholder="Optional"
+          onChange={(e) => onChange({ note: e.target.value || null })}
+          style={field}
+        />
+      </div>
 
       {/* The multiplier lives HERE, as a stepper — never in the row.
           The LABEL is neutral and the HELPER carries the state. "Worth extra"

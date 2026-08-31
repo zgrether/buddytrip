@@ -216,10 +216,37 @@ export function PickemGameView() {
   const phase = pickemPhase(clock, now);
   const canEditSlate = canEdit && slateEditable(clock, now);
 
+  /**
+   * ── A SUCCESSFUL SLATE WRITE DISMISSES NOTHING ────────────────────────────
+   *
+   * This handler used to `setSlateOpen(false)` and toast "Slate saved", and both
+   * were right when it was written (#1080): a Save button was the only caller,
+   * so one tap meant one write and save-and-close was the whole interaction.
+   *
+   * #1184 changed who calls it, not what it does. `PickemSlateModal.mutate` now
+   * writes on EVERY change — add, edit, delete, drag-reorder — so the dismissal
+   * fired on each one and the runner was ejected mid-slate on every single add.
+   * Reported as "it looks like it gets added but then closes the picks modal
+   * immediately", and, from the same cause counted a different way, as a cap at
+   * five games: there is no cap (the RPC takes 200), only a modal that had to be
+   * reopened between additions.
+   *
+   * Neither half was wrong alone, which is why every per-component test passed.
+   * The pair was.
+   *
+   * So: dismissal belongs to the person, not to the write. `Done` (and the
+   * scrim, the cross, and back) call `onClose`; nothing else closes this sheet.
+   *
+   * The toast goes for the same reason rather than as a separate opinion — it
+   * was the only feedback left once the sheet had vanished, and the sheet no
+   * longer vanishes. Its footer says "Saving… / Changes saved / Changes save as
+   * you make them" the whole time (#1201), so a toast per add is sixteen toasts
+   * restating a line already on screen. `onError` keeps its toast: a failed
+   * write must stay loud, and it is now the ONLY thing that can make an add
+   * behave differently from any other.
+   */
   const saveConfig = trpc.pickem.saveConfig.useMutation({
     onSuccess: async () => {
-      setSlateOpen(false);
-      showToast("Slate saved", "info");
       await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
     },
     onError: (e) => showToast(e.message, "error"),
