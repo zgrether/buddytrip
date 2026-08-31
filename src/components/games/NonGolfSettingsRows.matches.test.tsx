@@ -199,7 +199,10 @@ describe("The Matches panel is golf's accordion, with the shapes summary (§3, i
     pointValue: null,
   });
 
-  const teamForSlot = (slot: "a" | "b") => (slot === "a" ? { name: "Red", color: "#ef4444" } : { name: "Blue", color: "#3b82f6" });
+  const teamForSlot = (slot: "a" | "b") =>
+    slot === "a"
+      ? { name: "Red", short_name: "RED", color: "#ef4444" }
+      : { name: "Blue", short_name: "BLU", color: "#3b82f6" };
 
   const panel = (draft: DraftMatchConfig[]) =>
     renderToStaticMarkup(

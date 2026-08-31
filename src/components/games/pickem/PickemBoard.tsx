@@ -70,7 +70,7 @@ export function PickemBoard({
   nameOf: (userId: string) => string;
   /** `memberIds` is what the unassigned note counts from — see below. It was
    *  already on the value the view passes; only this type narrowed it away. */
-  teams: { id: string; name: string; memberIds?: string[] }[];
+  teams: { id: string; name: string; shortName: string; memberIds?: string[] }[];
   teamOf: (userId: string) => string | null;
   /**
    * Identity for the head-to-head header, where the two people are the whole

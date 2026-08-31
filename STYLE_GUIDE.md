@@ -699,6 +699,48 @@ purposes and should not be unified.
 
 ---
 
+## Team names — subject slots vs label slots
+
+Every team has two names: `teams.name` (the full one, capped at 34 in the app —
+`src/lib/teamNameLimits.ts`) and `teams.short_name` (2–4 chars, `NOT NULL` with a
+`CHECK (char_length <= 4)` since migration 001, so it is always present).
+
+**The rule. Full name where the team is the SUBJECT. Short name where the team is
+a LABEL attached to something else.**
+
+- **Subject** — the team *is* the content. The cup header, the Edit Team modal,
+  the team chat room header, a sentence about the team ("Huge PNS Energy has
+  clinched"), a delete confirmation, an `aria-label`.
+- **Label** — the name identifies something else: it sits beside a `vs`, a score,
+  a chip, or an avatar; it heads a column; or it keys a row that is really about
+  a game, a placement, or a person.
+
+**The tiebreak, for the case that looks like both.** When a team's name appears
+*in a set alongside its peers*, it is a label — because the reader is comparing
+rows, not reading one. A standings row is scanned vertically against nine others,
+so the name is the key to a row rather than its content. This is what decides the
+cup standings row, the placement row, and the pick'em side cards, all of which are
+defensibly "about" a team.
+
+**Decided per slot, at build time.** Never measure the rendered text and choose,
+and never auto-shrink the font to fit. Both make a slot's appearance depend on how
+long one particular team's name happens to be, which is how a layout stops being
+predictable — the same reason nothing here grows to fill (see *Widths*).
+
+**A tight subject slot is a LAYOUT problem, not a naming one.** The cup header is
+the identity moment: it is where the crew reads the names they chose, and
+`HPE vs BS` there throws away the point of letting people name themselves. So it
+keeps the full name and was given a two-line reserve instead — a block that
+reserves both lines whether or not the second is used, bottom-aligned, clamped at
+two. Reach for that before reaching for the short name.
+
+**Why it is written down.** It was followed in five places and violated in six,
+and nothing said which was which — so each new component re-decided from scratch,
+and the ones that guessed "full" produced `Booty Hunters & Scurvy Hooke…` in a
+115px column. The rule existed only as an inline comment on one of the five.
+
+---
+
 ## Widths — the supported mobile floor, and what may stretch
 
 **412px is the supported mobile floor** — the Pixel 7 Pro viewport. It was the

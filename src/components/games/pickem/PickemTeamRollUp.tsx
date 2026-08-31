@@ -52,7 +52,13 @@ import type { ScoredPick, ScoredSlateGame } from "@/lib/pickemScoring";
 
 export interface RollUpTeam {
   id: string;
+  /** The full name. Used ONLY in the prose note ("X has clinched — …"), where
+   *  the team is the subject of a sentence. */
   name: string;
+  /** The 2–4 char short name. Used in every slot where the team labels a row
+   *  read against its peers — the side cards and the contributions headers.
+   *  See STYLE_GUIDE "Team names — subject slots vs label slots". */
+  shortName: string;
 }
 
 export function PickemTeamRollUp({
@@ -169,7 +175,9 @@ export function PickemTeamRollUp({
       {ranked.map((s, i) => (
         <SideCard
           key={s.team.id}
-          name={s.team.name}
+          /* SHORT — a ranked card in a stack of ranked cards, beside a 26px
+             score. Label slot. */
+          name={s.team.shortName}
           standing={s.standing}
           place={places[i]}
           /* `leaderId` returns null on a tie for the top, so this is already
@@ -188,7 +196,9 @@ export function PickemTeamRollUp({
       {ranked.map((s) => (
         <Contributions
           key={s.team.id}
-          teamName={s.team.name}
+          /* SHORT — an eyebrow labelling whose contributions these are,
+             opposite "N points from M sheets". Label slot. */
+          teamName={s.team.shortName}
           standing={s.standing}
           people={s.sheets.map(({ uid, picks }) => ({
             uid,

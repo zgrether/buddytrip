@@ -702,11 +702,18 @@ function NTeamRankedList({
           const total = teamTotals[team.id] ?? 0;
           const barWidth = leaderTotal > 0 ? Math.min(100, (total / leaderTotal) * 100) : 0;
           const isLeader = idx === 0 && total > 0;
+          // SHORT name: a standings row is a LABEL slot. The reader is scanning
+          // this column vertically against every other team's row — comparing,
+          // not reading one — so the name is the key to a row rather than its
+          // content. The name box is `w-[34%]` ≈ 93px after the dot and gap,
+          // which cannot hold a full name at any real length anyway, but the
+          // rule is what decides it: see STYLE_GUIDE "Team names — subject slots
+          // vs label slots".
           const dotName = (
             <>
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: team.color }} />
               <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                {team.name}
+                {team.short_name}
               </span>
             </>
           );

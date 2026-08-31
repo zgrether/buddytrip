@@ -189,7 +189,7 @@ export function MatchSetup({
   /** The team bound to a setup slot (side A → team[0], side B → team[1]) — drives
    *  the shared branded column header. Undefined in a standalone (non-2-team) game,
    *  where the header falls back to a neutral "Side A / Side B". */
-  teamForSlot: (slot: "a" | "b") => { name: string; color: string } | undefined;
+  teamForSlot: (slot: "a" | "b") => { name: string; short_name: string; color: string } | undefined;
   /** Ceiling on the number of matches — "add match" hides once reached. For 1v1
    *  this is the players-per-team cap (Task 3a); for 2v2 it's the generous 24
    *  ceiling (no team cap — see the call site's reasoning). */
@@ -344,11 +344,23 @@ export function MatchSetup({
     </>
   );
 
-  // The shared branded header team for a slot: the bound team's name + color in a
-  // 2-team competition, else a neutral "Side A/B" (a standalone game has no teams).
+  // The shared branded header team for a slot: the bound team's SHORT name +
+  // color in a 2-team competition, else a neutral "Side A/B" (a standalone game
+  // has no teams).
+  //
+  // SHORT, because this is a label slot — the name sits in a ~115px column beside
+  // a `vs`, identifying which column the rows below belong to. The full name is
+  // what used to be here, and at the supported 412px floor a real one truncated
+  // mid-phrase ("Booty Hunters & Scurvy Hooke…"). `HPE vs BS` fits at any width.
+  // See STYLE_GUIDE "Team names — subject slots vs label slots".
+  //
+  // The A/B fallback is already a label and stays as it is: six characters, and
+  // there is no team whose short name it could use.
   const headerTeam = (slot: "a" | "b") => {
     const t = teamForSlot(slot);
-    return t ?? { name: slot === "a" ? "Side A" : "Side B", color: "var(--color-bt-text-dim)" };
+    return t
+      ? { label: t.short_name, color: t.color }
+      : { label: slot === "a" ? "Side A" : "Side B", color: "var(--color-bt-text-dim)" };
   };
   const a = headerTeam("a");
   const b = headerTeam("b");
@@ -369,9 +381,9 @@ export function MatchSetup({
       >
         <span />
         <span />
-        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: a.color }}>{a.name}</span>
+        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: a.color }}>{a.label}</span>
         <span className="text-center" style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
-        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: b.color }}>{b.name}</span>
+        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: b.color }}>{b.label}</span>
         <span />
       </div>
 

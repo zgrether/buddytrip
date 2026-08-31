@@ -19,10 +19,15 @@ const TEAM_OF: Record<string, string> = {
   // x1 deliberately absent — a sheet on no team.
 };
 
+// The side cards render the SHORT name (label slot — a stack of ranked cards
+// read against each other), so the ordering assertions below look for these,
+// not for "Aces"/"Bears". Three characters rather than two: `orderOf` is a
+// plain substring search over the whole markup, and a two-letter token is short
+// enough to collide with something incidental in it.
 const team = (id: string, name: string) => ({
   id,
   name,
-  shortName: name.slice(0, 2).toUpperCase(),
+  shortName: name.slice(0, 3).toUpperCase(),
   color: "#123456",
   memberIds: Object.keys(TEAM_OF).filter((u) => TEAM_OF[u] === id),
 });
@@ -90,11 +95,11 @@ describe("PickemBoard — points mode", () => {
     const html = render({
       teams: [team("D", "Dogs"), team("C", "Cubs"), team("B", "Bears"), team("A", "Aces")],
     });
-    expect(orderOf(html, ["Aces", "Bears", "Cubs", "Dogs"])).toEqual([
-      "Aces",
-      "Bears",
-      "Cubs",
-      "Dogs",
+    expect(orderOf(html, ["ACE", "BEA", "CUB", "DOG"])).toEqual([
+      "ACE",
+      "BEA",
+      "CUB",
+      "DOG",
     ]);
   });
 
@@ -155,7 +160,7 @@ describe("PickemBoard — points mode", () => {
     expect(html).toContain("Team totals");
     expect(html).not.toContain(">Matches<");
     // ...and it is really the ORDERING, not just the heading.
-    expect(orderOf(html, ["Aces", "Bears", "Cubs", "Dogs"])).toEqual(["Aces", "Bears", "Cubs", "Dogs"]);
+    expect(orderOf(html, ["ACE", "BEA", "CUB", "DOG"])).toEqual(["ACE", "BEA", "CUB", "DOG"]);
   });
 
   it("still renders a MATCH LIST under match play with individual_matches", () => {
@@ -198,7 +203,7 @@ describe("PickemBoard — points mode", () => {
       sheets: { a1: sheet(4), b1: sheet(1) },
       distribution: [2, 1.5],
     });
-    expect(orderOf(html, ["Aces", "Bears"])).toEqual(["Aces", "Bears"]);
+    expect(orderOf(html, ["ACE", "BEA"])).toEqual(["ACE", "BEA"]);
     expect(html).toContain("2 pts");
     expect(html).toContain("1.5 pts");
   });
