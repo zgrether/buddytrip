@@ -115,6 +115,38 @@ describe("the slate list is display rows, not edit rows", () => {
       expect(html.match(new RegExp(`aria-label="${field}"`, "g")), field).toHaveLength(1);
     }
   });
+
+  it("every field's title is VISIBLE, not only a placeholder", () => {
+    /**
+     * The titles used to be placeholders, which vanish the moment there is a
+     * value — so the one time you need to know what a box holds is the one time
+     * nothing says. Each field now renders a real `<label>` above the input.
+     *
+     * Asserted as LABEL ELEMENTS, not as "the page contains the word". Every one
+     * of these strings is also an `aria-label` on the input beside it, so a
+     * substring check over the markup passes with the labels deleted — it would
+     * be reading the attribute it is meant to be independent of.
+     */
+    const html = render();
+    const labels = html.match(/<label[^>]*>([^<]*)<\/label>/g) ?? [];
+    const text = labels.map((l) => l.replace(/<[^>]*>/g, "").trim());
+
+    for (const field of ["Away team", "Home team", "Game time", "Spread Home", "Note"]) {
+      expect(text, `${field} has no visible label`).toContain(field);
+    }
+  });
+
+  it("placeholders are EXAMPLES now, and never repeat the label", () => {
+    // The split is what fixed the width: "Spread Home" in a 96px box rendered
+    // as "Spread Ho". A placeholder that restates its label is the old shape
+    // coming back, and it sets the field width by the longer of two jobs.
+    const html = render();
+    const placeholders = [...html.matchAll(/placeholder="([^"]*)"/g)].map((m) => m[1]);
+    expect(placeholders.length, "the form renders no placeholders at all").toBeGreaterThan(0);
+    for (const field of ["Away team", "Home team", "Game time", "Spread Home", "Note"]) {
+      expect(placeholders, `${field} is still named by its placeholder`).not.toContain(field);
+    }
+  });
 });
 
 describe("reorder is a mode", () => {

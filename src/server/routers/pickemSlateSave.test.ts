@@ -112,6 +112,64 @@ describe("save_pickem_config / set_pickem_phase", () => {
     expect(error?.message).toContain("BAD_MULTIPLIER");
   });
 
+  // ── building a slate one game at a time (write-on-change) ────────────────
+  /**
+   * #1204: adding a matchup ejected the runner from the modal, so a slate was
+   * built by reopening it between every addition — reported both as "it closes
+   * the picks modal immediately" and, counted a different way, as a cap at five
+   * games.
+   *
+   * The dismissal lived in the client and is fixed there. What these pin is the
+   * half underneath it: that the runner's ACTUAL sequence — one save per added
+   * game, each carrying the whole slate — accumulates. `PickemSlateModal.mutate`
+   * sends `onSave({ slate: next })` where `next` is the entire array, so these
+   * send cumulative arrays rather than deltas, which is what the real caller
+   * sends. A delta fixture would be measuring an endpoint the app never calls.
+   */
+
+  it("adds accumulate across successive saves — three in a row, all three persist", async () => {
+    const a = slateItem({ awayTeam: "Alabama", homeTeam: "Georgia" });
+    const b = slateItem({ awayTeam: "Ohio St", homeTeam: "Michigan" });
+    const c = slateItem({ awayTeam: "Texas", homeTeam: "Oklahoma" });
+
+    // Three, not one: one passes against a build that loses everything after the
+    // first, and against one that only ever stores the most recent game.
+    for (const slate of [[a], [a, b], [a, b, c]]) {
+      const { error } = await save({ slate });
+      expect(error).toBeNull();
+    }
+
+    const rows = await readSlate();
+    expect(rows.map((r) => r.away_team)).toEqual(["Alabama", "Ohio St", "Texas"]);
+    expect(rows.map((r) => r.id)).toEqual([a.id, b.id, c.id]);
+    expect(rows.map((r) => r.display_order)).toEqual([0, 1, 2]);
+  });
+
+  it("keeps accumulating past five and past a full-size slate — there is no cap", async () => {
+    /**
+     * Five and six are named because those are the counts the bug was reported
+     * at; sixteen because that is a real slate, and nobody had built one at size
+     * before this. The RPC's own ceiling is `.max(200)` in the zod input, so if
+     * anything here refuses it is a limit nobody meant to write.
+     */
+    const games = Array.from({ length: 16 }, (_, i) =>
+      slateItem({ awayTeam: `Away ${i + 1}`, homeTeam: `Home ${i + 1}` })
+    );
+
+    for (let n = 1; n <= games.length; n++) {
+      const { error } = await save({ slate: games.slice(0, n) });
+      expect(error, `save refused at game ${n}`).toBeNull();
+      // Asserted EVERY step, not only at the end. A cap that silently dropped
+      // the overflow would leave a correct-looking prefix, and a final-count
+      // check alone cannot tell "16 stored" from "5 stored twelve times".
+      const seen = await readSlate();
+      expect(seen.length, `stored count after adding game ${n}`).toBe(n);
+    }
+
+    const rows = await readSlate();
+    expect(rows.map((r) => r.away_team)).toEqual(games.map((g) => g.awayTeam));
+  }, 60_000);
+
   // ── the decision this migration turns on ─────────────────────────────────
 
   it("REOPEN THEN SAVE KEEPS THE PICKS on games that survived", async () => {
