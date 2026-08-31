@@ -2089,15 +2089,41 @@ export function PickemSlateRow({
       testId="row-the-picks"
       state={slateCount === 0 ? "empty" : "resolved"}
       subtitle={
-        slateCount === 0
-          ? "No games yet — this is what people pick from"
-          : [
-              `${slateCount} game${slateCount === 1 ? "" : "s"}`,
-              weightedCount > 0 ? `${weightedCount} weighted` : null,
-              useConfidence ? `confidence ${slateCount}–1` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")
+        <>
+          {slateCount === 0
+            ? "No games yet — this is what people pick from"
+            : [
+                `${slateCount} game${slateCount === 1 ? "" : "s"}`,
+                weightedCount > 0 ? `${weightedCount} weighted` : null,
+                useConfidence ? `confidence ${slateCount}–1` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+          {/*
+            ── STOPGAP (#1208). REMOVE THIS WHEN THE SLATE MOVES. ────────────
+            Expectation management, not the fix.
+
+            The slate writes on change and everything else on this page is a
+            draft committed by the bar at the bottom, so Cancel reverts the
+            switches and keeps the games — a PARTIAL undo, on edits made
+            seconds apart on one screen. This line does not repair that. It
+            only stops the reader being surprised by it, and it says so on the
+            way IN, because the modal's own footer says the same thing and is
+            only readable once you are already inside.
+
+            It names Cancel deliberately — that is the control that misled
+            somebody, and a note that said merely "saves immediately" would
+            leave them to draw the wrong conclusion about the button anyway.
+            That coupling to this container is fine BECAUSE it is temporary:
+            the fix is that the slate is CONTENT and belongs in the game
+            page's admin panel rather than behind the settings door, at which
+            point there is no Cancel to be wrong about and this line goes with
+            it.
+          */}
+          <span className="mt-0.5 block" style={{ color: "var(--color-bt-text-dim)" }}>
+            Saves as you go — Cancel below won&rsquo;t undo it.
+          </span>
+        </>
       }
       onClick={onOpenSlate}
     />
