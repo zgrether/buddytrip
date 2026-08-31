@@ -1,19 +1,39 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
+import { anyGameStarted } from "./gameStarted";
 
 /**
- * Roster-removal lock (team-identity integrity). Once the first score is entered
- * in ANY game of a competition, that competition's rosters freeze for REMOVALS —
+ * Roster-removal lock (team-identity integrity). Once the first RESULT lands in
+ * ANY game of a competition, that competition's rosters freeze for REMOVALS —
  * removing a player, trading/moving them, or deleting a team. ADDS stay allowed
  * (an add can't orphan anyone in an existing match). Prevention replaces the
  * earlier flip-to-setup recovery: a removal can't invalidate a live game if the
  * removal is blocked once scoring starts.
  *
- * The "scored" signal is `score_entries` existence — the SAME boundary
- * `applyCourse` freezes the course snapshot on, not a parallel invention.
+ * ── The signal was `score_entries` and that was wrong for three formats ────
+ *
+ * It used to count `score_entries` rows directly, described here as "the SAME
+ * boundary `applyCourse` freezes the course snapshot on, not a parallel
+ * invention". The reuse was real; the table was not the boundary. Three formats
+ * write no `score_entries` at all — outcome-mode match play
+ * (`match_hole_outcomes`), pick'em (`pickem_slate_games.result`), and non-golf
+ * Matches (a declared `game_matches.result`) — so this unlocked the rosters of
+ * a competition whose games were well underway (#1018).
+ *
+ * `game_started` is the boundary with every format's arm in it, and taking it
+ * from there means the next format is covered without this file being touched.
+ * See `gameStarted.ts` for why the predicate is shared rather than copied.
+ *
+ * ── This guard is COMPETITION-scoped, so it needs no membership question ───
+ *
+ * Its sibling `findContributionBlockers` had TWO gaps for pick'em: it could not
+ * see that the game had started, and it could not see that the person was IN
+ * it. Only the first applies here — this function takes no user id and asks
+ * nothing about one. "Has anything in this cup begun?" is answered by the view
+ * alone.
  */
 
-/** Has ANY game in this competition recorded a score yet? (first-score signal) */
+/** Has ANY game in this competition begun producing results? */
 export async function competitionHasScore(
   supabase: SupabaseClient,
   competitionId: string,
@@ -23,12 +43,7 @@ export async function competitionHasScore(
     .select("id")
     .eq("competition_id", competitionId);
   const ids = (games ?? []).map((g) => g.id as string);
-  if (ids.length === 0) return false;
-  const { count } = await supabase
-    .from("score_entries")
-    .select("id", { count: "exact", head: true })
-    .in("game_id", ids);
-  return (count ?? 0) > 0;
+  return anyGameStarted(supabase, ids);
 }
 
 export const ROSTER_LOCKED_MESSAGE =

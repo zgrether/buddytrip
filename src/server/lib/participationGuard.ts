@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isPickemGame } from "../../lib/resultStrategy";
+import { startedGameIds } from "./gameStarted";
 
 /**
  * The "don't destroy history by removing a person" guard (#951, extended #997).
@@ -27,9 +29,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *   | own game result (result) | `game_results.entity_id` — theirs or their side's |
  *   | decided match (result)   | `game_matches.result IS NOT NULL` or `status='complete'`, with them a side |
  *   | decided bracket (result) | `bracket_matches.winner_entrant_id IS NOT NULL`, their entrant a side |
- *   | played game (result)     | `game_participants` row in a game anyone has PLAYED |
+ *   | played game (result)     | `game_participants` row, OR a `pickem_picks` sheet, in a game anyone has PLAYED |
  *   | draw only (PLAN)         | `bracket_entrant_members` with no decided match involving them |
  *   | slotted only (PLAN)      | `game_participants` in a game nobody has played |
+ *   | sheet only (PLAN)        | `pickem_picks` in a game with no slate result yet |
  *   | receipts (always result) | `expenses.paid_by_user_id`, `expense_splits.user_id` |
  *
  * Note it never reads `bracket_matches.bracket`. The question is "does a decided
@@ -72,6 +75,33 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * `game_matches` either. Every column this guard read was empty, at any side
  * shape, for a game seventeen holes in.
  *
+ * ── AND THE FIX FOR IT WAS ITSELF A THIRD COPY (#1151/#1018) ───────────────
+ * #1016 answered "has anyone played this" by adding the second table beside the
+ * first. That was the right answer to the wrong-sized question: it enumerated
+ * the shapes that existed THEN, and two formats have arrived since that write
+ * neither table. A pick'em records outcomes in `pickem_slate_games.result` and
+ * non-golf Matches declares `game_matches.result`, so the two-source probe went
+ * on reporting "nobody has played this" for a pick'em at every stage of its
+ * life — a live one, and equally a FINALIZED one already paying the cup.
+ *
+ * The list is now `public.game_started` (migrations 161/170) and this guard
+ * reads it through `gameStarted.ts` rather than keeping a private copy of the
+ * list. That is what makes the next format's arrival a no-op here instead of a
+ * fourth instance: the sweep unit is the PREDICATE, and it now has one home.
+ *
+ * Note the symmetry with the paragraph above. #1016's lesson was that the
+ * derivation already existed elsewhere and should have been reused; the same
+ * sentence applies to #1016's own fix, one level out.
+ *
+ * ── A PICK'EM PLAYER IS NOT ALWAYS A `game_participants` ROW ───────────────
+ * Knowing the game started is only half of it — the guard must also see that
+ * this person is IN it, and for pick'em the participant row is present in only
+ * one of the three shapes. `save_pickem_matches` reconciles `game_participants`
+ * when it writes the pairing, so a PAIRED head-to-head player has one. A
+ * POINTS-mode game has no matches at all, and an UNPAIRED player's sheet
+ * deliberately outlives their pairing, so neither has a row. The sheet is the
+ * membership signal that covers all three.
+ *
  * ── Money is a result the moment it exists ────────────────────────────────
  * A receipt has no plan phase: it records money that already moved. Both
  * directions block — the payer, and everyone split into it. The second is the
@@ -112,6 +142,15 @@ export interface GameBlocker {
   reasons: BlockReason[];
   /** Real per-hole scores exist for THEM. The half that is irreplaceable. */
   hasScores: boolean;
+  /**
+   * Drives the refusal's suggested next move, and nothing else.
+   *
+   * A pick'em has no score to enter — the equivalent affordance is proxy pick
+   * entry (`save_pickem_picks_for`). The message named only the golf one until
+   * #1151 made this branch reachable, which is a refusal pointing at a button
+   * that does not exist on the screen the reader would go to.
+   */
+  isPickem: boolean;
 }
 
 export interface ContributionBlockers {
@@ -141,7 +180,15 @@ export async function findContributionBlockers(
   userId: string
 ): Promise<ContributionBlockers> {
   const [{ data: games, error: gamesErr }, paid, splits] = await Promise.all([
-    supabase.from("games").select("id, name").eq("trip_id", tripId),
+    // `game_type_id` + `competition_format` are the two inputs `isPickemGame`
+    // takes. Only the refusal's suggested-move clause reads them; no predicate
+    // in this guard branches on format, and none should — "does a result
+    // involve this person" is format-independent, which is what let the view
+    // absorb the format question in the first place.
+    supabase
+      .from("games")
+      .select("id, name, game_type_id, competition_format")
+      .eq("trip_id", tripId),
     supabase
       .from("expenses")
       .select("id", { count: "exact", head: true })
@@ -167,7 +214,7 @@ export async function findContributionBlockers(
   // Everything here is answerable from their user id alone. The queries that
   // need to know their SIDE ids wait for round 2, because a doubles side id is
   // only discoverable from the participant rows this round returns.
-  const [parts, decidedMatches, entrantRows] = await Promise.all([
+  const [parts, decidedMatches, entrantRows, sheets] = await Promise.all([
     supabase
       .from("game_participants")
       .select("game_id, play_group_id")
@@ -184,11 +231,36 @@ export async function findContributionBlockers(
       .select("game_id, result, status, side_a, side_b")
       .in("game_id", gameIds),
     supabase.from("bracket_entrant_members").select("entrant_id").eq("user_id", userId),
+    // PICK'EM MEMBERSHIP (#1151). A sheet is the participation, and it is the
+    // only signal for two of the three shapes a pick'em player comes in:
+    //
+    //   paired head-to-head  `save_pickem_matches` reconciles `game_participants`
+    //                        in the same transaction as the pairing, so the row
+    //                        above already finds them
+    //   POINTS MODE          the format has no matches at all, so nobody in the
+    //                        game has a participant row
+    //   UNPAIRED in H2H      the sheet deliberately SURVIVES being unpaired, so
+    //                        the participant row is gone and the sheet is not
+    //
+    // A ROW IS A PICK. `pickem_picks.pick` is NOT NULL (migration 146, verified
+    // against the live schema and never relaxed — 166's header states the
+    // consequence deliberately: "no row exists for a game with no pick. That is
+    // the accepted cost of keeping 'has any rows' meaning 'has submitted
+    // something'"). Every row is written by `_pickem_write_sheet` from an item
+    // the person or their proxy supplied; nothing seeds a row per participant,
+    // so this cannot degenerate into blocking the whole roster.
+    //
+    // Rows, not a `head:true` count, because the answer needed is WHICH games —
+    // and unlike the played-probe this is filtered to ONE user, so the reply is
+    // bounded by (their games × slate size), tens of rows, not the unfiltered
+    // hundreds the 1000-row cap note below is about.
+    supabase.from("pickem_picks").select("game_id").eq("user_id", userId).in("game_id", gameIds),
   ]);
   for (const [what, res] of [
     ["game participants", parts],
     ["matches", decidedMatches],
     ["bracket entrants", entrantRows],
+    ["pick'em sheets", sheets],
   ] as const) {
     if (res.error) throw new Error(`Failed to read ${what}: ${res.error.message}`);
   }
@@ -205,6 +277,11 @@ export async function findContributionBlockers(
     const pgId = r.play_group_id as string | null;
     if (pgId) mySideIds.add(pgId);
   }
+  // A sheet makes them a member of the game exactly as a participant row does.
+  // NOT added to `mySideIds`: a pick'em side is `{type:"user", id:<user_id>}`,
+  // so `userId` already covers them there — a sheet mints no second id the way
+  // a doubles `play_group` does.
+  for (const r of sheets.data ?? []) myGameIds.add(r.game_id as string);
   const sideIds = [...mySideIds];
 
   // ── Round 2: what has been PLAYED, and what is recorded under their sides ──
@@ -218,30 +295,29 @@ export async function findContributionBlockers(
   // A guard that gets more permissive the more a trip is used is worse than no
   // guard. `head: true` returns the count and no rows, so it cannot be capped.
   //
-  // The probe is per game they PARTICIPATE in (typically one to five), not per
-  // game on the trip, which is what keeps the fan-out small.
-  const probeGameIds = [...myGameIds];
-  const [ownScores, results, playedFlags] = await Promise.all([
+  // ONE read of `game_started` (migrations 161/170) for the whole trip, which
+  // REPLACES the per-game fan-out that used to live here — two `head:true`
+  // counts per game they participate in, over `score_entries` and
+  // `match_hole_outcomes`.
+  //
+  // Those two tables are the golf shapes and only the golf shapes. A pick'em
+  // records its outcomes in `pickem_slate_games.result` and non-golf Matches in
+  // `game_matches.result`, so the old probe answered "nobody has played this"
+  // for a pick'em at EVERY stage of its life — including one already finalized
+  // and paying the cup (#1151). The view carries an arm per format, and 161's
+  // header is explicit that a new format adds its arm there rather than a
+  // fourth query at a call site: this is that call site taking it up.
+  //
+  // Also strictly cheaper — one request instead of 2N, and the 1000-row cap the
+  // note above is about cannot reach a `SELECT DISTINCT` over game ids.
+  const [ownScores, results, started] = await Promise.all([
     supabase
       .from("score_entries")
       .select("game_id")
       .in("participant_id", sideIds)
       .in("game_id", gameIds),
     supabase.from("game_results").select("game_id").in("entity_id", sideIds).in("game_id", gameIds),
-    Promise.all(
-      probeGameIds.map(async (gid) => {
-        // TWO sources, because the score has two storage shapes: `score_entries`
-        // for gross entry, `match_hole_outcomes` for outcome entry. Either one
-        // alone answers "nobody has played this" for the other mode's games.
-        const [s, o] = await Promise.all([
-          supabase.from("score_entries").select("id", { count: "exact", head: true }).eq("game_id", gid),
-          supabase.from("match_hole_outcomes").select("id", { count: "exact", head: true }).eq("game_id", gid),
-        ]);
-        if (s.error) throw new Error(`Failed to count scores in ${gid}: ${s.error.message}`);
-        if (o.error) throw new Error(`Failed to count hole outcomes in ${gid}: ${o.error.message}`);
-        return [gid, (s.count ?? 0) + (o.count ?? 0) > 0] as const;
-      })
-    ),
+    startedGameIds(supabase, gameIds),
   ]);
   if (ownScores.error) throw new Error(`Failed to read score entries: ${ownScores.error.message}`);
   if (results.error) throw new Error(`Failed to read game results: ${results.error.message}`);
@@ -257,9 +333,15 @@ export async function findContributionBlockers(
   const scoredGameIds = new Set((ownScores.data ?? []).map((r) => r.game_id as string));
   scoredGameIds.forEach((id) => add(id, "scores"));
 
-  // PLAN vs RESULT: a participant row only blocks once the game has been played
-  // by somebody. Slotted into an unplayed round is removable.
-  for (const [gid, played] of playedFlags) if (played) add(gid, "played-game");
+  // PLAN vs RESULT: membership only blocks once the game has been played by
+  // somebody. Slotted into an unplayed round — or holding a sheet for a slate
+  // nobody has resolved — is removable.
+  //
+  // Restricted to games they are IN, deliberately: `started` covers the whole
+  // trip because one batch read is cheaper than a filtered one, but a game
+  // being underway is not a reason to keep someone who has nothing to do with
+  // it.
+  for (const gid of myGameIds) if (started.has(gid)) add(gid, "played-game");
 
   for (const r of results.data ?? []) add(r.game_id as string, "result");
 
@@ -295,11 +377,22 @@ export async function findContributionBlockers(
   const nameOf = new Map(
     (games ?? []).map((g) => [g.id as string, (g.name as string | null) ?? "Untitled game"])
   );
+  // Through the shared resolver, not a `game_type_id === "gtt_pickem"` literal:
+  // the one answer to "is this a pick'em" lives in `resultStrategy.ts`, and a
+  // second copy here is the drift this whole PR is about, one layer up.
+  const pickemIds = new Set(
+    (games ?? [])
+      .filter((g) =>
+        isPickemGame(g.game_type_id as string | null, g.competition_format as string | null)
+      )
+      .map((g) => g.id as string)
+  );
   const blockers: GameBlocker[] = [...reasons.entries()].map(([gameId, set]) => ({
     gameId,
     gameName: nameOf.get(gameId) ?? "Untitled game",
     reasons: [...set],
     hasScores: scoredGameIds.has(gameId),
+    isPickem: pickemIds.has(gameId),
   }));
 
   return { games: blockers, ...money };
@@ -353,13 +446,39 @@ export function contributionRefusalMessage(
       ? clauses[0]
       : `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}`;
 
-  // The next move is category-aware. "Enter a score for them" is the documented
+  // ── The next move is category-aware, and now FORMAT-aware ─────────────────
+  //
+  // The category half came first: "enter a score for them" is the documented
   // workaround (GAME_FORMATS.md) for someone who can't play, and it is real
   // advice when a GAME is the blocker — but it is nonsense when the blocker is
   // a receipt, and a suggestion that doesn't apply is the same dead end as no
   // suggestion at all.
+  //
+  // The FORMAT half is #1151. A pick'em has no score to enter; its equivalent
+  // is proxy pick entry (`save_pickem_picks_for`). Until this PR a pick'em
+  // could not block at all, so the golf-only clause was never wrong on screen —
+  // making it reachable is what turned it into a refusal that sends the reader
+  // looking for a control that is not there, which is the failure CLAUDE.md
+  // records under "a refusal must name an action the reader can take".
+  //
+  // ONE clause covering both actions rather than two list items. The blocking
+  // games are named directly above this sentence with their own markers, so a
+  // reader going looking finds the right affordance per game; splitting it
+  // would make a three-item list read as four unrelated options and cost
+  // scannability for precision nobody needs. A generic "enter their results for
+  // them" was the other candidate and is worse than either — it names no button
+  // at all, which is the very thing this clause exists to avoid.
+  const anyPickem = b.games.some((g) => g.isPickem);
+  const anyOther = b.games.some((g) => !g.isPickem);
+  const enterClause =
+    anyPickem && anyOther
+      ? "enter a score or picks for them if they can't play"
+      : anyPickem
+        ? "enter picks for them if they can't play"
+        : "enter a score for them if they can't play";
+
   const moves = [
-    b.games.length > 0 ? "enter a score for them if they can't play" : null,
+    b.games.length > 0 ? enterClause : null,
     "rename them if the name is wrong",
     "leave them on the roster",
   ].filter((x): x is string => x !== null);
