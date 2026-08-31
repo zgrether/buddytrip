@@ -71,7 +71,6 @@ import { ListChecks, Swords } from "lucide-react";
 import {
   deadlineBlocksReopen,
   msUntilDeadline,
-  picksEverOpened,
   picksOpen,
   picksRevealed,
   pickemClosure,
@@ -1785,7 +1784,6 @@ export function PickemGameView() {
         // `save_pickem_config` already supports.
         // Warn only if there is something to lose: rankings exist once picks
         // have been opened, and only when confidence is on.
-        rankedSheetsExist={picksEverOpened(clock) && q.data.settings.useConfidence}
         onSave={(next) => saveConfig.mutate({ tripId: tripId!, gameId, slate: next.slate })}
       />
 

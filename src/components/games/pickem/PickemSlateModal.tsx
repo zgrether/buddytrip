@@ -131,7 +131,6 @@ export function PickemSlateModal({
   onClose,
   slate,
   editable,
-  rankedSheetsExist,
   saving,
   onSave,
 }: {
@@ -146,16 +145,6 @@ export function PickemSlateModal({
    * attached teaches nobody why.
    */
   editable: boolean;
-  /**
-   * True when ranked sheets may exist — picks have been opened at least once
-   * and confidence is on.
-   *
-   * Only used to decide whether to WARN. The clear itself is server-side, in
-   * `save_pickem_config`, keyed on the id set actually changing (migration
-   * 156). This flag deliberately cannot suppress it: a screen that decides
-   * whether data is destroyed is how the two get out of step.
-   */
-  rankedSheetsExist: boolean;
   saving: boolean;
   onSave: (next: { slate: SlateDraftGame[] }) => void;
 }) {
@@ -200,25 +189,6 @@ export function PickemSlateModal({
    * people who were about to lose nothing, and the actual edit that did the
    * damage carried no warning at all.
    */
-  /**
-   * ── THE WARNING COMES FIRST NOW, BECAUSE THE WRITE DOES ───────────────────
-   *
-   * It used to be `rankedSheetsExist && slateSetChanged(slate, draft)` — shown
-   * beside the Save button once an edit had already changed the set. With every
-   * change persisting there is no such moment: by the time the set has changed,
-   * the rankings are already cleared.
-   *
-   * So it is the STATE that makes it true, not the edit that would trigger it:
-   * rankings exist and this slate is editable. That is the window where a slate
-   * change costs something — after a lock, with sheets already ranked — and it
-   * is a caution to read before touching anything rather than a confirmation
-   * after.
-   *
-   * Not per-change, deliberately. A warning that reappears on every tap is the
-   * one people learn to look past, which is the failure this feature has already
-   * corrected twice.
-   */
-  const warnAboutRankings = editable && rankedSheetsExist;
   /**
    * TWO independent forms, one component.
    *
@@ -501,23 +471,6 @@ export function PickemSlateModal({
       {/* `pb-4` stays: it is the gap between the last row and the footer's own
           border, and the footer is no longer inside this box to be inset by it. */}
       <div className="flex flex-col gap-3 pb-4">
-        {warnAboutRankings && (
-          <p
-            data-testid="pickem-slate-clears-rankings"
-            className="rounded-xl px-3 py-2.5"
-            style={{
-              background: "var(--color-bt-warning-faint)",
-              border: "1px solid var(--color-bt-warning-border)",
-              fontSize: TYPE_SCALE.caption,
-              lineHeight: 1.5,
-              color: "var(--color-bt-text)",
-            }}
-          >
-            Sheets are already ranked. Adding or removing a game clears
-            everyone&rsquo;s ranking — their picks are kept, but they will need to
-            put them back in order. Editing a game&rsquo;s details does not.
-          </p>
-        )}
 
         {!editable && (
           <div
@@ -528,19 +481,20 @@ export function PickemSlateModal({
               fontSize: TYPE_SCALE.bodyDense,
             }}
           >
-            {/* IT NAMED A CONTROL THAT DOES NOT EXIST. This read "Reopen the
-                slate from settings" — `reopen` was retired in migration 156,
-                and the only way back is Stop on the game page, which is where
-                the runner already is.
+            {/* THE ONE BANNER. Its predecessor named a control that did not
+                exist ("Reopen the slate from settings" — `reopen` was retired
+                in migration 156), and then, after 174, overstated the cost: it
+                said an ADD clears rankings, which stopped being true.
 
-                And it overstated the cost. Rankings clear when the slate's ID
-                SET changes, not when it is unfrozen: `save_pickem_config`
-                compares before and after, so reordering, re-pricing or renaming
-                every game on the slate costs nobody a re-rank. Saying otherwise
-                deters a runner from a fix that is free. */}
-            <b>Picks are open, so the slate is frozen.</b> Close picking on the
-            game page to change it. Nothing is lost unless you add or remove a game —
-            that is what clears everyone&rsquo;s ranking.
+                It no longer explains what a slate change costs, because the
+                cost is now refused rather than warned about (migration 175). A
+                removal that would destroy rankings raises `SLATE_RANKED` at the
+                tap, and that refusal names its own way out. A standing warning
+                read on the way in cannot be more accurate than a refusal
+                delivered at the moment of the action, and having both is how
+                two statements about one rule drift apart. */}
+            <b>Picks are open, the slate is locked.</b> Close picking on the game
+            page to change it.
           </div>
         )}
 

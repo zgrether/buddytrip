@@ -230,20 +230,32 @@ export function pickemPhase(clock: PickemClock, now: number = Date.now()): Picke
  * side effect of an action whose stated purpose was making the slate editable.
  * Reopen and change nothing, and sixteen rankings were destroyed for nothing.
  *
- * The consequence belongs to the EDIT, not to the mode. Adding or removing a
- * game is what invalidates a ranking; opening the door is not. So `reopen` is
- * gone (migration 156), the slate is editable in `building` AND `locked`, and
- * the clear happens inside `save_pickem_config` when the slate's id SET
- * actually changes.
+ * The consequence belongs to the EDIT, not to the mode. So `reopen` is gone
+ * (migration 156), the slate is editable in `building` AND `locked`, and the
+ * consequence lives inside `save_pickem_config`.
+ *
+ * WHICH edit, though, has since narrowed twice, and this comment said "adding
+ * or removing" for both of them:
+ *
+ *   - 174 — an ADD costs nothing. Migration 166 made a partial sheet legal
+ *     (ranks within 1..N and distinct; exactly-1..N only when complete), so
+ *     growing the slate leaves every existing rank valid with nothing to
+ *     invalidate. Only a REMOVE can strand a rank above the new N.
+ *   - 175 — a REMOVE that would strand one is now REFUSED rather than
+ *     absorbed, because picks are closed by then and nobody could re-rank
+ *     (#1208). The clear survives for the confidence-off case, where stale
+ *     ranks are cleaned up and no ranking is lost.
  *
  * The runner's route back into a live game is therefore `unlock`, which now
  * costs nothing on its own — and `picks_opened_at` and each pick's
  * `updated_at` survive, since neither was ever reopen's business.
  *
- * Lock point 2 — the first RESULT freezing the slate against the runner — is a
- * separate trigger on a separate axis and is NOT expressible here: results do
- * not exist until Phase 5, and this module deliberately knows nothing about
- * them. When it lands it ANDs with this; it does not replace it.
+ * Lock point 2 — a RESULT freezing the slate against the runner — is a separate
+ * trigger on a separate axis and is still NOT expressible here: this module
+ * knows only the clock. It landed in migration 175 as a per-CONTEST rule (a
+ * contest carrying a result cannot be removed) rather than as a whole-slate
+ * mode, so it ANDs with this inside the RPC and does not replace it — which is
+ * what makes it degrade correctly if results ever start arriving live.
  */
 export function slateEditable(clock: PickemClock, now: number = Date.now()): boolean {
   return !picksOpen(clock, now);
