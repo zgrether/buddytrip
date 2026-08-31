@@ -405,8 +405,24 @@ describe("save_pickem_picks (migration 150)", () => {
     return res;
   };
 
+  /**
+   * Migration 175 REFUSES a post-lock removal while ranks are stored and
+   * scoring (`SLATE_RANKED`) — that refusal has its own cases in
+   * `pickemSlateSave.test.ts`. The two removal cases below are about what the
+   * removal DOES when it is permitted: the FK cascade, and the clear reaching
+   * every participant. Turning confidence off is what keeps them on that path,
+   * and it leaves the stored ranks in place (the settings arm writes
+   * `pickem_games` only), so the clear they assert is still the thing running.
+   */
+  const disableConfidence = () =>
+    ctx.authedClient("owner").rpc("save_pickem_config", {
+      p_game_id: gameId,
+      p_payload: { settings: { useConfidence: false } },
+    });
+
   it("REMOVING a game keeps every surviving pick and clears every ranking", async () => {
     await save(sheet({ 0: { pick: "away" }, 3: { pick: "away" } }));
+    await disableConfidence();
 
     const { error } = await saveSlate(slateIds.slice(1));
     expect(error).toBeNull();
@@ -439,6 +455,7 @@ describe("save_pickem_picks (migration 150)", () => {
     // Clearing only the caller's would look correct from the only screen he has.
     await save(sheet(), "member");
     await save(sheet(), "owner");
+    await disableConfidence();
 
     await saveSlate(slateIds.slice(1));
 

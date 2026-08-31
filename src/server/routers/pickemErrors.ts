@@ -53,6 +53,8 @@ export type PickemErrorCode =
   | "PICKEM_SCORED"
   | "PICKS_CLOSED"
   | "RESULTS_RECORDED"
+  | "SLATE_RANKED"
+  | "SLATE_CONTEST_SCORED"
   | "SLATE_GAME_NOT_FOUND"
   | "SLATE_LOCKED"
   | "UNKNOWN_SLATE_GAME";
@@ -75,6 +77,26 @@ export const PICKEM_ERRORS: Record<PickemErrorCode, Arm> = {
     code: "CONFLICT",
     message:
       "Picks are open, so the slate and its scoring settings are frozen. Close picking first — nothing is lost unless the slate itself changes.",
+  },
+  SLATE_RANKED: {
+    code: "CONFLICT",
+    // Migration 175. Removing a contest would null every ranking, and picks are
+    // closed by the time this can fire, so nobody could put them back.
+    //
+    // Names the exit IN ORDER, because the order is forced: 165 refuses `unlock`
+    // while any result stands, so the results have to go first. "Reset scores"
+    // is deliberately NOT named — clearing the results one by one is ungated
+    // below a finalize (167) and does strictly less.
+    message:
+      "Game slate is locked, clear the results and reopen picking to unlock it.",
+  },
+  SLATE_CONTEST_SCORED: {
+    code: "CONFLICT",
+    // Migration 175's other arm, reachable with confidence OFF where there is no
+    // ranking to protect. The remedy is that ONE contest's result, not the
+    // game's — a narrower action than SLATE_RANKED's, which is why it is a
+    // separate code rather than a shared vaguer string.
+    message: "That contest has a result. Clear it before removing the contest.",
   },
   EMPTY_SLATE: {
     code: "BAD_REQUEST",

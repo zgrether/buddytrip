@@ -188,6 +188,14 @@ describe("save_pickem_config / set_pickem_phase", () => {
     // Locking is now the whole of "let me edit this": the slate is frozen only
     // while picks are OPEN, and locking on its own destroys nothing.
     await phase("lock");
+
+    // Confidence OFF, because migration 175 REFUSES a post-lock removal while
+    // ranks are stored and scoring. This test is about the UPSERT — that a
+    // survivor keeps its pick where a clean-replace would cascade it away — and
+    // that property is independent of confidence. The removal path with ranks
+    // live has its own case below (`SLATE_RANKED`).
+    await save({ settings: { useConfidence: false } });
+
     // The runner edits the slate: keeps one game, drops the other, adds a third.
     const added = slateItem({ awayTeam: "Added" });
     const { error } = await save({ slate: [keep, added] });
@@ -305,34 +313,95 @@ describe("save_pickem_config / set_pickem_phase", () => {
     expect(count).toBe(5);
   });
 
-  it("a REMOVE after the lock still clears them — the guard against over-narrowing", async () => {
+  it("a REMOVE after the lock is REFUSED — #1208", async () => {
     const games = await lockedSheetOfFour();
 
-    // Dropping game index 1 strands its rank, and leaves rank 4 above the new
-    // N=3. That sheet is genuinely invalid, so today's clear is kept.
+    // 174 kept the clear for removals and left the removal itself permitted, so
+    // this dropped a contest and nulled every rank silently. 175 refuses it.
     const { error } = await save({ slate: [games[0], games[2], games[3]] });
+    expect(error?.message ?? "").toContain("SLATE_RANKED");
+
+    // Refused means NOTHING moved — not the ranks, and not the slate. A guard
+    // that raised after the DELETE would leave the contest gone and the ranks
+    // intact, which is worse than either outcome on its own.
+    expect(await ranks()).toEqual({
+      [games[0].id]: 1,
+      [games[1].id]: 2,
+      [games[2].id]: 3,
+      [games[3].id]: 4,
+    });
+    const { count } = await ctx.admin
+      .from("pickem_slate_games")
+      .select("*", { count: "exact", head: true })
+      .eq("game_id", gameId);
+    expect(count).toBe(4);
+  });
+
+  it("a removal is ALLOWED once confidence is OFF, and the stale ranks are cleared", async () => {
+    /**
+     * The case that kills the obvious wrong build — arm (a) without its
+     * `use_confidence` term. Turning confidence off does NOT null stored ranks
+     * (the settings arm writes `pickem_games` only), so a guard that tested
+     * `confidence IS NOT NULL` alone would refuse this forever, protecting
+     * numbers that no longer score anything.
+     *
+     * It is also the path on which 174's clear is still live rather than a
+     * backstop: the removal goes through and nulls exactly those stale ranks.
+     */
+    const games = await lockedSheetOfFour();
+    await save({ settings: { useConfidence: false } });
+
+    const { error } = await save({ slate: [games[0], games[1], games[2]] });
     expect(error).toBeNull();
 
     expect(await ranks()).toEqual({
       [games[0].id]: null,
+      [games[1].id]: null,
       [games[2].id]: null,
-      [games[3].id]: null,
     });
   });
 
-  it("a REPLACE clears too — it removes an id, whatever else it also does", async () => {
+  it("removing a JUDGED contest is refused even with confidence off", async () => {
+    /**
+     * Arm (b), and the case a build with only arm (a) passes. With confidence
+     * off there is no ranking to protect, but dropping a contest somebody has
+     * already judged still discards that result silently.
+     */
+    const games = await lockedSheetOfFour();
+    await save({ settings: { useConfidence: false } });
+    const res = await ctx.authedClient("owner").rpc("set_pickem_result", {
+      p_game_id: gameId,
+      p_slate_game_id: games[3].id,
+      p_result: "home",
+    });
+    expect(res.error).toBeNull();
+
+    const { error } = await save({ slate: [games[0], games[1], games[2]] });
+    expect(error?.message ?? "").toContain("SLATE_CONTEST_SCORED");
+
+    // Removing an UNJUDGED one, same game, same breath: still fine. The arm is
+    // scoped to the contests leaving, not to the game having any result at all.
+    const ok = await save({ slate: [games[0], games[1], games[3]] });
+    expect(ok.error).toBeNull();
+  });
+
+  it("a REPLACE is refused too — it removes an id, whatever else it also does", async () => {
     // Not a third arm. Swap lands in the clear arm because something LEFT, and
     // this pins that rather than leaving it to be inferred from the two above.
     const games = await lockedSheetOfFour();
     const swapped = slateItem({ awayTeam: "Swapped" });
 
     const { error } = await save({ slate: [games[0], games[1], games[2], swapped] });
-    expect(error).toBeNull();
+    expect(error?.message ?? "").toContain("SLATE_RANKED");
 
-    const r = await ranks();
-    expect(r[games[0].id]).toBeNull();
-    expect(r[games[1].id]).toBeNull();
-    expect(r[games[2].id]).toBeNull();
+    // The ADD half does not rescue it. A swap is a removal wearing an addition,
+    // and the guard reads the removal.
+    expect(await ranks()).toEqual({
+      [games[0].id]: 1,
+      [games[1].id]: 2,
+      [games[2].id]: 3,
+      [games[3].id]: 4,
+    });
   });
 
   it("a REORDER and an EDIT still keep them — 174 narrowed the clear, it did not widen it", async () => {
