@@ -1,6 +1,7 @@
 import {
   isResolved,
   paysOut,
+  pickConfidence,
   pickPoints,
   type ScoredPick,
   type ScoredSlateGame,
@@ -188,8 +189,14 @@ export function buildBoardRows(
     const aPick = a?.pick ?? null;
     const bPick = b?.pick ?? null;
     const mult = g.multiplier ?? 1;
-    const aBase = a ? (useConfidence ? a.confidence ?? 0 : 1) : 0;
-    const bBase = b ? (useConfidence ? b.confidence ?? 0 : 1) : 0;
+    // The OUTER `a ? … : 0` / `b ? … : 0` is a different question from the
+    // inner coalesce and must not be folded into it — a side with no pick at
+    // all (`a`/`b` absent) scores 0, while a side that PICKED but holds no
+    // rank scores 1 (or `a.confidence`, once one exists). Merging the two
+    // is exactly the empty-vs-unknown mistake this feature keeps producing:
+    // "nobody played" and "played, ranking cleared" are different states.
+    const aBase = a ? (useConfidence ? pickConfidence(a) : 1) : 0;
+    const bBase = b ? (useConfidence ? pickConfidence(b) : 1) : 0;
 
     const aPoints = a ? pickPoints(g, a, useConfidence) : 0;
     const bPoints = b ? pickPoints(g, b, useConfidence) : 0;
@@ -303,7 +310,7 @@ export function sideStanding(
       if (isResolved(g)) {
         total += pickPoints(g, p, useConfidence);
       } else {
-        const base = useConfidence ? (p.confidence ?? 0) : 1;
+        const base = useConfidence ? pickConfidence(p) : 1;
         upside += base * (g.multiplier ?? 1);
       }
     }

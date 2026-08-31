@@ -389,10 +389,10 @@ describe("the confidence chip", () => {
 /**
  * ── A PICK WITH NO RANK IS NOT A PICK WITH NO CHIP ─────────────────────────
  *
- * `pickPoints` reads `confidence ?? 0` with confidence on, so a sheet whose
- * ranks were cleared by a reopen scores zero for every correct pick until they
- * are re-entered. The chip vanished, so the row showed two team names and a zero
- * — indistinguishable at a glance from a push, which is how it was read.
+ * A cleared rank scores 1, not zero (`pickConfidence`), so `aPoints`/`bPoints`
+ * below are real points a wiped sheet still earns — the chip is the only place
+ * the missing RANK shows. Render nothing here and the row reads as two team
+ * names with no information, which looks like a push at a glance.
  */
 describe("a pick with no rank", () => {
   const slateGame = {
@@ -411,24 +411,28 @@ describe("a pick with no rank", () => {
       />
     );
 
+  // aPoints/bPoints: 1 each — a cleared rank scores 1 (`pickConfidence`), not
+  // 0. A fixture hardcoding 0 here would no longer be a shape `buildBoardRows`
+  // can actually produce for this state.
   const CLEARED = row({
     slateGameId: "g1", result: "home",
-    aPick: "home", aConfidence: null, aPoints: 0,
-    bPick: "home", bConfidence: null, bPoints: 0,
+    aPick: "home", aConfidence: null, aPoints: 1,
+    bPick: "home", bConfidence: null, bPoints: 1,
     swing: 0, zeroKind: "both",
   });
 
   it("MARKS the missing rank rather than rendering nothing", () => {
     const html = render2(CLEARED);
     expect(html).toContain('data-testid="pickem-conf-unranked"');
-    // Both correct, both unranked — the row that read as a push.
+    // Both correct, both unranked — the row that used to read as a push.
     expect(html.split('data-testid="pickem-conf-unranked"').length - 1).toBe(2);
   });
 
   it("is NOT a zero — a rank nobody spent is absent, not spent-as-zero", () => {
     /**
-     * The same conflation pointing the other way: the POINTS are zero, the RANK
-     * is missing, and this chip shows ranks.
+     * The same conflation pointing the other way: this pick is worth a real
+     * point (`aPoints: 1` on `CLEARED` above), but the RANK is missing, and
+     * this chip shows ranks, not points.
      *
      * Scoped to the CHIP's own content. A page-wide `not.toContain(">0<")` fails
      * on the standing in the header, which is a real zero and none of this

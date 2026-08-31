@@ -279,13 +279,13 @@ describe("what gets persisted, and what the cup then pays", () => {
      * a decisive result silently becoming a tie and the cup splitting points
      * somebody won.
      *
-     * Deliberately the ADD path only. A REMOVE assertion would depend on what a
-     * null rank scores on a confidence-ON game, which is an open question
-     * (`pickemScoring.ts:73` reads `?? 0`; `pickem_picks.confidence`'s own
-     * comment at 146:217 says `COALESCE(confidence, 1)`) and is filed
-     * separately. Nothing null enters this test: the added game has no
-     * `pickem_picks` row for anyone, because nobody ranked a game that did not
-     * exist when they filled the sheet in.
+     * Deliberately the ADD path only, and it stays that way — not because the
+     * null-confidence question is still open (#1216 answered it: a cleared
+     * rank scores 1, `pickConfidence`) but because nothing null enters this
+     * test regardless: the added game has no `pickem_picks` row for anyone,
+     * since nobody ranked a game that did not exist when they filled the sheet
+     * in. The finalized-points assertion for a null-rank sheet lives in #1216's
+     * own test, below.
      */
     f = await makeFixture({ rollUp: "team_totals", pointsTotal: 10 });
     await seedSheet(f, owner, [0, 1, 2, 3]); // all four right -> 4+3+2+1 = 10
@@ -321,6 +321,51 @@ describe("what gets persisted, and what the cup then pays", () => {
     // nothing, rather than dragging a phantom entrant into the standings.
     const rows = await resultRows(f);
     expect(rows).toHaveLength(2);
+  });
+
+  it("a null rank pays a real point, not nothing — #1216 end to end", async () => {
+    /**
+     * The only assertion that settles it. `pickemScoring.test.ts` proves the
+     * per-pick VALUE; `pickemZeroReachability.test.ts` proves the board's own
+     * PROJECTION. Neither can see a fix that landed in one of the two callers
+     * of `pickConfidence` and not the other — `buildBoardRows` and this file's
+     * `finish()` both run through it, so only an assertion on what the cup
+     * actually PAYS closes that gap.
+     *
+     * Built to FLIP under the old formula, not merely to differ from it: Alpha
+     * ranks one correct pick at confidence 1 (score 1). Bravo gets every pick
+     * right with every rank cleared. Fixed, Bravo's four picks score 1 each —
+     * 4 beats Alpha's 1, and team_totals hands Bravo the whole 10-point pot.
+     * Under the old `?? 0`, Bravo's total is 0, Alpha's 1 stands, and Alpha
+     * wins the same pot instead — the winning TEAM changes, not just a number
+     * on a row nobody would notice.
+     */
+    f = await makeFixture({ rollUp: "team_totals", pointsTotal: 10 });
+
+    // Alpha (owner): correct only on the lowest-confidence slot (index 3,
+    // confidence 1 by seedSheet's SLATE_SIZE - i) — one real point.
+    await seedSheet(f, owner, [3]);
+
+    // Bravo (member): every pick right, every rank NULL. Not seedSheet — it
+    // always writes a real confidence — a direct insert, the shape a wiped or
+    // never-ranked sheet actually has in the table.
+    await ctx.admin.from("pickem_picks").delete().eq("game_id", f.gameId).eq("user_id", member);
+    await ctx.admin.from("pickem_picks").insert(
+      f.slateIds.map((sgId) => ({
+        id: genId("pp"),
+        game_id: f.gameId,
+        user_id: member,
+        slate_game_id: sgId,
+        pick: "home", // every contest resolves "home" (makeFixture)
+        confidence: null,
+      }))
+    );
+
+    await finish(f);
+
+    const t = await totals(f);
+    expect(t[f.teamB]).toBe(10); // Bravo: 4 correct picks x 1 point = 4, wins the pot
+    expect(t[f.teamA]).toBe(0); // Alpha: 1 correct pick x 1 point = 1, loses it
   });
 
   it("A POINTS CUP stores POSITIONS, and the payout re-derives from the total", async () => {

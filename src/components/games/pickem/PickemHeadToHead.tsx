@@ -563,18 +563,19 @@ function Conf({
   /**
    * ── A PICK WITH NO RANK IS NOT A PICK WITH NO CHIP ─────────────────────────
    *
-   * `pickPoints` reads `confidence ?? 0` when confidence is on, so a sheet whose
-   * ranks were cleared by a reopen (migration 150) scores ZERO for every correct
-   * pick until they are re-entered. The chip simply vanished, so the row showed
-   * two team names and a zero — indistinguishable at a glance from a push, which
-   * is exactly how it was read.
+   * A cleared rank scores 1 (`pickConfidence`, `pickemScoring.ts`) — a wiped
+   * sheet degrades to a flat, un-weighted pick'em rather than to nothing — but
+   * the RANK itself is still absent, and this chip shows ranks, not points.
+   * Rendering nothing here would make the row look like two team names and no
+   * information, which reads as a push at a glance.
    *
    * Two states, one appearance, again. The dash is the smallest thing that tells
    * them apart, and it says what is true: there is no rank here.
    *
    * NOT a `0`. Zero is a rank somebody spent, and nobody spent this one — that
-   * would be the same conflation pointing the other way. The points are indeed
-   * zero; the RANK is absent, and this chip shows ranks.
+   * would be the same conflation pointing the other way. This chip shows ranks,
+   * and the rank is absent; what the pick is WORTH is a separate question,
+   * answered elsewhere.
    */
   if (value == null) {
     if (!picked || !ranksMatter) return null;

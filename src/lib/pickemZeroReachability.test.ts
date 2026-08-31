@@ -21,16 +21,21 @@ import type { ScoredPick, ScoredSlateGame } from "./pickemScoring";
  * `push` is a fact about the game, checked before anything about the sheets, and
  * it makes both picks wrong by definition.
  *
- * Two zeros ARE reachable with both correct, and both are honest:
- *   · equal ranks           → `both`, the ordinary agreed-and-right row
- *   · both ranks NULL       → `both`, and both score nothing
+ * One zero IS reachable with both correct, and it is honest:
+ *   · equal ranks → `both`, the ordinary agreed-and-right row
  *
- * The second is the one worth knowing about, and it is the likelier thing to
- * have been seen: `pickPoints` reads `confidence ?? 0` when confidence is ON, so
- * a sheet whose ranks were cleared by a reopen (migration 150) scores zero for
- * every correct pick until they are re-ranked. The chips render as absent rather
- * than as `0`, so the row shows two team names, no ranks, and a zero — which is
- * a reasonable thing to misread as a push.
+ * A second case was reachable here once and is not any more. Both ranks NULL
+ * used to score nothing (`pickPoints` read `confidence ?? 0`), so a wiped or
+ * never-ranked sheet paid zero for every correct pick and read exactly like the
+ * legitimate zero above — worse, the chips render as absent rather than as `0`,
+ * so the row showed two team names, no ranks, and a zero, a reasonable thing to
+ * misread as a push.
+ *
+ * A cleared rank now scores 1 (`pickConfidence`, #1216): both-null degrades to
+ * the same shape as confidence OFF — `both`, 1 each, swing 0 — rather than to a
+ * silent zero. Kept in this file because the state is still worth knowing about,
+ * even though it no longer belongs to the zero-reachability question the file
+ * was written to answer.
  */
 
 const g = (over: Partial<ScoredSlateGame> = {}): ScoredSlateGame => ({
@@ -92,22 +97,22 @@ describe("two correct picks", () => {
     expect(row.aPoints).toBe(5);
   });
 
-  it("also render a zero when both ranks are NULL — and score NOTHING", () => {
+  it("both ranks NULL is a zero SWING, not zero POINTS (#1216)", () => {
     /**
-     * The reachable case worth reporting. With confidence ON, `pickPoints` reads
-     * `confidence ?? 0`, so a sheet whose ranks were cleared by a reopen scores
-     * zero for every correct pick until it is re-ranked.
-     *
-     * `both` is the right word — they agreed and were right — but the POINTS
-     * being zero is what makes it read like a push, since the chips render as
-     * absent rather than as `0`.
+     * A cleared rank scores 1 (`pickConfidence`), so this is no longer the
+     * silent-zero case the file's header used to report — it degrades to the
+     * same shape as confidence OFF: both correct, 1 point each, swing 0. The
+     * chips still render as absent (`aConfidence`/`bConfidence: null`), which
+     * is the one thing that has not changed — that is a fact about the RANK,
+     * not the points.
      */
     const row = only([g()], p(null), p(null));
     expect(row.swing).toBe(0);
     expect(row.zeroKind).toBe("both");
-    expect(row.aPoints).toBe(0);
-    expect(row.bPoints).toBe(0);
+    expect(row.aPoints).toBe(1);
+    expect(row.bPoints).toBe(1);
     expect(row.aConfidence).toBeNull();
+    expect(row.bConfidence).toBeNull();
   });
 
   it("score 1 each with confidence OFF, which is also a legitimate zero", () => {

@@ -76,6 +76,20 @@ describe("results are FOUR-valued, not two", () => {
     expect(isResolved(g("a"))).toBe(false);
     expect(pickPoints(g("a"), p("a", "away", 9), true)).toBe(0);
   });
+
+  it("a NULL rank scores ONE, not zero — #1216", () => {
+    // Migration 146's own column comment: scoring reads `COALESCE(confidence,
+    // 1)`. Every call site here read `?? 0` instead — a cleared or never-
+    // ranked pick degrades to a flat, un-weighted pick (the confidence-off
+    // shape below), never to nothing.
+    expect(pickPoints(g("a", { result: "away" }), p("a", "away", null), true)).toBe(1);
+  });
+
+  it("a NULL rank still respects the multiplier", () => {
+    expect(
+      pickPoints(g("a", { result: "away", multiplier: 3 }), p("a", "away", null), true)
+    ).toBe(3);
+  });
 });
 
 describe("confidence off — every correct pick is worth one, before weighting", () => {
@@ -87,6 +101,26 @@ describe("confidence off — every correct pick is worth one, before weighting",
 
   it("still respects the multiplier", () => {
     expect(pickPoints(g("a", { result: "away", multiplier: 2 }), p("a", "away", null), false)).toBe(2);
+  });
+
+  it("IGNORES a STALE stored rank — off means off, whatever the column holds", () => {
+    /**
+     * The case #1216's fix has to keep refusing. Toggling confidence off does
+     * NOT null ranks already stored — `save_pickem_config`'s settings arm
+     * writes only `pickem_games` (migration 175's header) — so a game that
+     * once ran with confidence on can hold a real number here while
+     * `useConfidence` reads false.
+     *
+     * `pickPoints`/`pickConfidence` are deliberately TWO questions, not one:
+     * what a rank is worth (`pickConfidence`, one argument, `confidence ?? 1`)
+     * and whether a rank applies at all (`useConfidence`, decided at the call
+     * site). A build that collapsed them into a single `useConfidence`-aware
+     * helper — or dropped the outer gate because "null already gives 1" —
+     * would score this pick at 7, not 1. This is the only test in the file
+     * that would catch it: every other confidence-off case here passes a
+     * null rank, which both designs score identically.
+     */
+    expect(pickPoints(g("a", { result: "away" }), p("a", "away", 7), false)).toBe(1);
   });
 });
 
