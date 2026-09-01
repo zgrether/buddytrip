@@ -63,7 +63,7 @@ describe("save_pickem_config / set_pickem_phase", () => {
   const readSlate = async () => {
     const { data } = await ctx.admin
       .from("pickem_slate_games")
-      .select("id, display_order, away_team, home_team, spread, kickoff, note, multiplier")
+      .select("id, display_order, away_team, home_team, spread, kickoff, note, multiplier, espn_event_id")
       .eq("game_id", gameId)
       .order("display_order");
     return data ?? [];
@@ -110,6 +110,37 @@ describe("save_pickem_config / set_pickem_phase", () => {
 
     const { error } = await save({ slate: [slateItem({ multiplier: 0 })] });
     expect(error?.message).toContain("BAD_MULTIPLIER");
+  });
+
+  // ── espn_event_id (#1217) ──────────────────────────────────────────────
+  /**
+   * Migrations 156 and 157 each restated this function in full and neither
+   * carried the column 149 added — a gap with no test to catch it, because
+   * `readSlate()` did not select the column either. Both are fixed together
+   * here: the select now includes it, and these pin the write path 176
+   * restored.
+   */
+
+  it("stores the ESPN id a matchup-search row was filled from", async () => {
+    await save({ slate: [slateItem({ espnEventId: "401520281" })] });
+    expect((await readSlate())[0].espn_event_id).toBe("401520281");
+  });
+
+  it("a hand-typed row has no ESPN id — never sent, not a stored empty string", async () => {
+    const bare = slateItem();
+    delete (bare as Record<string, unknown>).espnEventId;
+    await save({ slate: [bare] });
+    expect((await readSlate())[0].espn_event_id).toBeNull();
+  });
+
+  it("survives a re-save that touches other fields — the dedupe needs it on every read, not just the first", async () => {
+    const g = slateItem({ espnEventId: "401520281" });
+    await save({ slate: [g] });
+
+    await save({ slate: [{ ...g, spread: "-4.5" }] });
+    const row = (await readSlate())[0];
+    expect(row.spread).toBe("-4.5");
+    expect(row.espn_event_id).toBe("401520281");
   });
 
   // ── building a slate one game at a time (write-on-change) ────────────────
