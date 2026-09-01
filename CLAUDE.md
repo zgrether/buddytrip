@@ -158,6 +158,28 @@ seam, never on a calendar.
   (`e2e/auth.setup.ts`); tests seed a unique trip and tear it down. The other
   13 `e2e/*.spec.ts` are a deferred, mock-based set no Playwright project runs
   yet.
+- **A comment about whether a test RUNS is exactly as reliable as a comment
+  about what it does — which is to say, stale by default.** Found twice, in
+  opposite directions, in the same neighbourhood:
+  - `broadcastAmplification.measure.test.ts` said in its own header that it was
+    "excluded from the default suite by filename". It was not — the include glob
+    matched `*.test.ts`, so CI had been running it (and its real writes, in
+    loops) all along. Now genuinely excluded in `vitest.config.mts`.
+  - `broadcastScoreEvents.test.ts` skipped all 15 of its cases in CI for want of
+    a Realtime websocket, reporting `15 skipped` inside a passing summary. That
+    file is the whole migration 096/118 broadcast contract, including #20's
+    public-topic payload rule — and one of its assertions had been wrong for
+    weeks. Every green CI run cited as evidence for it was evidence of nothing.
+  **The check nothing performs: for any test file, does its stated run-status
+  match its actual one?** Neither instance was caught by a person reading the
+  comment; both were caught by accident. When you write "this does not run in
+  X", make X assert it — a skip that matters should FAIL rather than skip, so
+  the exclusion is declared and visible instead of quiet. `broadcastScoreEvents`
+  now throws in `beforeAll` under `CI` for that reason (#1013), deliberately in
+  a hook, since `retry: 2` does not wrap hooks and cannot paper over it.
+  Corollary at documentation scale: this file's own "13 `e2e/*.spec.ts`" is
+  **11** as measured (18 specs, 7 matched by a project) — a count nobody
+  re-measured, which is the same failure one level up.
 - Tests live next to what they test (`trips.test.ts` alongside `trips.ts`)
 - No task is considered complete until its tests pass
 - CI runs Vitest (full) + the three merge-blocking Playwright specs on every
