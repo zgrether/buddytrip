@@ -28,7 +28,9 @@
  * testable without a React tree.
  */
 
-export type GameRulesInvalidationUtils = {
+import { resetGameConfigHash, type GameConfigHashUtils } from "@/lib/gameConfigHash";
+
+export type GameRulesInvalidationUtils = GameConfigHashUtils & {
   games: {
     getById: { invalidate: (input: { tripId: string; gameId: string }) => unknown };
     listByTrip: { invalidate: (input: { tripId: string }) => unknown };
@@ -55,4 +57,11 @@ export function invalidateGameRulesQueries(
   utils.games.listByTrip.invalidate({ tripId });
   // Pick'em, whose whole surface is this one query.
   utils.pickem.get.invalidate({ tripId, gameId });
+  // THE FINGERPRINT. `rules_for_today` is in `HASH_COLS.games`, so this write
+  // moves the hash `games.saveConfig` checks. The sheet is suppressed while a
+  // settings overlay is open, so it cannot race a FROZEN baseline — but the
+  // cached hash stays wrong for `staleTime` (60s), and opening settings inside
+  // that window freezes the baseline on it and gets the save refused as a
+  // conflict. Same class as `/courses/new`; see `gameConfigHash.ts`.
+  resetGameConfigHash(utils, { tripId, gameId });
 }
