@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { Sheet } from "@/components/Sheet";
 import { GameRulesNote } from "@/components/games/GameRulesNote";
+import { invalidateGameRulesQueries } from "@/lib/gameRulesInvalidation";
 import { formatExplanation } from "@/components/games/GameFormatExplainer";
 
 /**
@@ -29,9 +30,20 @@ import { formatExplanation } from "@/components/games/GameFormatExplainer";
  * changed. That is a deliberate exception to the draft-then-save rule, not an
  * oversight, and it is safe for the specific reason the rest of the rule exists
  * to protect against: `rules_for_today` is the QUIET tier — free text that
- * cannot rescore a hole, move a standing, or change the config hash. A write
- * here cannot conflict with a settings draft's frozen baseHash, because the
- * hash does not cover it.
+ * cannot rescore a hole or move a standing.
+ *
+ * ── One caveat, and it is NOT what this comment used to claim ───────────────
+ * This said the write "cannot conflict with a settings draft's frozen baseHash,
+ * because the hash does not cover it." The hash DOES cover it —
+ * `rules_for_today` is in `GAME_CONFIG_COLS`, which is `HASH_COLS.games` — so a
+ * write from here moves `games.configHash` and would fail the optimistic-
+ * concurrency check of a settings page left open behind the sheet.
+ *
+ * What actually keeps the two apart is that they are never reachable at once:
+ * every view suppresses the rules chrome while its settings overlay is open
+ * (`!showConfig`), so there is no draft to conflict with. That is a gating
+ * invariant, not a property of the hash, and it is worth knowing which one is
+ * load-bearing before someone removes the gate.
  */
 export function GameRulesSheet({
   open,
@@ -93,10 +105,11 @@ export function GameRulesSheet({
       update.mutate(
         { tripId, gameId, rulesForToday: next || null },
         {
-          onSuccess: () => {
-            void utils.games.getById.invalidate({ tripId, gameId });
-            void utils.games.listByTrip.invalidate({ tripId });
-          },
+          // ONE invalidation set, shared — see `gameRulesInvalidation.ts`. The
+          // list used to live here and named the two `games` queries only, which
+          // pick'em reads neither of: the write landed and the sheet re-opened
+          // on the starter text.
+          onSuccess: () => invalidateGameRulesQueries(utils, { tripId, gameId }),
         },
       );
     }

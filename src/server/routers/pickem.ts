@@ -64,6 +64,59 @@ const slateGameSchema = z.object({
   espnEventId: z.string().max(64).nullable().optional(),
 });
 
+/**
+ * The `games` columns `pickem.get` returns — the SETTINGS MIRROR as much as the
+ * board's data source.
+ *
+ * `pickem.get` is the only query any pick'em surface reads (the sheet, the phase
+ * strip, Run, the board AND `configToPickemDraft`'s baseline), so a column
+ * missing here is not merely absent from a screen — it becomes a draft slice
+ * whose baseline is permanently `null`.
+ *
+ * `rules_for_today` was exactly that, and it cost the column twice over:
+ *
+ *   1. the rules sheet and the settings note both read the baseline, so a saved
+ *      rules-of-the-day rendered as the starter blurb, i.e. as never saved;
+ *   2. `save_game_config` assigns `rules_for_today = p_payload->>'rulesForToday'`
+ *      OUTRIGHT (it is not one of the COALESCE-preserved keys), and
+ *      `baseDraftToPayload` sends the key unconditionally — so the next save of
+ *      ANYTHING on that page (a rename, a points total) wrote the null baseline
+ *      back over the stored text.
+ *
+ * So the rule this constant exists to hold: **every `games` column
+ * `configToPickemDraft` reads must be listed here.** `pickemGameCols.test.ts`
+ * enforces it by deriving the required set from that function's body rather than
+ * from a second hand-kept list.
+ */
+export const PICKEM_GAME_COLS =
+  "id, name, game_type_id, competition_id, status, corrections_open, points_total, points_distribution, rules_for_today, competition_format, bracket_config";
+
+/**
+ * The one `games` column `configToPickemDraft` reads that is deliberately NOT
+ * selected — the NOT_HASHED-style allowlist, so the guard states an exception
+ * rather than hiding one.
+ *
+ * `scoring_enabled` is mirrored as `false` for every pick'em game, which is true
+ * for the whole life of one EXCEPT after `games.finish`, which sets it true
+ * (`games.ts` — "scoring_enabled=true keeps the 'a run/posted game is enabled'
+ * invariant"). So on a FINALIZED pick'em game the payload echoes `false` where
+ * the row says `true`, and `save_game_config`'s step 4 takes its `ELSIF
+ * v_was_live` arm: a rename would also clear `scoring_enabled` and
+ * `pairings_published_at`.
+ *
+ * NOT fixed here, deliberately, and it is a real bug rather than an accepted
+ * behaviour. Selecting the column flips those saves onto the `IF v_go_live` arm,
+ * which re-runs the format's readiness assert — and pick'em falls to the generic
+ * ELSE branch, which refuses when `points_total` and `points_distribution` are
+ * both null. That would turn a silent, largely inert write (pick'em publishes
+ * through `pickem_games.picks_locked_at`, not `pairings_published_at`) into a
+ * NOT_READY refusal on the very settings page this change exists to make usable,
+ * with a message about scoring that a pick'em runner cannot act on. It wants its
+ * own change, with the readiness branch taught about pick'em and integration
+ * tests run against a real stack. Filed rather than folded in.
+ */
+export const PICKEM_GAME_COLS_OMITTED = ["scoring_enabled"] as const;
+
 export const pickemRouter = router({
   // ── read ────────────────────────────────────────────────────────────────
   get: authedProcedure
@@ -76,7 +129,7 @@ export const pickemRouter = router({
           // `corrections_open` rides here for `gameLockState` — the finalize CTA
           // and the read-only-when-locked behaviour both read it, and #769 is
           // the format that shipped without it and had no way back from a lock.
-          "id, name, game_type_id, competition_id, status, corrections_open, points_total, points_distribution"
+          PICKEM_GAME_COLS
         )
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)

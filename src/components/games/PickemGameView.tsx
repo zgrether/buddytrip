@@ -1055,7 +1055,16 @@ export function PickemGameView() {
       ? {
           title: gameName,
           onSettings: canEdit ? settings.openConfig : undefined,
-          rules: tripId
+          /**
+           * SUPPRESSED WHILE SETTINGS IS OPEN, as all four other formats already
+           * did (`!showConfig`). Pick'em was the one view without the gate, and
+           * the gate is what keeps the sheet's direct write off a live settings
+           * draft: the sheet persists on close, `rules_for_today` is in
+           * `HASH_COLS.games`, so the write moves `games.configHash` and the
+           * open page's frozen baseHash would fail its concurrency check on
+           * Save. It also put two editors on one field at the same time.
+           */
+          rules: tripId && !settings.open
             ? {
                 tripId,
                 gameId: gameId!,
