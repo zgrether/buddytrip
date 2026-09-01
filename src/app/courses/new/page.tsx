@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
+import { resetGameConfigHash } from "@/lib/gameConfigHash";
 import { CourseEntryFlow } from "@/components/games/course/CourseEntryFlow";
 
 /**
@@ -59,6 +60,17 @@ function NewCourseInner() {
         utils.games.getById.invalidate({ tripId, gameId });
         utils.games.listByTrip.invalidate({ tripId });
         utils.competitions.faceBootstrap.invalidate({ tripId });
+        // THE FINGERPRINT. `course_id`, `back_course_id` and `scorecard_schema`
+        // are all in `HASH_COLS.games`, so the two writes above moved the hash
+        // `games.saveConfig` checks — and this page is reached FROM a settings
+        // page that is mid-draft, by a navigation that unmounts it.
+        //
+        // Without this the returning page was served the pre-course hash out of
+        // cache (`staleTime` 60s), froze its baseline on it, and Save was refused
+        // with "This game changed on another device" on a game nobody else had
+        // touched. See `gameConfigHash.ts` for the full sequence and for why this
+        // resets rather than invalidates.
+        resetGameConfigHash(utils, { tripId, gameId });
       }
       utils.courses.list.invalidate();
       leave();

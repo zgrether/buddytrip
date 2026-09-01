@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { RotateCcw, Eraser, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { resetGameConfigHash } from "@/lib/gameConfigHash";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
 
 /**
@@ -81,6 +82,13 @@ export function GameDangerZone({
 
   function invalidateAfterReset() {
     void utils.games.getById.invalidate({ tripId, gameId });
+    // Both resets write HASHED state — `status` / `scoring_enabled` /
+    // `corrections_open`, and `resetToSkeleton` clears `game_matches`,
+    // `game_participants` and `play_groups` outright. This zone lives ON the
+    // settings page, so the very page holding a frozen `baseHash` is the one
+    // whose fingerprint just moved; without this its next Save is refused as a
+    // conflict. Same class as `/courses/new` — see `gameConfigHash.ts`.
+    resetGameConfigHash(utils, { tripId, gameId });
     void utils.scores.listByGame.invalidate({ tripId, gameId });
     void utils.matches.listByGame.invalidate({ tripId, gameId });
     void utils.playGroups.listByGame.invalidate({ tripId, gameId });
