@@ -25,7 +25,11 @@ function fakeUtils() {
     },
   });
   const utils: GameRulesInvalidationUtils = {
-    games: { getById: rec("games.getById"), listByTrip: rec("games.listByTrip") },
+    games: {
+      getById: rec("games.getById"),
+      listByTrip: rec("games.listByTrip"),
+      configHash: { reset: (input: unknown) => { calls.push(["games.configHash.reset", input]); } },
+    },
     pickem: { get: rec("pickem.get") },
   };
   return { utils, calls, names: () => calls.map(([n]) => n) };
@@ -38,7 +42,14 @@ describe("invalidateGameRulesQueries", () => {
     // `pickem.get` is the assertion that matters — its absence IS the bug. The
     // exact set is pinned rather than a `toContain`, so dropping either games
     // query (which is how the four golf formats get their edit back) fails too.
-    expect(names()).toEqual(["games.getById", "games.listByTrip", "pickem.get"]);
+    expect(names()).toEqual([
+      "games.getById",
+      "games.listByTrip",
+      "pickem.get",
+      // `rules_for_today` is a HASHED column, so the write moves the fingerprint
+      // `games.saveConfig` checks — see `gameConfigHash.ts`.
+      "games.configHash.reset",
+    ]);
   });
 
   it("keys each query the way its own input is shaped", () => {
@@ -51,6 +62,7 @@ describe("invalidateGameRulesQueries", () => {
       "games.getById": { tripId: "t1", gameId: "g1" },
       "games.listByTrip": { tripId: "t1" },
       "pickem.get": { tripId: "t1", gameId: "g1" },
+      "games.configHash.reset": { tripId: "t1", gameId: "g1" },
     });
   });
 
