@@ -42,6 +42,18 @@ let users: string[];
 const hashOf = async () =>
   ((await ctx.caller().games.configHash({ tripId, gameId })) as { hash: string | null }).hash!;
 
+/**
+ * NOTE: `select("*")` is WIDER than `pickem.get`'s own select, so this baseline
+ * is more faithful than the app's — and that is why this file could not see the
+ * `rules_for_today` bug. The column was missing from the ROUTER, so the real
+ * settings mirror carried a permanently-null slice that `save_game_config` then
+ * wrote back over the stored text; here the snapshot had it all along and every
+ * save round-tripped correctly.
+ *
+ * Left wide on purpose — this file is about hash CHURN, and a narrow select
+ * would tie it to a second concern. The router's select is covered directly by
+ * `pickemGameCols.test.ts`, which needs no database.
+ */
 const snapshot = async () => {
   const { data } = await ctx.admin.from("games").select("*").eq("id", gameId).single();
   return data as unknown as Parameters<typeof configToPickemDraft>[0];
