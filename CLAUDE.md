@@ -160,6 +160,18 @@ someday" doesn't earn one. **(2) Capture-at-the-source:** when you
 scope something out of the current task, file it as a labelled issue *in the same
 session* — a report is ephemeral and the finding is lost when the session ends.
 **(3) Close-on-merge:** every PR that resolves an issue says `Closes #NN`.
+**(3a) NEVER WRITE AN ISSUE NUMBER YOU HAVE NOT READ BACK FROM THE TRACKER.**
+Not from memory, and — the variant that actually happened — not from prediction.
+A stray `Refs #1018` and `Refs #1209` were once written from recall and pointed
+at closed issues. Later, a PR body was written naming `#1249` as "filed
+separately" for an issue that did not exist yet, on the reasonable guess that it
+would be the next number; **the PR itself then took 1249**, so the reference
+pointed at the PR you were reading, and the real issue landed at 1250. Recalled
+and predicted are the SAME failure — a number that was never read — and the
+predicted one is worse, because a plausible number that resolves to a real
+object looks correct forever. File first, read the number out of the result, then
+write it. If a reference has to be written before the object exists, leave the
+digits out and fill them in from the tracker.
 **(4) Prune at the merge seam (the shrink valve):** when a feature/phase merges
 and you return to `TRACKER.md` to pick the next item, *in that same moment* scan
 open issues and close — as `wontfix` with a one-line reason — anything the merge
@@ -760,8 +772,22 @@ These patterns have been established through prior work. Follow them exactly —
 11. **Glorious Finishing Holes weight is DERIVED, never snapshotted.** The "last N
     holes worth 2×" modifier (`games.modifiers.glorious_holes: { holes: N }`) is
     applied at COMPUTE time by `holeWeight`/`remainingSwing` (`src/lib/gloriousHoles.ts`),
-    never stored on a hole result — flip the flag or change N mid-round and the tally
-    just recomputes (nothing migrates). It weights the match tally (a won glorious
+    never stored on a hole result. **"Flip the flag mid-round and the tally just
+    recomputes (nothing migrates)" was the claim here, and it was WRONG in the way
+    that matters** — the WEIGHT is not snapshotted, but the RESULT is:
+    `game_matches.status/result/margin` is stored, and `status = 'complete'` is
+    itself derived using this weighting. So a match that closed out without
+    glorious stayed `complete / a_win / 4&3` when turning glorious on should have
+    reopened it, because `saveConfig` recomputes with `skipComplete: true` and the
+    freeze skips exactly the row the change invalidates. Two fixes, both narrow:
+    migration 178 refuses any glorious change that would revalue a hole ALREADY
+    PLAYED (frozen entirely once holes inside the current window are played — not
+    capped, since every direction revalues them), and `saveConfig` alone passes
+    `skipComplete: false` for a glorious change. **The general lesson, which is why
+    this is written at length: "derived, never snapshotted" was true of the value
+    being reasoned about and false of the value that reached the screen.** A
+    read-time derivation upstream does not make everything downstream of it
+    derived. It weights the match tally (a won glorious
     hole is ±2) and, critically, close-out/dormie compare the lead to the WEIGHTED
     `remainingSwing`, NOT raw holes left (a 4-up lead with 3 glorious holes / swing 6
     is still live). Match SINGLES/DOUBLES only, **guarded on `game_type_id`** (via

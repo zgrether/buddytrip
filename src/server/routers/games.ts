@@ -7,6 +7,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
+// The count the client writes when glorious is enabled without an explicit one —
+// imported rather than re-typed, so the change-detection below and the modifier
+// itself cannot disagree about what "on" means.
+import { GLORIOUS_HOLES_DEFAULT } from "@/lib/modifiers";
 import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
@@ -1847,6 +1851,28 @@ export const gamesRouter = router({
           }
         }
       }
+      // 1b · DID THIS SAVE CHANGE GLORIOUS FINISHING HOLES? Read BEFORE the write,
+      //      because the RPC overwrites `modifiers` and step 3's read (below) is
+      //      too late to see what it was. One extra SELECT on a config save, which
+      //      is rare next to score entry — the alternative is worse, see step 3.
+      //
+      //      Resolved the way the RPC's UPDATE resolves it: an ABSENT `modifiers`
+      //      key writes '{}' (it wipes), so absence is a change to "off", not
+      //      "leave alone". Reading it as "leave alone" here would miss exactly the
+      //      save that turns GFH off.
+      const gfhCount = (m: unknown): number | null => {
+        const v = (m as Record<string, { holes?: unknown }> | null | undefined)?.["glorious_holes"];
+        if (v == null) return null;
+        return typeof v.holes === "number" ? v.holes : GLORIOUS_HOLES_DEFAULT;
+      };
+      const { data: priorRow } = await ctx.supabase
+        .from("games")
+        .select("modifiers")
+        .eq("id", input.gameId)
+        .maybeSingle();
+      const gloriousChanged =
+        gfhCount(priorRow?.modifiers) !== gfhCount(input.payload.modifiers ?? {});
+
       // 2 · The atomic write. Map the RPC's RAISE prefixes to typed errors so the
       //     Save banner can surface the readiness reason / live-reject legibly.
       const { error } = await ctx.supabase.rpc("save_game_config", {
@@ -2022,7 +2048,24 @@ export const gamesRouter = router({
       //     for a bracket arm to do here, and the narrower read says so.
       const strategy = getGameTypeDefinition(g?.game_type_id as string)?.resultStrategy;
       if (strategy === "match_play") {
-        await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: true });
+        // `skipComplete` is FALSE for a glorious change and true for everything
+        // else, and the asymmetry is the whole point.
+        //
+        // The freeze exists so a late INPUT correction cannot rewrite a finished
+        // match (CLAUDE.md #9). A GFH change is not an input correction: it
+        // changes the WEIGHT of the holes still to play, so it can move the
+        // close-out line itself. Migration 178 has already refused any GFH change
+        // that would revalue a played hole, so what reaches here can only ever
+        // ADD weight to unplayed holes — which can make a decided match undecided,
+        // and that is precisely the transition `skipComplete` would swallow.
+        // Measured before the fix: a permitted change left `complete / a_win /
+        // 4&3` where the correct answer was `active / null / null`.
+        //
+        // The other direction needs nothing: turning GFH off REDUCES remaining
+        // swing and can close a match out, and an undecided match is not
+        // `complete`, so the freeze never sees it. Only the reopen direction is
+        // blocked, and only this one caller is loosened.
+        await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: !gloriousChanged });
       } else if ((g?.status as string | undefined) !== "complete") {
         if (strategy === "rack_n_stack") await computeRackNStackResults(ctx.supabase, input.gameId);
         else if (strategy === "stroke_total") await computeStrokePlayResults(ctx.supabase, input.gameId);
