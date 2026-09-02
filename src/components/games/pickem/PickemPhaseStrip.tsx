@@ -202,8 +202,8 @@ export interface PickemPhaseStripProps {
    * it — two independent clocks eventually disagree, and `Date.now()` in a
    * render body is impure besides.
    *
-   * That lead time is gone (§7: the headline "Closes automatically Fri 11:35
-   * PM" already said it), and with it the last reader of the clock in this
+   * That lead time is gone (§7: the headline "Closes Fri 11:35 PM"
+   * already said it), and with it the last reader of the clock in this
    * component. The one remaining time-dependent fact — whether the deadline has
    * passed — arrives as `deadlinePassed`, which the VIEW derives from that same
    * `useNow` through `deadlineBlocksReopen`.
@@ -728,15 +728,22 @@ function DeadlineBlock({
             color: pending ? "var(--color-bt-owner)" : "var(--color-bt-text)",
           }}
         >
-          {/* "Closes automatically", not "Auto-locks". The control on this
-              panel is Start picking / Close picking, and the deadline is the
-              scheduled version of pressing the second one — so it takes the
-              same verb. A second word for one action is how a runner ends up
-              looking for a Lock button that does not exist. */}
+          {/* "Closes", not "Auto-locks". The control on this panel is Start
+              picking / Close picking, and the deadline is the scheduled version
+              of pressing the second one — so it takes the same verb. A second
+              word for one action is how a runner ends up looking for a Lock
+              button that does not exist. That argument is about the VERB and
+              still holds.
+
+              "automatically" is gone. It explained behaviour the reader already
+              assumes — a deadline that needs someone to press something at the
+              appointed minute is not a deadline — and STYLE_GUIDE calls out
+              copy that explains what people will naturally understand. The date
+              is the content; the adverb was describing the mechanism. */}
           {!set
             ? "No deadline set"
             : pending
-              ? `Closes automatically ${formatDeadline(deadline)}`
+              ? `Closes ${formatDeadline(deadline)}`
               : `Deadline ${formatDeadline(deadline)}`}
         </span>
         <span
@@ -748,7 +755,7 @@ function DeadlineBlock({
               Set button was on a closed game, and the other named the trap
               where unlocking a past-deadline game does nothing — a trap Start
               now defuses by clearing the spent deadline itself. */}
-          {/* "Closes automatically Fri 11:35 PM" already carries it. The line
+          {/* "Closes Fri 11:35 PM" already carries it. The line
               here read "4h 20m from now. Nobody has to do anything.", which is
               the same fact subtracted plus a reassurance nobody had asked for —
               on a panel whose whole job is telling the runner what needs doing.

@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueUnit } from "@/components/ValueUnit";
 import { useEffect, useState } from "react";
 import { DelegatePicker } from "@/components/games/DelegatePicker";
 import {
@@ -526,7 +527,10 @@ export function PlacementEditor({
             style={{ color: !started ? "var(--color-bt-text-dim)" : placement.saveable ? "var(--color-bt-accent)" : "var(--color-bt-danger)" }}
           >
             {started && placement.saveable && <Check size={13} />}
-            {fmtValue(placement.allocated)} of {fmtValue(total)} pts
+            {/* STYLE_GUIDE 2c. Two values and a unit, not a sentence: the
+                numbers carry, "of" and "pts" are the connective and the label. */}
+            <ValueUnit value={fmtValue(placement.allocated)} unit="of" size={14} color="inherit" />
+            <ValueUnit value={fmtValue(total)} unit="pts" size={14} color="inherit" />
           </span>
         </div>
         {/* Places vs teams — the second half of "is this split valid", shown while

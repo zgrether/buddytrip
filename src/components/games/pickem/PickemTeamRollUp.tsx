@@ -1,6 +1,7 @@
 "use client";
 
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { ValueUnit } from "@/components/ValueUnit";
 import { placementPointsByTeam } from "@/lib/placementGroups";
 import {
   sideStanding,
@@ -348,7 +349,20 @@ function SideCard({
             data-testid="pickem-board-payout"
             style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-bt-owner)" }}
           >
-            {scored ? formatPayout(award ?? 0) : "Nothing awarded yet"}
+            {/* STYLE_GUIDE §2c — the payout is a value, so its unit is a label.
+                "Nothing awarded yet" is prose and stays whole. */}
+            {scored ? (
+              <ValueUnit
+                value={formatPayoutValue(award ?? 0)}
+                unit={payoutUnit(award ?? 0)}
+                size={11.5}
+                weight={600}
+                color="var(--color-bt-owner)"
+                unitColor="color-mix(in srgb, var(--color-bt-owner) 60%, transparent)"
+              />
+            ) : (
+              "Nothing awarded yet"
+            )}
           </span>
         ) : (
           <span />
@@ -468,9 +482,32 @@ export function rollUpNote(
  * / 0 and rendering "2.0" beside "1.5" makes the whole column look like a
  * measurement rather than a prize.
  */
+/**
+ * The payout as one string. KEPT — see `formatPayoutValue` below.
+ *
+ * `sheetStateLine`-style splitting is a DISPLAY concern, and a string is still
+ * the right shape for anywhere the value is not being coloured: a title
+ * attribute, an aria-label, a notification body, a test assertion. Two exports
+ * rather than one changed contract, because the two callers want different
+ * things and neither should have to reassemble the other's.
+ *
+ * (Today it has no such caller — the one render site takes the split form. It
+ * stays because the rounding rule and the plural live here, and a future
+ * non-visual caller re-deriving them is how "1 pts" gets shipped.)
+ */
 export function formatPayout(v: number): string {
-  const n = Math.round(v * 100) / 100;
-  return `${n} pt${n === 1 ? "" : "s"}`;
+  return `${formatPayoutValue(v)} ${payoutUnit(v)}`;
+}
+
+/** Just the number, rounded to 2dp — the VALUE half (STYLE_GUIDE §2c). */
+export function formatPayoutValue(v: number): number {
+  return Math.round(v * 100) / 100;
+}
+
+/** Just the unit, pluralised off the same rounded number the value shows — so
+ *  "1 pt" can never appear beside a displayed 1.5, or "1.5 pt" beside a 1. */
+export function payoutUnit(v: number): string {
+  return formatPayoutValue(v) === 1 ? "pt" : "pts";
 }
 
 function YouTag() {

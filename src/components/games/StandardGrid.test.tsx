@@ -333,3 +333,53 @@ describe("StandardGrid — NET column", () => {
     expect(cols("Index")).toBeGreaterThan(0);
   });
 });
+
+// ── SCORE-ENTRY MODE KEEPS ITS SUBTOTALS ────────────────────────────────────
+//
+// The companion to `OutcomeScorecard`'s reversal. Out/In/Total were blanked for
+// OUTCOME-based match play, where a front-nine figure is valid arithmetic about
+// a quantity the format does not recognise. This grid is the SCORE-entry
+// scorecard — strokes are entered, and a nine-hole total is exactly what a
+// stroke player wants — so the numbers stay.
+//
+// This is the guard against the obvious over-reach: removing the subtotals for
+// all match play, or for the shared chrome, rather than for the one mode where
+// they mean nothing. The two modes do not share a component (outcome renders
+// `OutcomeScorecard`, score renders this), so the mistake is reachable only by
+// editing the wrong file — which is precisely the edit this catches.
+describe("StandardGrid — a scored row still carries Out / In / Total", () => {
+  const scored = renderToStaticMarkup(
+    <StandardGrid
+      units={units}
+      participants={[{ id: "p1", name: "Ann", color: "#22c55e" }]}
+      values={{ p1: { "1": 4, "2": 3, "10": 5, "18": 4 } }}
+      direction="low_wins"
+      tee={{ name: "Blue" }}
+    />,
+  );
+
+  it("still prints the section headers", () => {
+    for (const label of ["Out", "In", "Total"]) expect(scored).toContain(label);
+  });
+
+  it("still prints the participant's OWN total, anchored to its testid", () => {
+    /**
+     * ANCHORED, because the obvious assertion is decorative. An earlier draft
+     * checked  for the total — and passed against a mutant
+     * where SubCell rendered NOTHING, because these units have par 4+3+5+4 and
+     * the PAR row prints 16 too. Same for the section sums.
+     *
+     *  is emitted only by the participant's own total
+     * cell, so the surrounding rows cannot produce it. Verified by the mutant
+     * that returns null from SubCell: this fails, the substring version did not.
+     */
+    expect(scored).toContain('data-testid="scorecard-total-p1"');
+    // ...and the cell is not merely present but populated.
+    const cell = scored.slice(scored.indexOf('scorecard-total-p1'));
+    expect(cell).toMatch(/>16</);
+  });  it("renders a participant row at all (the fixture actually scored something)", () => {
+    // Absence of matches is absence of search: without this, a fixture that
+    // silently rendered no rows would make the assertions above vacuous.
+    expect(scored).toContain("Ann");
+  });
+});

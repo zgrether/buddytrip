@@ -98,9 +98,8 @@ export interface OtherPicksColumn {
  * something the column already said — so it now holds the only thing this
  * screen cannot show any other way: how far along they are.
  *
- * Null for a finished sheet. Nothing needs saying about somebody who is done,
- * and a line reading "16/16 picks submitted" on every complete row would bury
- * the two rows that are not.
+ * (Superseded below: a finished sheet now says "Done" in the accent colour
+ * rather than nothing. The burying concern it was solving is handled by hue.)
  *
  * ── "Not a member of BuddyTrip" explains an EMPTY sheet, and only that ────
  *
@@ -123,22 +122,80 @@ export interface OtherPicksColumn {
  * picks open the count is not knowable from here, and inventing a distinction
  * the data cannot support is worse than the silence.
  */
-export function sheetStateLine(s: OtherSheet): string | null {
-  if (s.picked === 0) return s.isGuest ? "Not a member of BuddyTrip" : "Nothing submitted";
-  if (s.picked != null && s.picked < s.total) {
-    return `${s.picked}/${s.total} picks submitted`;
+/**
+ * ── The complete case now SAYS something, and colour does the burying ───────
+ *
+ * This returned `null` for a finished sheet, on the reasoning quoted above:
+ * "a line reading 16/16 picks submitted on every complete row would bury the
+ * two rows that are not."
+ *
+ * The concern was right and silence was the wrong instrument for it. An
+ * incomplete sheet now stands out by HUE rather than by being the only row
+ * carrying text — which is a stronger signal, not a weaker one, because a
+ * scanning eye finds one amber line among fifteen teal ones faster than it
+ * finds the only row with a subtitle. And a complete row gets to say it is
+ * complete instead of saying nothing, which is the state a reader most wants
+ * confirmed.
+ *
+ * ── PARTIAL IS NOT AN ERROR WHILE PICKS ARE OPEN ────────────────────────────
+ *
+ * Warning amber on a half-finished sheet reads as "something is wrong". Before
+ * the deadline that is false: somebody saved halfway and is coming back, which
+ * is exactly how the feature is meant to be used. So the tone is
+ * phase-dependent — neutral while picks are open, warning once they are not —
+ * and that is the whole reason this takes `picksAreOpen` rather than deriving
+ * from the sheet alone.
+ *
+ * After the close, the same half-finished sheet IS the thing somebody has to
+ * act on, and amber is then the correct and useful reading.
+ */
+export type SheetStateTone = "done" | "partial" | "none";
+
+export function sheetStateLine(
+  s: OtherSheet,
+  picksAreOpen: boolean,
+): { text: string; tone: SheetStateTone } | null {
+  if (s.picked === 0) {
+    return {
+      text: s.isGuest ? "Not a member of BuddyTrip" : "Nothing submitted",
+      tone: "none",
+    };
   }
-  return null;
+  // A null `picked` still says nothing: with picks open the count is not
+  // knowable from here, and inventing a distinction the data cannot support is
+  // worse than the silence.
+  if (s.picked == null) return null;
+  if (s.picked < s.total) {
+    return {
+      text: `Submitted ${s.picked}/${s.total}`,
+      tone: picksAreOpen ? "none" : "partial",
+    };
+  }
+  return { text: "Done", tone: "done" };
+}
+
+/** The tone → colour map, in one place so the row cannot drift from the rule. */
+export function sheetStateColor(tone: SheetStateTone): string {
+  return tone === "done"
+    ? "var(--color-bt-accent)"
+    : tone === "partial"
+      ? "var(--color-bt-warning)"
+      : "var(--color-bt-text-dim)";
 }
 
 export function PickemOtherPicks({
   columns,
   avatarFor,
   onOpen,
+  picksAreOpen,
 }: {
   columns: OtherPicksColumn[];
   avatarFor: (userId: string) => { avatarIcon: string | null; teamColor: string | null };
   onOpen: (userId: string) => void;
+  /** Picks still open. Decides whether a PARTIAL sheet is neutral (somebody is
+   *  mid-way and coming back) or amber (the window shut on an unfinished one).
+   *  Passed rather than derived: the caller already branches on picksOpen. */
+  picksAreOpen: boolean;
 }) {
   const anybody = columns.some((c) => c.people.length > 0);
   if (!anybody) {
@@ -182,6 +239,7 @@ export function PickemOtherPicks({
                 sheet={s}
                 avatar={avatarFor(s.userId)}
                 onOpen={() => onOpen(s.userId)}
+                picksAreOpen={picksAreOpen}
               />
             ))}
           </div>
@@ -194,13 +252,17 @@ function PersonRow({
   sheet: s,
   avatar,
   onOpen,
+  picksAreOpen,
 }: {
   sheet: OtherSheet;
   avatar: { avatarIcon: string | null; teamColor: string | null };
   onOpen: () => void;
+  /** Picks still open — partial is a legitimate in-progress state, not a
+   *  problem to flag. See sheetStateLine. */
+  picksAreOpen: boolean;
 }) {
   const openable = s.openable;
-  const state = sheetStateLine(s);
+  const state = sheetStateLine(s, picksAreOpen);
   return (
     <button
       type="button"
@@ -253,9 +315,10 @@ function PersonRow({
           <span
             className="mt-0.5 block truncate"
             data-testid="pickem-other-picks-state"
-            style={{ fontSize: 10.5, color: "var(--color-bt-text-dim)" }}
+            style={{ fontSize: 10.5, color: sheetStateColor(state.tone), fontWeight: state.tone === "none" ? 400 : 600 }}
+            data-tone={state.tone}
           >
-            {state}
+            {state.text}
           </span>
         )}
       </span>

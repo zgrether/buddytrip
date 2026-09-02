@@ -26,7 +26,9 @@ const render = (over: Partial<Parameters<typeof PickemTwoUp>[0]> = {}) =>
 describe("PickemTwoUp", () => {
   it("answers the question on the button rather than behind it", () => {
     const html = render();
-    expect(html).toContain("34 pts");
+    // Split per STYLE_GUIDE §2c: 34 is the value, pts is its label.
+    expect(html).toContain(">34<");
+    expect(html).toContain(">pts<");
     expect(html).toContain("11 of 16 in");
   });
 
@@ -59,7 +61,10 @@ describe("PickemTwoUp", () => {
      */
     const html = render({ myPoints: null });
     expect(html).toContain("Nothing submitted");
-    expect(html).not.toContain("0 pts");
+    // The negative still has to bite after the split: a contiguous "0 pts"
+    // can no longer appear either way, so this asserts no VALUE node of 0 sits
+    // beside a pts label — the shape a zero-scoring sheet would produce.
+    expect(html).not.toMatch(/>0<[\s\S]{0,80}>pts</);
     expect(html).not.toContain("of 16 ·");
   });
 

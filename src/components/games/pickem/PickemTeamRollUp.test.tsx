@@ -206,8 +206,13 @@ describe("PickemTeamRollUp", () => {
     expect(unscored).toContain("Nothing awarded yet");
 
     const scored = render({ pointsMode: true, distribution: [2, 1] });
-    expect(scored).toContain("2 pts");
-    expect(scored).toContain("1 pt");
+    // Split per STYLE_GUIDE §2c. The PLURAL still tracks the displayed value —
+    // "1 pt" beside a 1, "pts" beside a 2 — which is why the unit is derived
+    // from the same rounded number the value shows.
+    expect(scored).toContain(">2<");
+    expect(scored).toContain(">pts<");
+    expect(scored).toContain(">1<");
+    expect(scored).toContain(">pt<");
 
     // Not a points cup: no award line at all, rather than a zero.
     expect(render()).not.toContain('data-testid="pickem-board-payout"');

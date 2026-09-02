@@ -107,10 +107,11 @@ describe("PickemBoard — points mode", () => {
     // The Cadence question: can you tell what second is worth without opening
     // anything. A payout behind a tap is the same as one not shown.
     const html = render();
-    expect(html).toContain("2 pts");
-    expect(html).toContain("1.5 pts");
-    expect(html).toContain("0.5 pts");
-    expect(html).toContain("0 pts");
+    // STYLE_GUIDE §2c — the payout splits, so the value and the unit are
+    // separate nodes. Asserted as parts; a contiguous "2 pts" is what passes
+    // against a build that never split them.
+    for (const v of ["2", "1.5", "0.5", "0"]) expect(html).toContain(`>${v}<`);
+    expect(html).toContain(">pts<");
   });
 
   it("names an unassigned sheet WITHOUT saying 'either side'", () => {
@@ -204,8 +205,8 @@ describe("PickemBoard — points mode", () => {
       distribution: [2, 1.5],
     });
     expect(orderOf(html, ["ACE", "BEA"])).toEqual(["ACE", "BEA"]);
-    expect(html).toContain("2 pts");
-    expect(html).toContain("1.5 pts");
+    for (const v of ["2", "1.5"]) expect(html).toContain(`>${v}<`);
+    expect(html).toContain(">pts<");
   });
 
   it("shows NO payout when there is no schedule", () => {

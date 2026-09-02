@@ -464,7 +464,13 @@ describe("a failed save", () => {
 describe("the countdown", () => {
   it("appears while picks are open and reads in hours and minutes", () => {
     expect(render()).toContain('data-testid="pickem-countdown"');
-    expect(render({ deadlineMs: 4 * 3_600_000 + 12 * 60_000 })).toContain("4h 12m");
+    // STYLE_GUIDE §2c — digits primary, h/m secondary, so the clock is four
+    // nodes rather than one string. Both segments keep EQUAL weight.
+    const clock = render({ deadlineMs: 4 * 3_600_000 + 12 * 60_000 });
+    expect(clock).toContain(">4<");
+    expect(clock).toContain(">h<");
+    expect(clock).toContain(">12<");
+    expect(clock).toContain(">m<");
   });
 
   it("is absent when the runner set no deadline", () => {

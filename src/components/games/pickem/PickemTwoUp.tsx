@@ -1,6 +1,7 @@
 "use client";
 
 import { TYPE_SCALE } from "@/lib/typeScale";
+import { ValueUnit } from "@/components/ValueUnit";
 
 /**
  * The locked page's tab bar.
@@ -86,7 +87,16 @@ export function PickemTwoUp({
         /* "Picks", not "Your picks": the tab now holds everybody’s, and the
            sub-tab under it is what says whose. */
         title="Picks"
-        sub={myPoints == null ? "Nothing submitted" : `${myPoints} pts`}
+        /* A VALUE, so it splits (STYLE_GUIDE §2c). "Nothing submitted" is prose
+           and stays a plain string — the union is the point: this slot carries
+           both kinds, and only one of them takes the treatment. */
+        sub={
+          myPoints == null ? (
+            "Nothing submitted"
+          ) : (
+            <ValueUnit value={myPoints} unit="pts" size={10.5} weight={400} unitColor="inherit" color="var(--color-bt-text)" />
+          )
+        }
         selected={open === "picks"}
         onClick={() => onOpen("picks")}
       />
@@ -118,7 +128,16 @@ function Tab({
 }: {
   testId: string;
   title: string;
-  sub: string;
+  /**
+   * `ReactNode`, widened from `string`.
+   *
+   * Most subs are prose ("3 of 8 in", "Nothing submitted") and stay strings.
+   * One is a VALUE with a unit, and STYLE_GUIDE §2c colours those two parts
+   * differently — which a string cannot express. Widening the slot is smaller
+   * than the alternative of formatting-plus-parsing a string back apart at the
+   * render, and it leaves every prose caller untouched.
+   */
+  sub: React.ReactNode;
   selected: boolean;
   warn?: boolean;
   onClick: () => void;

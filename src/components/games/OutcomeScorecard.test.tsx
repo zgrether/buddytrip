@@ -155,16 +155,30 @@ describe("OutcomeScorecard — chrome parity with StandardGrid (tees/yardage/par
     expect(html).toContain("Total");
   });
 
-  it("the Out/In/Total columns carry the leading side's swing over that section (not blank)", () => {
-    // A wins hole 1 (front) and hole 10 (back) → Out +1, In +1, Total +2.
+  it("the Out/In/Total columns are BLANK — REVERSED, and the arithmetic was never wrong", () => {
+    /**
+     * This asserted the columns , on the reasoning that a signed swing is the
+     * match-play equivalent of a gross-score section sum.
+     *
+     * The arithmetic held; the PREMISE did not. Match play is not nine plus
+     * nine — it is one continuous eighteen-hole state, and the turn has no
+     * standing in the format. Being 2 up after nine is not a milestone, so a
+     * front-nine figure is valid arithmetic about a quantity the format does
+     * not recognise: authoritative-looking, and answering a question nobody
+     * asked. Total went with them because it duplicates the match header, and a
+     * lone Total reads as a leftover where three numbers used to be.
+     *
+     * The COLUMNS stay — the grid keeps its structure — so this asserts the
+     * cells are marked non-applicable rather than that the columns are gone.
+     */
     const outcomes: HoleOutcomeRow[] = [{ hole: 1, result: "side_a" }, { hole: 3, result: "side_a" }];
     const html = renderToStaticMarkup(
       <OutcomeScorecard units={courseUnits} a={a} b={b} outcomes={outcomes} leftColor={a.color} rightColor={b.color} />
     );
-    // 3 lead pills total: hole 1, hole 3 (both single-hole cells) + the Total column (+2).
-    // (No Out/In split pill here since each swing is a single hole — Out=+1, In=+1, Total=+2.)
-    const pillCount = html.split("outcome-lead-pill").length - 1;
-    expect(pillCount).toBeGreaterThanOrEqual(3);
-    expect(html).toContain(">2<"); // the Total column's +2
-  });
-});
+    // The columns are still there, on both rows: Out + In + Total x 2 sides.
+    expect(html.split('data-testid="lead-subcell-').length - 1).toBe(6);
+    // ...and the Total column no longer prints the +2 it used to.
+    expect(html).not.toContain('lead-subcell-A-total"><span aria-hidden style="font-size:11');
+    // Only the per-HOLE pills survive: holes 1 and 3 on A's row. No subtotal pill.
+    expect(html.split("outcome-lead-pill").length - 1).toBe(2);
+  });});

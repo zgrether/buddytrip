@@ -64,11 +64,37 @@ export function computeLeadTrack(
   return { track, st };
 }
 
-/** Signed swing (±weighted W/L; halves are 0) over holes [from,to] (1-indexed,
- *  inclusive) — the match-play equivalent of a gross-score section sum, so the
- *  Out/In/Total columns carry real meaning for a lead row the same way they do
- *  for a stroke row (Out = how the front 9 went, In = how the back 9 went,
- *  Total = the two combined = the final lead). Exported for unit testing. */
+/**
+ * Signed swing (±weighted W/L; halves are 0) over holes [from,to] (1-indexed,
+ * inclusive). Exported for unit testing.
+ *
+ * ── NO LONGER RENDERED, and the reasoning here has been REVERSED ────────────
+ *
+ * This used to end: "the match-play equivalent of a gross-score section sum, so
+ * the Out/In/Total columns carry real meaning for a lead row the same way they
+ * do for a stroke row (Out = how the front 9 went, In = how the back 9 went,
+ * Total = the two combined = the final lead)."
+ *
+ * The arithmetic was never wrong. The PREMISE was: match play is not nine plus
+ * nine, it is one continuous eighteen-hole state, and the turn has no standing
+ * in the format. Being 2 up after nine is not a milestone, a subtotal, or
+ * anything a player would say — so a front-nine figure is valid arithmetic
+ * about a quantity the format does not recognise. That is the worst kind of
+ * number to put on a card: it looks authoritative and answers a question
+ * nobody asked.
+ *
+ * TOTAL went with them rather than surviving alone. It is a real number — it
+ * equals the final lead — but the match header already shows exactly that, so
+ * once Out and In are blank a lone Total is redundant with the header AND reads
+ * as a leftover in the space where three numbers used to be. The header owns
+ * the lead; the grid owns the hole-by-hole.
+ *
+ * KEPT, not deleted: this stays exported and tested because the computation is
+ * correct and the decision that retired it is a DISPLAY decision. If a future
+ * surface has a genuine use for a section swing — a stats view, a recap — it
+ * should reuse this rather than re-derive it, and the tests below still pin
+ * that it is right.
+ */
 export function sectionSwing(decided: DecidedHole[], glorious: GloriousConfig, from: number, to: number): number {
   const byHole = new Map(decided.map((d) => [d.hole, d.result]));
   let diff = 0;
@@ -125,11 +151,10 @@ export function OutcomeScorecard({
   return (
     <div data-testid="outcome-scorecard">
       <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious} gameId={gameId}>
-        {({ hasSections, front, cellBase, nameCell, divider, isGloriousCol, gloriousWash }) => {
-          const outSwing = hasSections ? sectionSwing(decided, glorious, 1, front.length) : 0;
-          const inSwing = hasSections ? sectionSwing(decided, glorious, front.length + 1, units.length) : 0;
-          const totalSwing = outSwing + inSwing;
-          const rowProps = { units, track, nameCell, cellBase, divider, isGloriousCol, gloriousWash, hasSections, outSwing, inSwing, totalSwing };
+        {/* `front` is no longer destructured: it existed only to bound the
+            front-nine `sectionSwing`, and those columns are blank now. */}
+        {({ hasSections, cellBase, nameCell, divider, isGloriousCol, gloriousWash }) => {
+          const rowProps = { units, track, nameCell, cellBase, divider, isGloriousCol, gloriousWash, hasSections };
           return (
             <>
               <LeadRow {...rowProps} name={a.name} players={aPlayers} side="A" color={lc} />
@@ -161,9 +186,6 @@ function LeadRow({
   isGloriousCol,
   gloriousWash,
   hasSections,
-  outSwing,
-  inSwing,
-  totalSwing,
 }: {
   name: string;
   players?: SidePlayer[];
@@ -177,9 +199,6 @@ function LeadRow({
   isGloriousCol: (i: number) => boolean;
   gloriousWash: React.CSSProperties;
   hasSections: boolean;
-  outSwing: number;
-  inSwing: number;
-  totalSwing: number;
 }) {
   const stacked = players && players.length > 1;
   return (
@@ -228,19 +247,42 @@ function LeadRow({
           ) : null}
         </div>
       ))}
-      {hasSections && <LeadSubCell value={outSwing} side={side} color={color} />}
-      {hasSections && <LeadSubCell value={inSwing} side={side} color={color} />}
-      <LeadSubCell value={totalSwing} side={side} color={color} wide />
+      {/* Out / In / Total are NOT APPLICABLE in outcome mode — the columns keep
+          the grid's structure, the numbers go. See `sectionSwing` for why the
+          arithmetic was right and the quantity meaningless. */}
+      {hasSections && <LeadSubCell side={side} />}
+      {hasSections && <LeadSubCell side={side} />}
+      <LeadSubCell side={side} wide />
       <RightGutter />
     </div>
   );
 }
 
-/** The Out/In/Total column for a lead row — same tinted footprint `SubCell`
- *  uses for a stroke row's subtotals, showing this side's swing over that
- *  section via the identical `LeadPill`/`AS` vocabulary the hole cells use. */
-function LeadSubCell({ value, side, color, wide }: { value: number; side: "A" | "B"; color: string; wide?: boolean }) {
-  const showsPill = (side === "A" && value > 0) || (side === "B" && value < 0);
+/**
+ * The Out/In/Total column for a lead row — the same tinted footprint `SubCell`
+ * uses for a stroke row's subtotals, kept so the grid's structure survives, and
+ * now holding NO VALUE.
+ *
+ * ── The mark is not "nothing", and that is the point ────────────────────────
+ *
+ * This card already spends emptiness on a different meaning. Three states have
+ * to stay apart in one row of cells:
+ *
+ *   (empty)   a hole not yet played          — `c.lead == null` renders null
+ *   `·`       past the close-out, never played — the `dead` branch
+ *   `–`       NOT APPLICABLE — this column, always
+ *
+ * So blanking these to `null` would have made "the format has no such number"
+ * look identical to "this hole has not happened yet" — the empty-is-not-unknown
+ * failure this repo has catalogued ten times, arriving through a layout
+ * decision rather than a value. An en-dash at low emphasis says a cell that is
+ * deliberately not filled, which is neither of the other two.
+ *
+ * Rendered on ONE row would be ambiguous; rendered on BOTH sides' rows, for
+ * every section, in every state of the match, it reads as a property of the
+ * column rather than of the data.
+ */
+function LeadSubCell({ side, wide }: { side: "A" | "B"; wide?: boolean }) {
   return (
     <div
       className="flex items-center justify-center"
@@ -251,12 +293,14 @@ function LeadSubCell({ value, side, color, wide }: { value: number; side: "A" | 
         flexShrink: 0,
         background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
       }}
+      data-testid={`lead-subcell-${side}${wide ? "-total" : ""}`}
     >
-      {showsPill ? (
-        <LeadPill value={Math.abs(value)} color={color} />
-      ) : side === "B" && value === 0 ? (
-        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>AS</span>
-      ) : null}
+      <span
+        aria-hidden
+        style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text-dim)", opacity: 0.45 }}
+      >
+        –
+      </span>
     </div>
   );
 }

@@ -414,7 +414,9 @@ describe("the phase strip carries the lifecycle — settings carries none of it"
       phase: "picks_open",
       deadline: "2026-09-05T17:00:00.000Z",
     });
-    expect(set).toContain("Closes automatically ");
+    expect(set).toContain("Closes ");
+    // #11 — the adverb explained behaviour the reader already assumes.
+    expect(set).not.toContain("automatically");
     expect(set).not.toContain("Auto-locks");
     /**
      * NO helper line under a scheduled close. It read "2d 4h from now. Nobody
