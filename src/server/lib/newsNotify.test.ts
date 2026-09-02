@@ -1,7 +1,52 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { buildNewsPayload, notifyNewsPost } from "./newsNotify";
 import type { NewsBlock } from "@/lib/news";
+
+/**
+ * PUSH CONFIGURATION IS CONTROLLED HERE, NOT READ FROM THE MACHINE (#1247).
+ *
+ * The send-path test used to assert `notConfigured: true` on the stated premise
+ * that "VAPID is absent locally". Nothing enforced that premise, and it is false
+ * on any machine whose `.env.local` carries keys — so the file was green in CI
+ * and red for the developer who had configured push. The assertion was about the
+ * environment, not about the code.
+ *
+ * `vapid.ts` reads both keys into module-level consts AT IMPORT TIME, so
+ * `vi.stubEnv` cannot reach them afterwards. Mocking the module is what makes
+ * the state settable, and it makes BOTH branches reachable — the configured half
+ * had never executed in any test, because no environment the suite runs in has
+ * keys.
+ *
+ * NOT a conditional skip. Skipping when keys are present would make this file
+ * green by not running it, which is the same defect as an assertion that cannot
+ * fail: a check that reports success without checking.
+ */
+const { vapid } = vi.hoisted(() => ({ vapid: { configured: false } }));
+vi.mock("./vapid", () => ({
+  pushConfigured: () => vapid.configured,
+  getWebPush: () =>
+    vapid.configured ? { sendNotification: vi.fn().mockResolvedValue({ statusCode: 201 }) } : null,
+}));
+
+/**
+ * BOTH functions follow the flag, and the reason is worth recording because it
+ * misled the mutation check that was supposed to validate this file.
+ *
+ * The senders gate on `if (!wp || !pushConfigured())` — an OR of two REDUNDANT
+ * conditions, since the real `getWebPush()` already returns null exactly when
+ * `pushConfigured()` is false. So mutating either one alone leaves the other
+ * still driven by the flag and every test stays green. Two mutations passed in a
+ * row here, and the tempting read — "the mock is inert" — was wrong both times:
+ * a probe confirmed the mock IS applied and that this process really does see
+ * VAPID keys from `.env.local`. Only mutating BOTH sides turns the send-path
+ * test red, which is what proves it load-bearing.
+ *
+ * Kept mirrored rather than simplified: a mock that answered `pushConfigured()`
+ * honestly while always handing back a live `webpush` would pass a check the
+ * real module fails, which is the shape that makes a fixture measure something
+ * the app never does.
+ */
 
 // ---------------------------------------------------------------------------
 // buildNewsPayload — pure, no DB.
@@ -193,13 +238,16 @@ describe("notifyNewsPost — audience", () => {
   });
 
   /**
-   * VAPID is absent locally, so `sent`/`skippedPreferenceOff` are always 0 —
-   * the trap `chatNotify.test.ts` names too. `notConfigured: true` is the
-   * signal that the send path was actually REACHED (not skipped upstream),
-   * which is what distinguishes "ran and had nothing to send" from "never
-   * got there".
+   * `sent`/`skippedPreferenceOff` are 0 with push unconfigured — the trap
+   * `chatNotify.test.ts` names too. `notConfigured: true` is the signal that the
+   * send path was actually REACHED (not skipped upstream), which is what
+   * distinguishes "ran and had nothing to send" from "never got there".
+   *
+   * The unconfigured state is now SET by this file rather than inherited from
+   * the machine, so the signal means what it says wherever it runs.
    */
   it("reaches the send path — notConfigured, not silently skipped", async () => {
+    vapid.configured = false;
     const r = await notifyNewsPost({
       tripId,
       postId: crypto.randomUUID(),
@@ -211,5 +259,41 @@ describe("notifyNewsPost — audience", () => {
     expect(r.send).not.toBeNull();
     expect(r.send?.notConfigured).toBe(true);
     expect(r.send?.recipients).toBe(2);
+  });
+
+  /**
+   * The other half of the branch, which no environment the suite runs in could
+   * reach: with push CONFIGURED, the same send must report `notConfigured:
+   * false` while still finding the same recipients.
+   *
+   * It pins the thing the old test only appeared to: that `notConfigured`
+   * tracks the RESOLVED CONFIG rather than anything about the machine. Run the
+   * two cases together and the flag has to move with the config — which the
+   * previous version could not show, because it only ever observed one value and
+   * could not tell you why it had it.
+   *
+   * `sent` stays 0 deliberately: these recipients have no registered devices, so
+   * nothing is dispatched and no network call is attempted. The claim here is
+   * about REACHING the send with push available, not about delivery.
+   */
+  it("reports configured when push IS configured — the flag follows the config", async () => {
+    vapid.configured = true;
+    try {
+      const r = await notifyNewsPost({
+        tripId,
+        postId: crypto.randomUUID(),
+        blocks: HEADING,
+        authorId: ownerId,
+        trigger: "news_posted",
+        admin: ctx.admin,
+      });
+      expect(r.send).not.toBeNull();
+      expect(r.send?.notConfigured).toBe(false);
+      expect(r.send?.recipients).toBe(2);
+      expect(r.send?.sent).toBe(0);
+    } finally {
+      // Restore, so ordering between tests cannot decide the previous case.
+      vapid.configured = false;
+    }
   });
 });
