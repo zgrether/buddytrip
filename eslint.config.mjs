@@ -35,6 +35,24 @@ const eslintConfig = defineConfig([
     // in design/README.md and design/SKILL.md are live — that question is open
     // (RULES_AUDIT.md §7 Q4). Do not read this entry as retiring them.
     "design/**",
+
+    // Local-only. `.claude/worktrees/` holds full git worktrees — each one a
+    // complete second checkout of this repo, `src/` and all. ESLint 9 flat
+    // config does not read `.gitignore`, so a bare `npx eslint` (which IS the
+    // CI gate command) crawls every one of them and lints the same files N+1
+    // times. Measured against 6 worktrees: >10 minutes with no output, versus
+    // well under a minute once ignored.
+    //
+    // CI is unaffected — its checkout has no worktrees — and that is exactly
+    // why this went unnoticed for so long: the gate is slow ONLY where a person
+    // runs it, which is the one place slowness costs something. The risk is not
+    // the minutes; it is that a gate nobody will wait for stops being run, and
+    // then the local check quietly becomes a narrower one (CLAUDE.md's
+    // "run the gate's own command" — this keeps that command affordable).
+    //
+    // Nothing tracked under `.claude/` is lintable (`git ls-files .claude`
+    // returns no JS/TS), so this removes local noise and no coverage.
+    ".claude/**",
   ]),
 ]);
 
