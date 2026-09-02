@@ -28,6 +28,7 @@ import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { gameLockState, isPreScoring } from "@/lib/gameLifecycle";
+import { memberCanScoreMatch, type ScoreUnitMatch } from "@/lib/scoreUnit";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { SettingsSaveBar } from "@/components/games/SettingsSaveBar";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
@@ -1587,12 +1588,27 @@ export function MatchGameView() {
     // any match; a member scores only THEIR OWN match (both players/sides).
     // Tapping a match you can't score lands on the read-only scorecard (like a
     // locked/posted match), never a dead entry screen. SERVER is the real gate.
+    // Resolved by the SAME pure fn the server's `canWriteOutcome`/`canWriteScore`
+    // consult, so the client cannot be stricter than the mutation it gates. It was
+    // hand-rolled here and branched on the GAME-level `sided`, which is true for a
+    // whole MIXED game — so a 1v1 match's user ids were looked up in a play_group-
+    // keyed map, both sides missed, and a member was locked out of their own match.
     const meId = me?.id;
-    const inThisMatch = !!meId && (sided
-      ? (membersOfSide.get(selectedGroup.a.id) ?? []).includes(meId) ||
-        (membersOfSide.get(selectedGroup.b.id) ?? []).includes(meId)
-      : selectedGroup.a.id === meId || selectedGroup.b.id === meId);
-    const canScoreMatch = canEdit || inThisMatch;
+    const myParticipantRow = meId
+      ? serverParticipants.find((p) => (p as { user_id?: string }).user_id === meId)
+      : undefined;
+    const canScoreMatch =
+      canEdit ||
+      memberCanScoreMatch({
+        meId,
+        sideAId: selectedGroup.a.id,
+        sideBId: selectedGroup.b.id,
+        matches: serverMatches as unknown as ScoreUnitMatch[],
+        membersOfSide,
+        myPlayGroupId:
+          (myParticipantRow as { play_group_id?: string | null } | undefined)?.play_group_id ?? null,
+        meIsParticipant: !!myParticipantRow,
+      });
     const readOnly = locked || !canScoreMatch;
     // The read-only scorecard — shared by a read-only/locked viewer's landing
     // surface and the scorer's overlay. Refactor B: an outcome-mode game has no
