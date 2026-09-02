@@ -113,17 +113,56 @@ describe("cup header — the two-line reserve is unconditional", () => {
     expect(short[0]).toContain("2.4em");
   });
 
-  it("reserves in the COLLAPSED bar too, which is the same surface", () => {
+  it("does NOT reserve in the collapsed bar — that one is bottom-aligned instead", () => {
     /**
-     * The sticky bar and the expanded card are one header in two components.
-     * Fixing only the reported one would leave a long name wrapping unpinned
-     * here — and this bar is the only header on screen once anyone scrolls, so
-     * it is the one people would actually be looking at mid-round.
+     * REVERSED, deliberately. This case previously asserted the reserve here
+     * too, on the reasoning that the sticky bar and the expanded card are one
+     * header in two components. The COPY was right and the reserve was not:
+     * both of the reserve's justifications are properties of the expanded card,
+     * and neither holds in the collapsed bar.
+     *
+     *   - a truncation bug — this bar never truncated, it wrapped;
+     *   - two big scores sharing a baseline — the collapsed bar's scores live in
+     *     their OWN row below, so they share a baseline with each other however
+     *     tall the names get.
+     *
+     * What IS at risk here is the two ROSTER labels landing level when one name
+     * wraps and the other does not, and `items-end` on the names row buys that
+     * at natural height. So the reserve was paying 16px on every surface that
+     * mounts this bar — including `GamePageHeader`, which renders it IN FLOW on
+     * match / rack / non-golf — for an alignment one flex property already gives.
+     *
+     * Measured (375px): the bar was 87px before #1212 and 103px after, for a
+     * SHORT name. A long name measured 103px either way, because it already
+     * wrapped to two lines — so the reserve only ever changed the short-name
+     * case. That inversion is why this test pins the short case specifically.
      */
-    const long = reserves(collapsed(AT_CAP, AT_CAP));
-    const short = reserves(collapsed(SHORT, SHORT));
-    expect(short).toHaveLength(2);
-    expect(long).toEqual(short);
-    expect(short[0]).toContain("2.4em");
+    expect(reserves(collapsed(SHORT, SHORT))).toEqual([]);
+    expect(reserves(collapsed(AT_CAP, AT_CAP))).toEqual([]);
+  });
+
+  it("still CLAMPS the collapsed name at two lines — bounded, just not padded", () => {
+    /**
+     * The clamp is not collateral of removing the reserve, and it is not what
+     * preceded it either: before #1212 this markup had no clamp at all and a
+     * long legacy name could wrap to three lines or more. Keeping it means the
+     * bar is bounded for the first time while a short name costs nothing.
+     */
+    const html = collapsed(AT_CAP, AT_CAP);
+    expect(html.match(/line-clamp-2/g) ?? []).toHaveLength(2);
+  });
+
+  it("bottom-aligns the collapsed names row, which is what replaces the reserve", () => {
+    /**
+     * ASSERT THE MECHANISM. The alignment guarantee now lives in a flex property
+     * rather than in a reserved height, and CLAUDE.md's tenth instance is exactly
+     * this: a distinction carried by a STYLE is invisible to every value-level
+     * guard, so it has to be asserted where it lives. `items-start` here — the
+     * previous value — would put a 1-line side's ROSTER a line above the 2-line
+     * side's, with nothing else in the markup changing.
+     */
+    const html = collapsed(SHORT, AT_CAP);
+    expect(html).toContain("items-end justify-between");
+    expect(html).not.toContain("items-start justify-between");
   });
 });
