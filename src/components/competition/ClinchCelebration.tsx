@@ -46,6 +46,7 @@ const SPARKS = Array.from({ length: SPARK_COUNT }, (_, i) => {
 export function ClinchCelebration({
   cupComplete,
   winnerColor,
+  winnerSide = null,
   celebrate,
   replayNonce = 0,
   onCelebrated,
@@ -55,6 +56,18 @@ export function ClinchCelebration({
   cupComplete: boolean;
   /** The winning team's colour — tints the trophy and the wash. */
   winnerColor: string | null;
+  /**
+   * Which SIDE won — the cup tips their way once the result is final.
+   *
+   * A direction, not a decoration: the trophy leaning toward a team is the
+   * card saying it has been AWARDED to them, which the tint alone does not.
+   * Two teams can be close in hue and nothing about a colour says "the
+   * right-hand one".
+   *
+   * Null until there is a winner, and only acted on with `cupComplete` — a
+   * clinch that is not yet finished has not been awarded.
+   */
+  winnerSide?: "A" | "B" | null;
   /** First view: play the burst. False → the still state, no burst, no replay. */
   celebrate: boolean;
   /**
@@ -195,7 +208,48 @@ export function ClinchCelebration({
            * lever for that; see `BILL_Y`.
            */
           top: 0,
-          transform: "translate(-50%,-14%)",
+          /**
+           * ── THE AWARDED TILT ────────────────────────────────────────────
+           *
+           * Once the cup is finished and decided, the trophy LEANS toward the
+           * winning side and stays there. It is the card saying the thing has
+           * been handed over — a state, not an animation, so it holds for every
+           * later view rather than playing once like the burst.
+           *
+           * Sign: `A` is the left team, so it tips left (negative). Reading the
+           * side rather than the colour is deliberate — see `winnerSide`.
+           *
+           * PIVOTS AT THE FOOT, not the centre (`transform-origin` below). A
+           * trophy tilts on the thing it stands on; rotating about the middle
+           * swings the base out the other way and reads as the whole object
+           * sliding rather than leaning. The foot is also the part most likely
+           * to be cropped, so the movement is concentrated where nothing is
+           * being protected — the bowl travels, the base barely does.
+           *
+           * 12°, in the middle of the 10–15 asked for: enough to read as
+           * deliberate at 0.17 opacity behind two big numbers, short of the
+           * angle where the rim ellipse starts to look wrong for its own
+           * horizon.
+           *
+           * The transition means a cup that finishes while you are looking at
+           * it tips rather than jumps. `cup-trophy-rise` (the burst's entry)
+           * animates the same element, so the tilt is composed into the same
+           * transform rather than fighting it.
+           */
+          transformOrigin: "50% 92%",
+          /**
+           * The angle rides a CSS VARIABLE rather than being written straight
+           * into `transform`, because `cupTrophyRise` replaces the whole
+           * transform for the duration of the burst — a literal here would be
+           * dropped for those 0.72s and reappear after, which is exactly the
+           * kind of one-frame-only defect that never shows up in a static test.
+           * The keyframes read the same variable, so the lean survives the
+           * animation and there is one value to keep in step instead of two.
+           */
+          ["--cup-tilt" as string]:
+            cupComplete && winnerSide ? `${winnerSide === "A" ? -12 : 12}deg` : "0deg",
+          transform: "translate(-50%,-14%) rotate(var(--cup-tilt, 0deg))",
+          transition: "transform 700ms cubic-bezier(0.22, 1, 0.36, 1)",
           pointerEvents: "none",
         }}
         data-testid="hero-trophy"
