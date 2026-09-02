@@ -445,14 +445,39 @@ export async function computeCompetitionLeaderboard(
     // every manual game that has not — which is what it has always meant, since
     // until now no such game could have one (the settings row was hidden).
     //
-    // Deliberately narrow: `isPlacement` only. A manual game holding a `per_match`
-    // distribution keeps the flatten, because per_match is match play's own shape
-    // and the branch below derives its match count from pairings a manual game
-    // does not have.
+    // ── …AND ONLY WHERE THERE ARE NO PER-MATCH ROWS ───────────────────────────
+    //
+    // THE CONDITION IS THE ABSENCE OF MATCH ROWS, NOT THE GAME'S TYPE. This
+    // branch reads a standing's `value` as a POSITION — "the total goes to the
+    // winner (position 1)", ranked `low_wins`. That is only sound for a game
+    // whose results carry a position. A game with per-match rows is scored by
+    // `writeTeamMatchPoints`, which deliberately writes `position = null` and
+    // puts POINTS in `raw_score` — and `standingsByGame` collapses the two with
+    // `position ?? raw_score`, so the points arrive here wearing a position's
+    // clothes and nothing can tell them apart.
+    //
+    // Ranked `low_wins`, a team that won 35 reads as "position 35" and a team
+    // that won nothing reads as "position 0" — so WINNING DEMOTED YOU, and the
+    // whole pot went to the side that lost every match (#1245, seen on a real
+    // cup). The `isPerMatch` arm below is the one that reads `raw_score` as
+    // points; it already handles these games (its `pointsDivideByMatchRows`
+    // includes `isMatchesGame`) and was simply never reached, because this
+    // branch returned first.
+    //
+    // This comment previously read: "A manual game holding a `per_match`
+    // distribution keeps the flatten, because per_match is match play's own
+    // shape and the branch below derives its match count from pairings a manual
+    // game does not have." That was TRUE WHEN WRITTEN and is now false — non-golf
+    // Matches (170) is a manual type that does have pairings. The fact was
+    // restated where the condition should have been, so when the fact changed
+    // there was nothing to re-check. Hence the predicate below names what
+    // actually makes a game eligible.
+    const hasPerMatchRows = (totalMatchRowsByGame.get(g.id as string) ?? 0) > 0;
     if (
       scoringModel === "match_play" &&
       isManualType(g.game_type_id as string | null) &&
-      !isPlacement(rawDist)
+      !isPlacement(rawDist) &&
+      !hasPerMatchRows
     ) {
       const total = (g.points_total as number | null) ?? 0;
       return {
