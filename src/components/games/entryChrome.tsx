@@ -91,6 +91,7 @@ export function BottomCTA({
   subtext,
   icon,
   disabled,
+  secondary,
 }: {
   label: string;
   onClick: () => void;
@@ -99,6 +100,26 @@ export function BottomCTA({
   /** Spec 1a — honest advance: the CTA is held (dimmed, non-interactive) while
    *  the current hole's scores aren't CONFIRMED saved. `subtext` names the reason. */
   disabled?: boolean;
+  /**
+   * An optional SECONDARY action beside the primary — same bar, lower tier.
+   *
+   * Added for match play's "Clear hole" on a settled hole, which had nowhere to
+   * live: the Reset control sits on the commit bar, and a committed hole shows
+   * this CTA instead, so clearing was unreachable without first recording a
+   * different (wrong) outcome.
+   *
+   * It belongs HERE rather than in a private bar next to the caller, because
+   * this component already owns the entry-surface bottom control — its
+   * background, border, height and the safe-area inset below it. A second
+   * container wrapping this one would double all four, and a hand-rolled copy
+   * beside it is the private-copy shape CLAUDE.md #24 records eight times.
+   *
+   * HIERARCHY, not shape, is what keeps the two distinct: the primary keeps the
+   * accent fill and the flexible width; the secondary is card-surfaced, bordered
+   * and sized to its own content. It must never read as another choice in the
+   * surface above it.
+   */
+  secondary?: { label: string; onClick: () => void; ariaLabel?: string; testId?: string };
 }) {
   return (
     <div
@@ -119,23 +140,50 @@ export function BottomCTA({
         padding: "12px 16px calc(24px + env(safe-area-inset-bottom, 0px))",
       }}
     >
-      <button
-        onClick={disabled ? undefined : onClick}
-        disabled={disabled}
-        className="flex w-full items-center justify-center gap-2 transition-transform active:scale-[0.98] disabled:cursor-default"
-        style={{
-          height: 54,
-          borderRadius: 12,
-          background: disabled ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
-          color: disabled ? "var(--color-bt-text-dim)" : "#0d1f1a",
-          fontSize: 17,
-          fontWeight: 600,
-          opacity: disabled ? 0.75 : 1,
-        }}
-      >
-        {icon && !disabled && <Check size={20} strokeWidth={2.2} />}
-        {label}
-      </button>
+      <div className="flex items-center" style={{ gap: 10 }}>
+        {secondary && (
+          <button
+            type="button"
+            onClick={secondary.onClick}
+            aria-label={secondary.ariaLabel ?? secondary.label}
+            data-testid={secondary.testId}
+            className="flex items-center justify-center transition-transform active:scale-[0.98]"
+            style={{
+              // Matches OutcomeCommitBar's Reset exactly — same height, radius,
+              // surface and border — so the two places this action appears read
+              // as one control rather than two that happen to do the same thing.
+              height: 54,
+              flex: "0 0 auto",
+              padding: "0 18px",
+              borderRadius: 12,
+              background: "var(--color-bt-card)",
+              border: "1px solid var(--color-bt-border)",
+              color: "var(--color-bt-text)",
+              fontSize: 15,
+              fontWeight: 600,
+            }}
+          >
+            {secondary.label}
+          </button>
+        )}
+        <button
+          onClick={disabled ? undefined : onClick}
+          disabled={disabled}
+          className="flex flex-1 items-center justify-center gap-2 transition-transform active:scale-[0.98] disabled:cursor-default"
+          style={{
+            height: 54,
+            borderRadius: 12,
+            background: disabled ? "var(--color-bt-card-raised)" : "var(--color-bt-accent)",
+            color: disabled ? "var(--color-bt-text-dim)" : "#0d1f1a",
+            fontSize: 17,
+            fontWeight: 600,
+            opacity: disabled ? 0.75 : 1,
+          }}
+        >
+          {icon && !disabled && <Check size={20} strokeWidth={2.2} />}
+          {label}
+        </button>
+      </div>
       {subtext && (
         <div className="text-center" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 8 }}>
           {subtext}

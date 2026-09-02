@@ -296,9 +296,20 @@ describe("outcomeBottomState — hole-outcome entry commit model (Match-Play Par
       .toEqual({ kind: "commit", canOk: true, canReset: true });
   });
 
-  it("committed, no pending pick, mid-round → NEXT (settled, no re-write)", () => {
+  it("committed, no pending pick, mid-round → NEXT, and still CLEARABLE", () => {
+    /**
+     * `canReset` was `false` here, and that was the whole bug. The Reset control
+     * lives on the commit bar, so a settled hole showed no way back — the only
+     * route to clearing was to tap a DIFFERENT outcome first, which brings the
+     * commit bar back. You had to record something false to reach the undo,
+     * which is why this read as "match play has no way to un-score a hole".
+     *
+     * The mutation was never missing: `matchOutcomes.deleteOutcome` has existed
+     * since the entry mode shipped, behind the same posted-game guard as
+     * writing. Only its reachability.
+     */
     expect(outcomeBottomState({ committed: "side_a", localPick: undefined, canFinish: false, isLastHole: false }))
-      .toEqual({ kind: "next", canOk: false, canReset: false });
+      .toEqual({ kind: "next", canOk: false, canReset: true });
   });
 
   it("committed, no pending pick, match can finish → FINISH", () => {
@@ -311,13 +322,109 @@ describe("outcomeBottomState — hole-outcome entry commit model (Match-Play Par
       .toBe("none");
   });
 
-  it("tapping the SAME choice as committed is not dirty → stays settled (NEXT), OK disabled", () => {
+  it("tapping the SAME choice as committed is not dirty → settled (NEXT), OK disabled, clearable", () => {
     expect(outcomeBottomState({ committed: "side_a", localPick: "side_a", canFinish: false, isLastHole: false }))
-      .toEqual({ kind: "next", canOk: false, canReset: false });
+      .toEqual({ kind: "next", canOk: false, canReset: true });
   });
 
   it("tapping a DIFFERENT choice than committed → commit bar with OK enabled (a correction to OK)", () => {
     expect(outcomeBottomState({ committed: "side_a", localPick: "side_b", canFinish: false, isLastHole: false }))
       .toEqual({ kind: "commit", canOk: true, canReset: true });
+  });
+
+  it("a committed hole is clearable in EVERY settled kind, not just NEXT", () => {
+    /**
+     * `finish` and `none` are settled too, and `none` matters most: it is the
+     * last hole of a match that cannot finish, so before this it was the one
+     * hole with no bottom control at all — a committed outcome and nothing on
+     * screen to undo it with.
+     */
+    for (const [canFinish, isLastHole, kind] of [
+      [true, false, "finish"],
+      [false, true, "none"],
+      [false, false, "next"],
+    ] as const) {
+      expect(
+        outcomeBottomState({ committed: "halved", localPick: undefined, canFinish, isLastHole }),
+      ).toEqual({ kind, canOk: false, canReset: true });
+    }
+  });
+
+  it("an EMPTY hole is never clearable — nothing to undo is not the same as an undo", () => {
+    // The guard against a fix that just returns `canReset: true` from the
+    // settled branch: a hole with no outcome and no pick must still offer
+    // nothing, or "Clear hole" appears on holes nobody has touched.
+    expect(outcomeBottomState({ committed: undefined, localPick: undefined, canFinish: false, isLastHole: false }).canReset)
+      .toBe(false);
+    expect(outcomeBottomState({ committed: undefined, localPick: undefined, canFinish: true, isLastHole: true }).canReset)
+      .toBe(false);
+  });
+});
+
+// ── Clearing a hole: the maths, both directions ─────────────────────────────
+//
+// Clearing deletes the `match_hole_outcomes` row (migration 075: "a hole with no
+// row is simply undecided … there is no 'cleared' state to distinguish from
+// 'never entered'"). So the whole question is whether the derived state follows,
+// and it does because nothing about a decided match is snapshotted: `matchState`
+// recomputes from the rows on every read, and `game_matches.result/margin/status`
+// are written only at `games.finish`.
+describe("clearing a hole — a decided match un-decides, and comes back", () => {
+  /** 3 up with 2 to play on an 18-hole match: A wins 1-5, halves 6-16. */
+  const decidedRows: HoleOutcomeRow[] = [
+    ...[1, 2, 3].map((hole) => ({ hole, result: "side_a" as const })),
+    ...Array.from({ length: 13 }, (_, i) => ({ hole: i + 4, result: "halved" as const })),
+  ];
+
+  it("a match closed 3&2 re-opens when one of the winning holes is cleared", () => {
+    const closed = matchState(buildDecidedFromOutcomes(decidedRows), 18);
+    expect(closed).toMatchObject({ over: true, closed: true, leader: "A", margin: "3&2" });
+
+    // Clear hole 3 — the row is DELETED, exactly as deleteOutcome does.
+    const cleared = decidedRows.filter((r) => r.hole !== 3);
+    const after = matchState(buildDecidedFromOutcomes(cleared), 18);
+
+    // 2 up with 3 to play (hole 3 is now unplayed) — live again.
+    expect(after).toMatchObject({ over: false, closed: false, up: 2, leader: "A", margin: null });
+  });
+
+  it("ROUND TRIP — re-entering the cleared hole restores the match exactly", () => {
+    /**
+     * The direction the spec's own tests did not cover, and the one that would
+     * catch a clear that leaves something behind — a stale derived value, an
+     * off-by-one in `thru`, a `played` set that never lost the hole. Asserting
+     * deep equality against the ORIGINAL state is what makes it a round trip
+     * rather than two separate happy paths.
+     */
+    const before = matchState(buildDecidedFromOutcomes(decidedRows), 18);
+    const cleared = decidedRows.filter((r) => r.hole !== 3);
+    const reEntered = [...cleared, { hole: 3, result: "side_a" as const }];
+
+    // buildDecidedFromOutcomes sorts, so re-entering out of order is irrelevant.
+    expect(matchState(buildDecidedFromOutcomes(reEntered), 18)).toEqual(before);
+  });
+
+  it("clearing a HALVED hole is not the same as recording a halve", () => {
+    /**
+     * The failure that would look correct forever. A halved hole is a ROW
+     * (`result='halved'`, NOT NULL CHECK); a cleared hole is NO row. They are
+     * different lengths of decided set and different `thru` values, so a build
+     * that stored a clear as `halved` would keep the match decided at the same
+     * hole count and nothing on screen would look wrong.
+     */
+    const withHalve = matchState(buildDecidedFromOutcomes(decidedRows), 18);
+    const withoutHole16 = matchState(
+      buildDecidedFromOutcomes(decidedRows.filter((r) => r.hole !== 16)),
+      18,
+    );
+    expect(withHalve.thru).toBe(16);
+    expect(withoutHole16.thru).toBe(15);
+    expect(withoutHole16).not.toEqual(withHalve);
+  });
+
+  it("clearing a hole that was never entered is a no-op, not an error", () => {
+    const rows = decidedRows.filter((r) => r.hole !== 17);
+    expect(matchState(buildDecidedFromOutcomes(rows), 18))
+      .toEqual(matchState(buildDecidedFromOutcomes(rows.filter((r) => r.hole !== 17)), 18));
   });
 });

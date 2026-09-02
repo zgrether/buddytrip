@@ -94,6 +94,43 @@ describe("MatchOutcomeEntryView — the three-choice entry zone", () => {
     expect(html).not.toContain("outcome-ok");
   });
 
+  it("a settled hole ALSO offers Clear hole — the undo, reachable without re-picking", () => {
+    /**
+     * The bug this fixes. The Reset control lives on the commit bar, so a
+     * settled hole showed no way back: clearing meant tapping a DIFFERENT
+     * outcome first to force the commit bar to return. You had to record
+     * something false to reach the undo.
+     *
+     * Next Hole stays PRIMARY — advancing happens every hole, clearing happens
+     * twice a trip — so this asserts both are present rather than that one
+     * replaced the other.
+     */
+    const html = render({ m1: { "1": "halved" } });
+    expect(html).toContain("Hole 2 ›");
+    expect(html).toContain("outcome-clear-hole");
+  });
+
+  it("an EMPTY hole offers no Clear — nothing to undo is not an undo", () => {
+    // The guard against making the secondary unconditional: "Clear hole" on a
+    // hole nobody has touched is an action with no referent.
+    expect(render({})).not.toContain("outcome-clear-hole");
+  });
+
+  it("the settled clear is worded differently from the commit bar's Reset", () => {
+    /**
+     * Same handler, two consequences. On the commit bar "Reset" discards a pick
+     * that has not been written; on a settled hole the same tap DELETES a row
+     * that is already in the database and can un-decide the match. Naming both
+     * "Reset" would use the weaker word on the surface where the stronger thing
+     * happens.
+     */
+    expect(render({ m1: { "1": "halved" } })).toContain("Clear hole");
+    // The pre-commit bar keeps its own, lighter word.
+    const empty = render({});
+    expect(empty).toContain("outcome-reset");
+    expect(empty).not.toContain("Clear hole");
+  });
+
   it("shows the Glorious banner only on a glorious hole", () => {
     // Glorious weighting is hardcoded relative to an 18-hole round — hole 18 is
     // "the last 1" (GLOR1); a full 18-hole unit list is needed to land on it.

@@ -125,16 +125,43 @@ export interface HoleOutcomeRow {
  *
  *   committed=undef, local=undef   → commit  (canOk:false, canReset:false)  ← nothing auto-commits
  *   committed=undef, local=side_a  → commit  (canOk:true,  canReset:true)   ← OK will write once
- *   committed=side_a, local=undef  → next/finish/none                       ← settled, no re-write
+ *   committed=side_a, local=undef  → next/finish/none (canReset:true)       ← settled, but clearable
  *   committed=side_a, local=side_b → commit  (canOk:true,  canReset:true)   ← a correction to OK
- *   committed=side_a, local=side_a → next/finish/none                       ← same pick, not dirty
+ *   committed=side_a, local=side_a → next/finish/none (canReset:true)       ← same pick, not dirty
+ *
+ * ── `canReset` IS NOT COMMIT-ONLY, and that was the bug ─────────────────────
+ *
+ * The settled rows above used to return `canReset: false`, so a committed hole
+ * offered no way back: the Reset control lives on the commit bar, and a settled
+ * hole does not show one. The only route to clearing a hole was to tap a
+ * DIFFERENT outcome first — going dirty brings the commit bar back — and then
+ * Reset. You had to select a wrong answer to reach the undo, which is why this
+ * read as "there is no way to un-score a hole in match play": every recovery
+ * ran through recording something false.
+ *
+ * The mutation was never missing (`matchOutcomes.deleteOutcome` has existed
+ * since the entry mode shipped, with the same posted-game guard as writing) and
+ * neither was the button. Only its reachability.
+ *
+ * Reset stays SECONDARY in the settled state — Next/Finish remains the primary,
+ * because advancing is what happens on every hole and clearing is what happens
+ * twice a trip. Making the commit bar persist on settled holes would have been
+ * the smaller diff and would have traded the every-hole path for the rare one.
  */
 export type OutcomeBottomKind = "commit" | "finish" | "next" | "none";
 export interface OutcomeBottomState {
   kind: OutcomeBottomKind;
   /** commit-kind only: OK enabled ⟺ there's a new pick to commit (dirty). */
   canOk: boolean;
-  /** commit-kind only: Reset enabled ⟺ something is selected (local or committed). */
+  /**
+   * Is there anything to clear? True whenever a local pick OR a committed
+   * outcome exists — in EVERY kind, not just `commit`.
+   *
+   * What it means differs by kind, which is why the two call sites label the
+   * button differently: on the commit bar it discards a pick you have not
+   * written yet ("Reset"), and on a settled hole it deletes a result that is
+   * already in the database ("Clear hole"). Same predicate, two consequences.
+   */
   canReset: boolean;
 }
 export function outcomeBottomState(args: {
@@ -149,7 +176,11 @@ export function outcomeBottomState(args: {
     return { kind: "commit", canOk: dirty, canReset: (localPick ?? committed) !== undefined };
   }
   const kind: OutcomeBottomKind = canFinish ? "finish" : isLastHole ? "none" : "next";
-  return { kind, canOk: false, canReset: false };
+  // Reachable only when `committed !== undefined` (the `dirty || committed ===
+  // undefined` branch above took every other case), so there is always a stored
+  // result to clear here. Written as the predicate rather than `true` so it
+  // still reads correctly if the branch above ever changes.
+  return { kind, canOk: false, canReset: committed !== undefined };
 }
 
 /**
