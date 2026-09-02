@@ -39,6 +39,31 @@ scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term onl
 
 ## Commit Rules
 
+- **READ `git status` BEFORE ANY COMMAND THAT OVERWRITES THE WORKING TREE.** Not
+  after, not "the tree was probably clean" — before, every time. The commands
+  that do this and give nothing back: `git checkout <ref> -- .`, `git checkout
+  -- <path>`, `git restore`, `git reset --hard`, `git clean -fd`, `git stash`
+  without `-u` on a tree holding untracked files.
+
+  There is no undo. A commit can be recovered from the reflog and a stash can be
+  re-applied; an uncommitted edit that a checkout wrote over is simply gone, and
+  nothing in git knows it existed.
+
+  Lived 2026-09-02: `git checkout origin/main -- .` was run on a branch holding
+  seven commits of work, to set up a control run. **Every one of those files was
+  overwritten.** The work survived only because it had all been committed
+  minutes earlier — which was luck, not care. Had one edit been outstanding it
+  would have been unrecoverable, and the command was issued without looking.
+
+  This sits beside "`db push` reads the FILESYSTEM, not git" as a STANDING
+  HAZARD rather than a lesson someone learned once. Both are cases where a
+  command's blast radius is the working directory rather than the thing you were
+  thinking about, and both cost nothing to check and everything to skip. Two
+  seconds against a class of loss nothing recovers from.
+
+  The safe form of a control run is a separate branch or a `git worktree`, never
+  a checkout over the tree you are standing in.
+
 - Commit after each individual task, not at the end of a phase
 - Every commit needs a clear message describing what changed
 - Create a PR after each phase is complete
@@ -207,6 +232,30 @@ seam, never on a calendar.
   simulated one. And check the test's NAME against what it actually exercises: a test
   whose name claims a path it does not take is worse than no test, because it stops
   anyone looking again.
+
+  **THE SUBSTRING COROLLARY, and it is the one that keeps recurring: a substring
+  assertion is only valid if NO OTHER ELEMENT IN THE REGION could produce that
+  string.** When you cannot guarantee that, anchor to a `data-testid` — a value the
+  surrounding content structurally cannot emit.
+
+  Fourth instance, 2026-09-02. A guard that score-entry scorecards keep their
+  Out/In/Total asserted `toContain(">16<")` for the total — and PASSED against a
+  mutant where the subtotal cell rendered nothing at all, because the fixture's
+  units are par 4+3+5+4 and the PAR row prints 16 too. A substring match over a
+  region containing a coincidentally identical number. Re-anchored to
+  `data-testid="scorecard-total-p1"`, which only the participant's own cell emits;
+  that version fails the mutant.
+
+  Same shape as the em-dash above and as `viewBox` matching `"Bo"`. The tell is
+  that the string being matched is SHORT and GENERIC — a bare number, two letters,
+  a dash — and the region is a whole rendered component rather than one node. Both
+  halves have to be true for it to bite, which is why it survives review: the
+  assertion looks specific and the haystack looks small.
+
+  **All four were caught by a mutation check and none by reading.** That is the
+  argument for the discipline in the next rule being non-negotiable rather than a
+  nice-to-have: a decorative assertion is invisible in a green run and invisible in
+  a diff, and breaking the code is the only thing that has ever surfaced one.
 
 - **A MUTATION THAT DOESN'T FAIL THE TEST YOU EXPECT IS A CLAIM ABOUT THE MUTATION
   FIRST.** The rule above says break the thing and check the test screams. This is its
