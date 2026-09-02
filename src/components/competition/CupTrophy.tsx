@@ -76,51 +76,48 @@ const BILL_SCALE = BILL_H_UNITS / BILL_H;
 const BILL_INK_CX = 354.2;
 
 /**
- * How far Bill sits BELOW the star's vertical centre, in trophy units (1 unit =
- * 1px at the rendered 300×380).
+ * How far Bill sits BELOW the star's vertical centre, in trophy units.
  *
- * The hero's team-name row crosses him. Measured at 375px with the real BBMI
- * pair ("Booty Hunters & Scurvy Hookers" / "Huge PNS Energy"), trophy at its
- * normal -46%:
+ * ── ZERO, because the collision was moved out from under him ───────────────
  *
- *   Bill            top 193, x 172-224
- *   name line 1     190-212, x  33-217   ← crosses him: 19px of overlap
- *   name line 2     210-232, x  33- 97   ← ends 75px short of him, never touched
+ * This was 20, then 24, and both were compensation. The team-name row crossed
+ * the top of the figure — his raised club and hand — so he was pushed down the
+ * bowl until he cleared the first line by a measured pixel.
  *
- * So the collision is ONLY the first line against the top of the figure — his
- * raised club and hand — and 20 units clears it with a pixel to spare. Both
- * lines are measured because the second one LOOKS like the culprit (it is the
- * lower of the two) and is not; a fix aimed at clearing the whole name block
- * would need 39 and drag his feet toward the bowl's point for nothing.
+ * The real cause was HORIZONTAL and was in the name row, not here. Each side
+ * took whatever width it needed, so a name short enough not to wrap ran
+ * straight out toward the middle — meaning the LESS text a team had, the
+ * further into the centre it reached, which is backwards and is why the
+ * encroachment looked unpredictable. `TeamName` now caps each column at 40%
+ * of the content box, so the names cannot arrive in the golfer's column at
+ * all. Measured at 375px with the real BBMI 2023 pair:
  *
- * WHY HERE AND NOT ON THE TROPHY. #1237 moved the whole cup instead
- * (-46% -> -32%), which cleared Bill and also pushed the pedestal and base off
- * the card, leaving the bowl to fill it — a quiet watermark became the loudest
- * thing on the screen. Reverted. Bill is his own `<g>` on the bowl, so moving
- * him leaves every other part of the artwork where it was.
+ *   "Jamarvelous Jabronies"   wraps to 2 lines, right edge 129
+ *   "Old Bay Boyz"            one line, left edge 240
+ *   Bill                      x 172-224
  *
- * The reserve above is unconditional (two lines whether or not the second is
- * used), so this does not need to track the name: a short name reserves the
- * same block and the geometry is identical.
+ * A's box now ends at 157 and B's begins at 240, so no name can reach him
+ * whatever it says — structural, not true-for-these-names. With the overlap
+ * gone the nudge has nothing to dodge, and keeping it would leave the figure
+ * sitting low on the bowl to avoid text that is no longer there.
  *
- * ── 24, NOT 20: THE AWARDED TILT ROTATES HIM TOO ───────────────────────────
+ * KEPT AT ZERO rather than deleted, because the history is the useful part:
+ * two rounds of moving the artwork to dodge text, when the text was the thing
+ * out of place. If a name ever crosses him again, the question to ask is what
+ * the name row is doing, not how far down to push the golfer.
  *
- * 20 cleared line 1 by a measured pixel at rest — and the winner's tilt
- * (`winnerSide`, ±12° about the foot) moves Bill with the rest of the cup.
- * Measured at 375px with the name at the cap:
+ * THE AWARDED TILT IS EXEMPT, by decision. `winnerSide` rotates the whole cup
+ * ±12°, which moves Bill with it — a left-hand win lifts him ~3px. That is
+ * allowed to cross the name: the tilt is a deliberate, momentary-feeling state
+ * on a finished cup, and constraining the artwork's celebration to a clearance
+ * rule written for the resting card would be the tail wagging the dog.
  *
- *   rest    Bill top 214   line 1 bottom 212   clear by 2
- *   -12°    Bill top 211                       OVERLAPS by 1
- *   +12°    Bill top 216                       clear by 4
- *
- * A left-hand win lifts him 3px, straight back into the line this constant
- * exists to clear. 24 holds in all three states with room, which is the
- * property worth having: the clearance must be true in every state the card
- * can actually be in, not only the resting one. Checking only the untilted
- * case is how the tilt would have silently undone the fix — the same shape as
- * tuning against one card height and calling it done.
+ * WHY NOT MOVE THE TROPHY. #1237 tried that (-46% -> -32%) and pushed the
+ * pedestal and base off the card, turning a quiet watermark into the loudest
+ * thing on screen. Reverted. Bill is his own `<g>`, so this lever moves him
+ * alone — but the lever above it, the name column's width, was the right one.
  */
-const BILL_NUDGE_BELOW_NAMES = 24;
+const BILL_NUDGE_BELOW_NAMES = 0;
 
 /**
  * The trophy's foreshortening — how flat a circle drawn on its horizontal plane
