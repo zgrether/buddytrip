@@ -365,8 +365,28 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     setActiveTab(tab);
   };
 
-  // Effective canEdit: forced false when read-only
+  // ── The date lock, applied ONCE ─────────────────────────────────────────
+  //
+  // `tripIsReadOnly` is a WHOLE-TRIP, automatic, date-driven lock (end_date +
+  // 14d, rounded to the next Sunday — `isReadOnly` in lib/tripStatus). It is a
+  // SEPARATE axis from the ROLE gate (`canEdit` / `isOwner` off `useTripRole`),
+  // and these two derivations are the only place the two axes are combined.
+  //
+  // Read this file at any point before now and it gated on the lock FIVE
+  // different ways — `effectiveCanEdit`, raw `canEdit`, raw `isOwner`, an
+  // inline `tripIsReadOnly ? false : isOwner`, and one `isOwner &&
+  // !tripIsReadOnly` — with no rule saying which belonged where. That is not a
+  // tidiness problem: the inconsistency is what produced the one-way door
+  // (below), and it cost a reader the ability to answer "does this surface
+  // honour the lock?" without checking all 29 sites individually.
+  //
+  // So: EVERY consumer takes one of these two. The single exception is
+  // `onSettingsClick`, which is deliberately lock-INDEPENDENT and says so where
+  // it is defined. If you add a third exception, comment it there too — an
+  // unexplained raw `canEdit`/`isOwner` in this file now reads as drift,
+  // because it is.
   const effectiveCanEdit = tripIsReadOnly ? false : canEdit;
+  const effectiveIsOwner = tripIsReadOnly ? false : isOwner;
 
   // Snap activeTab back to "home" if the user can't actually see the
   // requested tab — mirrors the visibility rules in TripTabBar.
@@ -399,8 +419,15 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // i.e., has an email but hasn't signed up yet, so a resend-invite
   // action is meaningful. Placeholders (name-only) are intentional
   // headcount entries and don't earn the dot.
+  //
+  // `effectiveIsOwner`, not raw `isOwner`: the dot exists to promise a
+  // resend-invite action, and CrewTab receives `effectiveIsOwner` — so on a
+  // locked trip the raw form lit a badge pointing at a control that is not
+  // there. A badge is a claim about what you can do, so it takes the same
+  // gate as the thing it points at. (This is the class the other four badge
+  // conditions below already got right by reading `effectiveCanEdit`.)
   const crewDot =
-    isOwner &&
+    effectiveIsOwner &&
     (members as Array<{ isGuest?: boolean; user?: { email?: string | null } | null }>).some(
       (m) => m.isGuest && !!m.user?.email
     );
@@ -482,10 +509,26 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   if (lodgingOutOfRange) tabBadges.lodging = "warning";
   else if (lodgingUnconfirmed) tabBadges.lodging = "info";
 
-  // Settings gear is now rendered INSIDE TripHeader (top-right). The header
-  // calls `onSettingsClick` when tapped — pass it through only when the owner
-  // can actually edit the trip.
-  const onSettingsClick = (isOwner && !tripIsReadOnly)
+  // Settings gear is rendered INSIDE TripHeader (top-right); the header calls
+  // `onSettingsClick` when tapped.
+  //
+  // ── THE ONE DELIBERATE EXCEPTION to the two derivations above ─────────────
+  //
+  // Raw `isOwner`, NOT `effectiveIsOwner`. This was `isOwner && !tripIsReadOnly`
+  // and that made it a ONE-WAY DOOR: settings is the trip's control surface, so
+  // taking it away when the lock engages leaves the owner of an old trip with a
+  // banner announcing a state and no way to reach anything that governs it.
+  // Splashmagic sat in exactly that state in production.
+  //
+  // The general rule, which is why this is not special-cased to "owners on old
+  // trips": A CONTROL SURFACE MUST NOT BE REMOVED BY THE CONDITION IT GOVERNS.
+  // Whatever the lock does, it must not eat the door out of itself.
+  //
+  // What survives is REACHABILITY, not a widened permission. `TripSettingsModal`
+  // gates its own contents on role (`viewerRole`) and has never read the lock,
+  // so an owner sees exactly what an owner always saw. A Member gets no gear
+  // here and no gear on a live trip — unchanged, and it must stay that way.
+  const onSettingsClick = isOwner
     ? () => setShowSettings(true)
     : undefined;
 
@@ -542,13 +585,13 @@ function TripDetailBody({ tripId }: { tripId: string }) {
               lockedTitle={trip.locked_destination_title}
               dateRange={formatDateRangeCompact(trip.start_date, trip.end_date)}
               isLocked={isLocked}
-              canEdit={canEdit}
+              canEdit={effectiveCanEdit}
               myRole={role}
               tripStartDate={trip.start_date}
               tripEndDate={trip.end_date}
               onSettingsClick={onSettingsClick}
               pollActive={!!trip.poll_mode}
-              onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
+              onOpenDatesSheet={effectiveCanEdit ? () => setDatesSheetOpen(true) : undefined}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
                   tripId: trip.id,
@@ -565,12 +608,12 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                 trip={trip}
                 role={role}
                 canEdit={effectiveCanEdit}
-                isOwner={isOwner}
+                isOwner={effectiveIsOwner}
                 roleLoading={roleLoading}
                 onTabChange={(tab) => goToTab(tab as TabId)}
                 onEnableComp={effectiveCanEdit ? () => router.push(`/trips/${tripId}/leaderboard`) : undefined}
                 compActivated={showComp}
-                onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
+                onOpenDatesSheet={effectiveCanEdit ? () => setDatesSheetOpen(true) : undefined}
               />
             )}
           </main>
@@ -591,13 +634,13 @@ function TripDetailBody({ tripId }: { tripId: string }) {
               lockedTitle={trip.locked_destination_title}
               dateRange={formatDateRangeCompact(trip.start_date, trip.end_date)}
               isLocked={isLocked}
-              canEdit={canEdit}
+              canEdit={effectiveCanEdit}
               myRole={role}
               tripStartDate={trip.start_date}
               tripEndDate={trip.end_date}
               onSettingsClick={onSettingsClick}
               pollActive={!!trip.poll_mode}
-              onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
+              onOpenDatesSheet={effectiveCanEdit ? () => setDatesSheetOpen(true) : undefined}
               onDestinationChange={(value) => {
                 lockDestination.mutate({
                   tripId: trip.id,
@@ -620,7 +663,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
               <TripTabBar
                 activeTab={activeTab}
                 onTabChange={goToTab}
-                canEdit={canEdit}
+                canEdit={effectiveCanEdit}
                 isIdea={isIdea}
                 badges={tabBadges}
               />
@@ -632,7 +675,33 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                   >
                     <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
                     <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      This trip is read-only
+                      {/*
+                        Raw `isOwner`, and it has to be: this whole block only
+                        renders when `tripIsReadOnly`, so `effectiveIsOwner` is
+                        false BY CONSTRUCTION here and the owner branch would be
+                        unreachable. Second and last exception in this file, for
+                        the same underlying reason as the gear — a message about
+                        the lock cannot be gated on the lock.
+
+                        The owner half names something the reader can actually
+                        reach — the gear, restored above — and deliberately
+                        stops there. It does NOT say the lock can be lifted:
+                        there is no control that lifts it (the override toggle
+                        is deferred; `trips.date_lock_override` exists in the
+                        schema and nothing reads it). A refusal that names an
+                        action which is not there costs more than one that names
+                        none, because the reader goes looking and concludes the
+                        app is broken. When the toggle lands, this string is
+                        where it gets announced.
+
+                        Everyone else keeps the original sentence: for a Member
+                        it is not a refusal with a missing remedy, it is just
+                        the state of a finished trip, and there is nothing they
+                        could do about it in any build.
+                      */}
+                      {isOwner
+                        ? "This trip is read-only — trip settings are still available"
+                        : "This trip is read-only"}
                     </span>
                   </div>
                 )}
@@ -641,10 +710,10 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                     trip={trip}
                     role={role}
                     canEdit={effectiveCanEdit}
-                    isOwner={isOwner}
+                    isOwner={effectiveIsOwner}
                     roleLoading={roleLoading}
                     onTabChange={(tab) => goToTab(tab as TabId)}
-                    onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
+                    onOpenDatesSheet={effectiveCanEdit ? () => setDatesSheetOpen(true) : undefined}
                   />
                 )}
                 {activeTab === "schedule" && (
@@ -652,19 +721,19 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                     trip={trip}
                     role={role}
                     canEdit={effectiveCanEdit}
-                    isOwner={tripIsReadOnly ? false : isOwner}
-                    onOpenDatesSheet={canEdit ? () => setDatesSheetOpen(true) : undefined}
+                    isOwner={effectiveIsOwner}
+                    onOpenDatesSheet={effectiveCanEdit ? () => setDatesSheetOpen(true) : undefined}
                     onTabChange={setActiveTab}
                   />
                 )}
                 {activeTab === "crew" && (
-                  <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                  <CrewTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={effectiveIsOwner} />
                 )}
                 {activeTab === "lodging" && (
-                  <LodgingTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                  <LodgingTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={effectiveIsOwner} />
                 )}
                 {activeTab === "expenses" && (
-                  <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={tripIsReadOnly ? false : isOwner} />
+                  <ExpensesTab trip={trip} role={role} canEdit={effectiveCanEdit} isOwner={effectiveIsOwner} />
                 )}
               </div>
             </div>
@@ -692,7 +761,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
           onClose={() => setDatesSheetOpen(false)}
           tripId={tripId}
           trip={trip}
-          isOwner={isOwner}
+          isOwner={effectiveIsOwner}
         />
       )}
 
