@@ -172,11 +172,39 @@ doubles), rack-n-stack, and the generic/manual formats):
   weight is computed at read-time from the current hole/config
   (`holeWeight`/`remainingSwing`), never snapshotted onto a stored hole result,
   so flipping it or changing `N` mid-round just changes what the next compute
-  returns — nothing to migrate, nothing stale to reconcile. That's what makes it
-  architecturally safe to expose as a live Setup toggle even under the #501
-  freeze, where every other modifier stays locked. See CLAUDE.md's "modifier
-  config persistence" gotcha for the adjacent (and unrelated) collapse-persist
-  behavior this is easy to conflate with.
+  returns. That is what makes it architecturally safe to expose as a live Setup
+  toggle even under the #501 freeze, where every other modifier stays locked. See
+  CLAUDE.md's "modifier config persistence" gotcha for the adjacent (and
+  unrelated) collapse-persist behavior this is easy to conflate with.
+
+  **CORRECTION (migration 178): the premise above is true and the conclusion
+  "nothing stale to reconcile" was FALSE.** The *weight* is not snapshotted — that
+  part is right, and it is why the scorecard re-renders the instant the toggle
+  moves. But the *match result* IS: `game_matches.status/result/margin` is a
+  stored derived value, and `status = 'complete'` is itself computed using the
+  glorious weighting. This note reasoned about one value and concluded about the
+  system.
+
+  Two consequences, both now handled rather than assumed away:
+
+  - **A decided match would not reopen.** `saveConfig` recomputes with
+    `skipComplete: true`, so a match that closed out without glorious was frozen
+    against the recompute that would legitimately un-decide it. Measured: a
+    4-up-with-3-to-play match stayed `complete / a_win / 4&3` where the correct
+    answer was `active / null / null`. `saveConfig` now passes
+    `skipComplete: false` for a glorious change only; the other five callers keep
+    the freeze, because a late *input* correction genuinely should not rewrite a
+    finished match (CLAUDE.md #9).
+  - **Flipping it mid-round is no longer unconditionally safe**, and the rule is
+    now enforced rather than reasoned about: a change is permitted only if it
+    would not alter the weight of a hole ALREADY PLAYED. Once holes inside the
+    current window have been played, the setting is frozen entirely — not capped,
+    since every direction (raise, lower, off) revalues them.
+
+  **The #501 exposure decision survives**, and that is worth stating so nobody
+  re-derives the original argument: glorious is still the one modifier safe to
+  expose as a live toggle. The safety just comes from the guard now, not for
+  free from the derivation.
 
 ### Per-setting freeze redesign — coming; do NOT harden the current freeze (Zach, blocking P2)
 

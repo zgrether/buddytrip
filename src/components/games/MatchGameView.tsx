@@ -1300,9 +1300,20 @@ export function MatchGameView() {
         }
         await refreshAfterMatchCountChange();
       } else {
-        // LEAN: a config-only save can't move the board (the game isn't live) — just
-        // invalidate the two queries this page reads + mark the board stale.
-        // faceBootstrap is the one that actually refreshes the Live face (CLAUDE.md #10).
+        // LEAN: this save did not flip scoring, so it does not need the full
+        // go-live cascade — just the two queries this page reads, plus marking
+        // the board stale. faceBootstrap is the one that actually refreshes the
+        // Live face (CLAUDE.md #10).
+        //
+        // This comment used to read "a config-only save can't move the board
+        // (the game isn't live)". BOTH halves are false: a live game can take a
+        // config-only save, and such a save absolutely can move the board — a
+        // glorious-holes change re-weights the holes still to play and can turn a
+        // decided match undecided (#1245-adjacent; the server half is migration
+        // 178). The invalidations below were adequate anyway, which is why
+        // nothing broke here — but the sentence sent a reader looking for the
+        // cause in the wrong place, so it is the reasoning that was wrong rather
+        // than the code.
         await Promise.all([
           utils.games.getById.invalidate({ tripId: tripId!, gameId: gameId! }),
           utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: gameId! }),

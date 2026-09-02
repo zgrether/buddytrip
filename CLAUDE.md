@@ -760,8 +760,22 @@ These patterns have been established through prior work. Follow them exactly —
 11. **Glorious Finishing Holes weight is DERIVED, never snapshotted.** The "last N
     holes worth 2×" modifier (`games.modifiers.glorious_holes: { holes: N }`) is
     applied at COMPUTE time by `holeWeight`/`remainingSwing` (`src/lib/gloriousHoles.ts`),
-    never stored on a hole result — flip the flag or change N mid-round and the tally
-    just recomputes (nothing migrates). It weights the match tally (a won glorious
+    never stored on a hole result. **"Flip the flag mid-round and the tally just
+    recomputes (nothing migrates)" was the claim here, and it was WRONG in the way
+    that matters** — the WEIGHT is not snapshotted, but the RESULT is:
+    `game_matches.status/result/margin` is stored, and `status = 'complete'` is
+    itself derived using this weighting. So a match that closed out without
+    glorious stayed `complete / a_win / 4&3` when turning glorious on should have
+    reopened it, because `saveConfig` recomputes with `skipComplete: true` and the
+    freeze skips exactly the row the change invalidates. Two fixes, both narrow:
+    migration 178 refuses any glorious change that would revalue a hole ALREADY
+    PLAYED (frozen entirely once holes inside the current window are played — not
+    capped, since every direction revalues them), and `saveConfig` alone passes
+    `skipComplete: false` for a glorious change. **The general lesson, which is why
+    this is written at length: "derived, never snapshotted" was true of the value
+    being reasoned about and false of the value that reached the screen.** A
+    read-time derivation upstream does not make everything downstream of it
+    derived. It weights the match tally (a won glorious
     hole is ±2) and, critically, close-out/dormie compare the lead to the WEIGHTED
     `remainingSwing`, NOT raw holes left (a 4-up lead with 3 glorious holes / swing 6
     is still live). Match SINGLES/DOUBLES only, **guarded on `game_type_id`** (via
