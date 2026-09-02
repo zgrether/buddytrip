@@ -15,6 +15,9 @@ import { emptySheet, fillAll, setPick, type SheetPick } from "@/lib/pickemSheet"
  */
 const filledSheet = (): SheetPick[] => fillAll(emptySheet(SLATE), "home");
 
+/** One game called out of `SLATE.length` — a PARTIAL sheet, for §3's tone tests. */
+const partialSheet = (): SheetPick[] => setPick(emptySheet(SLATE), SLATE[0].id, "home");
+
 /**
  * The sheet, rendered in each of the states a participant can actually be in.
  *
@@ -135,10 +138,14 @@ describe("the sheet, confidence ON", () => {
      *
      * The count is asserted alongside, because a disabled button with no
      * explanation is the silent refusal this feature keeps removing.
+     *
+     * Text updated for the tone system (§3 of the visuals batch): a zero-pick
+     * sheet now reads "Nothing submitted", matching Other Picks' wording for
+     * the same state, rather than "0 of 3 picked".
      */
     const html = render();
     expect(tagWith(html, 'data-testid="pickem-submit"')).toContain("disabled");
-    expect(html).toContain(`0 of ${SLATE.length} picked`);
+    expect(html).toContain("Nothing submitted");
   });
 
   it("never says SAVED over a sheet that holds nothing", () => {
@@ -159,10 +166,14 @@ describe("the sheet, confidence ON", () => {
   it("ALL HOME fills the sheet and enables Save", () => {
     // The shortcut is what makes removing the pre-fill affordable: the old
     // default position is one tap away, and now somebody chose it.
+    //
+    // A complete sheet's status now reads "Done" (§3 of the visuals batch),
+    // matching Other Picks' wording for the same state, rather than "3 of 3
+    // picked".
     const html = render({ picks: filledSheet() });
     const homePicked = html.split('data-testid="pickem-pick-home" data-selected="true"').length - 1;
     expect(homePicked).toBe(SLATE.length);
-    expect(html).toContain(`${SLATE.length} of ${SLATE.length} picked`);
+    expect(html).toContain("Done");
     expect(html).toContain('data-testid="pickem-sheet-all-home"');
     expect(html).toContain('data-testid="pickem-sheet-all-away"');
   });
@@ -244,8 +255,11 @@ describe("the sheet, confidence OFF", () => {
     //
     // The line it lived on is gone with the save bar; the count that replaced
     // it inherits the rule, and has no room to break it.
+    //
+    // Text updated for the tone system (§3): a complete sheet now reads
+    // "Done" rather than "3 of 3 picked" — still nowhere near "and ranked".
     const html = render({ settings: OFF, picks: filledSheet() });
-    expect(html).toContain("3 of 3 picked");
+    expect(html).toContain("Done");
     expect(html).not.toContain("and ranked");
   });
 
@@ -506,8 +520,14 @@ describe("whose sheet this is, once the footer is gone", () => {
     }
     // ...and the row that replaced that line is present on both, so this is not
     // passing because the header vanished.
-    expect(theirs).toContain("picked");
-    expect(mine).toContain("picked");
+    //
+    // Anchored to the testid rather than the word "picked": since §3's tone
+    // system, MY empty sheet reads "Nothing submitted" (no "picked" substring)
+    // while a PROXY sheet still reads "0 of 3 picked" — different text is the
+    // whole point of the change, so the shared assertion has to be about the
+    // element existing, not about wording that now legitimately differs.
+    expect(theirs).toContain('data-testid="pickem-sheet-progress"');
+    expect(mine).toContain('data-testid="pickem-sheet-progress"');
   });
 
   it("still refuses to send somebody else an unfinished sheet", () => {
@@ -603,5 +623,62 @@ describe("an unpicked row, once picking is closed", () => {
     expect(missed).toContain('data-outcome="lost"');
     expect(missed).toContain("line-through");
     expect(missed).not.toContain("pickem-row-not-picked");
+  });
+});
+
+/**
+ * MY PICKS' STATUS TONE — the phase branch is INVERTED relative to Other
+ * Picks, deliberately (§3 of the visuals batch).
+ *
+ * The obvious wrong build copies Other Picks' branch verbatim (same tones,
+ * same input, only the text differs) — which would leave a partial sheet
+ * looking calm at exactly the moment it is still fixable. These two cases are
+ * chosen to fail against exactly that build: Other Picks reads partial+open as
+ * NEUTRAL and partial+closed as AMBER; My Picks must read the opposite of
+ * both, on the same picked/total input.
+ */
+describe("My Picks' status tone is the INVERSE of Other Picks' phase branch", () => {
+  it("my own partial sheet is AMBER while picks are OPEN — the actionable moment", () => {
+    // Fails against a build that copies Other Picks' branch: that branch
+    // reads partial+open as "none" (neutral), which is the wrong tone here.
+    const html = render({ editable: true, picks: partialSheet() });
+    const row = tagWith(html, 'data-testid="pickem-sheet-progress"');
+    expect(row).toContain('data-tone="partial"');
+    expect(html).toContain(`Submitted 1/${SLATE.length}`);
+  });
+
+  it("the SAME partial sheet is neutral once picks CLOSE — settled, not nagging", () => {
+    // The mirror case. Other Picks reads partial+closed as "partial" (amber);
+    // My Picks must read "none" (neutral) — the fact survives in the text
+    // ("Submitted 1/3"), only the tone drops, because there is nothing left
+    // to fix.
+    const html = render({ editable: false, picks: partialSheet(), closure: { reason: "deadline", at: Date.now() } });
+    const row = tagWith(html, 'data-testid="pickem-sheet-progress"');
+    expect(row).toContain('data-tone="none"');
+    expect(html).toContain(`Submitted 1/${SLATE.length}`);
+  });
+
+  it("a COMPLETE sheet reads Done, in either phase", () => {
+    const open = render({ editable: true, picks: filledSheet() });
+    const closed = render({ editable: false, picks: filledSheet(), closure: { reason: "deadline", at: Date.now() } });
+    for (const html of [open, closed]) {
+      const row = tagWith(html, 'data-testid="pickem-sheet-progress"');
+      expect(row).toContain('data-tone="done"');
+      expect(html).toContain(">Done<");
+    }
+  });
+
+  it("a PROXY sheet (isSelf: false) is untouched — old plain text, no tone", () => {
+    // "My Picks only" — a delegate filling in for somebody else must not pick
+    // up the new tone system, which this change was not asked to extend to
+    // proxy entry.
+    const html = render({
+      editable: true,
+      picks: partialSheet(),
+      subject: { userId: "ty", name: "Ty", isSelf: false, isGuest: false },
+    });
+    const row = tagWith(html, 'data-testid="pickem-sheet-progress"');
+    expect(row).not.toContain("data-tone");
+    expect(html).toContain(`1 of ${SLATE.length} picked`);
   });
 });

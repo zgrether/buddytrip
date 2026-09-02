@@ -25,6 +25,7 @@ import {
 } from "@/lib/pickemSheet";
 import { draftLostToLock, formatCountdownParts, type PickemClosure } from "@/lib/pickemLifecycle";
 import { ValueUnitParts } from "@/components/ValueUnit";
+import { sheetStateColor, sheetStateLine } from "./PickemOtherPicks";
 import { paysOut, type SlateResult } from "@/lib/pickemScoring";
 import { isPlayedOutcome, type PickOutcome } from "./PickemSheetRow";
 
@@ -429,6 +430,35 @@ export function PickemSheet({
   const remaining = unpickedCount(picks);
 
   /**
+   * MY PICKS' status line — Other Picks' three tones (`sheetStateLine`), with
+   * the phase branch INVERTED (`invertPhaseTone: true`).
+   *
+   * Why inverted, and not the same branch Other Picks uses: the rule
+   * underneath both is "flag incompleteness when it is consequential to the
+   * READER right now". For somebody else's sheet that moment is after the
+   * lock — half-finished is none of your business while they can still change
+   * it, and worth knowing once they can't. For YOUR OWN sheet it is the
+   * opposite moment: partial is actionable exactly while picks are open (you
+   * can still finish it), so THAT is when it gets amber. Once closed it is
+   * settled and amber would be nagging about something no longer fixable — the
+   * text still reads "Submitted 12/16" so the fact survives, only the tone
+   * drops to neutral. Copying Other Picks' branch here would leave an
+   * incomplete sheet looking calm at exactly the moment you could still fix
+   * it, which is the likeliest way this ships wrong.
+   *
+   * Scoped to `subject.isSelf` at the render site, not here — this component
+   * also renders a PROXY sheet (`isSelf: false`, filling in for somebody else)
+   * through the exact same shortcuts row, and that surface is out of this
+   * change's scope ("My Picks only"). Computed unconditionally because it is
+   * cheap and reading it does not commit to rendering it.
+   */
+  const myStatus = sheetStateLine(
+    { picked: slate.length - remaining, total: slate.length, isGuest: subject.isGuest },
+    editable,
+    { invertPhaseTone: true },
+  );
+
+  /**
    * Report the edge, not the state, and report it to a ref-stable callback.
    *
    * `dirty` is already the honest predicate — it is false until the working
@@ -724,16 +754,63 @@ export function PickemSheet({
             </button>
           ))}
           <span className="flex-1" />
+          {/* MY sheet gets the tone-based status (`myStatus`, computed above).
+              A PROXY sheet (`isSelf: false` — a delegate filling in for
+              somebody else) keeps the old plain rendering unchanged: this
+              change is My Picks only, and retrofitting the tone system onto
+              proxy entry is scope this spec did not ask for. */}
+          {subject.isSelf ? (
+            myStatus && (
+              <span
+                data-testid="pickem-sheet-progress"
+                data-tone={myStatus.tone}
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: myStatus.tone === "none" ? 400 : 600,
+                  fontVariantNumeric: "tabular-nums",
+                  color: sheetStateColor(myStatus.tone),
+                }}
+              >
+                {myStatus.text}
+              </span>
+            )
+          ) : (
+            <span
+              data-testid="pickem-sheet-progress"
+              style={{
+                fontSize: 11.5,
+                fontWeight: remaining > 0 ? 600 : 400,
+                fontVariantNumeric: "tabular-nums",
+                color: remaining > 0 ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+              }}
+            >
+              {slate.length - remaining} of {slate.length} picked
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* CLOSED, and it is MY sheet — the case that did not exist before this
+          change. The shortcuts row above is `editable`-gated (there is
+          nothing to shortcut once picks are locked), which used to take the
+          status line down with it: a partial sheet said NOTHING once closed,
+          rather than saying it calmly. Same `myStatus`, same text — only the
+          tone moved, from amber (while you could still act) to neutral (now
+          that you can't). Proxy sheets and a truly read-only OTHER sheet
+          never reach this: both pass `subject.isSelf: false`. */}
+      {!editable && subject.isSelf && myStatus && (
+        <div className="flex items-center justify-end px-1">
           <span
             data-testid="pickem-sheet-progress"
+            data-tone={myStatus.tone}
             style={{
               fontSize: 11.5,
-              fontWeight: remaining > 0 ? 600 : 400,
+              fontWeight: myStatus.tone === "none" ? 400 : 600,
               fontVariantNumeric: "tabular-nums",
-              color: remaining > 0 ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+              color: sheetStateColor(myStatus.tone),
             }}
           >
-            {slate.length - remaining} of {slate.length} picked
+            {myStatus.text}
           </span>
         </div>
       )}
