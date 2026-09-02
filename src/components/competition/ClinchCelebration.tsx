@@ -158,22 +158,44 @@ export function ClinchCelebration({
         style={{
           position: "absolute",
           left: "50%",
-          top: "50%",
           /**
-           * The CUP's placement. Do not move this to get the golfer out from
-           * behind a name — that was tried (#1237) and reverted.
+           * ── ANCHORED TO THE CARD'S TOP EDGE, NOT ITS CENTRE ──────────────
            *
-           * -46% -> -32% did clear Bill, and it also dragged the whole trophy
-           * down: the pedestal and base left the card entirely and the bowl grew
-           * to fill it, so a quiet watermark became the loudest thing on the
-           * screen. The complaint was one figure sitting behind two lines of
-           * text; the fix moved every part of the artwork to solve it.
+           * `top: 0` with a pull of 14% of the ARTWORK's own height (0.14 × 380
+           * ≈ 53px), replacing `top: 50%` + `translateY(-46%)`.
            *
-           * Bill's own offset inside the SVG is the right lever — he is a
-           * separate `<g>` on the bowl, and moving him leaves the cup where it
-           * is. See `BILL_Y` in CupTrophy.tsx.
+           * Centre-anchoring made the composition a function of card height.
+           * The hero grows when the projected row appears, and
+           * `0.5H − 0.46 × 380` moves the whole trophy DOWN ~30px on the taller
+           * card — so the same artwork framed itself two different ways and the
+           * base came into view only on one of them. That is what read as "the
+           * trophy displays two different ways": one drawing, two compositions.
+           *
+           * Anchored to the top, the framing is IDENTICAL at every card height
+           * and growth simply reveals more at the bottom. That is a CROP — a
+           * property of the container — rather than a second layout to keep in
+           * sync with the first.
+           *
+           * IT IS ALSO WHAT MAKES THE BILL FIX SOUND. `BILL_NUDGE_BELOW_NAMES`
+           * clears the first name line by a measured pixel, and under
+           * centre-anchoring that clearance varied by ~30px between the two card
+           * shapes — it was tuned on the short card, which happens to be the
+           * tighter one, so it held by luck of direction. Now the names sit at a
+           * fixed offset from the card top and so does the trophy, so the
+           * clearance is a constant.
+           *
+           * The value preserves today's framing on the short card exactly
+           * (0.5 × 243 − 174.8 = −53.2, measured −53), so nothing moves on the
+           * card people have been looking at.
+           *
+           * DO NOT move this to get the golfer out from behind a name — that
+           * was tried (#1237) and reverted: it dragged the pedestal and base off
+           * the card and let the bowl fill it, turning a quiet watermark into
+           * the loudest thing on screen. Bill's own offset inside the SVG is the
+           * lever for that; see `BILL_Y`.
            */
-          transform: "translate(-50%,-46%)",
+          top: 0,
+          transform: "translate(-50%,-14%)",
           pointerEvents: "none",
         }}
         data-testid="hero-trophy"
