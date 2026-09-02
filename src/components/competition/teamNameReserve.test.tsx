@@ -114,6 +114,19 @@ describe("cup header — the full name survives", () => {
     expect(html).toContain("break-normal");
     expect(html).not.toContain("break-words");
   });
+
+  it("and not in the COLLAPSED bar either — same label, tighter column", () => {
+    /**
+     * The second render site of the same label. This one is capped at 38% of
+     * the bar, so it is if anything the likelier place to see a mid-word break
+     * — and fixing only the site that was reported is the half-sweep CLAUDE.md
+     * keeps recording. The sweep unit is "a team name in a narrow slot", not
+     * the file the report named.
+     */
+    const html = collapsed("Booty Hunters and Scurvy Hookers", "Banks");
+    expect(html).toContain("break-normal");
+    expect(html).not.toContain("break-words");
+  });
 });
 
 describe("cup header — the two-line reserve is unconditional", () => {

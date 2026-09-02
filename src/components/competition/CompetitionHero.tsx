@@ -802,8 +802,16 @@ function MiniName({
           `line-clamp-2` STAYS, and is strictly better than what preceded the
           reserve: before #1212 this had no clamp at all and a long legacy name
           could wrap to three lines or more. Bounded, not padded. */}
+      {/* `break-normal`, matching `TeamName` — the SECOND render site of the
+          same label, and the reason this is in the same commit rather than a
+          follow-up. The defect is "a team name breaks mid-word", and this
+          component has the tighter column of the two (capped at 38%), so it is
+          if anything the likelier place to see it. Fixing the reported site and
+          leaving this one is the half-sweep CLAUDE.md keeps recording — the
+          sweep unit is the shared thing (a team name in a narrow slot), not the
+          file the report happened to name. */}
       <span
-        className="line-clamp-2 w-full break-words"
+        className="line-clamp-2 w-full break-normal"
         style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: team.color }}
       >
         {team.name}
