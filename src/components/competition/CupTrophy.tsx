@@ -161,6 +161,14 @@ export function CupTrophy({ opacity, tint }: TrophySlotProps) {
           <stop offset="0" stopColor={mix("#ecd282", 26)} />
           <stop offset="1" stopColor={mix("#87682a", 30)} />
         </linearGradient>
+        {/* The base tiers' TOP faces. Lighter than the side wall — an upward
+            face catches more light — but modelled left-to-right like every
+            other surface here. A flat fill made them read as paint on a plate
+            rather than as the top of a turned cylinder. */}
+        <linearGradient id="btHeroBaseTop" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor={mix("#f6e6b4", 22)} />
+          <stop offset="1" stopColor={mix("#b9944a", 26)} />
+        </linearGradient>
       </defs>
       <g opacity={opacity}>
         {/*
@@ -188,17 +196,30 @@ export function CupTrophy({ opacity, tint }: TrophySlotProps) {
           face catches more light than a side, and that is what makes the
           ellipse read as a surface rather than an outline.
         */}
-        {/* tier 1 (widest) */}
-        <ellipse cx="150" cy="344" rx="54" ry={54 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
-        <rect x="96" y="320" width="108" height="24" fill="url(#btHeroBase)" />
-        <ellipse cx="150" cy="320" rx="54" ry={54 * TIER_FORESHORTEN} fill={mix("#f0da96", 22)} />
-        {/* tier 2 */}
-        <ellipse cx="150" cy="320" rx="30" ry={30 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
-        <rect x="120" y="305" width="60" height="15" fill="url(#btHeroBase)" />
-        <ellipse cx="150" cy="305" rx="30" ry={30 * TIER_FORESHORTEN} fill={mix("#f0da96", 22)} />
-        {/* knop — same horizon as everything else now */}
-        <ellipse cx="150" cy="298" rx="19" ry={19 * TIER_FORESHORTEN} fill={mix("#f0da96", 22)} />
-        <rect x="142" y="258" width="16" height="42" fill="url(#btHeroBase)" />
+        {/*
+          A TIER NEEDS MORE HEIGHT THAN ITS TOP FACE, or it reads as a plate.
+
+          The first pass kept the old slab heights (24 and 15) and simply added
+          ellipses. That was not enough: a top face at this horizon is 2 × ry
+          tall — 22px on the widest tier — so a 24px body left almost no wall
+          showing at the centre, and the lighter top face dominated what little
+          there was. It came out as a flat disc, which is the same "no depth"
+          reading the flat rects had, arriving a different way.
+
+          Bodies are 30 and 20 now, comfortably clear of their own 22px and 13px
+          top faces, so the wall is visible across the whole width.
+        */}
+        {/* tier 1 (widest) — body 322→352 */}
+        <ellipse cx="150" cy="352" rx="54" ry={54 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
+        <rect x="96" y="322" width="108" height="30" fill="url(#btHeroBase)" />
+        <ellipse cx="150" cy="322" rx="54" ry={54 * TIER_FORESHORTEN} fill="url(#btHeroBaseTop)" />
+        {/* tier 2 — body 302→322 */}
+        <ellipse cx="150" cy="322" rx="32" ry={32 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
+        <rect x="118" y="302" width="64" height="20" fill="url(#btHeroBase)" />
+        <ellipse cx="150" cy="302" rx="32" ry={32 * TIER_FORESHORTEN} fill="url(#btHeroBaseTop)" />
+        {/* collar where the stem meets the base — same horizon as everything else */}
+        <ellipse cx="150" cy="296" rx="19" ry={19 * TIER_FORESHORTEN} fill="url(#btHeroBaseTop)" />
+        <rect x="142" y="258" width="16" height="40" fill="url(#btHeroBase)" />
         {/* slim handles (lit left / shadow right) */}
         <path d="M60,104 Q24,114 32,166 Q38,204 82,198" fill="none" stroke={mix("#cfa94e", 32)} strokeWidth="13" strokeLinecap="round" />
         <path d="M240,104 Q276,114 268,166 Q262,204 218,198" fill="none" stroke={mix("#a5822f", 32)} strokeWidth="13" strokeLinecap="round" />
