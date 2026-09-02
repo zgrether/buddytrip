@@ -29,12 +29,27 @@
  * rule whose emphasis changes with the value is one nobody can predict — the
  * reader would have to work out which half is currently important. Both halves
  * look the same and the digits carry it.
+ *
+ * ── `unitSize` — a size DIFFERENCE, not a colour-only distinction ──────────
+ *
+ * The number/unit split shipped as colour alone: same `fontSize` for both, the
+ * unit told apart only by `unitColor`. That is right for a chip ("**16** PTS")
+ * where the unit is three fixed letters and shrinking it buys nothing. It reads
+ * as too weak at the countdown's 24px, where "h"/"m" are wide enough next to
+ * the digits to look like a second value rather than a label.
+ *
+ * `unitSize` is OPTIONAL and defaults to `size`, so every existing caller —
+ * every `PTS` chip, the "worth N pts" ribbon — renders BYTE-IDENTICAL to
+ * before. It is not a new default; it is a per-caller opt-in, used at exactly
+ * one call site (the countdown, `PickemSheet.tsx`). A caller that wants the
+ * unit visibly smaller passes it; one that does not, doesn't.
  */
 
 export function ValueUnit({
   value,
   unit,
   size,
+  unitSize,
   weight = 700,
   color,
   unitColor = "var(--color-bt-text-dim)",
@@ -46,6 +61,9 @@ export function ValueUnit({
   /** Its label: `pts`, `h`, `m`. Omitted renders the number alone. */
   unit?: string;
   size?: number;
+  /** The unit's font size. Defaults to `size` — every caller that doesn't pass
+   *  this renders exactly as before (colour-only distinction). */
+  unitSize?: number;
   weight?: number;
   /** The number's colour. Defaults to primary text. */
   color?: string;
@@ -58,16 +76,21 @@ export function ValueUnit({
   return (
     <span
       data-testid={testId}
-      style={{ fontSize: size, fontWeight: weight, fontVariantNumeric: "tabular-nums" }}
+      // Plain inline, not flex — CSS's default `vertical-align: baseline` on
+      // inline (non-replaced) elements already sits a smaller unit ON the
+      // value's baseline with no extra rule needed. Checked at both extremes
+      // ("120h 05m", "00h 47m") in a real render before relying on it.
+      style={{ fontWeight: weight, fontVariantNumeric: "tabular-nums" }}
     >
-      <span style={{ color: color ?? "var(--color-bt-text)" }}>{value}</span>
+      <span style={{ fontSize: size, color: color ?? "var(--color-bt-text)" }}>{value}</span>
       {unit != null && (
         <>
           <span style={{ display: "inline-block", width: gap }} />
-          {/* Weight is inherited on purpose: the unit is quieter by COLOUR, not
-              by also being lighter. Two axes saying the same thing makes the
-              unit disappear at small sizes, and it still has to be readable. */}
-          <span style={{ color: unitColor }}>{unit}</span>
+          {/* Weight is inherited on purpose: the unit is quieter by COLOUR (and,
+              now, optionally by SIZE), not by also being lighter. Weight moving
+              too is a third axis saying the same thing, and it is how the unit
+              disappears at small sizes while still needing to be readable. */}
+          <span style={{ fontSize: unitSize ?? size, color: unitColor }}>{unit}</span>
         </>
       )}
     </span>
@@ -84,6 +107,7 @@ export function ValueUnit({
 export function ValueUnitParts({
   parts,
   size,
+  unitSize,
   weight = 700,
   color,
   unitColor = "var(--color-bt-text-dim)",
@@ -92,6 +116,9 @@ export function ValueUnitParts({
 }: {
   parts: { value: string | number; unit?: string }[];
   size?: number;
+  /** See `ValueUnit`'s `unitSize` — defaults to `size`, so a caller that omits
+   *  this renders exactly as before. */
+  unitSize?: number;
   weight?: number;
   color?: string;
   unitColor?: string;
@@ -110,6 +137,7 @@ export function ValueUnitParts({
           value={p.value}
           unit={p.unit}
           size={size}
+          unitSize={unitSize}
           weight={weight}
           color={color}
           unitColor={unitColor}

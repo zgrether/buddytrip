@@ -148,12 +148,28 @@ export interface OtherPicksColumn {
  *
  * After the close, the same half-finished sheet IS the thing somebody has to
  * act on, and amber is then the correct and useful reading.
+ *
+ * ── `invertPhaseTone` — the SAME rule, read from the other side ────────────
+ *
+ * The rule underneath both readings is one sentence: flag incompleteness when
+ * it is consequential to the READER right now. For someone else's sheet that
+ * is "now that it's locked and I can chase them" — neutral while open, amber
+ * once closed. For YOUR OWN sheet it is the opposite moment: partial is
+ * actionable exactly while picks are open (you can still finish it), and once
+ * closed it is settled — amber there would be nagging about a thing you can no
+ * longer fix. `invertPhaseTone` swaps only the PARTIAL branch, because that is
+ * the only branch the phase changes anything about — "done" and "nothing
+ * submitted" don't have a reader-relative direction to invert.
+ *
+ * Default `false` (Other Picks' existing behaviour) so every current caller is
+ * unaffected; My Picks is the one caller that passes `true` (`PickemSheet.tsx`).
  */
 export type SheetStateTone = "done" | "partial" | "none";
 
 export function sheetStateLine(
-  s: OtherSheet,
+  s: Pick<OtherSheet, "picked" | "total" | "isGuest">,
   picksAreOpen: boolean,
+  opts?: { invertPhaseTone?: boolean },
 ): { text: string; tone: SheetStateTone } | null {
   if (s.picked === 0) {
     return {
@@ -166,9 +182,11 @@ export function sheetStateLine(
   // worse than the silence.
   if (s.picked == null) return null;
   if (s.picked < s.total) {
+    const partialWhileOpen: SheetStateTone = opts?.invertPhaseTone ? "partial" : "none";
+    const partialWhileClosed: SheetStateTone = opts?.invertPhaseTone ? "none" : "partial";
     return {
       text: `Submitted ${s.picked}/${s.total}`,
-      tone: picksAreOpen ? "none" : "partial",
+      tone: picksAreOpen ? partialWhileOpen : partialWhileClosed,
     };
   }
   return { text: "Done", tone: "done" };
