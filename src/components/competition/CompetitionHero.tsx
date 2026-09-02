@@ -802,8 +802,16 @@ function MiniName({
           `line-clamp-2` STAYS, and is strictly better than what preceded the
           reserve: before #1212 this had no clamp at all and a long legacy name
           could wrap to three lines or more. Bounded, not padded. */}
+      {/* `break-normal`, matching `TeamName` — the SECOND render site of the
+          same label, and the reason this is in the same commit rather than a
+          follow-up. The defect is "a team name breaks mid-word", and this
+          component has the tighter column of the two (capped at 38%), so it is
+          if anything the likelier place to see it. Fixing the reported site and
+          leaving this one is the half-sweep CLAUDE.md keeps recording — the
+          sweep unit is the shared thing (a team name in a narrow slot), not the
+          file the report happened to name. */}
       <span
-        className="line-clamp-2 w-full break-words"
+        className="line-clamp-2 w-full break-normal"
         style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: team.color }}
       >
         {team.name}
@@ -980,8 +988,29 @@ function TeamName({
           quiet dead line. A panel that changes height across breakpoints is a
           thing you notice; 20px of desktop space is not. */}
       <span className="flex w-full items-end" style={{ fontSize: 17, minHeight: "2.4em" }}>
+        {/* `break-normal`, was `break-words`.
+
+            `break-words` (overflow-wrap: break-word) breaks INSIDE a word when
+            it will not fit, and this row is `justify-between` with two flexible
+            children — so a long name on one side squeezes the other, and a
+            5-letter name in the leftover 43px came out as "Bank" / "s" across
+            two lines. That reads as broken rather than tight, and it fires for
+            any name whose longest WORD does not fit the column it is left with.
+
+            A team name is a short label, not prose: it should stay whole and
+            take the consequences at its edge. Measured on the pair that produced
+            it ("Booty Hunters and Scurvy Hookers" / "Banks", 375px): the short
+            side goes from 41px over two lines to 20px on one.
+
+            KNOWN LIMIT, stated rather than hidden: at that extreme the short
+            name is clipped by 2px (scrollWidth 45 into a 43px box), because the
+            long side takes 254px of the row and this only changes WHERE the
+            overflow goes, not that there is any. A 2px shave beats a nonsense
+            line break, and the real cause — the flex row handing one side four
+            times the width of the other — is a distribution question this PR
+            does not open. */}
         <span
-          className="line-clamp-2 w-full break-words"
+          className="line-clamp-2 w-full break-normal"
           style={{ fontWeight: 600, lineHeight: 1.2, color: team.color }}
         >
           {team.name}

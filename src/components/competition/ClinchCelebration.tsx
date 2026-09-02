@@ -159,7 +159,32 @@ export function ClinchCelebration({
           position: "absolute",
           left: "50%",
           top: "50%",
-          transform: "translate(-50%,-46%)",
+          /**
+           * -32%, was -46%. MOVE THE ART, NOT THE TEXT.
+           *
+           * The two-line name reserve grew the block above this, and Bill — the
+           * engraved golfer, the one recognisable thing in the watermark — ended
+           * up behind it. Measured at 375px with a name at the cap: Bill spans
+           * y 193-275 while the name block is 191-245, so 52 of his 81px sat
+           * under the text, head and torso included.
+           *
+           * The names are the content (STYLE_GUIDE, subject slots) and the
+           * reserve is deliberate, so the cup moves instead. -32% puts Bill's
+           * top at 246 against a name block ending at 245 — clear by a measured
+           * pixel rather than by eye, which is the property worth pinning for a
+           * fix whose entire point is "not covered".
+           *
+           * The cost is the pedestal and base: the trophy already overflowed the
+           * card by 84px at the bottom and now does by 137, so what shows is the
+           * bowl and handles. Acceptable for a 0.17-opacity watermark, and the
+           * bowl is the part Bill is engraved on.
+           *
+           * STABLE ACROSS NAME LENGTHS. The reserve is unconditional, so the
+           * block is 54px tall for a short name and a long one alike — this
+           * offset does not need to track content. The burst below is nested in
+           * this box, so it follows without a second number to keep in step.
+           */
+          transform: "translate(-50%,-32%)",
           pointerEvents: "none",
         }}
         data-testid="hero-trophy"
