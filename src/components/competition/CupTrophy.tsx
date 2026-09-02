@@ -76,34 +76,48 @@ const BILL_SCALE = BILL_H_UNITS / BILL_H;
 const BILL_INK_CX = 354.2;
 
 /**
- * How far Bill sits BELOW the star's vertical centre, in trophy units (1 unit =
- * 1px at the rendered 300×380).
+ * How far Bill sits BELOW the star's vertical centre, in trophy units.
  *
- * The hero's team-name row crosses him. Measured at 375px with the real BBMI
- * pair ("Booty Hunters & Scurvy Hookers" / "Huge PNS Energy"), trophy at its
- * normal -46%:
+ * ── ZERO, because the collision was moved out from under him ───────────────
  *
- *   Bill            top 193, x 172-224
- *   name line 1     190-212, x  33-217   ← crosses him: 19px of overlap
- *   name line 2     210-232, x  33- 97   ← ends 75px short of him, never touched
+ * This was 20, then 24, and both were compensation. The team-name row crossed
+ * the top of the figure — his raised club and hand — so he was pushed down the
+ * bowl until he cleared the first line by a measured pixel.
  *
- * So the collision is ONLY the first line against the top of the figure — his
- * raised club and hand — and 20 units clears it with a pixel to spare. Both
- * lines are measured because the second one LOOKS like the culprit (it is the
- * lower of the two) and is not; a fix aimed at clearing the whole name block
- * would need 39 and drag his feet toward the bowl's point for nothing.
+ * The real cause was HORIZONTAL and was in the name row, not here. Each side
+ * took whatever width it needed, so a name short enough not to wrap ran
+ * straight out toward the middle — meaning the LESS text a team had, the
+ * further into the centre it reached, which is backwards and is why the
+ * encroachment looked unpredictable. `TeamName` now caps each column at 40%
+ * of the content box, so the names cannot arrive in the golfer's column at
+ * all. Measured at 375px with the real BBMI 2023 pair:
  *
- * WHY HERE AND NOT ON THE TROPHY. #1237 moved the whole cup instead
- * (-46% -> -32%), which cleared Bill and also pushed the pedestal and base off
- * the card, leaving the bowl to fill it — a quiet watermark became the loudest
- * thing on the screen. Reverted. Bill is his own `<g>` on the bowl, so moving
- * him leaves every other part of the artwork where it was.
+ *   "Jamarvelous Jabronies"   wraps to 2 lines, right edge 129
+ *   "Old Bay Boyz"            one line, left edge 240
+ *   Bill                      x 172-224
  *
- * The reserve above is unconditional (two lines whether or not the second is
- * used), so this does not need to track the name: a short name reserves the
- * same block and the geometry is identical.
+ * A's box now ends at 157 and B's begins at 240, so no name can reach him
+ * whatever it says — structural, not true-for-these-names. With the overlap
+ * gone the nudge has nothing to dodge, and keeping it would leave the figure
+ * sitting low on the bowl to avoid text that is no longer there.
+ *
+ * KEPT AT ZERO rather than deleted, because the history is the useful part:
+ * two rounds of moving the artwork to dodge text, when the text was the thing
+ * out of place. If a name ever crosses him again, the question to ask is what
+ * the name row is doing, not how far down to push the golfer.
+ *
+ * THE AWARDED TILT IS EXEMPT, by decision. `winnerSide` rotates the whole cup
+ * ±12°, which moves Bill with it — a left-hand win lifts him ~3px. That is
+ * allowed to cross the name: the tilt is a deliberate, momentary-feeling state
+ * on a finished cup, and constraining the artwork's celebration to a clearance
+ * rule written for the resting card would be the tail wagging the dog.
+ *
+ * WHY NOT MOVE THE TROPHY. #1237 tried that (-46% -> -32%) and pushed the
+ * pedestal and base off the card, turning a quiet watermark into the loudest
+ * thing on screen. Reverted. Bill is his own `<g>`, so this lever moves him
+ * alone — but the lever above it, the name column's width, was the right one.
  */
-const BILL_NUDGE_BELOW_NAMES = 20;
+const BILL_NUDGE_BELOW_NAMES = 0;
 
 /**
  * The trophy's foreshortening — how flat a circle drawn on its horizontal plane
@@ -161,6 +175,14 @@ export function CupTrophy({ opacity, tint }: TrophySlotProps) {
           <stop offset="0" stopColor={mix("#ecd282", 26)} />
           <stop offset="1" stopColor={mix("#87682a", 30)} />
         </linearGradient>
+        {/* The base tiers' TOP faces. Lighter than the side wall — an upward
+            face catches more light — but modelled left-to-right like every
+            other surface here. A flat fill made them read as paint on a plate
+            rather than as the top of a turned cylinder. */}
+        <linearGradient id="btHeroBaseTop" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor={mix("#f6e6b4", 22)} />
+          <stop offset="1" stopColor={mix("#b9944a", 26)} />
+        </linearGradient>
       </defs>
       <g opacity={opacity}>
         {/*
@@ -188,17 +210,30 @@ export function CupTrophy({ opacity, tint }: TrophySlotProps) {
           face catches more light than a side, and that is what makes the
           ellipse read as a surface rather than an outline.
         */}
-        {/* tier 1 (widest) */}
-        <ellipse cx="150" cy="344" rx="54" ry={54 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
-        <rect x="96" y="320" width="108" height="24" fill="url(#btHeroBase)" />
-        <ellipse cx="150" cy="320" rx="54" ry={54 * TIER_FORESHORTEN} fill={mix("#f0da96", 22)} />
-        {/* tier 2 */}
-        <ellipse cx="150" cy="320" rx="30" ry={30 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
-        <rect x="120" y="305" width="60" height="15" fill="url(#btHeroBase)" />
-        <ellipse cx="150" cy="305" rx="30" ry={30 * TIER_FORESHORTEN} fill={mix("#f0da96", 22)} />
-        {/* knop — same horizon as everything else now */}
-        <ellipse cx="150" cy="298" rx="19" ry={19 * TIER_FORESHORTEN} fill={mix("#f0da96", 22)} />
-        <rect x="142" y="258" width="16" height="42" fill="url(#btHeroBase)" />
+        {/*
+          A TIER NEEDS MORE HEIGHT THAN ITS TOP FACE, or it reads as a plate.
+
+          The first pass kept the old slab heights (24 and 15) and simply added
+          ellipses. That was not enough: a top face at this horizon is 2 × ry
+          tall — 22px on the widest tier — so a 24px body left almost no wall
+          showing at the centre, and the lighter top face dominated what little
+          there was. It came out as a flat disc, which is the same "no depth"
+          reading the flat rects had, arriving a different way.
+
+          Bodies are 30 and 20 now, comfortably clear of their own 22px and 13px
+          top faces, so the wall is visible across the whole width.
+        */}
+        {/* tier 1 (widest) — body 322→352 */}
+        <ellipse cx="150" cy="352" rx="54" ry={54 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
+        <rect x="96" y="322" width="108" height="30" fill="url(#btHeroBase)" />
+        <ellipse cx="150" cy="322" rx="54" ry={54 * TIER_FORESHORTEN} fill="url(#btHeroBaseTop)" />
+        {/* tier 2 — body 302→322 */}
+        <ellipse cx="150" cy="322" rx="32" ry={32 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
+        <rect x="118" y="302" width="64" height="20" fill="url(#btHeroBase)" />
+        <ellipse cx="150" cy="302" rx="32" ry={32 * TIER_FORESHORTEN} fill="url(#btHeroBaseTop)" />
+        {/* collar where the stem meets the base — same horizon as everything else */}
+        <ellipse cx="150" cy="296" rx="19" ry={19 * TIER_FORESHORTEN} fill="url(#btHeroBaseTop)" />
+        <rect x="142" y="258" width="16" height="40" fill="url(#btHeroBase)" />
         {/* slim handles (lit left / shadow right) */}
         <path d="M60,104 Q24,114 32,166 Q38,204 82,198" fill="none" stroke={mix("#cfa94e", 32)} strokeWidth="13" strokeLinecap="round" />
         <path d="M240,104 Q276,114 268,166 Q262,204 218,198" fill="none" stroke={mix("#a5822f", 32)} strokeWidth="13" strokeLinecap="round" />

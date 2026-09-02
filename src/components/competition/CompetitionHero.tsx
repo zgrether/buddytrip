@@ -1,10 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Settings, Trophy } from "lucide-react";
 import { fmtPts, ProjectionPill } from "./GameRow";
 import { ClinchCelebration } from "./ClinchCelebration";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { useShrinkToFit } from "@/hooks/useShrinkToFit";
+
+/** The collapsed bar's ladder. Starts at its designed 14 (the expanded hero's
+ *  starts at 17, `NAME_SIZES`), floor 11 — below that a name in a sticky bar is
+ *  decoration rather than a label. */
+const MINI_NAME_SIZES = [14, 13, 12, 11];
 import type { TrophySlot } from "./CupTrophy";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
@@ -224,6 +230,12 @@ export function CompetitionHero({
         <ClinchCelebration
           cupComplete={cupComplete}
           winnerColor={clincher?.color ?? null}
+          /* WHICH side won, not just what colour they are. The tilt needs a
+             direction and a colour cannot supply one — two teams can share a
+             hue family, and nothing about `#f97316` says "the right-hand one".
+             Derived from the same `clincher` the colour comes from, so the cup
+             can never lean away from the team it is tinted for. */
+          winnerSide={clincher ? (clincher.id === a?.id ? "A" : "B") : null}
           celebrate={celebrateFirstView}
           replayNonce={replayNonce}
           onCelebrated={onCelebrated}
@@ -763,6 +775,11 @@ function MiniName({
   align: "left" | "right";
   onEditTeam?: (teamId: string) => void;
 }) {
+  // Above the early return — hooks cannot sit behind a condition. `team.name`
+  // is optional-chained for the same reason: this runs on the no-team render.
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const nameSize = useShrinkToFit(nameRef, team?.name ?? "", MINI_NAME_SIZES);
+
   if (!team) return <div style={{ maxWidth: "38%" }} />;
   return (
     <button
@@ -810,9 +827,14 @@ function MiniName({
           leaving this one is the half-sweep CLAUDE.md keeps recording — the
           sweep unit is the shared thing (a team name in a narrow slot), not the
           file the report happened to name. */}
+      {/* SHRINKS rather than ellipsises — see `useShrinkToFit`. This is the
+          narrower of the two name slots (38% against the expanded hero's 44%),
+          so it reaches the floor sooner; the clamp above stays as that floor's
+          backstop. */}
       <span
+        ref={nameRef}
         className="line-clamp-2 w-full break-normal"
-        style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: team.color }}
+        style={{ fontSize: nameSize, fontWeight: 600, lineHeight: 1.2, color: team.color }}
       >
         {team.name}
       </span>
@@ -959,12 +981,57 @@ function TeamName({
   onEditTeam?: (teamId: string) => void;
   align: "left" | "right";
 }) {
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const nameSize = useShrinkToFit(nameRef, team.name);
+
   return (
     <button
       type="button"
       onClick={() => onEditTeam?.(team.id)}
       disabled={!onEditTeam}
       className={`flex min-w-0 flex-col gap-0.5 disabled:cursor-default ${align === "right" ? "items-end text-right" : "items-start text-left"}`}
+      /**
+       * A HARD 40% CAP, so neither name can reach the middle of the card.
+       *
+       * Without it each side took whatever it needed, and the width a name
+       * claimed depended on whether it happened to fit on one line: a name
+       * short enough not to wrap ran straight out toward the centre, while a
+       * longer one broke and stayed narrow. So the LESS text a team had, the
+       * further into the middle it reached — which is backwards, and it is why
+       * the encroachment looked unpredictable rather than proportional.
+       *
+       * The middle is not empty space. It is where the trophy and the golfer
+       * are, and every collision this component has had — Bill behind the
+       * name, `Banks` broken to `Bank`/`s` — is a name arriving somewhere the
+       * artwork already was.
+       *
+       * 44% of the content box leaves a centre gutter wider than the golfer,
+       * so the columns and the art stop competing for the same pixels instead
+       * of being tuned against each other.
+       *
+       * 44 AND NOT 40, and the four points are measured rather than chosen.
+       * At 375px, against the real BBMI 2026 pair:
+       *
+       *   no cap  name runs to x212 — ACROSS the golfer, who starts at 172
+       *   40%     "Booty Hunters & Scurvy Hookers" needs THREE lines and the
+       *           clamp eats "Hookers"
+       *   44%     two lines, no ellipsis, right edge 161, golfer clear at 172
+       *   48%+    side B's single line starts at 206 and crosses the golfer
+       *           from the other direction
+       *
+       * So the window is one step wide: 40 truncates a name that is really in
+       * use, and 48 gives back the overlap the cap exists to remove. A first
+       * pass shipped 40 on the arithmetic and was caught by rendering the
+       * actual name — the 30-char one, not the 21-char one it was tuned on.
+       *
+       * It also fixes the squeeze the other way round, which was left as a
+       * known limit: with both sides capped, a long name can no longer take
+       * 254px and leave its opponent 43. Two capped columns, one gutter.
+       *
+       * A name that no longer fits wraps to two lines, which is what the
+       * unconditional two-line reserve above is for and costs nothing.
+       */
+      style={{ maxWidth: "44%" }}
       data-testid={`comp-team-name-${align === "left" ? "a" : "b"}`}
     >
       {/* 17 (was 15) — the name carries the block now that the icon is gone, and
@@ -979,9 +1046,21 @@ function TeamName({
           block reserves two lines whether or not the second is used, bottom-
           aligns its content so a short name sits against the ROSTER label
           rather than floating above it, and clamps at two as the ellipsis
-          floor. With the 34-char input cap the clamp should never fire; it is
-          here so a longer legacy name degrades to the old behaviour instead of
-          pushing the panel around.
+          floor.
+
+          THE CLAMP IS NOW A FLOOR, NOT THE ANSWER. An earlier version of this
+          comment claimed the clamp "should never fire with the 34-char input
+          cap". It can: that was reasoning about a character count when what
+          decides is the longest WORD against the column. At 44% every name in
+          use fits two lines at 17px, but "Wonderful Magnificent Splendids" —
+          one character LONGER than the BBMI 2026 name and needing a whole extra
+          line — does not.
+
+          No cap fixes that, because the only column wide enough to hold such a
+          name is one wide enough to put it back across the golfer. So the size
+          gives way instead: `useShrinkToFit` steps the type down until the
+          clamp stops hiding anything. The clamp survives only for a name that
+          does not fit even at the floor.
 
           UNCONDITIONAL at every width. The hero has no breakpoint and fills a
           content column up to 1280px, where nothing wraps and this leaves a
@@ -1009,9 +1088,16 @@ function TeamName({
             line break, and the real cause — the flex row handing one side four
             times the width of the other — is a distribution question this PR
             does not open. */}
+        {/* The font size is MEASURED, not fixed — 17 where the name fits, less
+            where it does not. The reserve above is sized from the PARENT's font
+            size, which this never touches, so a shrunken name still occupies a
+            full two-line block and both sides keep their baselines. Putting the
+            ref on the child and the reserve on the parent is what makes that
+            true; do not merge them. */}
         <span
+          ref={nameRef}
           className="line-clamp-2 w-full break-normal"
-          style={{ fontWeight: 600, lineHeight: 1.2, color: team.color }}
+          style={{ fontSize: nameSize, fontWeight: 600, lineHeight: 1.2, color: team.color }}
         >
           {team.name}
         </span>
