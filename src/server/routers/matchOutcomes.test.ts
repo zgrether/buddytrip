@@ -141,3 +141,159 @@ describe("matchOutcomes.listByGame — read parity with scores.listByGame", () =
     expect(rows).toEqual([]);
   });
 });
+
+/**
+ * Clearing a hole is only half the feature; the other half is that the RESULT
+ * follows. Nothing about a decided match is snapshotted while it is being
+ * played — `game_matches.result/margin/status` and `game_results` are written
+ * at `games.finish` — so these assert the seam where a cleared hole becomes
+ * cup points, which is the failure that would matter.
+ */
+describe("matchOutcomes.deleteOutcome — the result follows the cleared hole", () => {
+  /** A wins holes 1-3, halves 4-16 → 3 up with 2 to play, closed 3&2. */
+  const decide = async (gameId: string, matchId: string, skip?: number) => {
+    for (let hole = 1; hole <= 16; hole++) {
+      if (hole === skip) continue;
+      await ctx.caller().matchOutcomes.upsertOutcome({
+        tripId, gameId, matchId, holeNumber: hole,
+        result: hole <= 3 ? "side_a" : "halved",
+      });
+    }
+  };
+
+  /** A wins hole 1, halves 2-18 → 1 up through 18 (over). Clearing hole 1
+   *  leaves 17 halves and one unplayed hole: all square, nobody trailing. */
+  const decideOneUp = async (gameId: string, matchId: string) => {
+    for (let hole = 1; hole <= 18; hole++) {
+      await ctx.caller().matchOutcomes.upsertOutcome({
+        tripId, gameId, matchId, holeNumber: hole,
+        result: hole === 1 ? 'side_a' : 'halved',
+      });
+    }
+  };
+
+  const finishAndRead = async (gameId: string) => {
+    await ctx.caller().games.finish({ tripId, gameId });
+    const { data } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, entity_type, points, position")
+      .eq("game_id", gameId);
+    return (data ?? []) as { entity_id: string; entity_type: string; points: number; position: number }[];
+  };
+
+  it("CUP POINTS: finishing after a clear scores from the CLEARED hole set", async () => {
+    /**
+     * The assertion the whole feature rests on: it fails against a build where
+     * the row is deleted but the result is computed from a stale hole set.
+     *
+     * The fixture is chosen so the clear CHANGES WHO IS AHEAD, not just the
+     * margin. A wins hole 1 and halves 2-18: 1 up through 18, a_win. Clear hole
+     * 1 and it is 17 halved holes with one unplayed — all square, nobody
+     * trailing. So B moves from position 2 to position 1, which is the points
+     * difference an earlier draft of this test missed by picking a fixture
+     * where A led either way.
+     */
+    const control = await freshOutcomeMatch("A wins by one");
+    await decideOneUp(control.gameId, control.matchId);
+
+    const cleared = await freshOutcomeMatch("...until the winning hole is cleared");
+    await decideOneUp(cleared.gameId, cleared.matchId);
+    await ctx.caller().matchOutcomes.deleteOutcome({
+      tripId, gameId: cleared.gameId, matchId: cleared.matchId, holeNumber: 1,
+    });
+
+    const controlRows = await finishAndRead(control.gameId);
+    const clearedRows = await finishAndRead(cleared.gameId);
+    const posOf = (rows: { entity_id: string; position?: number }[], id: string) =>
+      rows.find((r) => r.entity_id === id)?.position;
+
+    // Control: A leads, B trails.
+    expect(posOf(controlRows, owner)).toBe(1);
+    expect(posOf(controlRows, member)).toBe(2);
+    // Cleared: all square — BOTH share position 1. This is the number that
+    // moves, and it moves only if finish read the post-clear rows.
+    expect(posOf(clearedRows, owner)).toBe(1);
+    expect(posOf(clearedRows, member)).toBe(1);
+
+    const readMatch = async (matchId: string) => {
+      const { data } = await ctx.admin
+        .from('game_matches').select('result, margin, status').eq('id', matchId).maybeSingle();
+      return data;
+    };
+    expect(await readMatch(control.matchId)).toMatchObject({ result: 'a_win', status: 'complete' });
+    // Not over any more: an unplayed hole and nobody ahead.
+    expect(await readMatch(cleared.matchId)).toMatchObject({ result: null, margin: null });
+  });
+
+  it("ROUND TRIP: clear then re-enter, and the finished result is the original", async () => {
+    const a = await freshOutcomeMatch("Round trip control");
+    await decide(a.gameId, a.matchId);
+
+    const b = await freshOutcomeMatch("Round trip cleared and restored");
+    await decide(b.gameId, b.matchId);
+    await ctx.caller().matchOutcomes.deleteOutcome({
+      tripId, gameId: b.gameId, matchId: b.matchId, holeNumber: 3,
+    });
+    await ctx.caller().matchOutcomes.upsertOutcome({
+      tripId, gameId: b.gameId, matchId: b.matchId, holeNumber: 3, result: "side_a",
+    });
+
+    await ctx.caller().games.finish({ tripId, gameId: a.gameId });
+    await ctx.caller().games.finish({ tripId, gameId: b.gameId });
+
+    const read = async (matchId: string) => {
+      const { data } = await ctx.admin
+        .from("game_matches").select("result, margin").eq("id", matchId).maybeSingle();
+      return data;
+    };
+    expect(await read(b.matchId)).toEqual(await read(a.matchId));
+  });
+
+  it("a cleared hole is ABSENT, never stored as halved", async () => {
+    /**
+     * The failure that would look correct forever. `result` is NOT NULL with a
+     * three-value CHECK, so "cleared" has no representation as a value — it must
+     * be the absence of the row. This pins that the delete removes it rather
+     * than rewriting it to the nearest neutral outcome.
+     */
+    const { gameId, matchId } = await freshOutcomeMatch("Cleared is not halved");
+    await ctx.caller().matchOutcomes.upsertOutcome({
+      tripId, gameId, matchId, holeNumber: 7, result: "side_a",
+    });
+    await ctx.caller().matchOutcomes.deleteOutcome({ tripId, gameId, matchId, holeNumber: 7 });
+
+    const { data } = await ctx.admin
+      .from("match_hole_outcomes").select("hole_number, result").eq("match_id", matchId);
+    expect(data ?? []).toEqual([]);
+    // Explicitly NOT the halved row a wrong build would leave behind.
+    expect((data ?? []).some((r) => (r as { result: string }).result === "halved")).toBe(false);
+  });
+
+  it("clearing a hole that was never entered is a no-op, not an error", async () => {
+    const { gameId, matchId } = await freshOutcomeMatch("Clear an empty hole");
+    await expect(
+      ctx.caller().matchOutcomes.deleteOutcome({ tripId, gameId, matchId, holeNumber: 12 }),
+    ).resolves.toBeTruthy();
+  });
+
+  it("clearing on a POSTED game is refused with the message that names the way back", async () => {
+    /**
+     * Reuses the boundary people have already met — the same guard and the same
+     * string as `upsertOutcome`, not a second rule. Asserted on the MESSAGE
+     * because that is what the reader acts on: it has to name a control that
+     * exists ("Correct a score" on the scoreboard).
+     */
+    const { gameId, matchId } = await freshOutcomeMatch("Posted, clear refused");
+    await ctx.caller().matchOutcomes.upsertOutcome({
+      tripId, gameId, matchId, holeNumber: 1, result: "side_a",
+    });
+    await ctx.caller().games.finish({ tripId, gameId });
+
+    await expect(
+      ctx.caller().matchOutcomes.deleteOutcome({ tripId, gameId, matchId, holeNumber: 1 }),
+    ).rejects.toThrow(/posted/i);
+    await expect(
+      ctx.caller().matchOutcomes.deleteOutcome({ tripId, gameId, matchId, holeNumber: 1 }),
+    ).rejects.toThrow(/Correct a score/);
+  });
+});

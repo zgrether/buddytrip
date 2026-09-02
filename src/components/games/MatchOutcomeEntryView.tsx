@@ -172,10 +172,32 @@ export function MatchOutcomeEntryView({
     setLocalPick(null);
   };
   const reset = () => {
-    // Reset (bottom-left) clears the selection — the local pick AND any
-    // committed outcome for this hole.
+    // Clears the selection — the local pick AND any committed outcome for this
+    // hole. ONE handler for both bars; the LABEL differs because the
+    // consequence does (see `clearHoleAction`).
     setLocalPick(null);
     onClear?.(m.matchId, label);
+  };
+
+  /**
+   * The settled-hole secondary. "Clear hole", NOT "Reset".
+   *
+   * The commit bar's button says Reset and means "discard the pick I have not
+   * written yet" — nothing has left the device. Here the same handler deletes a
+   * row that is already in the database and can un-decide the match. Same word
+   * for both would name the weaker consequence on the surface where the
+   * stronger one applies, and this is the surface where someone is undoing a
+   * real mistake rather than changing their mind mid-tap.
+   *
+   * No confirmation dialog, deliberately: clearing IS the undo, and a prompt in
+   * front of the recovery path is friction on the wrong action. Re-entering the
+   * hole restores it exactly.
+   */
+  const clearHoleAction = {
+    label: "Clear hole",
+    onClick: reset,
+    ariaLabel: "Clear this hole's recorded outcome",
+    testId: "outcome-clear-hole",
   };
 
   return (
@@ -382,6 +404,7 @@ export function MatchOutcomeEntryView({
                 onClick={() => onFinish?.()}
                 disabled={gameGate.total > 0}
                 subtext={finishReason ?? finishSubtext}
+                secondary={bottom.canReset ? clearHoleAction : undefined}
               />
             );
           case "next":
@@ -390,10 +413,20 @@ export function MatchOutcomeEntryView({
                 label={`Hole ${units[hole]?.label ?? hole + 1} ›`}
                 onClick={() => goHole(hole + 1)}
                 disabled={holeGate.blocked}
+                secondary={bottom.canReset ? clearHoleAction : undefined}
               />
             );
           default:
-            return null;
+            // `none` — the last hole of a match that cannot finish. There is no
+            // CTA here, but a committed hole is still clearable, so the action
+            // stands alone rather than this hole being the one dead end left.
+            return bottom.canReset ? (
+              <BottomCTA
+                label="Clear hole"
+                onClick={reset}
+                secondary={undefined}
+              />
+            ) : null;
         }
       })()}
     </div>
