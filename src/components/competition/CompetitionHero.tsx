@@ -971,6 +971,33 @@ function TeamName({
       onClick={() => onEditTeam?.(team.id)}
       disabled={!onEditTeam}
       className={`flex min-w-0 flex-col gap-0.5 disabled:cursor-default ${align === "right" ? "items-end text-right" : "items-start text-left"}`}
+      /**
+       * A HARD 40% CAP, so neither name can reach the middle of the card.
+       *
+       * Without it each side took whatever it needed, and the width a name
+       * claimed depended on whether it happened to fit on one line: a name
+       * short enough not to wrap ran straight out toward the centre, while a
+       * longer one broke and stayed narrow. So the LESS text a team had, the
+       * further into the middle it reached — which is backwards, and it is why
+       * the encroachment looked unpredictable rather than proportional.
+       *
+       * The middle is not empty space. It is where the trophy and the golfer
+       * are, and every collision this component has had — Bill behind the
+       * name, `Banks` broken to `Bank`/`s` — is a name arriving somewhere the
+       * artwork already was.
+       *
+       * 40% of the content box leaves a centre gutter wider than the golfer,
+       * so the columns and the art stop competing for the same pixels instead
+       * of being tuned against each other.
+       *
+       * It also fixes the squeeze the other way round, which was left as a
+       * known limit: with both sides capped, a long name can no longer take
+       * 254px and leave its opponent 43. Two capped columns, one gutter.
+       *
+       * A name that no longer fits wraps to two lines, which is what the
+       * unconditional two-line reserve above is for and costs nothing.
+       */
+      style={{ maxWidth: "40%" }}
       data-testid={`comp-team-name-${align === "left" ? "a" : "b"}`}
     >
       {/* 17 (was 15) — the name carries the block now that the icon is gone, and
