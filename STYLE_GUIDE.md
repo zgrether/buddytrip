@@ -212,6 +212,46 @@ recorded as follow-up, not done here.
 
 ---
 
+### 2c. A value and its unit
+
+**The number is the value; the unit is its label.** The number takes the primary
+text colour, the unit takes the secondary.
+
+```
+16 pts        16 primary · pts secondary
+54h 09m       54 and 09 primary · h and m secondary
+4½ pts        4½ primary · pts secondary
+```
+
+Use `ValueUnit` / `ValueUnitParts` (`src/components/ValueUnit.tsx`). They exist
+so the next value with a unit does not decide from scratch, which is exactly how
+this rule came to be missing.
+
+**The test — and it is a test, not a list of sites.** The rule applies where
+**the number is the content and the unit is its label**: a chip, a stat, a
+countdown, a ribbon. **If the number sits inside a sentence, leave it alone.**
+"18 holes · Sept 4" is a caption — the number is part of a phrase, and colouring
+it fragments the line and makes it look like a link. Ask which of the two the
+slot is; do not match against a list.
+
+**Both parts of a multi-segment value keep equal weight.** `54h 09m` renders
+both halves identically. Do not emphasise the leading unit: at `00h 47m` the
+hours have stopped mattering, and a rule whose emphasis moves with the value is
+one nobody can predict. `ValueUnitParts` makes this structural rather than
+something each caller has to remember.
+
+**The unit is quieter by COLOUR only, not also by weight.** Two axes saying the
+same thing makes it vanish at 11px, and it still has to be readable.
+
+> **Why this section exists.** It is a **created-drift** case: the rule did not
+> exist until the PR that wrote it. The match list had always rendered its point
+> chips this way — `2` white, `PTS` grey — and nothing said so, so the countdown
+> and the "worth N pts" ribbon each answered the question independently and each
+> answered it differently. Six standalone sites were brought into line at once;
+> the prose ones were deliberately left, which is what the test above is for.
+
+---
+
 ## Section 3: Semantic Color Usage
 
 | State | Background | Text/icon | Border |
