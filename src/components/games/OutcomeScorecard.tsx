@@ -151,7 +151,9 @@ export function OutcomeScorecard({
   return (
     <div data-testid="outcome-scorecard">
       <ScorecardChrome units={units} tee={tee} teeRows={teeRows} glorious={glorious} gameId={gameId}>
-        {({ hasSections, front, cellBase, nameCell, divider, isGloriousCol, gloriousWash }) => {
+        {/* `front` is no longer destructured: it existed only to bound the
+            front-nine `sectionSwing`, and those columns are blank now. */}
+        {({ hasSections, cellBase, nameCell, divider, isGloriousCol, gloriousWash }) => {
           const rowProps = { units, track, nameCell, cellBase, divider, isGloriousCol, gloriousWash, hasSections };
           return (
             <>
