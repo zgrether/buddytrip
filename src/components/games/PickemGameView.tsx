@@ -1306,30 +1306,22 @@ export function PickemGameView() {
          while every other game page sat 16px in. The shell only pads at lg+,
          so the mobile gutter is the view's own job and this is the answer the
          rest of the app already gave. */
+      /**
+       * NO bottom inset here any more — #1131 is fixed at the source.
+       *
+       * This carried `paddingBottom: calc(64px + env(safe-area-inset-bottom))`
+       * because the panel's own padding never reached in-flow content, and
+       * pick'em was the first long in-flow game view to meet it. Its comment
+       * said this "goes at the source when the stroke spine can be run against
+       * it"; that is now done — `CompetitionFace`'s scroll wrapper owns the
+       * inset for every format, measured from `--bt-bottomnav-height`.
+       *
+       * Keeping it would DOUBLE-pad the panel path (73px from the wrapper plus
+       * 64px here) and it was already dead on the standalone route, which
+       * mounts no bottom nav at all — verified: `--bt-bottomnav-height`
+       * resolves to `0px` on `/trips/[tripId]/games/pickem`.
+       */
       className="flex flex-col gap-3 px-4"
-      style={{
-        /**
-         * Clear the bottom nav ourselves.
-         *
-         * The panel already sets this exact padding (CompetitionFace's
-         * `navUnderPanel`) and it does not reach us. That padding shrinks the
-         * panel's content box, which is what the golf formats' `absolute
-         * inset-0` surfaces resolve against — so it works for them. In-flow
-         * content OVERFLOWS that box instead, and a scroll container's end
-         * padding is not re-applied after an overflowing descendant: the
-         * scrollable region is the union of descendant border boxes, and it
-         * stops at the last card.
-         *
-         * Measured rather than reasoned: at max scroll the last match card's
-         * bottom sat at 843.9 in an 844px viewport, under a nav occupying the
-         * last ~58px. With this padding it sits at 779.9.
-         *
-         * Pick'em is the first long in-flow game view, so it is the first to
-         * meet it. The shell-level fix is #1131 — this goes at the source when
-         * the stroke spine can be run against it.
-         */
-        paddingBottom: "calc(64px + env(safe-area-inset-bottom))",
-      }}
     >
       {standaloneHeader && (
         <GameStandaloneHeader
