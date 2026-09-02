@@ -105,6 +105,18 @@ const BILL_INK_CX = 354.2;
  */
 const BILL_NUDGE_BELOW_NAMES = 20;
 
+/**
+ * The trophy's foreshortening — how flat a circle drawn on its horizontal plane
+ * appears, as ry/rx.
+ *
+ * Taken from the bowl's rim (`rx=92 ry=19` → 0.207), not chosen: the rim is the
+ * largest and most-read ellipse in the drawing, so it IS the horizon everything
+ * else has to agree with. One constant so a future tier cannot be added at its
+ * own angle, which is exactly how the base came to be drawn flat under a bowl in
+ * three-quarter view.
+ */
+const TIER_FORESHORTEN = 19 / 92;
+
 /** Body on the trophy's spine; vertical centre the star's own, nudged clear of
  *  the name row above (see `BILL_NUDGE_BELOW_NAMES`). */
 const BILL_X = 150 - BILL_INK_CX * BILL_SCALE;
@@ -151,10 +163,41 @@ export function CupTrophy({ opacity, tint }: TrophySlotProps) {
         </linearGradient>
       </defs>
       <g opacity={opacity}>
-        {/* base (two tiers) + knop + narrow tall pedestal */}
-        <rect x="96" y="320" width="108" height="24" rx="6" fill="url(#btHeroBase)" />
-        <rect x="120" y="305" width="60" height="15" rx="4" fill="url(#btHeroBase)" />
-        <ellipse cx="150" cy="298" rx="19" ry="8" fill="url(#btHeroBase)" />
+        {/*
+          Base (two tiers) + knop + narrow pedestal — ONE EYE LEVEL with the bowl.
+
+          These were flat `<rect>`s while the bowl above them is drawn in
+          three-quarter view: its rim is `rx=92 ry=19`, a foreshortening of
+          0.21. Square-edged blocks under an elliptical rim read as separate
+          objects stacked rather than one trophy, which is why the base looked
+          "not 3d like the rest" — the mismatch, not the shading.
+
+          Each tier is now a cylinder at the SAME 0.21: a top face ellipse, a
+          body, and a bottom ellipse. `TIER_FORESHORTEN` is the single number,
+          taken from the rim rather than picked, so the whole object keeps one
+          horizon. The knop went with them — it was an ellipse already but at
+          8/19 = 0.42, twice as round as the rim, so it read from a different
+          angle than the thing it sits under.
+
+          Round rather than perspective-corrected rectangles, because every
+          other part of this trophy is a surface of revolution (bowl, rim, knop).
+          A lathe form is what the rest of the drawing already is; boxes would
+          have needed converging side faces to agree with it.
+
+          The top faces take a lighter stop of the same gradient — an upward
+          face catches more light than a side, and that is what makes the
+          ellipse read as a surface rather than an outline.
+        */}
+        {/* tier 1 (widest) */}
+        <ellipse cx="150" cy="344" rx="54" ry={54 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
+        <rect x="96" y="320" width="108" height="24" fill="url(#btHeroBase)" />
+        <ellipse cx="150" cy="320" rx="54" ry={54 * TIER_FORESHORTEN} fill={mix("#f0da96", 22)} />
+        {/* tier 2 */}
+        <ellipse cx="150" cy="320" rx="30" ry={30 * TIER_FORESHORTEN} fill="url(#btHeroBase)" />
+        <rect x="120" y="305" width="60" height="15" fill="url(#btHeroBase)" />
+        <ellipse cx="150" cy="305" rx="30" ry={30 * TIER_FORESHORTEN} fill={mix("#f0da96", 22)} />
+        {/* knop — same horizon as everything else now */}
+        <ellipse cx="150" cy="298" rx="19" ry={19 * TIER_FORESHORTEN} fill={mix("#f0da96", 22)} />
         <rect x="142" y="258" width="16" height="42" fill="url(#btHeroBase)" />
         {/* slim handles (lit left / shadow right) */}
         <path d="M60,104 Q24,114 32,166 Q38,204 82,198" fill="none" stroke={mix("#cfa94e", 32)} strokeWidth="13" strokeLinecap="round" />
