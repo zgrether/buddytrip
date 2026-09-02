@@ -75,9 +75,40 @@ const BILL_SCALE = BILL_H_UNITS / BILL_H;
  */
 const BILL_INK_CX = 354.2;
 
-/** Body on the trophy's spine; vertical centre still the star's own. */
+/**
+ * How far Bill sits BELOW the star's vertical centre, in trophy units (1 unit =
+ * 1px at the rendered 300×380).
+ *
+ * The hero's team-name row crosses him. Measured at 375px with the real BBMI
+ * pair ("Booty Hunters & Scurvy Hookers" / "Huge PNS Energy"), trophy at its
+ * normal -46%:
+ *
+ *   Bill            top 193, x 172-224
+ *   name line 1     190-212, x  33-217   ← crosses him: 19px of overlap
+ *   name line 2     210-232, x  33- 97   ← ends 75px short of him, never touched
+ *
+ * So the collision is ONLY the first line against the top of the figure — his
+ * raised club and hand — and 20 units clears it with a pixel to spare. Both
+ * lines are measured because the second one LOOKS like the culprit (it is the
+ * lower of the two) and is not; a fix aimed at clearing the whole name block
+ * would need 39 and drag his feet toward the bowl's point for nothing.
+ *
+ * WHY HERE AND NOT ON THE TROPHY. #1237 moved the whole cup instead
+ * (-46% -> -32%), which cleared Bill and also pushed the pedestal and base off
+ * the card, leaving the bowl to fill it — a quiet watermark became the loudest
+ * thing on the screen. Reverted. Bill is his own `<g>` on the bowl, so moving
+ * him leaves every other part of the artwork where it was.
+ *
+ * The reserve above is unconditional (two lines whether or not the second is
+ * used), so this does not need to track the name: a short name reserves the
+ * same block and the geometry is identical.
+ */
+const BILL_NUDGE_BELOW_NAMES = 20;
+
+/** Body on the trophy's spine; vertical centre the star's own, nudged clear of
+ *  the name row above (see `BILL_NUDGE_BELOW_NAMES`). */
 const BILL_X = 150 - BILL_INK_CX * BILL_SCALE;
-const BILL_Y = 159.1 - BILL_H_UNITS / 2;
+const BILL_Y = 159.1 - BILL_H_UNITS / 2 + BILL_NUDGE_BELOW_NAMES;
 
 /**
  * The dimensional gold trophy — verbatim geometry from the approved
