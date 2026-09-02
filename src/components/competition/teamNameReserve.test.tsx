@@ -94,6 +94,26 @@ describe("cup header — the full name survives", () => {
     const html = hero("Booty Hunters & Scurvy Hookers", SHORT);
     expect(html).toContain("Booty Hunters &amp; Scurvy Hookers");
   });
+
+  it("never breaks INSIDE a word — a team name is a label, not prose", () => {
+    /**
+     * `break-words` (overflow-wrap: break-word) broke a word when it would not
+     * fit, and this row is `justify-between` with two flexible children — so a
+     * long name on one side squeezed the other, and "Banks" in the leftover
+     * 43px rendered as "Bank" / "s" across two lines. It reads as broken rather
+     * than tight, and it fires for any name whose longest WORD does not fit the
+     * column it is left with.
+     *
+     * Layout is not assertable here, so this pins the PROPERTY that decides it
+     * rather than the outcome. CLAUDE.md's tenth instance is exactly this
+     * shape: a distinction carried by a style property is invisible to every
+     * value-level guard — the strings, the counts and the keys are all
+     * identical either way — so it has to be asserted where it lives.
+     */
+    const html = hero("Booty Hunters and Scurvy Hookers", "Banks");
+    expect(html).toContain("break-normal");
+    expect(html).not.toContain("break-words");
+  });
 });
 
 describe("cup header — the two-line reserve is unconditional", () => {
