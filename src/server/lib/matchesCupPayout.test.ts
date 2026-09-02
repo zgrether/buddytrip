@@ -283,3 +283,76 @@ describe("non-golf Matches in a match-play cup", () => {
     expect(cleared.teamTotals[teamB]).toBe(0);
   });
 });
+
+/**
+ * The convention invariant itself.
+ *
+ * The two cases above already exercise it in the SILENT direction — both run a
+ * game whose results carry null positions, and if the guard misfired on a
+ * `high_wins` path they would throw rather than assert a number. What is left is
+ * the direction that matters: that it actually fires, and that it says enough to
+ * act on.
+ */
+describe("ranking-convention invariant", () => {
+  it("fires — with the game id and the actual scores, not just a verdict", async () => {
+    // A SYNTHETIC state. The fix means nothing produces this any more, which is
+    // the point of an invariant: it guards a state that should not occur, so the
+    // test has to manufacture one. A manual game with no match rows takes the
+    // winner-take-all `low_wins` path, and these rows carry POINTS with no
+    // position — the exact pairing #1245 was.
+    const comp = await ctx.createCompetition(tripId, "Invariant Cup");
+    const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
+    const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
+
+    const g = (await ctx.caller().games.create({
+      tripId,
+      gameTypeId: MANUAL,
+      name: "corrupt shape",
+      competitionId: comp,
+    })) as { id: string };
+    gameIds.push(g.id);
+    await ctx.admin.from("games").update({ points_total: 35 }).eq("id", g.id);
+    await ctx.admin.from("game_results").insert([
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamA, entity_type: "team", position: null, raw_score: 0 },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamB, entity_type: "team", position: null, raw_score: 35 },
+    ]);
+
+    const read = ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    await expect(read).rejects.toThrow(/ranking-convention mismatch/);
+
+    // The EVIDENCE, not the conclusion. A message naming only the rule tells you
+    // one fired; these tell you which game and what it was about to do — and
+    // every instrument failure this project has recorded was a report that
+    // asserted a conclusion with none of this behind it.
+    await expect(read).rejects.toThrow(new RegExp(g.id));
+    await expect(read).rejects.toThrow(/low_wins/);
+    await expect(read).rejects.toThrow(/"value":35/);
+    await expect(read).rejects.toThrow(new RegExp(`"entityId":"${teamB}"`));
+  });
+
+  it("stays silent on a placement game, which legitimately ranks low_wins", async () => {
+    // The false-positive direction. Positions are what `low_wins` is FOR, so a
+    // guard that fired here would be unshippable — it would throw on the most
+    // common shape on the board.
+    const comp = await ctx.createCompetition(tripId, "Placement Quiet Cup");
+    const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
+    const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
+
+    const g = (await ctx.caller().games.create({
+      tripId,
+      gameTypeId: MANUAL,
+      name: "ordinary manual",
+      competitionId: comp,
+    })) as { id: string };
+    gameIds.push(g.id);
+    await ctx.admin.from("games").update({ points_total: 8 }).eq("id", g.id);
+    await ctx.admin.from("game_results").insert([
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamA, entity_type: "team", position: 1, raw_score: 1 },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamB, entity_type: "team", position: 2, raw_score: 2 },
+    ]);
+
+    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    expect(lb.teamTotals[teamA]).toBe(8);
+    expect(lb.teamTotals[teamB]).toBe(0);
+  });
+});
