@@ -165,6 +165,35 @@ game_matches
   `game_results`, which Tier 1 reads. **`game_results` stays the single
   universal read-model regardless of format.**
 
+### A finished GAME can hold an unfinished MATCH, and that is correct
+
+`game_matches.result` is `null` and `status` is `active` for any match that is
+not `over` — **including after `games.finish` has run on the game**. A match is
+`over` only when it is mathematically decided (closed out, or all holes played);
+finalizing the game does not decide a match nobody finished.
+
+`game_results` rows are still written for that match, from the **live standing**:
+`position` 1 for the leader and 2 for the trailer, or 1 for both when it is all
+square. So the cup gets its points either way — the derivation is "who is ahead
+right now", not "who won".
+
+**Do not 'fix' the null.** A finished game showing `result: null` on one match
+looks like a bug and is not one, and the two obvious repairs both corrupt a
+scoreline: writing `halve` invents a tie that was never played, and writing the
+leader's win invents a result the match never reached. This is written down
+because it is a rule nobody stated — it was found by reading
+`computeMatchPlayResults` while adding the clear-a-hole action (#1238), and the
+next person to notice a null on a finished game will reach for the same two
+repairs.
+
+It is also what makes clearing a hole safe at the seam. Clear a hole from a
+decided match and it un-decides; finish the game and the match records what the
+remaining holes actually say, with points following the live standing. Nothing
+has to special-case the cleared case because nothing about "decided" was ever
+stored while the game was being played — `result`/`margin`/`status` are written
+**only** at `finish`, and `matchState` is derived from the hole rows on every
+read.
+
 ---
 
 ## Game Configuration (within-format standards)
