@@ -202,15 +202,27 @@ BEGIN
   --
   -- ── The effective NEXT value mirrors the WRITE, not the guard above ────────
   --
-  -- The GLORIOUS_REQUIRES_OUTCOME_ENTRY guard (104, above) resolves an absent
-  -- `modifiers` key to the CURRENT row, while the UPDATE at the bottom of this
-  -- function resolves it to '{}' — i.e. a payload that omits the key WIPES the
-  -- modifiers. Copying that guard's expression here would open the exact hole
-  -- this rule exists to close: omit `modifiers` on a game with GFH on and holes
-  -- played, and a prior-value guard sees "no change" while the write turns GFH
-  -- off and de-weights every played glorious hole. So this reads the write's
-  -- expression verbatim. (104's divergence is benign in the other direction —
-  -- it can only over-refuse — and is left alone rather than fixed in passing.)
+  -- TWO GUARDS IN THIS FUNCTION RESOLVE AN ABSENT `modifiers` KEY DIFFERENTLY,
+  -- ON PURPOSE. DO NOT HARMONISE THEM. It reads as an inconsistency and it is
+  -- not one; each matches the question it is asking.
+  --
+  --   · GLORIOUS_REQUIRES_OUTCOME_ENTRY (104, above) resolves an absent key to
+  --     the CURRENT row.
+  --   · THIS guard resolves it the way the UPDATE at the bottom of this function
+  --     does — to '{}'. A payload that omits the key WIPES the modifiers, so
+  --     absence is a change to "off", not "leave alone".
+  --
+  -- Why this one must follow the WRITE: copying 104's expression here would open
+  -- the exact hole this rule exists to close. Omit `modifiers` on a game with GFH
+  -- on and holes already played, and a prior-value guard sees "no change" and
+  -- permits the save — while the write turns GFH off and de-weights every played
+  -- glorious hole. The guard would wave through the one thing it is for.
+  --
+  -- Why 104 is LEFT ALONE rather than fixed in passing: its divergence can only
+  -- ever over-refuse (it may refuse a save whose end state would have been
+  -- valid), which is a difference, not a defect. Changing it would be scope this
+  -- work was not given, and a refusal that is too cautious costs a retry where
+  -- this one would cost a rewritten scorecard.
   --
   -- ── Sub-18 rounds ─────────────────────────────────────────────────────────
   --
