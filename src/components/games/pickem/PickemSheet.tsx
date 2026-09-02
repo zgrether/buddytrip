@@ -917,10 +917,20 @@ function Countdown({ ms }: { ms: number }) {
       >
         {/* STYLE_GUIDE 2c: the digits are the value, h/m are labels. Both
             segments keep EQUAL weight — at "00h 47m" the hours have stopped
-            mattering, and emphasis that moves with the value is unpredictable. */}
+            mattering, and emphasis that moves with the value is unpredictable.
+
+            `unitSize={14}` — a size difference, not colour alone. Colour-only
+            read as too weak at this 24px value: "h"/"m" are wide enough next to
+            two digits to look like a second value rather than a label. This is
+            the ONE call site that passes `unitSize`; every `PTS` chip and the
+            "worth N pts" ribbon omit it and render unchanged — see
+            `ValueUnit.tsx`'s header for why that had to be true before this
+            shipped. Checked at both extremes ("120h 05m", "00h 47m") in a real
+            render: 14 stays legible and does not read as debris at either. */}
         <ValueUnitParts
           parts={formatCountdownParts(ms)}
           size={24}
+          unitSize={14}
           weight={800}
           color={urgent ? "var(--color-bt-warning)" : undefined}
           unitColor={urgent ? "color-mix(in srgb, var(--color-bt-warning) 55%, transparent)" : "var(--color-bt-text-dim)"}
