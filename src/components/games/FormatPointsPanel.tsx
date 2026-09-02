@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ValueUnit } from "@/components/ValueUnit";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { validatePlacement, type PlaceCapacity } from "@/lib/gameConfig";
 import {
@@ -207,9 +208,13 @@ function WinnerTakesAllRow({ total, readOnly, onAddPlace }: { total: number; rea
           <Trophy size={15} style={{ color: "var(--color-bt-accent)" }} />
           Winner takes all
         </span>
-        <span className="text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-accent)" }}>
-          {fmtValue(total)} pts
-        </span>
+        <ValueUnit
+          value={fmtValue(total)}
+          unit="pts"
+          size={14}
+          color="var(--color-bt-accent)"
+          unitColor="color-mix(in srgb, var(--color-bt-accent) 60%, transparent)"
+        />
       </div>
       <p className="text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
         1st place takes the whole pool. Add places to split it across the field.

@@ -23,7 +23,8 @@ import {
   type SheetSettings,
   type SubmittedPick,
 } from "@/lib/pickemSheet";
-import { draftLostToLock, formatCountdown, type PickemClosure } from "@/lib/pickemLifecycle";
+import { draftLostToLock, formatCountdownParts, type PickemClosure } from "@/lib/pickemLifecycle";
+import { ValueUnitParts } from "@/components/ValueUnit";
 import { paysOut, type SlateResult } from "@/lib/pickemScoring";
 import { isPlayedOutcome, type PickOutcome } from "./PickemSheetRow";
 
@@ -914,7 +915,16 @@ function Countdown({ ms }: { ms: number }) {
           color: urgent ? "var(--color-bt-warning)" : undefined,
         }}
       >
-        {formatCountdown(ms)}
+        {/* STYLE_GUIDE 2c: the digits are the value, h/m are labels. Both
+            segments keep EQUAL weight — at "00h 47m" the hours have stopped
+            mattering, and emphasis that moves with the value is unpredictable. */}
+        <ValueUnitParts
+          parts={formatCountdownParts(ms)}
+          size={24}
+          weight={800}
+          color={urgent ? "var(--color-bt-warning)" : undefined}
+          unitColor={urgent ? "color-mix(in srgb, var(--color-bt-warning) 55%, transparent)" : "var(--color-bt-text-dim)"}
+        />
       </span>
     </div>
   );

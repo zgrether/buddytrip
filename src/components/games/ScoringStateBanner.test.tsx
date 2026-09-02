@@ -97,19 +97,30 @@ describe("IN PROGRESS — what the game is worth", () => {
       <ScoringStateBanner status={status} correctionsOpen={correctionsOpen} pointsTotal={pointsTotal} />
     );
 
-  it("names the value, in a neutral tone", () => {
+  it("names the value, in a neutral tone, on the DARKER surface", () => {
     const html = render("active", false, 8);
     expect(html).toContain('data-testid="banner-in-progress"');
-    expect(html).toContain("This game is worth 8 pts");
-    // Neutral, NOT accent or warning — nothing has happened yet, and borrowing
-    // either tone would spend the meaning the other two states rely on.
-    expect(html).toContain("var(--color-bt-card)");
+    // SPLIT per STYLE_GUIDE §2c — the lead-in and the unit are labels, 8 is the
+    // value. Asserted as PARTS, because a contiguous "This game is worth 8 pts"
+    // is exactly what passes against a build that never split them.
+    expect(html).toContain("This game is worth");
+    expect(html).toContain(">8<");
+    expect(html).toContain(">pts<");
+    // #14 — darker than the match rows, not lighter. `--color-bt-base` is the
+    // page background (STYLE_GUIDE §1 Level 0), so the strip reads as cut into
+    // the page rather than as another card in the same stack. A lighter surface
+    // would have been another raised card, which is the same confusion.
+    expect(html).toContain("var(--color-bt-base)");
+    expect(html).not.toContain("background:var(--color-bt-card)");
+    // Still NEUTRAL — borrowing accent or warning would spend the meaning the
+    // other two states rely on.
     expect(html).not.toContain("var(--color-bt-accent-faint)");
     expect(html).not.toContain("var(--color-bt-warning-faint)");
   });
 
   it("uses the app's half formatter, so 4½ is not 4.5", () => {
-    expect(render("active", false, 4.5)).toContain("worth 4½ pts");
+    // The value is its own node now, so the half glyph is asserted there.
+    expect(render("active", false, 4.5)).toContain(">4½<");
   });
 
   it("stays ABSENT when the game is worth nothing", () => {

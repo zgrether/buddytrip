@@ -1,5 +1,6 @@
 "use client";
 
+import { ValueUnit } from "@/components/ValueUnit";
 import { fmtValue } from "@/components/competition/CompetitionGamesPanel";
 import { gameLockState, type GameLifecycleInput } from "@/lib/gameLifecycle";
 
@@ -94,16 +95,36 @@ export function ScoringStateBanner({
            * IN PROGRESS — neutral, and the home for the value that used to float
            * loose in the bracket's top right with no container.
            *
-           * Neutral rather than accent or warning: nothing has happened yet. The
-           * card surface + an ordinary border is the "no verdict" treatment, and
+           * Neutral rather than accent or warning: nothing has happened yet, and
            * that is what keeps accent meaning "settled" and warning meaning
            * "changes permitted" — both stay worth something because this state
-           * borrows neither.
+           * borrows neither. (This used to add "the card surface + an ordinary
+           * border is the no-verdict treatment"; the surface moved, see below.
+           * NEUTRAL is the property that mattered, and it still holds — base is
+           * no more of a verdict than card was.)
+           *
+           * DARKER than the match rows, not lighter (#14).
+           *
+           * The ribbon shared `--color-bt-card` with the rows below it, so it
+           * read as another item in the list rather than a statement ABOUT the
+           * game. A lighter surface would not have fixed that — it would read
+           * as another RAISED card in the same stack, which is the same
+           * confusion one level up. Going darker makes it read as cut into the
+           * page, which nothing else in that column does.
+           *
+           * `--color-bt-base` is the page background (STYLE_GUIDE §1 Level 0)
+           * and already exists — no new token, no hex, and nothing for §7's
+           * hardcoded-colour list to grow by. The border stays: STYLE_GUIDE
+           * builds separation from borders rather than shadows.
+           *
+           * Text goes BRIGHTER in the same breath. Dim-on-dark was legible
+           * against `card` and would not be against `base`, and the contrast is
+           * half of what makes the strip read as a different KIND of thing.
            */
-          bg: "var(--color-bt-card)",
-          fg: "var(--color-bt-text-dim)",
+          bg: "var(--color-bt-base)",
+          fg: "var(--color-bt-text)",
           border: "var(--color-bt-border)",
-          text: `This game is worth ${fmtValue(worth)} pts`,
+          text: null,
           testid: "banner-in-progress",
         };
 
@@ -113,7 +134,18 @@ export function ScoringStateBanner({
       className="mb-2 flex items-center justify-center rounded-lg"
       style={{ height: 30, background: tone.bg, border: `1px solid ${tone.border}` }}
     >
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: tone.fg }}>{tone.text}</span>
+      {tone.text != null ? (
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: tone.fg }}>{tone.text}</span>
+      ) : (
+        /* IN PROGRESS — the value carries, so it is split (STYLE_GUIDE §2c) and
+           then matches the point chips directly below it in the match list,
+           which have always rendered "2 PTS" with the digits primary. The lead-in
+           is a label like the unit is. */
+        <span className="flex items-baseline" style={{ gap: 4, fontSize: 12.5, fontWeight: 600 }}>
+          <span style={{ color: "var(--color-bt-text-dim)" }}>This game is worth</span>
+          <ValueUnit value={fmtValue(worth)} unit="pts" size={12.5} color={tone.fg} />
+        </span>
+      )}
     </div>
   );
 }

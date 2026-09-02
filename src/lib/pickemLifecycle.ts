@@ -315,6 +315,29 @@ export function msUntilDeadline(clock: PickemClock, now: number = Date.now()): n
  * `12:34` counting seconds below that. The switch happens once, at a point
  * nobody is watching.
  */
+/**
+ * The same clock, split into number/unit segments so the display can colour
+ * them apart (STYLE_GUIDE §2c — the number is the value, the unit is its label).
+ *
+ * A SECOND function rather than changing formatCountdown's contract: that one
+ * returns a string and a string is what a non-visual caller wants. Below the
+ * hour this returns a single unit-less segment (12:34), because mm:ss has no
+ * unit to separate — the colons carry it.
+ */
+export function formatCountdownParts(ms: number): { value: string; unit?: string }[] {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) {
+    return [
+      { value: String(h), unit: "h" },
+      { value: String(m).padStart(2, "0"), unit: "m" },
+    ];
+  }
+  return [{ value: `${m}:${String(s).padStart(2, "0")}` }];
+}
+
 export function formatCountdown(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
