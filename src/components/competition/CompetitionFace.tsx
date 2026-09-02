@@ -137,13 +137,15 @@ export function CompetitionFace({
     suppressPanelWipeRef.current = search.get("settings") === "1";
   }
   prevPanelOpenRef.current = panelOpen;
-  // The bottom nav (z-40, fixed) overlays the panel's bottom (z-30). On surfaces
-  // that KEEP the nav (scoreboards — not the nav-hiding score-entry surfaces), pad
-  // the panel's scroll by the nav height so its last content clears the nav
-  // instead of hiding behind it. Read from the published chrome so it tracks each
-  // format's focusedEntry flag automatically.
+  // `chrome` drives the panel's TOP offset (`focusedEntry` → `top-0`, since the
+  // app bar hides there too — CLAUDE.md #13).
+  //
+  // It no longer decides the BOTTOM inset. That was `navUnderPanel = panelOpen &&
+  // !chrome?.focusedEntry`, a second flag tracking whether the bottom nav is
+  // showing — which `--bt-bottomnav-height` already answers, because AppTabBar
+  // unmounts on `focusedEntry` and its cleanup removes the property. The scroll
+  // wrapper reads that variable directly; see the note on it.
   const chrome = useGameChrome();
-  const navUnderPanel = panelOpen && !chrome?.focusedEntry;
   // Lock the PAGE scroll while a panel is open: the panel is `fixed` with its own
   // `overflow-y-auto`, so without this the board behind it keeps its own window
   // scrollbar → two vertical scrollbars (Zach's QA). The panel owns the only
@@ -494,13 +496,19 @@ export function CompetitionFace({
            * instead, which moves the whole chain together and leaves nothing to
            * clip.
            */
-          className={`fixed inset-x-0 bottom-0 ${chrome?.focusedEntry ? "top-0" : "top-14"} z-30 flex flex-col overflow-y-auto lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:flex-1 ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
-          style={{
-            background: "var(--color-bt-base)",
-            // Clear the bottom nav (58px) + safe area when it's showing; none on the
-            // nav-hidden entry surfaces (their CTA anchors to the viewport bottom).
-            paddingBottom: navUnderPanel ? "calc(64px + env(safe-area-inset-bottom))" : undefined,
-          }}
+          /**
+           * NO `overflow-y-auto` here — it moved to the content wrapper below,
+           * which is the box whose content actually overflows. See the long note
+           * there; the short version is that this box's `flex-1` child clamps to
+           * the remaining height, and a flex item's overflow never extended this
+           * box's scrollable area, so 352px of a long game was unreachable.
+           *
+           * `flex flex-col` STAYS. It is what makes the wrapper a flex item with
+           * a definite height, which is what gives `absolute inset-0` entry
+           * surfaces a containing block starting below `GameActionRow`.
+           */
+          className={`fixed inset-x-0 bottom-0 ${chrome?.focusedEntry ? "top-0" : "top-14"} z-30 flex flex-col overflow-hidden lg:relative lg:top-0 lg:z-auto lg:h-full lg:min-h-0 lg:w-full lg:min-w-0 lg:flex-1 ${suppressPanelWipeRef.current ? "" : "game-panel-in lg:animate-none"}`}
+          style={{ background: "var(--color-bt-base)" }}
           data-testid="game-panel"
         >
           {/* The action row belongs to the GAME SURFACE, so it lives inside the
@@ -527,22 +535,72 @@ export function CompetitionFace({
            *
            * `relative` here gives any nested `absolute inset-0` a NEW
            * containing block that starts below `GameActionRow`, not at
-           * `game-panel`'s own top. `flex-1 min-h-0` (this box is now a flex
-           * item of `game-panel`'s `flex flex-col`) sizes it to exactly the
-           * remaining space, matching the `min-h-0`-on-a-flex-item pattern
-           * used throughout this shell (see AppShell.tsx) so a plain in-flow
-           * view (Match/Rack/NonGolf's overview, no `absolute inset-0` at
-           * all) still overflows into `game-panel`'s own `overflow-y-auto`
-           * exactly as it did before this wrapper existed — this only changes
-           * where `inset-0` resolves, not how normal content scrolls.
+           * `game-panel`'s own top.
            * This is the fourth time this session `absolute inset-0`'s
            * containing block has been the actual bug (chat's old inline
            * fixed box, the #749 pane offset, the #754 `lg:relative` fix
            * above, and now this) — if a new format view adds an `absolute
            * inset-0` surface, it MUST go inside this wrapper, not as a
            * sibling of it.
+           *
+           * ── THIS BOX IS THE SCROLLER, and it has to be ────────────────────
+           *
+           * This comment used to end: "a plain in-flow view still overflows
+           * into `game-panel`'s own `overflow-y-auto` exactly as it did before
+           * this wrapper existed — this only changes where `inset-0` resolves,
+           * not how normal content scrolls." That was measurably false, and it
+           * is the whole of the bug it hid.
+           *
+           * `flex-1 min-h-0` sizes this box to the REMAINING space — a definite
+           * height. Content taller than that overflows a box with
+           * `overflow: visible`, and a flex item's overflow does NOT extend its
+           * container's scrollable area: the panel sized its scroll from its
+           * flex items' BOXES, not their content. Measured on a 412x915 viewport
+           * with a real 7-match game (the mixed BBMI 2023 "Singles"):
+           *
+           *   wrapper content 1098px, wrapper box 746px  ->  352px OVER
+           *   panel scrollHeight 1147, clientHeight 859  ->  288px of scroll
+           *
+           * 352px of matches that could not be reached by scrolling at all —
+           * not hidden behind the nav, UNREACHABLE. It read as "the bottom card
+           * is cut off", and it only showed on games long enough to exceed the
+           * clamp, which is why finished games looked fine and made it look like
+           * a status bug.
+           *
+           * So the scroll belongs on the box whose content actually overflows.
+           * `overflow-y-auto` here makes this box's own overflow scrollable
+           * (measured after: 352px of scroll, nothing unreachable), and
+           * `game-panel` keeps `flex flex-col` for the containing block above.
+           *
+           * Do NOT "simplify" this by putting `overflow-y-auto` back on
+           * `game-panel`, and do NOT make the panel `display: block` to fix the
+           * same symptom — block layout removes the containing block this
+           * wrapper exists to provide, which is the back-button bug named above.
            */}
-          <div className="relative min-h-0 flex-1">{panelView}</div>
+          <div
+            className="relative min-h-0 flex-1 overflow-y-auto"
+            style={{
+              /**
+               * Clear the fixed bottom nav, which overlays this box (nav z-40,
+               * panel z-30). MEASURED, never a constant: `--bt-bottomnav-height`
+               * is `AppTabBar`'s own `offsetHeight`, republished by a
+               * ResizeObserver.
+               *
+               * It is also the ONLY condition consulted, deliberately. This was
+               * `navUnderPanel ? "calc(64px + …)" : undefined` — a second
+               * boolean tracking whether the bar is showing, next to a hardcoded
+               * 64 for a bar that measures 57. `AppTabBar` returns null on a
+               * focused entry surface, which unmounts the publisher and REMOVES
+               * the property, so the variable already falls back to `0px`
+               * exactly when the bar is gone. One source of truth instead of two
+               * that must agree (CLAUDE.md #13) — and no number to go stale.
+               */
+              paddingBottom:
+                "calc(var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px)) + 16px)",
+            }}
+          >
+            {panelView}
+          </div>
         </div>
       )}
 
