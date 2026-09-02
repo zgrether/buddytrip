@@ -4,6 +4,7 @@ import {
   PickemOtherPicks,
   PickemReadingHeader,
   sheetStateLine,
+  sheetStateColor,
   type OtherPicksColumn,
   type OtherSheet,
 } from "./PickemOtherPicks";
@@ -41,9 +42,9 @@ const COLUMNS: OtherPicksColumn[] = [
 
 const avatarFor = () => ({ avatarIcon: null, teamColor: null });
 
-const render = (columns: OtherPicksColumn[] = COLUMNS) =>
+const render = (columns: OtherPicksColumn[] = COLUMNS, picksAreOpen = false) =>
   renderToStaticMarkup(
-    <PickemOtherPicks columns={columns} avatarFor={avatarFor} onOpen={() => {}} />
+    <PickemOtherPicks columns={columns} avatarFor={avatarFor} onOpen={() => {}} picksAreOpen={picksAreOpen} />
   );
 
 describe("sheetStateLine — the slot the team name used to hold", () => {
@@ -53,21 +54,24 @@ describe("sheetStateLine — the slot the team name used to hold", () => {
      * word four times. The slot now holds the only thing this screen cannot
      * show any other way: how far along somebody is.
      */
-    expect(sheetStateLine(person({ userId: "a", name: "A", picked: 0, points: null }))).toBe(
-      "Nothing submitted"
-    );
+    expect(sheetStateLine(person({ userId: "a", name: "A", picked: 0, points: null }), false)).toMatchObject({ text: "Nothing submitted", tone: "none" });
     expect(
-      sheetStateLine(person({ userId: "a", name: "A", picked: 3, total: 16, points: 4 }))
-    ).toBe("3/16 picks submitted");
+      sheetStateLine(person({ userId: "a", name: "A", picked: 3, total: 16, points: 4 }), false)
+    ).toMatchObject({ text: "Submitted 3/16" });
   });
 
-  it("says NOTHING for a finished sheet", () => {
+  it("says DONE for a finished sheet — REVERSED, and colour does the burying", () => {
     /**
-     * The absence is the design. "16/16 picks submitted" on every complete row
-     * would bury the two rows that are not complete, which are the only ones
-     * anybody is scanning for.
+     * This asserted , on the reasoning that "16/16 picks submitted" on
+     * every complete row would bury the two rows that are not.
+     *
+     * The concern was right; silence was the wrong instrument. An incomplete
+     * row now stands out by HUE, which a scanning eye finds faster than "the
+     * only row with a subtitle" — and a complete row gets to confirm it is
+     * complete rather than saying nothing at all.
      */
-    expect(sheetStateLine(person({ userId: "a", name: "A" }))).toBe(null);
+    expect(sheetStateLine(person({ userId: "a", name: "A" }), false))
+      .toMatchObject({ text: "Done", tone: "done" });
   });
 
   it("says NOT A MEMBER on an EMPTY sheet, where the two answers differ", () => {
@@ -83,12 +87,12 @@ describe("sheetStateLine — the slot the team name used to hold", () => {
      * cannot act.
      */
     expect(
-      sheetStateLine(person({ userId: "a", name: "A", isGuest: true, picked: 0, points: null }))
-    ).toBe("Not a member of BuddyTrip");
+      sheetStateLine(person({ userId: "a", name: "A", isGuest: true, picked: 0, points: null }), false)
+    ).toMatchObject({ text: "Not a member of BuddyTrip", tone: "none" });
     // ...and the retired wording is gone.
     expect(
-      sheetStateLine(person({ userId: "a", name: "A", isGuest: true, picked: 0, points: null }))
-    ).not.toContain("signed up");
+      sheetStateLine(person({ userId: "a", name: "A", isGuest: true, picked: 0, points: null }), false)
+    ).not.toMatchObject({ text: expect.stringContaining("signed up") });
   });
 
   /**
@@ -107,21 +111,24 @@ describe("sheetStateLine — the slot the team name used to hold", () => {
   it("says the COUNT for a guest who is part-way, not that they are a guest", () => {
     expect(
       sheetStateLine(
-        person({ userId: "a", name: "A", isGuest: true, picked: 9, total: 16, points: null })
+        person({ userId: "a", name: "A", isGuest: true, picked: 9, total: 16, points: null }),
+        false,
       )
-    ).toBe("9/16 picks submitted");
+    ).toMatchObject({ text: "Submitted 9/16" });
   });
 
-  it("says NOTHING for a guest whose sheet is FULL — same as anybody else", () => {
+  it("says DONE for a guest whose sheet is FULL — same as anybody else", () => {
     /**
-     * The reported case. Nobody has to do anything about this row, and a line
-     * on it is a line the reader has to rule out.
+     * The guest label must not outrank the count. A full sheet is a full sheet
+     * however the picks got there, and it now says so in the accent colour
+     * rather than saying nothing.
      */
     expect(
       sheetStateLine(
-        person({ userId: "a", name: "A", isGuest: true, picked: 16, total: 16, points: 40 })
+        person({ userId: "a", name: "A", isGuest: true, picked: 16, total: 16, points: 40 }),
+        false,
       )
-    ).toBe(null);
+    ).toMatchObject({ text: "Done", tone: "done" });
   });
 });
 
@@ -190,7 +197,7 @@ describe("PickemOtherPicks", () => {
       .split("<button")
       .filter((r) => r.includes('data-testid="pickem-other-picks-row"'));
     const ann = rows.find((r) => r.includes("Ann"))!;
-    expect(ann).toContain("3/16 picks submitted");
+    expect(ann).toContain("Submitted 3/16");
     expect(ann).not.toContain('disabled=""');
   });
 
@@ -223,5 +230,63 @@ describe("PickemReadingHeader", () => {
     expect(html).not.toContain("entering");
     expect(html).not.toContain("saving");
     expect(html).not.toContain("replaces");
+  });
+});
+
+// ── The three states must stay APART, and partial must not read as an error ──
+describe("sheetStateLine — partial, complete and not-submitted are distinguishable", () => {
+  const partial = person({ userId: "p", name: "P", picked: 5, total: 10, points: null });
+  const complete = person({ userId: "c", name: "C", picked: 10, total: 10, points: 12 });
+  const none = person({ userId: "n", name: "N", picked: 0, total: 10, points: null });
+
+  it("a PARTIAL sheet and a NOT-SUBMITTED sheet never render alike", () => {
+    /**
+     * The spec's second required case, and the one this repo has met ten times
+     * under `empty is not unknown`: a build that showed an unsubmitted person
+     * as "Submitted 0 of 10" would make "hasn't started" and "started and
+     * stopped" the same row. They call for opposite responses — one person
+     * needs chasing, the other needs a minute.
+     */
+    const p = sheetStateLine(partial, false)!;
+    const n = sheetStateLine(none, false)!;
+    expect(p.text).not.toBe(n.text);
+    expect(p.tone).not.toBe(n.tone);
+    // And specifically: nobody is ever described as having submitted zero.
+    expect(n.text).not.toMatch(/submitted 0/i);
+  });
+
+  it("all three states differ in BOTH text and tone", () => {
+    const seen = [partial, complete, none].map((s) => sheetStateLine(s, false)!);
+    expect(new Set(seen.map((x) => x.text)).size).toBe(3);
+    expect(new Set(seen.map((x) => x.tone)).size).toBe(3);
+  });
+
+  it("PARTIAL is neutral while picks are OPEN — mid-way is not an error", () => {
+    /**
+     * Amber on a half-finished sheet reads as "something is wrong". Before the
+     * deadline that is false: saving halfway and coming back is how the feature
+     * is meant to be used. The text is the same either way; only the tone moves,
+     * which is what makes this a tone test rather than a copy test.
+     */
+    expect(sheetStateLine(partial, true)).toMatchObject({ tone: "none" });
+    expect(sheetStateLine(partial, false)).toMatchObject({ tone: "partial" });
+    expect(sheetStateLine(partial, true)!.text).toBe(sheetStateLine(partial, false)!.text);
+  });
+
+  it("COMPLETE and NOT-SUBMITTED do not move with the phase — only partial does", () => {
+    // Guards the opposite over-reach: making everything phase-dependent would
+    // turn a finished sheet amber the moment picks close, which is nonsense.
+    for (const s of [complete, none]) {
+      expect(sheetStateLine(s, true)).toEqual(sheetStateLine(s, false));
+    }
+  });
+
+  it("the tone→colour map is a real distinction, not three names for one value", () => {
+    // CLAUDE.md's tenth instance: a distinction carried by a STYLE property is
+    // invisible to every value-level guard, so it is asserted where it lives.
+    const colors = (["done", "partial", "none"] as const).map(sheetStateColor);
+    expect(new Set(colors).size).toBe(3);
+    expect(sheetStateColor("done")).toContain("accent");
+    expect(sheetStateColor("partial")).toContain("warning");
   });
 });

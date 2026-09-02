@@ -1580,12 +1580,14 @@ export function PickemGameView() {
                       setProxyFor(userId);
                       setSaveError(null);
                     }}
+                    picksAreOpen
                   />
                 ) : (
                   <PickemOtherPicks
                     columns={otherColumns}
                     avatarFor={avatarFor}
                     onOpen={setReadingSheetOf}
+                    picksAreOpen={false}
                   />
                 )
               )}
