@@ -128,3 +128,40 @@ export function isGrayscale(trip: TripStatusFields): boolean {
 export function isReadOnly(trip: TripStatusFields): boolean {
   return isGrayscale(trip);
 }
+
+/**
+ * May this viewer reach TRIP SETTINGS — the surface that can clear the lock?
+ *
+ * ── The invariant, and why it needs a name ──────────────────────────────────
+ * `isReadOnly` is derived from `end_date`, and the only place an owner can
+ * change `end_date` is trip settings (`TripSettingsModal` → `trips.lockDates`)
+ * or the dates sheet. So gating settings on `!isReadOnly` makes the lock a
+ * ONE-WAY DOOR: the trip crosses the threshold, the gear disappears, and the
+ * one control that could move the date back out of range goes with it.
+ *
+ * That is exactly CLAUDE.md's refusal rule from the other side — "if the fix
+ * requires a surface the reader's role cannot reach, the refusal itself is the
+ * bug". The banner says "This trip is read-only" and, before this, named no way
+ * out and offered none.
+ *
+ * The door was only ever ajar by accident: `onOpenDatesSheet` is gated on the
+ * RAW `canEdit` rather than the read-only-adjusted one, so the dates sheet
+ * stayed reachable while the gear did not. Two controls over one question,
+ * disagreeing — this makes the reachable one deliberate instead of lucky.
+ *
+ * NOT a widening of who may edit. Ownership still decides, and the read-only
+ * lock still holds over every CONTENT surface (`effectiveCanEdit`, and the
+ * per-tab `isOwner` suppression). All this says is that the owner keeps the
+ * escape hatch, so a finished trip can be reopened rather than being frozen for
+ * good the first time it ages past the threshold.
+ */
+export function canReachTripSettings(
+  _trip: TripStatusFields,
+  viewer: { isOwner: boolean }
+): boolean {
+  // Deliberately does NOT consult `isReadOnly(_trip)`. The parameter is kept so
+  // the call site reads as a decision about THIS trip, and so a future rule that
+  // genuinely depends on the trip has somewhere to live — but a read-only trip
+  // must never be the reason an owner cannot open settings.
+  return viewer.isOwner;
+}

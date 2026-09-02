@@ -29,7 +29,7 @@ import { CrewTab } from "./tabs/CrewTab";
 import { LodgingTab } from "./tabs/LodgingTab";
 import { ExpensesTab } from "./tabs/ExpensesTab";
 import { formatDateRangeCompact } from "@/lib/dates";
-import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
+import { isReadOnly as checkReadOnly, canReachTripSettings } from "@/lib/tripStatus";
 import { DatesSheet } from "./components/DatesSheet";
 import { AppShell } from "@/components/shell/AppShell";
 import { useTripId } from "@/components/TripIdProvider";
@@ -485,7 +485,13 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // Settings gear is now rendered INSIDE TripHeader (top-right). The header
   // calls `onSettingsClick` when tapped — pass it through only when the owner
   // can actually edit the trip.
-  const onSettingsClick = (isOwner && !tripIsReadOnly)
+  // NOT `&& !tripIsReadOnly`. Settings is where `trips.lockDates` lives, and the
+  // lock is derived from `end_date` — so hiding the gear when it fires made it a
+  // one-way door: the trip aged out and the one control that could move the date
+  // back went with it. See `canReachTripSettings` for the full note. Content
+  // stays locked (`effectiveCanEdit` and the per-tab `isOwner` suppression are
+  // untouched); only the way out is kept open, and only for the owner.
+  const onSettingsClick = canReachTripSettings(trip, { isOwner })
     ? () => setShowSettings(true)
     : undefined;
 
@@ -631,8 +637,14 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                     style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
                   >
                     <Lock size={14} style={{ color: "var(--color-bt-text-dim)" }} />
+                    {/* A refusal must name an action the reader can take. The
+                        owner has one — change the dates in settings — and
+                        everyone else needs to know who does, rather than being
+                        told a fact with no way forward. */}
                     <span className="text-[13px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      This trip is read-only
+                      {isOwner
+                        ? "This trip is read-only — change its dates in settings to reopen it."
+                        : "This trip is read-only. Its owner can reopen it by changing the dates."}
                     </span>
                   </div>
                 )}

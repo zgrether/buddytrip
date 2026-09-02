@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { getEffectiveStatus, countdownLabel } from "./tripStatus";
+import {
+  getEffectiveStatus,
+  countdownLabel,
+  isReadOnly,
+  canReachTripSettings,
+} from "./tripStatus";
 
 /**
  * Pin "today" to a fixed LOCAL-noon instant so the countdown/status math is
@@ -123,5 +128,78 @@ describe("countdownLabel", () => {
         end_date: dayOffset(7),
       })
     ).toBe("2 days to go");
+  });
+});
+
+/**
+ * The date lock must not be a ONE-WAY DOOR.
+ *
+ * `isReadOnly` is derived from `end_date`, and trip settings is where an owner
+ * changes `end_date`. Gating the settings gear on `!isReadOnly` therefore froze
+ * a trip permanently the first time it aged past the threshold: the banner said
+ * "This trip is read-only" and removed the only control that could clear it.
+ *
+ * Reported as "a trip cannot be taken out of read-only for editing", which is
+ * literally what the code did.
+ */
+describe("the read-only escape hatch", () => {
+  /**
+   * Comfortably past `nextSunday(end_date + 14)` — a genuinely locked trip.
+   *
+   * A FUNCTION, not a const. As a const it was evaluated at collection time,
+   * before `beforeEach` installs the fake clock, so its "80 days ago" was
+   * measured from the real today and then compared against a frozen April —
+   * landing in the FUTURE and making the fixture not read-only at all. The
+   * first case below caught it; every other case would have passed for a reason
+   * unrelated to the lock. (The existing tests in this file call `dayOffset`
+   * inside each `it` for the same reason.)
+   */
+  const lockedTrip = () => ({
+    locked_destination_at: LOCKED,
+    start_date: dayOffset(-90),
+    end_date: dayOffset(-80),
+  });
+
+  it("the fixture is actually read-only (or the rest proves nothing)", () => {
+    // Without this the cases below would pass on a trip that was never locked —
+    // the assertion would hold for a reason that has nothing to do with the bug.
+    expect(isReadOnly(lockedTrip())).toBe(true);
+  });
+
+  it("an OWNER still reaches settings on a read-only trip", () => {
+    // The whole fix. Settings is where `trips.lockDates` lives, so this is the
+    // only way back out of the lock.
+    expect(canReachTripSettings(lockedTrip(), { isOwner: true })).toBe(true);
+  });
+
+  it("a NON-owner still does not — the lock did not widen who may edit", () => {
+    expect(canReachTripSettings(lockedTrip(), { isOwner: false })).toBe(false);
+  });
+
+  it("read-only is never the reason settings is unreachable", () => {
+    // Stated as the invariant rather than as two cases: for the same viewer, the
+    // answer must not depend on the lock. A future edit that reintroduces
+    // `&& !isReadOnly` fails here even if both cases above were rewritten.
+    const OPEN_TRIP = {
+      locked_destination_at: LOCKED,
+      start_date: dayOffset(2),
+      end_date: dayOffset(7),
+    };
+    expect(isReadOnly(OPEN_TRIP)).toBe(false);
+    for (const isOwner of [true, false]) {
+      expect(canReachTripSettings(lockedTrip(), { isOwner })).toBe(
+        canReachTripSettings(OPEN_TRIP, { isOwner })
+      );
+    }
+  });
+
+  it("changing the dates forward clears the lock (the reported repro)", () => {
+    // BBMI 2023: created with past dates, then moved to the future. Measured
+    // against the real production row, the lock DOES clear — so a trip still
+    // reading read-only after this is role gating, not the date lock.
+    const before = lockedTrip();
+    const after = { ...lockedTrip(), start_date: dayOffset(2), end_date: dayOffset(4) };
+    expect(isReadOnly(before)).toBe(true);
+    expect(isReadOnly(after)).toBe(false);
   });
 });
