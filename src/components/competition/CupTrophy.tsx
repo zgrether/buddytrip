@@ -102,8 +102,25 @@ const BILL_INK_CX = 354.2;
  * The reserve above is unconditional (two lines whether or not the second is
  * used), so this does not need to track the name: a short name reserves the
  * same block and the geometry is identical.
+ *
+ * ── 24, NOT 20: THE AWARDED TILT ROTATES HIM TOO ───────────────────────────
+ *
+ * 20 cleared line 1 by a measured pixel at rest — and the winner's tilt
+ * (`winnerSide`, ±12° about the foot) moves Bill with the rest of the cup.
+ * Measured at 375px with the name at the cap:
+ *
+ *   rest    Bill top 214   line 1 bottom 212   clear by 2
+ *   -12°    Bill top 211                       OVERLAPS by 1
+ *   +12°    Bill top 216                       clear by 4
+ *
+ * A left-hand win lifts him 3px, straight back into the line this constant
+ * exists to clear. 24 holds in all three states with room, which is the
+ * property worth having: the clearance must be true in every state the card
+ * can actually be in, not only the resting one. Checking only the untilted
+ * case is how the tilt would have silently undone the fix — the same shape as
+ * tuning against one card height and calling it done.
  */
-const BILL_NUDGE_BELOW_NAMES = 20;
+const BILL_NUDGE_BELOW_NAMES = 24;
 
 /**
  * The trophy's foreshortening — how flat a circle drawn on its horizontal plane

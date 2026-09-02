@@ -416,10 +416,24 @@ summary,
 
    Same shape as the golfHalo/golfPop celebration above: keyframes, a class, and
    the reduced-motion guard immediately after. */
+/* The trophy's entry for the clinch burst.
+ *
+ * The offsets track `ClinchCelebration`'s RESTING transform, which is
+ * `translate(-50%,-14%)` — anchored to the card's TOP edge. They used to end at
+ * `-46%`, the old centre-anchored value, and were left behind when the anchor
+ * moved: an animation overrides the inline transform outright, so a burst would
+ * have flung the trophy ~120px up and snapped it back on the last frame. It
+ * only shows while the burst plays, which is why nothing caught it.
+ *
+ * `--cup-tilt` carries the awarded lean (see `winnerSide`). Read through a
+ * variable because the angle is per-winner and keyframes cannot know it — and
+ * because the animation replaces the whole transform, so the tilt has to be
+ * inside these frames or it vanishes for the duration of the burst. Defaults to
+ * 0deg, which is every state except a finished, decided cup. */
 @keyframes cupTrophyRise {
-  0%   { opacity: 0; transform: translate(-50%, -38%) scale(0.86); }
-  60%  { opacity: 1; transform: translate(-50%, -47%) scale(1.04); }
-  100% { opacity: 1; transform: translate(-50%, -46%) scale(1); }
+  0%   { opacity: 0; transform: translate(-50%, -6%) rotate(var(--cup-tilt, 0deg)) scale(0.86); }
+  60%  { opacity: 1; transform: translate(-50%, -15%) rotate(var(--cup-tilt, 0deg)) scale(1.04); }
+  100% { opacity: 1; transform: translate(-50%, -14%) rotate(var(--cup-tilt, 0deg)) scale(1); }
 }
 @keyframes cupGlowIn {
   from { opacity: 0; }

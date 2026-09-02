@@ -224,6 +224,12 @@ export function CompetitionHero({
         <ClinchCelebration
           cupComplete={cupComplete}
           winnerColor={clincher?.color ?? null}
+          /* WHICH side won, not just what colour they are. The tilt needs a
+             direction and a colour cannot supply one — two teams can share a
+             hue family, and nothing about `#f97316` says "the right-hand one".
+             Derived from the same `clincher` the colour comes from, so the cup
+             can never lean away from the team it is tinted for. */
+          winnerSide={clincher ? (clincher.id === a?.id ? "A" : "B") : null}
           celebrate={celebrateFirstView}
           replayNonce={replayNonce}
           onCelebrated={onCelebrated}
