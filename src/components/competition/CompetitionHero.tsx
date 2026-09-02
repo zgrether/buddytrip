@@ -986,9 +986,24 @@ function TeamName({
        * name, `Banks` broken to `Bank`/`s` — is a name arriving somewhere the
        * artwork already was.
        *
-       * 40% of the content box leaves a centre gutter wider than the golfer,
+       * 44% of the content box leaves a centre gutter wider than the golfer,
        * so the columns and the art stop competing for the same pixels instead
        * of being tuned against each other.
+       *
+       * 44 AND NOT 40, and the four points are measured rather than chosen.
+       * At 375px, against the real BBMI 2026 pair:
+       *
+       *   no cap  name runs to x212 — ACROSS the golfer, who starts at 172
+       *   40%     "Booty Hunters & Scurvy Hookers" needs THREE lines and the
+       *           clamp eats "Hookers"
+       *   44%     two lines, no ellipsis, right edge 161, golfer clear at 172
+       *   48%+    side B's single line starts at 206 and crosses the golfer
+       *           from the other direction
+       *
+       * So the window is one step wide: 40 truncates a name that is really in
+       * use, and 48 gives back the overlap the cap exists to remove. A first
+       * pass shipped 40 on the arithmetic and was caught by rendering the
+       * actual name — the 30-char one, not the 21-char one it was tuned on.
        *
        * It also fixes the squeeze the other way round, which was left as a
        * known limit: with both sides capped, a long name can no longer take
@@ -997,7 +1012,7 @@ function TeamName({
        * A name that no longer fits wraps to two lines, which is what the
        * unconditional two-line reserve above is for and costs nothing.
        */
-      style={{ maxWidth: "40%" }}
+      style={{ maxWidth: "44%" }}
       data-testid={`comp-team-name-${align === "left" ? "a" : "b"}`}
     >
       {/* 17 (was 15) — the name carries the block now that the icon is gone, and
@@ -1012,9 +1027,17 @@ function TeamName({
           block reserves two lines whether or not the second is used, bottom-
           aligns its content so a short name sits against the ROSTER label
           rather than floating above it, and clamps at two as the ellipsis
-          floor. With the 34-char input cap the clamp should never fire; it is
-          here so a longer legacy name degrades to the old behaviour instead of
-          pushing the panel around.
+          floor.
+
+          THE CLAMP CAN FIRE, and the earlier claim here that it "should never
+          fire with the 34-char input cap" was wrong — it was reasoning about a
+          character count when what decides is the longest WORD against the
+          column. At 44% every name in use fits two lines; a 30-char name made
+          of three long words ("Wonderful Magnificent Splendids") still needs
+          three and loses its tail. That is a real hole, not a hypothetical one
+          the input cap closes, and it is left open deliberately: the only cap
+          that fits such a name is one wide enough to put it back across the
+          golfer, which is the bug this replaced. Filed rather than fudged.
 
           UNCONDITIONAL at every width. The hero has no breakpoint and fills a
           content column up to 1280px, where nothing wraps and this leaves a
