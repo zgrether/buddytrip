@@ -129,11 +129,19 @@ describe("match-play cup — a manual game WITH its own split is awarded by it",
     expect(lb.pointsAvailable).toBe(8);
   });
 
-  it("a PER_MATCH distribution on a manual game still flattens — the narrow scope", async () => {
-    // Deliberately excluded. `per_match` is match play's own shape and the branch
-    // that handles it derives a match count from pairings a manual game does not
-    // have, so deferring for it would read a count of zero rather than do
-    // something sensible. Only `placement` defers.
+  it("a PER_MATCH distribution and NO match rows still flattens — the narrow scope", async () => {
+    // Still correct, but for a different reason than when it was written, and
+    // the old reason is now false. It read: "`per_match` is match play's own
+    // shape and the branch that handles it derives a match count from pairings a
+    // manual game does not have." Non-golf Matches (170) is a manual type that
+    // DOES have pairings, and reading that comment as still true is how #1245
+    // survived — the whole pot went to the side that lost every match.
+    //
+    // What actually keeps THIS game in the flatten is that it has no
+    // `game_matches` rows at all, which is the condition the branch now tests
+    // (`hasPerMatchRows`). The distribution's shape is not what decides it. See
+    // `matchesCupPayout.test.ts` for the same distribution WITH match rows,
+    // which must not flatten.
     const { comp, ta, tb } = await matchPlayCup("PerMatch Manual Cup");
     const gameId = await manualGame(comp, "Odd One", {
       points_total: 6,

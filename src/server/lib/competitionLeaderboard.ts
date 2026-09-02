@@ -22,6 +22,75 @@ function matchFormat(_gameTypeId: string | null): MatchFormat {
 }
 
 /**
+ * THE CONVENTION INVARIANT (#1245).
+ *
+ * A `game_results` row carries its value in one of two fields, and they rank
+ * OPPOSITE ways: `position` is `low_wins`, `raw_score` is points already decided
+ * and is `high_wins`. `standingsByGame` collapses them with `position ??
+ * raw_score`, so past that line a value cannot say which it is — and the
+ * `direction` each arm returns is chosen independently, with nothing checking
+ * the two agree.
+ *
+ * They disagreed for non-golf Matches: points ranked `low_wins` meant a team
+ * that won 35 read as "position 35" and the side that won nothing took the cup.
+ * The arithmetic was plausible at every step, which is exactly why no test and
+ * no reader caught it — this is the check that makes the pairing observable.
+ *
+ * ── Why it logs in production instead of throwing ──────────────────────────
+ *
+ * A strictly dev-only invariant would have fired ZERO times for the person who
+ * hit this: it was found on bbmi.app, and Playground is production. But a throw
+ * here blanks a live board, and a false positive mid-trip costs more than the
+ * bug it guards. So: loud in dev and test, evidence in production.
+ *
+ * This runs SERVER-side, so the production line goes to the Vercel runtime log
+ * rather than to a member's phone console — findable without knowing to look.
+ *
+ * ── It logs the VALUES, not the verdict ────────────────────────────────────
+ *
+ * "A standing built from raw_score reached a low_wins path" says a rule fired.
+ * The game id, the actual scores and the direction say what to fix. A message
+ * that states its conclusion without the evidence is indistinguishable from one
+ * that was never computed.
+ *
+ * Measured before shipping: across production's 24 games and 44 team result
+ * rows this fires on exactly one — the bug. Match play, rack and pick'em all
+ * carry null positions and already rank `high_wins`; every placement game has
+ * real positions.
+ */
+function assertRankingConventionMatches(
+  liveGames: LiveGame[],
+  scoredByRawScore: Set<string>,
+  competitionId: string
+) {
+  for (const g of liveGames) {
+    if (g.direction !== "low_wins") continue;
+    if (!scoredByRawScore.has(g.id)) continue;
+    if (g.standings.length === 0) continue;
+
+    const detail = {
+      competitionId,
+      gameId: g.id,
+      direction: g.direction,
+      // The numbers, in the order the ranking will read them.
+      standings: g.standings.map((s) => ({ entityId: s.entityId, value: s.value })),
+      distribution: g.distribution,
+      pointsTotal: g.pointsTotal,
+    };
+    const message =
+      `[leaderboard] ranking-convention mismatch: game ${g.id} has results with a NULL position ` +
+      `(so its values are raw_score POINTS) but is being ranked low_wins, which will award the ` +
+      `LOWEST scorer first. Evidence: ${JSON.stringify(detail)}`;
+
+    if (process.env.NODE_ENV === "production") {
+      console.error(message);
+    } else {
+      throw new Error(message);
+    }
+  }
+}
+
+/**
  * Server roll-up wrapper (Slice D1 §5/§6). The DB-read half of the CLAUDE.md #8
  * split: it gathers live games + team standings, then defers ALL math to the
  * client-safe pure `rollUp` — so the leaderboard the crew sees and any persisted
@@ -274,12 +343,19 @@ export async function computeCompetitionLeaderboard(
   // team ids, awarding points to entities no team column will ever match.
   const standingsByGame = new Map<string, { entityId: string; value: number }[]>();
   const entrantStandingsByGame = new Map<string, { entityId: string; value: number }[]>();
+  // PROVENANCE, captured HERE because this is the only line that still knows it.
+  // `position ?? raw_score` is where the two conventions become one number, and
+  // after it nothing can tell them apart — which is how #1245 went unnoticed.
+  // Recording which field a game's rows came from costs one Set and lets the
+  // invariant below check the convention against the ranking direction.
+  const scoredByRawScore = new Set<string>();
   for (const r of results ?? []) {
     const target = (r.entity_type as string) === "entrant" ? entrantStandingsByGame : standingsByGame;
     const gid = r.game_id as string;
     const arr = target.get(gid) ?? [];
     arr.push({ entityId: r.entity_id as string, value: (r.position ?? r.raw_score ?? 0) as number });
     target.set(gid, arr);
+    if ((r.entity_type as string) !== "entrant" && r.position == null) scoredByRawScore.add(gid);
   }
 
   const liveGames: LiveGame[] = allGames.map((g) => {
@@ -445,14 +521,39 @@ export async function computeCompetitionLeaderboard(
     // every manual game that has not — which is what it has always meant, since
     // until now no such game could have one (the settings row was hidden).
     //
-    // Deliberately narrow: `isPlacement` only. A manual game holding a `per_match`
-    // distribution keeps the flatten, because per_match is match play's own shape
-    // and the branch below derives its match count from pairings a manual game
-    // does not have.
+    // ── …AND ONLY WHERE THERE ARE NO PER-MATCH ROWS ───────────────────────────
+    //
+    // THE CONDITION IS THE ABSENCE OF MATCH ROWS, NOT THE GAME'S TYPE. This
+    // branch reads a standing's `value` as a POSITION — "the total goes to the
+    // winner (position 1)", ranked `low_wins`. That is only sound for a game
+    // whose results carry a position. A game with per-match rows is scored by
+    // `writeTeamMatchPoints`, which deliberately writes `position = null` and
+    // puts POINTS in `raw_score` — and `standingsByGame` collapses the two with
+    // `position ?? raw_score`, so the points arrive here wearing a position's
+    // clothes and nothing can tell them apart.
+    //
+    // Ranked `low_wins`, a team that won 35 reads as "position 35" and a team
+    // that won nothing reads as "position 0" — so WINNING DEMOTED YOU, and the
+    // whole pot went to the side that lost every match (#1245, seen on a real
+    // cup). The `isPerMatch` arm below is the one that reads `raw_score` as
+    // points; it already handles these games (its `pointsDivideByMatchRows`
+    // includes `isMatchesGame`) and was simply never reached, because this
+    // branch returned first.
+    //
+    // This comment previously read: "A manual game holding a `per_match`
+    // distribution keeps the flatten, because per_match is match play's own
+    // shape and the branch below derives its match count from pairings a manual
+    // game does not have." That was TRUE WHEN WRITTEN and is now false — non-golf
+    // Matches (170) is a manual type that does have pairings. The fact was
+    // restated where the condition should have been, so when the fact changed
+    // there was nothing to re-check. Hence the predicate below names what
+    // actually makes a game eligible.
+    const hasPerMatchRows = (totalMatchRowsByGame.get(g.id as string) ?? 0) > 0;
     if (
       scoringModel === "match_play" &&
       isManualType(g.game_type_id as string | null) &&
-      !isPlacement(rawDist)
+      !isPlacement(rawDist) &&
+      !hasPerMatchRows
     ) {
       const total = (g.points_total as number | null) ?? 0;
       return {
@@ -536,6 +637,8 @@ export async function computeCompetitionLeaderboard(
       pointsTotal: (g.points_total as number | null) ?? undefined,
     };
   });
+
+  assertRankingConventionMatches(liveGames, scoredByRawScore, competitionId);
 
   const roll = rollUp(liveGames, teamIds, { defendingTeamId: comp?.defending_team_id ?? null });
 
