@@ -1,10 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Settings, Trophy } from "lucide-react";
 import { fmtPts, ProjectionPill } from "./GameRow";
 import { ClinchCelebration } from "./ClinchCelebration";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { useShrinkToFit } from "@/hooks/useShrinkToFit";
+
+/** The collapsed bar's ladder. Starts at its designed 14 (the expanded hero's
+ *  starts at 17, `NAME_SIZES`), floor 11 — below that a name in a sticky bar is
+ *  decoration rather than a label. */
+const MINI_NAME_SIZES = [14, 13, 12, 11];
 import type { TrophySlot } from "./CupTrophy";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
@@ -769,6 +775,11 @@ function MiniName({
   align: "left" | "right";
   onEditTeam?: (teamId: string) => void;
 }) {
+  // Above the early return — hooks cannot sit behind a condition. `team.name`
+  // is optional-chained for the same reason: this runs on the no-team render.
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const nameSize = useShrinkToFit(nameRef, team?.name ?? "", MINI_NAME_SIZES);
+
   if (!team) return <div style={{ maxWidth: "38%" }} />;
   return (
     <button
@@ -816,9 +827,14 @@ function MiniName({
           leaving this one is the half-sweep CLAUDE.md keeps recording — the
           sweep unit is the shared thing (a team name in a narrow slot), not the
           file the report happened to name. */}
+      {/* SHRINKS rather than ellipsises — see `useShrinkToFit`. This is the
+          narrower of the two name slots (38% against the expanded hero's 44%),
+          so it reaches the floor sooner; the clamp above stays as that floor's
+          backstop. */}
       <span
+        ref={nameRef}
         className="line-clamp-2 w-full break-normal"
-        style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: team.color }}
+        style={{ fontSize: nameSize, fontWeight: 600, lineHeight: 1.2, color: team.color }}
       >
         {team.name}
       </span>
@@ -965,6 +981,9 @@ function TeamName({
   onEditTeam?: (teamId: string) => void;
   align: "left" | "right";
 }) {
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const nameSize = useShrinkToFit(nameRef, team.name);
+
   return (
     <button
       type="button"
@@ -1029,15 +1048,19 @@ function TeamName({
           rather than floating above it, and clamps at two as the ellipsis
           floor.
 
-          THE CLAMP CAN FIRE, and the earlier claim here that it "should never
-          fire with the 34-char input cap" was wrong — it was reasoning about a
-          character count when what decides is the longest WORD against the
-          column. At 44% every name in use fits two lines; a 30-char name made
-          of three long words ("Wonderful Magnificent Splendids") still needs
-          three and loses its tail. That is a real hole, not a hypothetical one
-          the input cap closes, and it is left open deliberately: the only cap
-          that fits such a name is one wide enough to put it back across the
-          golfer, which is the bug this replaced. Filed rather than fudged.
+          THE CLAMP IS NOW A FLOOR, NOT THE ANSWER. An earlier version of this
+          comment claimed the clamp "should never fire with the 34-char input
+          cap". It can: that was reasoning about a character count when what
+          decides is the longest WORD against the column. At 44% every name in
+          use fits two lines at 17px, but "Wonderful Magnificent Splendids" —
+          one character LONGER than the BBMI 2026 name and needing a whole extra
+          line — does not.
+
+          No cap fixes that, because the only column wide enough to hold such a
+          name is one wide enough to put it back across the golfer. So the size
+          gives way instead: `useShrinkToFit` steps the type down until the
+          clamp stops hiding anything. The clamp survives only for a name that
+          does not fit even at the floor.
 
           UNCONDITIONAL at every width. The hero has no breakpoint and fills a
           content column up to 1280px, where nothing wraps and this leaves a
@@ -1065,9 +1088,16 @@ function TeamName({
             line break, and the real cause — the flex row handing one side four
             times the width of the other — is a distribution question this PR
             does not open. */}
+        {/* The font size is MEASURED, not fixed — 17 where the name fits, less
+            where it does not. The reserve above is sized from the PARENT's font
+            size, which this never touches, so a shrunken name still occupies a
+            full two-line block and both sides keep their baselines. Putting the
+            ref on the child and the reserve on the parent is what makes that
+            true; do not merge them. */}
         <span
+          ref={nameRef}
           className="line-clamp-2 w-full break-normal"
-          style={{ fontWeight: 600, lineHeight: 1.2, color: team.color }}
+          style={{ fontSize: nameSize, fontWeight: 600, lineHeight: 1.2, color: team.color }}
         >
           {team.name}
         </span>
