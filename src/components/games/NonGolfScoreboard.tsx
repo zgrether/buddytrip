@@ -13,7 +13,6 @@ import { ScoringStateBanner } from "./ScoringStateBanner";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
-import { PointsAtStake } from "./PointsAtStake";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { isMatchesGame } from "@/lib/resultStrategy";
 import { MatchesScoreboard, type MatchScoreRow } from "./MatchesScoreboard";
@@ -208,15 +207,16 @@ export function NonGolfScoreboard({
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-3 px-4 py-5">
-      {/* What the game is worth — the board has always shown this and the game
-          surface never did, so the person deciding whether this matters couldn't
-          see it. `points_total` is the SAME field the board's "N PTS" reads, via
-          the same formatter, so the two numbers agree by construction. */}
-      <div className="flex justify-end">
-        <PointsAtStake value={Number(game.points_total ?? 0)} />
-      </div>
+      {/* The value used to sit in a bare `PointsAtStake` row above this, with no
+          container — it is IN the banner now (below), which is the one place a
+          game says what it is worth. Two homes for one number is how they drift;
+          both read `game.points_total` verbatim, so they never actually could
+          have disagreed, but a duplicate label above the banner is still the
+          thing to remove. Same fix bracket already made in
+          `BracketScoringSurface.tsx` — same comment, copied rather than
+          re-derived, because it is the same defect in the same shape.
 
-      {/* Non-golf had NO lifecycle banner and no state label of any kind — the
+          Non-golf had NO lifecycle banner and no state label of any kind — the
           only tell that a posted game had been re-opened was the placement
           controls becoming live again (#833). Same shared component, same words
           and tone as the other three formats. Reads the same two columns the
