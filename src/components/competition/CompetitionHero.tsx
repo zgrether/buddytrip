@@ -629,8 +629,20 @@ export function CollapsedHero({
       <div style={card} data-testid="competition-hero-collapsed">
         <div style={{ padding: "11px 14px 12px" }}>
           {/* Names — own row, wrap toward center, team-colored, group icon,
-              tappable → that team's editor (same as the expanded hero). */}
-          <div className="flex items-start justify-between gap-3.5">
+              tappable → that team's editor (same as the expanded hero).
+
+              `items-end`, not `items-start`. This is what keeps the two sides
+              aligned when one name wraps to two lines and the other does not:
+              bottom-aligning the buttons lands their ROSTER labels on the same
+              line. It replaces `MiniName`'s two-line reserve, which bought the
+              same alignment by padding EVERY short name down a line — 16px on
+              every surface that mounts this bar, including the three game pages
+              that render it in flow. Same guarantee, natural height.
+
+              With `items-start` and no reserve, a 1-line side's ROSTER would sit
+              a line above the 2-line side's. That is the case to keep in mind if
+              anyone is tempted back to `items-start`. */}
+          <div className="flex items-end justify-between gap-3.5">
             <MiniName team={a} align="left" onEditTeam={onEditTeam} />
             <MiniName team={b} align="right" onEditTeam={onEditTeam} />
           </div>
@@ -761,19 +773,40 @@ function MiniName({
       style={{ maxWidth: "38%" }}
       data-testid={`comp-team-name-collapsed-${align === "left" ? "a" : "b"}`}
     >
-      {/* Same two-line reserve as the expanded hero's `TeamName`, for the same
-          reason and at this component's own size. This is the SECOND component
-          of one surface: the sticky bar and the expanded card are both the cup
-          header, and fixing only the one that was reported would leave a long
-          name wrapping unpinned here — visible the moment anyone scrolls
-          mid-round, which is when this bar is the only header on screen. */}
-      <span className="flex w-full items-end" style={{ fontSize: 14, minHeight: "2.4em" }}>
-        <span
-          className="line-clamp-2 w-full break-words"
-          style={{ fontWeight: 600, lineHeight: 1.2, color: team.color }}
-        >
-          {team.name}
-        </span>
+      {/* NO two-line reserve here — clamped, but not padded to two lines.
+          The row bottom-aligns instead (`items-end`, see CollapsedHero).
+
+          The reserve was copied down from the expanded hero's `TeamName` on the
+          reasoning that the sticky bar and the expanded card are one surface in
+          two components. The COPY was right; the reserve was not, because both
+          of its justifications are properties of the expanded card and neither
+          holds here:
+
+            - a truncation bug — this bar never truncated, it wrapped;
+            - two big scores sharing a baseline — the collapsed bar's scores are
+              in their OWN row below (`MiniScore`), so they share a baseline with
+              each other however tall the names get.
+
+          What is genuinely at risk is the two ROSTER labels landing level when
+          one name wraps and the other does not — and that is what `items-end` on
+          the names row buys, at natural height, without padding every short name
+          down by a line. Removing the cause rather than compensating for it.
+
+          It cost 16px on EVERY surface that mounts this: the bar went 87px ->
+          103px for a short name (measured, 375px viewport), and `GamePageHeader`
+          renders it IN FLOW, so match / rack / non-golf all shifted down by that
+          much. Note the inversion — a LONG name was 103px before this fix and
+          after it, because it already wrapped to two lines. The reserve only
+          ever changed the SHORT-name case, which is the case to check.
+
+          `line-clamp-2` STAYS, and is strictly better than what preceded the
+          reserve: before #1212 this had no clamp at all and a long legacy name
+          could wrap to three lines or more. Bounded, not padded. */}
+      <span
+        className="line-clamp-2 w-full break-words"
+        style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.2, color: team.color }}
+      >
+        {team.name}
       </span>
       {onEditTeam && <RosterLabel size={9} />}
     </button>
