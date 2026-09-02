@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { memberCanScoreUnit, type ScoreUnitMatch } from "./scoreUnit";
+import { memberCanScoreUnit, memberCanScoreMatch, type ScoreUnitMatch } from "./scoreUnit";
 
 // The MEMBER tier only — owner/co-admin/delegate bypass this via canEditGame.
 // Covers each format × in-unit / out-of-unit / non-participant.
@@ -122,5 +122,107 @@ describe("memberCanScoreUnit — 2v2 match (unit = the match's two side groups)"
 
   it("an unknown play_group id is rejected", () => {
     expect(memberCanScoreUnit({ ...base, meId: "u1", participantId: "gZ", participantType: "play_group", myPlayGroupId: "ga" })).toBe(false);
+  });
+});
+
+// ── memberCanScoreMatch — the CLIENT entry point, on a MIXED game ────────────
+//
+// The regression this pins (prod, BBMI 2023 "Singles"): a game holding six 1v1
+// matches AND one 2v2 match. The view branched on a GAME-level `sided` flag
+// derived as `matches.some(side is a play_group)` — true for the whole game
+// because of the one doubles match — and then looked the 1v1 matches' USER ids
+// up in a map keyed by play_group id. Both sides missed, `inThisMatch` was
+// false, and a member opening their own singles match got the read-only
+// scorecard with no entry surface at all. The server would have accepted it.
+//
+// So the cases that matter are the SINGLES ones inside a mixed game: every
+// assertion marked "the regression" passes under a per-side discriminator and
+// fails under a game-level one. The doubles case is here because it is what the
+// old code got right — a fix that breaks it has traded one bug for another.
+describe("memberCanScoreMatch — MIXED game (1v1 and 2v2 matches in one game)", () => {
+  // m1: 1v1 u1 vs u2   m2: 1v1 u3 vs u4   m3: 2v2 ga(u5,u6) vs gb(u7,u8)
+  const matches: ScoreUnitMatch[] = [
+    { side_a: userSide("u1"), side_b: userSide("u2") },
+    { side_a: userSide("u3"), side_b: userSide("u4") },
+    { side_a: pgSide("ga"), side_b: pgSide("gb") },
+  ];
+  // Keyed by play_group id — NOT by user id. This is the map the old code
+  // wrongly consulted for the 1v1 sides.
+  const membersOfSide = new Map<string, string[]>([
+    ["ga", ["u5", "u6"]],
+    ["gb", ["u7", "u8"]],
+  ]);
+  const base = { matches, membersOfSide, myPlayGroupId: null, meIsParticipant: true };
+
+  it("the regression: a 1v1 player CAN score their own singles match", () => {
+    expect(memberCanScoreMatch({ ...base, meId: "u2", sideAId: "u1", sideBId: "u2" })).toBe(true);
+  });
+
+  it("the regression: a 1v1 player CAN score their opponent (one card per match)", () => {
+    expect(memberCanScoreMatch({ ...base, meId: "u1", sideAId: "u1", sideBId: "u2" })).toBe(true);
+  });
+
+  it("a 1v1 player still CANNOT score the OTHER singles match", () => {
+    expect(memberCanScoreMatch({ ...base, meId: "u1", sideAId: "u3", sideBId: "u4" })).toBe(false);
+  });
+
+  it("a 1v1 player still CANNOT score the doubles match in the same game", () => {
+    expect(memberCanScoreMatch({ ...base, meId: "u1", sideAId: "ga", sideBId: "gb" })).toBe(false);
+  });
+
+  it("a 2v2 player CAN score their doubles match (what the old code got right)", () => {
+    expect(
+      memberCanScoreMatch({ ...base, meId: "u5", sideAId: "ga", sideBId: "gb", myPlayGroupId: "ga" }),
+    ).toBe(true);
+  });
+
+  it("a 2v2 player CANNOT score a singles match they are not in", () => {
+    expect(
+      memberCanScoreMatch({ ...base, meId: "u5", sideAId: "u1", sideBId: "u2", myPlayGroupId: "ga" }),
+    ).toBe(false);
+  });
+
+  it("a non-participant cannot score anything", () => {
+    expect(
+      memberCanScoreMatch({ ...base, meId: "u9", sideAId: "u1", sideBId: "u2", meIsParticipant: false }),
+    ).toBe(false);
+  });
+
+  it("no viewer id → no access (a signed-out / unresolved reader never scores)", () => {
+    expect(memberCanScoreMatch({ ...base, meId: null, sideAId: "u1", sideBId: "u2" })).toBe(false);
+  });
+
+  it("an unpaired match (both sides empty) authorizes nobody", () => {
+    expect(memberCanScoreMatch({ ...base, meId: "u1", sideAId: null, sideBId: null })).toBe(false);
+  });
+
+  it("side A empty falls through to side B — either side resolves the same unit", () => {
+    expect(memberCanScoreMatch({ ...base, meId: "u1", sideAId: null, sideBId: "u2" })).toBe(true);
+  });
+});
+
+// A PURE 1v1 game and a PURE 2v2 game both worked before this fix — the bug
+// needed the mixture. Pinned so the per-side discriminator is checked on the
+// shapes it must not regress, not only on the shape that was broken.
+describe("memberCanScoreMatch — unmixed games still resolve", () => {
+  it("pure 1v1: a player scores their match", () => {
+    const matches: ScoreUnitMatch[] = [{ side_a: userSide("u1"), side_b: userSide("u2") }];
+    expect(
+      memberCanScoreMatch({
+        meId: "u1", sideAId: "u1", sideBId: "u2",
+        matches, membersOfSide: new Map(), myPlayGroupId: null, meIsParticipant: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("pure 2v2: a side member scores their match", () => {
+    const matches: ScoreUnitMatch[] = [{ side_a: pgSide("ga"), side_b: pgSide("gb") }];
+    expect(
+      memberCanScoreMatch({
+        meId: "u5", sideAId: "ga", sideBId: "gb",
+        matches, membersOfSide: new Map([["ga", ["u5"]], ["gb", ["u7"]]]),
+        myPlayGroupId: "ga", meIsParticipant: true,
+      }),
+    ).toBe(true);
   });
 });

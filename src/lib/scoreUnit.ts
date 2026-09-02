@@ -111,3 +111,60 @@ export function memberCanScoreUnit(input: MemberScoreAccessInput): boolean {
   // actually be a participant), regardless of which group they're in.
   return participantId === meId && input.meIsParticipant;
 }
+
+/**
+ * Can a plain MEMBER score THIS MATCH? — the client-side entry point, expressed
+ * in the shapes a match view already holds (side ids + the play-group roster map).
+ *
+ * ── Why this exists ──────────────────────────────────────────────────────────
+ * `MatchGameView` used to hand-roll this, and it branched on the GAME-level
+ * `sided` flag (`matches.some(side is a play_group)`) to decide whether a side id
+ * was a play_group id or a user id. 1v1-vs-2v2 is a PER-MATCH property — the file's
+ * own note says so ("A2 unfolds this game-level `sided` into a true per-match
+ * shape") — so in a MIXED game the flag is true for every match, and the 1v1
+ * matches' *user* ids were looked up in a map keyed by play_group id. Both sides
+ * missed, and a member opening their own singles match was handed the read-only
+ * scorecard: locked out of scoring by the presence of somebody else's doubles
+ * match. The server disagreed and would have accepted the write — `canWriteOutcome`
+ * resolves membership per match through `memberCanScoreUnit`, which is correct.
+ *
+ * So the fix is not a better flag; it is the client asking the SAME function the
+ * server asks (CLAUDE.md #24 — one predicate, one definition). The discriminator
+ * is `membersOfSide.has(sideId)`, which is per-side and cannot be wrong, and is
+ * already what `sideParticipant` / `sidePlayersOf` use two screens away.
+ *
+ * Mirrors `canWriteOutcome`'s note: `memberCanScoreUnit`'s 1v1/2v2 branches look at
+ * BOTH sides of the match once found, so passing EITHER side's ref resolves
+ * identically — side A unless it is missing, then side B.
+ */
+export function memberCanScoreMatch(input: {
+  /** The viewer's user id. */
+  meId: string | null | undefined;
+  /** `game_matches.side_a.id` for the open match — a user id (1v1) or play_group id (2v2). */
+  sideAId: string | null | undefined;
+  sideBId: string | null | undefined;
+  /** Every match in the game — `memberCanScoreUnit` finds the one holding the ref. */
+  matches: ScoreUnitMatch[];
+  /** play_group_id → its member user ids. A side id present as a KEY is a play_group. */
+  membersOfSide: Map<string, string[]>;
+  myPlayGroupId: string | null;
+  meIsParticipant: boolean;
+}): boolean {
+  const { meId, sideAId, sideBId, matches, membersOfSide } = input;
+  if (!meId) return false;
+  const sideId = sideAId ?? sideBId;
+  if (!sideId) return false; // an unpaired match has nothing to authorize against
+  return memberCanScoreUnit({
+    meId,
+    participantId: sideId,
+    // PER SIDE, never from a game-level flag — this is the whole fix.
+    participantType: membersOfSide.has(sideId) ? "play_group" : "user",
+    matches,
+    myPlayGroupId: input.myPlayGroupId,
+    targetPlayGroupId: null,
+    meIsParticipant: input.meIsParticipant,
+    // Outcomes/match play are never cart-scoped — the match branch authorizes.
+    groupScoped: false,
+  });
+}
+
