@@ -42,6 +42,10 @@ const settingsRows = (over: { slateCount?: number } = {}) =>
           slateCount={over.slateCount ?? 2}
           weightedCount={0}
           useConfidence
+          // Every case in this file is about the REACHABLE row — its hierarchy
+          // and its copy. The #1263 block is a different subject and has its own
+          // file; a clean page is the state these were written against.
+          settingsDirty={false}
           onOpenSlate={() => {}}
         />
       }
