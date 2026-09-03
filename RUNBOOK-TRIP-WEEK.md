@@ -9,9 +9,9 @@ Written from measurement against prod, 2026-09-03 — see `TRIP_WEEK_PHASE0.md`.
 
 **Ask one question: is it happening to everybody, or just to you?**
 
-- **Everybody, all at once** → it is the platform. Wait 60 seconds. Almost
-  everything measured clears itself in under a minute.
-- **Just you** → it is your phone, your signal, or your session. Reload.
+- **Everybody, all at once** → it is the platform, and it is most likely auth.
+  Read the next section. Wait it out; do not sign anyone out.
+- **Just you** → it is your phone, your signal, or your session. Reload once.
 - **Just one game** → it is data, not infrastructure. Skip to *"The leaderboard
   is wrong"*.
 
@@ -21,6 +21,41 @@ Written from measurement against prod, 2026-09-03 — see `TRIP_WEEK_PHASE0.md`.
 > They are saved on the phone that typed them and re-send when that phone
 > reopens that game. **So never hand the round to a different device to "fix"
 > it, and never clear the browser.**
+
+---
+
+## "Nobody can sign in" / "it logged me out"
+
+**The most likely thing to go wrong, and the one to be slowest about.**
+
+**Recognise it:** someone is bounced to the login screen mid-round, or a sign-in
+hangs and then fails. Often more than one person within a few minutes.
+
+**What it is:** Supabase's auth server intermittently stalls. Measured Sep 2:
+five token refreshes took over 25 seconds, one took **146 seconds**, and every
+one eventually succeeded. Same fault caused 25-second dead pages on Aug 27 and
+5-minute hangs on Aug 29. It is on their side. It clears on its own.
+
+**Do:**
+1. **Wait two minutes before doing anything.** Most of these resolve without
+   intervention.
+2. Then reload the page once.
+3. If still stuck, sign in again normally. It will usually work on the second
+   attempt.
+4. Keep scoring on any phone that is still signed in. One person can enter for
+   a whole group.
+
+**Don't:**
+- **Don't sign everybody out and back in.** Signing out consumes the session,
+  and if the auth server is the thing stalling, you have turned one stuck phone
+  into sixteen. **This is the single worst move available this week.**
+- Don't delete the app or clear data to "fix the login" — see the rule at the
+  top; that is where unsaved scores live.
+- Don't change anything in the Supabase dashboard.
+
+**Afterwards:** Supabase → Logs → Auth, and Edge filtered to
+`/auth/v1/token`. Look for `origin_time` over 25,000 ms, or status 400 with
+`refresh_token_already_used`.
 
 ---
 
@@ -75,41 +110,6 @@ never goes green and never gives a message. Write that hole on paper and move on
 
 **Afterwards:** Supabase → Logs → Edge, filter path `/rest/v1/score_entries`,
 method `POST`. Anything other than 200 is a real refusal.
-
----
-
-## "Nobody can sign in" / "it logged me out"
-
-**This is the most likely thing to go wrong, and the one to be slowest about.**
-
-**Recognise it:** someone is bounced to the login screen mid-round, or a sign-in
-hangs and then fails. Often more than one person within a few minutes.
-
-**What it is:** Supabase's auth server intermittently stalls. Measured Sep 2:
-five token refreshes took over 25 seconds, one took **146 seconds**, and every
-one eventually succeeded. Same fault caused 25-second dead pages on Aug 27 and
-5-minute hangs on Aug 29. It is on their side. It clears on its own.
-
-**Do:**
-1. **Wait two minutes before doing anything.** Most of these resolve without
-   intervention.
-2. Then reload the page once.
-3. If still stuck, sign in again normally. It will usually work on the second
-   attempt.
-4. Keep scoring on any phone that is still signed in. One person can enter for
-   a whole group.
-
-**Don't:**
-- **Don't sign everybody out and back in.** Signing out consumes the session,
-  and if the auth server is the thing stalling, you have turned one stuck phone
-  into sixteen.
-- Don't delete the app or clear data to "fix the login" — see the rule at the
-  top; that is where unsaved scores live.
-- Don't change anything in the Supabase dashboard.
-
-**Afterwards:** Supabase → Logs → Auth, and Edge filtered to
-`/auth/v1/token`. Look for `origin_time` over 25,000 ms, or status 400 with
-`refresh_token_already_used`.
 
 ---
 
@@ -186,9 +186,9 @@ fighting the app is what costs the day.
 
 | Question | Where |
 |---|---|
+| Was it auth? | Supabase → Logs → Auth; Edge path `/auth/v1/token` |
 | Was it slow for everyone? | Supabase → Logs → Edge, sort by `origin_time` |
 | Did a score actually fail? | Same, path `/rest/v1/score_entries`, method POST |
-| Was it auth? | Supabase → Logs → Auth; Edge path `/auth/v1/token` |
 | Did the app itself error? | Vercel → Observability → Errors |
 | Is the database in trouble? | Supabase → Reports → Database. It will not be — it is under 600 rows a table |
 
