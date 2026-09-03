@@ -180,7 +180,8 @@ export function RackGameView() {
   );
 
   const createGame = trpc.games.create.useMutation();
-  const applyCourse = trpc.games.applyCourse.useMutation();  // #7 correction path (owner/co-admin/delegate — server-gated by
+  const applyCourse = trpc.games.applyCourse.useMutation();
+  // #7 correction path (owner/co-admin/delegate — server-gated by
   // requireGameRunAction). "Re-lock" reuses finish().
   // Shared with the other three formats (CLAUDE.md #24) — including the
   // optimistic flip that stops the CTA waiting on a round trip for a boolean
@@ -745,7 +746,7 @@ export function RackGameView() {
   // The shared draft-then-save lifecycle (#626) — baseline + hash + dirty + outbox +
   // confirm-on-leave sync + the atomic Save. Format-specific pieces are passed in.
   const {
-    dirty, saveError, setSaveError, saving, handleSave: handleSaveConfig,
+    saveState, saveError, setSaveError, saving, handleSave: handleSaveConfig,
   } = useConfigDraft<RackConfigDraft, typeof draftBundle>({
     tripId, gameId: gid, view: "rack", canEdit,
     showConfig, dirtyRef, discardRef,
@@ -1094,7 +1095,7 @@ export function RackGameView() {
           onRulesChange={setRulesDraft}
           saveBar={
             <SettingsSaveBar
-              dirty={dirty}
+              saveState={saveState}
               saving={saving}
               error={saveError}
               onSave={handleSaveConfig}
