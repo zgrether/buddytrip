@@ -72,6 +72,11 @@ export function checklistRowVisuals(state: ChecklistRowState, isOpen: boolean): 
   };
 }
 
+/** The scoring-started block's words. A constant so `locked` is an INSTANCE of
+ *  the note branch rather than a parallel one — the divergence this component's
+ *  `requires` note already describes deleting once. */
+export const LOCKED_NOTE = "Reset scoring to make changes";
+
 export function ChecklistRow({
   icon: Icon,
   title,
@@ -85,6 +90,7 @@ export function ChecklistRow({
   headerControl,
   requires,
   locked,
+  blockedNote,
   testId,
 }: {
   /** The row's semantic type-icon (lucide). Persists in every state. */
@@ -136,17 +142,39 @@ export function ChecklistRow({
    *  `requires` when both apply — scores are the first gate you hit, and
    *  satisfying a prerequisite wouldn't help. */
   locked?: boolean;
+  /**
+   * A one-off block whose reason is a SENTENCE rather than a prerequisite list —
+   * same scrim, same lock icon, different words. `locked` is now the first
+   * instance of this rather than a separate treatment: its copy moved into
+   * `LOCKED_NOTE` and it renders through this branch.
+   *
+   * Use it when the blocker is a STATE the reader can clear rather than a THING
+   * they must create. "Requires: Golf Course" names an object that will appear in
+   * the panel; "Save your settings first" names an action. A list cannot say the
+   * second without reading as a missing object.
+   *
+   * Same rule as `requires`: name something the reader can actually do from here.
+   * A note they cannot act on is worse than no row at all (CLAUDE.md — a refusal
+   * must name an action the reader can take).
+   */
+  blockedNote?: string;
   testId?: string;
 }) {
   // Blocked = covered by the scrim, and therefore NOT interactive in any mode.
   // Expressed by dropping to the static variant rather than by disabling the
   // button, so there is no tap target AND no keyboard path to a control the user
   // has just been told they can't use.
-  const blockedBy: null | { kind: "locked" } | { kind: "requires"; list: string[] } = locked
-    ? { kind: "locked" }
-    : requires && requires.length > 0
-      ? { kind: "requires", list: requires }
-      : null;
+  // Precedence: scoring first (it is the gate nothing else can unblock), then a
+  // state the reader can clear, then a thing they must create. Two of the three
+  // now render through one branch — `locked` is a `note` carrying `LOCKED_NOTE`,
+  // not a second treatment.
+  const blockedBy: null | { kind: "note"; text: string } | { kind: "requires"; list: string[] } = locked
+    ? { kind: "note", text: LOCKED_NOTE }
+    : blockedNote
+      ? { kind: "note", text: blockedNote }
+      : requires && requires.length > 0
+        ? { kind: "requires", list: requires }
+        : null;
   const accordion = !!onToggle && !blockedBy;
   const overlay = !!onClick && !blockedBy && !accordion;
   // A control row carries an inline control and never toggles (no accordion/overlay).
@@ -264,11 +292,11 @@ export function ChecklistRow({
         className="flex items-center gap-1.5 px-3 text-left"
         style={{ fontSize: 11.5, fontWeight: 650, letterSpacing: "0.01em", lineHeight: 1.3 }}
       >
-        {blockedBy.kind === "locked" ? (
+        {blockedBy.kind === "note" ? (
           <>
             <Lock size={12} style={{ color: "var(--color-bt-overlay-row-label)", flexShrink: 0 }} />
             <span style={{ color: "var(--color-bt-overlay-row-text)", textShadow: "0 1px 3px rgba(0,0,0,.9)" }}>
-              Reset scoring to make changes
+              {blockedBy.text}
             </span>
           </>
         ) : (

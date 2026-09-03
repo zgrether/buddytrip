@@ -1981,6 +1981,12 @@ export function PickemGameView() {
                       slateCount={q.data.slate.length}
                       weightedCount={q.data.slate.filter((g) => (g.multiplier ?? 1) > 1).length}
                       useConfidence={q.data.settings.useConfidence}
+                      // `saveState === "ready"` IS dirty: the hook computes
+                      // `saveState = dirty ? "ready" : …`, so this is the same
+                      // value under the name `useConfigDraft` exports, not a
+                      // proxy for it. Exporting a second `dirty` alongside it
+                      // would be two spellings of one fact.
+                      settingsDirty={saveState === "ready"}
                       // Opens the slate ON TOP of settings rather than closing
                       // settings first. Closing first looked tidier and was
                       // broken: on the `?settings=1` DEEP-LINK path the
@@ -2111,15 +2117,57 @@ export function PhaseBody() {
  * Built here rather than inside `PickemScoringRows` because it opens a modal
  * this file owns; passed in as a slot so the rows component keeps the order.
  */
+/**
+ * The words, at module scope so the test asserts the string the row renders
+ * rather than a copy of it.
+ *
+ * Both halves earn their place. "Save your settings first" is the action; "slate
+ * changes save immediately" is why an unsaved draft is the reader's problem
+ * rather than an arbitrary lock — without it the block reads as the app being
+ * broken, which is the failure mode this row's OTHER stopgap note already exists
+ * to prevent.
+ */
+export const SLATE_BLOCKED_WHILE_DIRTY = "Save your settings first — slate changes save immediately.";
+
 export function PickemSlateRow({
   slateCount,
   weightedCount,
   useConfidence,
+  settingsDirty,
   onOpenSlate,
 }: {
   slateCount: number;
   weightedCount: number;
   useConfidence: boolean;
+  /**
+   * ── STOPGAP (#1263). REMOVE THIS WITH THE OTHER ONE. ──────────────────────
+   *
+   * The settings draft differs from its baseline — nothing else. NOT the
+   * selected format, not whether the modal has been opened, not any proxy for
+   * those: a broader check standing in for a narrower fact would block when
+   * nothing is at risk AND let through a case that is.
+   *
+   * What is at risk: `save_pickem_config` creates the `pickem_games` row
+   * (migration 176), which IS hashed, so a slate save moves the game's config
+   * fingerprint. #1264 refreshes that fingerprint — which is enough while the
+   * baseline is still tracking it. Once the draft is dirty the baseline is
+   * FROZEN (`useConfigDraft`: `if (prev && anyTouched) return prev`), and a
+   * frozen baseline cannot adopt the new hash however promptly it arrives. Save
+   * is then refused on an order nobody would think twice about: change a
+   * setting, add a slate game, save.
+   *
+   * Dirty is exactly the predicate, and not merely because it is the narrow one.
+   * The touched-but-not-yet-frozen state (`saveState === "not-ready"`) has edits
+   * outstanding and is NOT at risk — no baseline has formed, so the fresh hash is
+   * still adoptable. Blocking there would be wrong on the merits, not just wide.
+   *
+   * The real fix is staging the slate into the settings draft so one Save commits
+   * everything, which is a migration plus retiring one of two writers. That
+   * belongs with the October on-page builder, where the runner's publish flip
+   * becomes the single commit — done once, in the redesign, rather than twice.
+   * This block comes out then; it is not preserved.
+   */
+  settingsDirty: boolean;
   onOpenSlate: () => void;
 }) {
   return (
@@ -2128,6 +2176,7 @@ export function PickemSlateRow({
       title="The Picks"
       testId="row-the-picks"
       state={slateCount === 0 ? "empty" : "resolved"}
+      blockedNote={settingsDirty ? SLATE_BLOCKED_WHILE_DIRTY : undefined}
       subtitle={
         <>
           {slateCount === 0
