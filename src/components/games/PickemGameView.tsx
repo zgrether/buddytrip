@@ -981,7 +981,7 @@ export function PickemGameView() {
   });
 
   const {
-    dirty,
+    saveState,
     saveError: configSaveError,
     saving: configSaving,
     handleSave: handleSaveConfig,
@@ -1886,7 +1886,7 @@ export function PickemGameView() {
           // self-persists any more.
           saveBar={
             <SettingsSaveBar
-              dirty={dirty}
+              saveState={saveState}
               saving={configSaving}
               error={configSaveError}
               onSave={handleSaveConfig}

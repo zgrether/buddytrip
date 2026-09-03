@@ -1271,7 +1271,7 @@ export function MatchGameView() {
   //  - `onSaved` runs the scoring-flip board cascade (full vs lean) + the unconditional
   //    listOrganizers invalidate (delegates aren't in the config hash).
   const {
-    dirty, saveError, setSaveError, saving,
+    dirty, saveState, saveError, setSaveError, saving,
     handleSave,
   } = useConfigDraft<ConfigDraft, SettingsDraftBundle | DraftMatch[]>({
     tripId, gameId, view: "match", canEdit,
@@ -2276,7 +2276,7 @@ export function MatchGameView() {
             }
             saveBar={
               <SettingsSaveBar
-                dirty={dirty}
+                saveState={saveState}
                 saving={saving}
                 error={saveError}
                 onSave={handleSave}

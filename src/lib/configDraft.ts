@@ -196,6 +196,28 @@ export function toBracketConfig(raw: unknown): BracketConfig | null {
   return ok ? (r as unknown as BracketConfig) : null;
 }
 
+/**
+ * Why the settings Save button is disabled — the shape `useConfigDraft` computes and
+ * `SettingsSaveBar` renders (#1255).
+ *
+ * `dirty` alone could not carry this: three unrelated facts arrived at the button as one
+ * `false`, so "you haven't changed anything", "we don't know yet" and "this will be
+ * refused" were the same grey pixel. CLAUDE.md's rule is that a refusal must name an
+ * action the reader can take; the silent variant names none, which is worse than naming
+ * the wrong one because it reads as a broken app.
+ *
+ *  - `clean`     nothing to save. Correct, expected, needs no words.
+ *  - `not-ready` the draft is touched but the baseline hasn't frozen, so whether it
+ *                diverges from the server is genuinely UNKNOWN. Never phrase this as a
+ *                refusal (empty is not unknown) — and never render it instantly, or every
+ *                settings open flashes a notice about a window nobody was going to see.
+ *  - `ready`     enabled.
+ *
+ * `blocked` is deliberately NOT a member: that is the view's `saveDisabledReason`, about
+ * the draft's CONTENT rather than its lifecycle, and the bar layers it over these.
+ */
+export type SaveState = "clean" | "not-ready" | "ready";
+
 export interface BaseConfigDraft {
   /** The game's format id — READ-ONLY context, never edited (so it's excluded from
    *  the dirty check). Drives the points model: a match-play draft derives a

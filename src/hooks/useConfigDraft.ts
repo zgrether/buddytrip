@@ -5,7 +5,7 @@ import { trpc } from "@/lib/trpc-client";
 import { GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import type { DraftView } from "@/lib/draftOutbox";
-import type { SaveConfigPayload, BaseConfigDraft } from "@/lib/configDraft";
+import type { SaveConfigPayload, BaseConfigDraft, SaveState } from "@/lib/configDraft";
 
 /**
  * useConfigDraft — the ONE draft-then-save lifecycle for the game-settings page, shared by
@@ -121,6 +121,33 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
   // SAVE gate — requires a real baseline: no baseline means no optimistic-concurrency
   // base, so there is nothing safe to write against. Unchanged.
   const dirty = anyTouched && !!baseline && !draftsEqual(configDraft, baseline.draft);
+
+  // WHY Save is disabled, not just THAT it is (#1255).
+  //
+  // `dirty` collapses three different facts into one boolean, and the save bar could
+  // only render the collapsed version: "nothing to change", "not known yet" and
+  // "refused" all arrived as the same grey button. This keeps the distinction the hook
+  // already computes instead of throwing it away one line before it is needed.
+  //
+  // `not-ready` is the one that matters and the one `dirty` hides. It is
+  // touched-but-no-baseline: the user HAS edited, and we cannot yet say whether that
+  // edit diverges from the server, because `ready`/`serverHash` haven't resolved. That
+  // is EMPTY IS NOT UNKNOWN in its load-window form — the honest statement is "not known
+  // yet", never "you can't save this". Normally a sub-second window nobody sees (the bar
+  // waits before saying anything); when it doesn't clear, it is the state that cost an
+  // evening on Beach Bocce, because nothing on screen distinguished it from "clean".
+  //
+  // Untouched-and-no-baseline is deliberately `clean`, not `not-ready`: the user has not
+  // asked for anything yet, so there is nothing to explain.
+  //
+  // `blocked` is NOT here on purpose — it is the VIEW's `saveDisabledReason`
+  // (a points split that won't apply), computed from the draft rather than from the
+  // draft's lifecycle, and the bar layers it over this. One concept per owner.
+  const saveState: SaveState = dirty
+    ? "ready"
+    : anyTouched && !baseline
+      ? "not-ready"
+      : "clean";
 
   // LEAVE gate — deliberately NOT the same predicate, because the two failures are not
   // symmetric. A prompt shown unnecessarily costs one tap; a prompt suppressed destroys
@@ -264,6 +291,9 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
 
   return {
     dirty,
+    /** WHY Save is disabled, not just that it is (#1255). The bar renders one sentence
+     *  per state and layers the view's `saveDisabledReason` over the top. */
+    saveState,
     baseline,
     justSaved,
     saveError,
