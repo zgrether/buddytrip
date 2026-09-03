@@ -305,6 +305,40 @@ seam, never on a calendar.
   checks. A mutation harness now self-checks against a known failure line before it will
   believe a green run.
 
+- **BEFORE BELIEVING A GREEN RESULT, PROVE THE INSTRUMENT CAN PRODUCE A RED ONE.**
+  That is the compressed form of the two rules above and of five other incidents in this
+  file, and it is worth having as one sentence because the family keeps arriving through
+  new doors. **Seven instances now, every one found by checking the checker and none by
+  reading the check.**
+
+  The shape is always the same: an assertion or a harness that is INCAPABLE of failing,
+  reporting success indistinguishable from a real one. An em-dash regex satisfied by the
+  row's own sub-title. A `LIKE` matching a comment. `IF 'lower' IN ('main','lower')` — a
+  constraint that rejects nothing. `toContain(">16<")` matched by the PAR row.
+  A `viewBox` matching `"Bo"`.
+
+  Two more, both from one afternoon on #1255, and both instructive because the code under
+  test was fine and the instrument was not:
+
+  - **`toContain("disabled")` was true for ENABLED buttons.** Every button in
+    `SettingsSaveBar` carries the Tailwind class `disabled:opacity-40`, so the substring
+    is present whether or not the attribute is. The assertion was TRUE, ABOUT THE WRONG
+    THING — the worst version, because nothing about a green run or a diff could show it.
+    Anchor to the rendered attribute (`disabled=""`), not the word.
+  - **The mutation harness reported five mutants green by grepping for a `Tests` line
+    that ANSI colour codes had already broken.** This is the Phase 6 failure above,
+    recurring in a fresh harness written by someone who had read the entry about it.
+    That recurrence is the argument for the one-sentence version: the specific instance
+    did not generalise, and a rule you have to re-derive per instrument is a rule that
+    only fires for the instrument it was written about.
+
+  **How to apply, and it is cheap:** make the instrument fail ON PURPOSE once, before
+  trusting it. Break the code and watch the test go red; feed the harness a run you KNOW
+  fails and check it says so. Prefer a signal the tool cannot fake — an EXIT CODE over a
+  parsed summary line, an attribute over a substring, an inserted row over a literal.
+  A green result from an instrument never observed to go red is not evidence; it is an
+  absence of evidence wearing evidence's clothes.
+
 - **A FIXTURE THAT DOES NOT SEND WHAT THE REAL CALLER SENDS MEASURES A PATH
   THAT DOES NOT EXIST — and it reports a confident, well-formed number while it
   does it.** This is not a wrong measurement. It is a CORRECT measurement of
