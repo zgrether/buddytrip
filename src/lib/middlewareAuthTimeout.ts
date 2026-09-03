@@ -29,6 +29,22 @@
  *   2. an instrument, so the next occurrence produces data instead of a
  *      25-second hole
  *
+ * ── Two failure modes, one answer (#691) ───────────────────────────────────
+ *
+ * The auth server can fail to answer in two ways, and only one of them was
+ * guarded here originally:
+ *
+ *   * it **stalls** — the call never comes back. Guarded since #1094/#1140.
+ *   * it is **unreachable** — DNS, a reset connection, a TLS error. `auth-js`
+ *     rethrows a non-`AuthError` rather than resolving it to `{ user: null }`,
+ *     so this propagated through `resolveWithTimeout` and out of a middleware
+ *     that has no `try/catch`, over a matcher covering essentially every route:
+ *     a 500 on every page and every tRPC call at once.
+ *
+ * Both mean "we do not know who this is". Both now take the same branch, and
+ * `AuthStallCause` keeps them apart in the log. See `resolveWithTimeout` for
+ * the argument, including the one this reverses.
+ *
  * ── The rule this must never break ─────────────────────────────────────────
  *
  * **A timeout must not sign anyone out.** Zach's call, and it is the right one:
@@ -67,12 +83,24 @@ export const AUTH_SLOW_MS = 1000;
 
 const TIMED_OUT = Symbol("auth-timeout");
 
+/**
+ * WHY there was no usable answer.
+ *
+ * Both mean the same thing to every caller — "the auth server did not tell us
+ * who this is, so decide without it" — and they are kept apart anyway, because
+ * the whole second purpose of this module is that the NEXT incident is
+ * comparable to the last three. A stall and a transport failure are different
+ * faults with different fixes, and folding them into one word would be the
+ * "empty is not unknown" mistake in a log line.
+ */
+export type AuthStallCause = "timeout" | "rejected";
+
 export type TimedResult<T> =
   | { timedOut: false; value: T; elapsedMs: number }
-  | { timedOut: true; elapsedMs: number };
+  | { timedOut: true; cause: AuthStallCause; error?: unknown; elapsedMs: number };
 
 /**
- * Race a promise against the clock.
+ * Race a promise against the clock, and CATCH IT IF IT THROWS.
  *
  * Extracted rather than inlined so the property that matters — a promise that
  * never settles yields `timedOut: true` rather than hanging — is testable with
@@ -81,6 +109,40 @@ export type TimedResult<T> =
  * The timer is always cleared. An un-cleared `setTimeout` keeps the isolate's
  * event loop alive after the response is sent, which on a per-request edge
  * function is a slow leak in exactly the code path added to fix a hang.
+ *
+ * ── The rejection arm, and the decision it reverses (#691) ─────────────────
+ *
+ * This used to be `try/finally`, so a REJECTED `work()` propagated out of the
+ * race and out of every caller. A test asserted that deliberately, arguing
+ * that swallowing a rejection "would make a broken session look like a slow
+ * network and silently pass the request through — the opposite of what the
+ * guard is for". That reasoning deserves a reply rather than a deletion, and
+ * it rests on a premise that is not true:
+ *
+ *   1. **A broken session does not reject.** `auth-js` resolves an AuthError
+ *      into `{ data: { user: null }, error }` — the ordinary signed-out path.
+ *      A rejection is specifically the NON-AuthError case: DNS, a reset
+ *      connection, a TLS failure. It says nothing about the session.
+ *   2. **Nothing is silently passed through.** Middleware is a redirect layer,
+ *      not the security boundary (see the header) — `authedProcedure` and RLS
+ *      re-check the request regardless. The tRPC context does not pass through
+ *      at all: a caller holding a session cookie gets a retryable TIMEOUT.
+ *   3. **The distinction it wanted is kept, in the place that wanted it.**
+ *      `cause` carries it into the probe line, so a transport failure never
+ *      reads as a slow network in the logs. The old design preserved the
+ *      distinction by crashing the request, which is a high price for a field.
+ *
+ * What propagating actually cost: `src/middleware.ts` has no `try/catch` and
+ * its matcher covers essentially every route, so one unreachable-auth-server
+ * moment was a 500 on every page and every tRPC call at once — for everyone,
+ * with no login page and no degraded mode. That is strictly worse than the
+ * degradation this guard already chose for the identical "no answer" condition.
+ *
+ * `timedOut` keeps its name for the union's discriminant rather than being
+ * renamed to something like `answered`: every one of the four call sites
+ * already branches on it to mean "we got no usable answer — degrade", the
+ * rename would touch 41 sites across the auth path, and the field's real
+ * meaning is now stated here and carried precisely by `cause`.
  */
 export async function resolveWithTimeout<T>(
   work: () => Promise<T>,
@@ -99,8 +161,13 @@ export async function resolveWithTimeout<T>(
     ]);
     const elapsedMs = now() - startedAt;
     return raced === TIMED_OUT
-      ? { timedOut: true, elapsedMs }
+      ? { timedOut: true, cause: "timeout", elapsedMs }
       : { timedOut: false, value: raced as T, elapsedMs };
+  } catch (error) {
+    // `work()` threw or rejected. Same answer as a stall — we do not know who
+    // this is — so the caller takes the same branch, and `cause` records that
+    // it was not the clock.
+    return { timedOut: true, cause: "rejected", error, elapsedMs: now() - startedAt };
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
@@ -127,7 +194,24 @@ export interface AuthProbe {
   pathname: string;
   method: string;
   elapsedMs: number;
-  outcome: "timeout" | "slow";
+  outcome: AuthStallCause | "slow";
+  /**
+   * For `rejected` only: the error's CONSTRUCTOR NAME (`TypeError`,
+   * `AuthRetryableFetchError`, …) — never its message.
+   *
+   * It is the one field that separates "the fetch never left" from "something
+   * else threw", which is the first question a fourth incident asks. A message
+   * can carry a URL or a token and this line is written to be safe to paste
+   * anywhere (see below); a constructor name is a bounded, non-secret string.
+   */
+  errorKind?: string;
+}
+
+/** The error's constructor name, or undefined for a non-Error throw. Kept
+ *  beside `authProbeLine` so the "names, never values" rule has one home. */
+export function errorKindOf(error: unknown): string | undefined {
+  if (error instanceof Error) return error.constructor?.name ?? "Error";
+  return typeof error === "object" && error !== null ? undefined : typeof error;
 }
 
 /**
@@ -166,5 +250,9 @@ export function authProbeLine(probe: AuthProbe): string {
     hasSession: session.length > 0,
     sessionChunks: session.length,
     cookieCount: probe.cookieNames.length,
+    // Omitted entirely rather than emitted as null, so a `timeout` line is
+    // byte-identical to the ones the first three incidents produced and stays
+    // directly comparable to them.
+    ...(probe.errorKind ? { errorKind: probe.errorKind } : {}),
   });
 }

@@ -3,6 +3,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import {
   AUTH_TIMEOUT_MS,
   authProbeLine,
+  errorKindOf,
   resolveWithTimeout,
 } from "@/lib/middlewareAuthTimeout";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -95,7 +96,8 @@ export const createTRPCContext = async (): Promise<TRPCContext> => {
         pathname: "/api/trpc",
         method: "POST",
         elapsedMs: claimed.elapsedMs,
-        outcome: "timeout",
+        outcome: claimed.cause,
+        errorKind: errorKindOf(claimed.error),
       })
     );
   } else {
@@ -141,12 +143,13 @@ export const createTRPCContext = async (): Promise<TRPCContext> => {
           pathname: "/api/trpc",
           method: "POST",
           elapsedMs: resolved.elapsedMs,
-          outcome: "timeout",
+          outcome: resolved.cause,
+          errorKind: errorKindOf(resolved.error),
         })
       );
 
       /**
-       * ── A timeout must not sign anyone out ─────────────────────────────
+       * ── A stall must not sign anyone out ───────────────────────────────
        *
        * Falling through with `user = null` would be the obvious move and it is
        * the wrong one: `authedProcedure` turns that into UNAUTHORIZED, which
@@ -170,8 +173,12 @@ export const createTRPCContext = async (): Promise<TRPCContext> => {
       if (hasSession) {
         throw new TRPCError({
           code: "TIMEOUT",
+          // Deliberately not "in time" any more: this arm now also serves a
+          // REJECTION (#691), where the auth server answered immediately and
+          // wrongly. The retry advice is true of both, and a refusal must not
+          // describe a fault the reader did not have.
           message:
-            "Could not confirm the session in time. Nothing is lost — this retries on its own.",
+            "Could not confirm your session just now. Nothing is lost — this retries on its own.",
         });
       }
     } else {

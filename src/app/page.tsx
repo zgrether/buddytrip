@@ -5,6 +5,7 @@ import { MarketingPage } from "@/components/marketing/MarketingPage";
 import {
   resolveWithTimeout,
   authProbeLine,
+  errorKindOf,
   AUTH_TIMEOUT_MS,
   AUTH_SLOW_MS,
 } from "@/lib/middlewareAuthTimeout";
@@ -85,7 +86,8 @@ export default async function HomePage() {
         pathname: "/",
         method: "GET",
         elapsedMs: resolved.elapsedMs,
-        outcome: resolved.timedOut ? "timeout" : "slow",
+        outcome: resolved.timedOut ? resolved.cause : "slow",
+        errorKind: resolved.timedOut ? errorKindOf(resolved.error) : undefined,
       })
     );
   }

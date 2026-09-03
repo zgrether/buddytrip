@@ -55,15 +55,72 @@ describe("resolveWithTimeout", () => {
     expect(r.timedOut).toBe(true);
   });
 
-  it("propagates a REJECTION rather than swallowing it into a fake timeout", async () => {
-    // A genuine auth error must stay an error. Turning it into `timedOut` would
-    // make a broken session look like a slow network and silently pass the
-    // request through — the opposite of what the guard is for.
-    await expect(
-      resolveWithTimeout(async () => {
-        throw new Error("auth exploded");
-      }, 1000)
-    ).rejects.toThrow("auth exploded");
+  /**
+   * ── REVERSES an earlier assertion in this file (#691) ────────────────────
+   *
+   * This case used to be "propagates a REJECTION rather than swallowing it
+   * into a fake timeout", arguing that catching it "would make a broken
+   * session look like a slow network and silently pass the request through".
+   *
+   * Its premise does not hold, and `resolveWithTimeout`'s doc block carries the
+   * full reply. In short: a broken session does not reject (auth-js resolves an
+   * AuthError to `{ user: null }` — pinned by the case below), nothing is
+   * passed through unchecked because middleware is not the security boundary,
+   * and the distinction it wanted is kept by `cause` instead of by crashing.
+   *
+   * What propagating cost: `src/middleware.ts` has no try/catch over a matcher
+   * covering every route, so one unhandled throw was a 500 on every page at
+   * once.
+   */
+  it("CATCHES a rejection and reports it as a stall, with the cause kept apart", async () => {
+    const boom = new TypeError("auth exploded");
+    const r = await resolveWithTimeout(async () => {
+      throw boom;
+    }, 1000);
+
+    expect(r.timedOut).toBe(true);
+    if (!r.timedOut) throw new Error("unreachable");
+    // The distinction the old design preserved by throwing.
+    expect(r.cause).toBe("rejected");
+    expect(r.error).toBe(boom);
+    // Not folded into the clock's word — a timeout and a transport failure are
+    // different faults and the log has to be able to tell the next incident.
+    expect(r.cause).not.toBe("timeout");
+  });
+
+  it("distinguishes the two stalls: a hang is `timeout`, a throw is `rejected`", async () => {
+    // The pair, asserted together — a single-cause test would pass against a
+    // mutant that hardcoded either word.
+    const hung = await resolveWithTimeout(() => new Promise<string>(() => {}), 20);
+    const threw = await resolveWithTimeout(async () => {
+      throw new Error("x");
+    }, 1000);
+    expect(hung.timedOut && hung.cause).toBe("timeout");
+    expect(threw.timedOut && threw.cause).toBe("rejected");
+  });
+
+  it("still records elapsed time when the work throws", async () => {
+    // The probe line carries `elapsedMs` on every outcome; a rejection that
+    // reported 0 would be indistinguishable from an instant failure.
+    const r = await resolveWithTimeout(async () => {
+      await new Promise((res) => setTimeout(res, 12));
+      throw new Error("late boom");
+    }, 1000);
+    expect(r.elapsedMs).toBeGreaterThanOrEqual(10);
+  });
+
+  it("clears its timer on the REJECTION path too", async () => {
+    // The `finally` covers all three exits. An un-cleared timer on the newest
+    // one would keep the edge isolate alive — the leak the guard exists to
+    // avoid, reintroduced by the fix for a different bug.
+    const before = await resolveWithTimeout(async () => {
+      throw new Error("boom");
+    }, 40);
+    await new Promise((res) => setTimeout(res, 60));
+    // If the timer had survived and fired, it would have resolved the race a
+    // second time; the result object is frozen by then, so the observable
+    // property is that nothing about it changed.
+    expect(before).toMatchObject({ timedOut: true, cause: "rejected" });
   });
 
   it("clears its timer — an un-cleared one keeps the edge isolate alive", async () => {

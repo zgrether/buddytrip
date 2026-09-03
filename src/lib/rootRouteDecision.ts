@@ -19,7 +19,8 @@ export type RootDestination =
   | { kind: "dashboard" };
 
 export function rootRouteDecision(input: {
-  /** True when `getUser()` did not answer in time. */
+  /** True when `getUser()` gave no usable answer — it hung past the guard, or
+   *  it threw (#691). Both mean the same thing here: decide from the cookie. */
   timedOut: boolean;
   /** Whether a user was resolved. Meaningless when `timedOut`. */
   hasUser: boolean;
