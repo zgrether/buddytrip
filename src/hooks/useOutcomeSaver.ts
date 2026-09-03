@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { outcomeOutboxPut, outcomeOutboxClear, outcomeOutboxEntries } from "@/lib/outcomeOutbox";
 import { reconcileOutcomes } from "@/lib/outcomeReconcile";
+import { isTerminalRefusal, refusalMessage, retryUnlessRefused } from "@/lib/terminalRefusal";
 import { showToast } from "@/lib/toast";
 import {
   outcomeCellKey,
@@ -26,6 +27,10 @@ import type { HoleOutcomeResult } from "@/lib/matchPlay";
 const MAX_RETRIES = 4;
 const retryDelay = (attempt: number) => Math.min(500 * 2 ** attempt, 8000);
 
+/** Retry a blip; never retry a decision (#1230) — the SAME predicate
+ *  `useScoreSaver` uses, imported rather than re-derived. */
+const retry = retryUnlessRefused(MAX_RETRIES);
+
 export function useOutcomeSaver(
   tripId: string | undefined,
   gameId: string | null | undefined,
@@ -38,21 +43,38 @@ export function useOutcomeSaver(
 ) {
   const [values, setValues] = useState<OutcomeValues>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatusMap>({});
+  /** cellKey → the server's own sentence for a TERMINAL refusal (#1230). A
+   *  separate channel, not a fourth `CellSaveState`: the cell stays `error` so
+   *  every existing gate keeps blocking. See `useScoreSaver` for the argument. */
+  const [refusals, setRefusals] = useState<Record<string, string>>({});
   const saveStatusRef = useRef(saveStatus);
   useEffect(() => {
     saveStatusRef.current = saveStatus;
   }, [saveStatus]);
 
   const upsertOutcome = trpc.matchOutcomes.upsertOutcome.useMutation({
-    retry: MAX_RETRIES,
+    retry,
     retryDelay,
     meta: { suppressErrorToast: true },
   });
   const deleteOutcome = trpc.matchOutcomes.deleteOutcome.useMutation({
-    retry: MAX_RETRIES,
+    retry,
     retryDelay,
     meta: { suppressErrorToast: true },
   });
+
+  const noteRefusal = useCallback((key: string, message: string | null) => {
+    setRefusals((r) => {
+      if (message === null) {
+        if (!(key in r)) return r;
+        const next = { ...r };
+        delete next[key];
+        return next;
+      }
+      if (r[key] === message) return r;
+      return { ...r, [key]: message };
+    });
+  }, []);
 
   const mark = useCallback((key: string, state: CellSaveState | null) => {
     setSaveStatus((s) => {
@@ -82,10 +104,17 @@ export function useOutcomeSaver(
         .then(() => {
           mark(key, "saved");
           outcomeOutboxClear(gameId, matchId, Number(hole));
+          noteRefusal(key, null);
         })
-        .catch(() => mark(key, "error"));
+        // Terminal → drop the outbox entry, or it is re-sent on every mount
+        // forever against a server that has already refused it (#1230).
+        .catch((err: unknown) => {
+          mark(key, "error");
+          if (isTerminalRefusal(err)) outcomeOutboxClear(gameId, matchId, Number(hole));
+          noteRefusal(key, refusalMessage(err));
+        });
     },
-    [tripId, gameId, upsertOutcome, mark],
+    [tripId, gameId, upsertOutcome, mark, noteRefusal],
   );
 
   const onClear = useCallback(
@@ -105,17 +134,18 @@ export function useOutcomeSaver(
         // Confirmed gone server-side — let the caller refresh whatever else
         // reads the poll-loaded snapshot (see `onCleared` above).
         .then(() => onCleared?.())
-        .catch(() => {
+        .catch((err: unknown) => {
           if (prevValue != null) {
             setValues((v) => ({
               ...v,
               [matchId]: { ...(v[matchId] ?? {}), [hole]: prevValue },
             }));
             mark(key, "error");
+            noteRefusal(key, refusalMessage(err));
           }
         });
     },
-    [tripId, gameId, values, deleteOutcome, mark, onCleared],
+    [tripId, gameId, values, deleteOutcome, mark, noteRefusal, onCleared],
   );
 
   /** Reflect server outcome truth into the local view without clobbering the
@@ -174,6 +204,8 @@ export function useOutcomeSaver(
     values,
     setValues,
     saveStatus,
+    /** cellKey → the server's own sentence for TERMINALLY refused holes (#1230). */
+    refusals,
     errorCount,
     onChange,
     onClear,

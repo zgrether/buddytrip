@@ -47,7 +47,12 @@ interface MatchOutcomeEntryViewProps {
   finishLabel?: string;
   finishSubtext?: string;
   meId?: string;
-  saveStatus?: SaveStatusMap;
+    saveStatus?: SaveStatusMap;
+  /** cellKey → the server's own sentence for a TERMINALLY refused cell (#1230).
+   *  Passed straight to the banner, which uses it to explain the failure and to
+   *  hide a Retry that could not work. Persistence-agnostic: this view takes it
+   *  as a prop like every other piece of save state. */
+  refusals?: Record<string, string>;
   onRetryCell?: (matchId: string, hole: string) => void;
   /** Open a settings surface from the header gear — the SAME optional slot
    *  `ScoreEntryView` and `MatchEntryView` have. Omitted trip-side (GameChrome
@@ -82,6 +87,7 @@ export function MatchOutcomeEntryView({
   finishSubtext = "Saves results · shows final standings",
   meId,
   saveStatus = {},
+  refusals,
   onRetryCell,
   banner,
   onConfig,
@@ -236,7 +242,7 @@ export function MatchOutcomeEntryView({
         </header>
       )}
 
-      <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />
+      <UnsavedScoresBanner count={errorCount} onRetry={retryAll} refusals={refusals} />
       {banner}
 
       {/* Match board — the SAME MatchCard score entry uses, fed from outcome-

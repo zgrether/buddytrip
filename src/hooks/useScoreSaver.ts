@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { outboxPut, outboxClear, outboxClearAll, outboxEntries } from "@/lib/scoreOutbox";
 import { reconcileScores } from "@/lib/scoreReconcile";
+import { isTerminalRefusal, refusalMessage, retryUnlessRefused } from "@/lib/terminalRefusal";
 import { showToast } from "@/lib/toast";
 import {
   scoreCellKey,
@@ -51,6 +52,19 @@ const MAX_RETRIES = 4;
 const retryDelay = (attempt: number) => Math.min(500 * 2 ** attempt, 8000);
 
 /**
+ * Retry a blip; never retry a decision (#1230).
+ *
+ * This was a bare `retry: MAX_RETRIES`, which spent the full backoff on a 403
+ * the server had already thought about — "This round is posted" is not going to
+ * become true on the fourth attempt. Worse, the exhausted write stayed in the
+ * durable outbox and was re-sent on EVERY subsequent mount, forever.
+ *
+ * The predicate itself is shared with `useOutcomeSaver` rather than copied —
+ * see `terminalRefusal.ts`.
+ */
+const retry = retryUnlessRefused(MAX_RETRIES);
+
+/**
  * How long a CONFIRMED cell stays protected from removal.
  *
  * `reconcileScores` now drops unprotected local cells the server doesn't have,
@@ -96,6 +110,19 @@ export function useScoreSaver(
   );
   const [values, setValues] = useState<ScoreValues>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatusMap>({});
+  /**
+   * cellKey → the server's own sentence, for cells refused TERMINALLY (#1230).
+   *
+   * Deliberately a SEPARATE channel rather than a fourth `CellSaveState`. A
+   * refused cell is still `error` for every existing reader, which is what keeps
+   * `unconfirmedOnHole` / `unconfirmedCount` blocking Advance and Finish without
+   * my having to remember to add a new state to each of them — a refused write
+   * is NOT on the server, and `games.finish` computes standings from
+   * `score_entries`, so letting one through would trade a visible failure for a
+   * silently wrong result. This map is strictly extra information about a cell
+   * that is already flagged, never a second answer to "did it save".
+   */
+  const [refusals, setRefusals] = useState<Record<string, string>>({});
   // A live mirror of saveStatus so `reconcile` can read the latest without being
   // recreated on every status change (it must stay identity-stable — a view polls
   // scores and calls it in an effect keyed on the fetched data, not on this hook).
@@ -112,12 +139,12 @@ export function useScoreSaver(
   // suppressErrorToast: these own per-cell save UI (badge + banner), so the
   // global connectivity toast would double-signal — opt out of it.
   const upsertEntry = trpc.scores.upsertEntry.useMutation({
-    retry: MAX_RETRIES,
+    retry,
     retryDelay,
     meta: { suppressErrorToast: true },
   });
   const deleteEntry = trpc.scores.deleteEntry.useMutation({
-    retry: MAX_RETRIES,
+    retry,
     retryDelay,
     meta: { suppressErrorToast: true },
   });
@@ -132,6 +159,26 @@ export function useScoreSaver(
       }
       if (s[key] === state) return s;
       return { ...s, [key]: state };
+    });
+  }, []);
+
+  /**
+   * Record why a cell will never save, or clear a stale reason.
+   *
+   * Called on every settle — success and failure — so a cell that is retried
+   * after (say) the round is reopened does not keep a refusal string from the
+   * attempt before.
+   */
+  const noteRefusal = useCallback((key: string, message: string | null) => {
+    setRefusals((r) => {
+      if (message === null) {
+        if (!(key in r)) return r;
+        const next = { ...r };
+        delete next[key];
+        return next;
+      }
+      if (r[key] === message) return r;
+      return { ...r, [key]: message };
     });
   }, []);
 
@@ -163,15 +210,34 @@ export function useScoreSaver(
         .then(() => {
           mark(key, "saved");
           outboxClear(gameId, participantId, unitLabel);
+          // A retry that succeeded (the round was reopened, say) must not keep
+          // the reason it failed last time.
+          noteRefusal(key, null);
           // Hands off to the CONFIRM_GRACE_MS protection as the outbox entry and
           // the `saving` flag both go — so the cell is never briefly unprotected.
           confirmedAtRef.current.set(key, Date.now());
         })
-        // KEEP the optimistic value AND the outbox entry on failure — flag it,
-        // never roll back; the outbox re-sends it on the next mount.
-        .catch(() => mark(key, "error"));
+        /**
+         * KEEP the optimistic value on failure — flag it, never roll back.
+         *
+         * The OUTBOX entry, though, depends on which failure it was (#1230).
+         * Transient: keep it, and the next mount re-sends — that is the whole
+         * point of Layer 2. TERMINAL: drop it, because re-sending a write the
+         * server has already refused on its merits achieves nothing except
+         * doing it again on every future mount, forever.
+         *
+         * The error object was previously discarded here (`.catch(() =>
+         * mark(...))`), which is why the banner had nothing to say but "Retry".
+         * The server's messages are written for a human and name a real action.
+         */
+        .catch((err: unknown) => {
+          mark(key, "error");
+          const refusal = refusalMessage(err);
+          if (isTerminalRefusal(err)) outboxClear(gameId, participantId, unitLabel);
+          noteRefusal(key, refusal);
+        });
     },
-    [tripId, gameId, upsertEntry, mark, typeOf],
+    [tripId, gameId, upsertEntry, mark, noteRefusal, typeOf],
   );
 
   const onClear = useCallback(
@@ -200,7 +266,7 @@ export function useScoreSaver(
         .then(() => onCleared?.())
         // A failed delete means the value is still on the server — restore it
         // (accurate) and flag it so the user knows the clear didn't take.
-        .catch(() => {
+        .catch((err: unknown) => {
           if (prevValue != null) {
             setValues((v) => ({
               ...v,
@@ -210,10 +276,15 @@ export function useScoreSaver(
               },
             }));
             mark(key, "error");
+            // Same split as onChange: a refused DELETE (a posted round) is not
+            // going to start succeeding either, so say why rather than offering
+            // a Retry that cannot work. No outbox entry to drop — a clear never
+            // has one.
+            noteRefusal(key, refusalMessage(err));
           }
         });
     },
-    [tripId, gameId, values, deleteEntry, mark, typeOf, onCleared],
+    [tripId, gameId, values, deleteEntry, mark, noteRefusal, typeOf, onCleared],
   );
 
   /**
@@ -333,6 +404,10 @@ export function useScoreSaver(
   const clearAll = useCallback(() => {
     setValues({});
     setSaveStatus({});
+    // The refusal reasons go with the cells they were about (#1230) — a reset
+    // clears the scores, so a sentence explaining why one of them wouldn't save
+    // would outlive its subject.
+    setRefusals({});
     if (gameId) outboxClearAll(gameId);
   }, [gameId]);
 
@@ -341,6 +416,10 @@ export function useScoreSaver(
     setValues,
     clearAll,
     saveStatus,
+    /** cellKey → the server's own sentence, for TERMINALLY refused cells (#1230).
+     *  Empty for the ordinary transient failure, where "Retry" is the right
+     *  advice and a raw transport message would be worse than none. */
+    refusals,
     errorCount,
     onChange,
     onClear,

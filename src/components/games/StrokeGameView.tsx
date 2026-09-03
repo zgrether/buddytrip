@@ -583,7 +583,7 @@ export function StrokeGameView() {
   // Score writes go through the connectivity-resilient saver: optimistic value,
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
-  const { values, saveStatus, onChange, onClear, retryCell, reconcile, clearAll: clearScores } =
+  const { values, saveStatus, refusals, onChange, onClear, retryCell, reconcile, clearAll: clearScores } =
     useScoreSaver(tripId, activeGameId);
   // Finishing retries (idempotent — recomputes from the same scores); a failure
   // stays put and is surfaced by the global mutationCache.onError, which covers
@@ -1212,6 +1212,7 @@ export function StrokeGameView() {
                 onChange={onChange}
                 onClear={onClear}
                 saveStatus={saveStatus}
+                refusals={refusals}
                 onRetryCell={retryCell}
                 pips={entryPips}
                 onBack={back}
