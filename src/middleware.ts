@@ -5,6 +5,7 @@ import { safeNextPath } from "@/lib/nextPath";
 import {
   resolveWithTimeout,
   authProbeLine,
+  errorKindOf,
   AUTH_TIMEOUT_MS,
   AUTH_SLOW_MS,
 } from "@/lib/middlewareAuthTimeout";
@@ -58,18 +59,23 @@ export async function middleware(request: NextRequest) {
   // bounced users off /login into a redirect dead-end. Supabase also flags
   // server-side getSession() as insecure for exactly this reason.
   //
-  // ── RACED AGAINST THE CLOCK ────────────────────────────────────────────
+  // ── RACED AGAINST THE CLOCK, AND CAUGHT IF IT THROWS ───────────────────
   // Un-timed, this call is the whole function's failure mode: production hit
   // bursts of 25s MIDDLEWARE_INVOCATION_TIMEOUT while Supabase was answering
   // every /user request in milliseconds. See `middlewareAuthTimeout.ts` for the
   // measurements and for why the timeout branch decides NOTHING.
+  //
+  // #691: this function has no `try/catch` and its matcher covers essentially
+  // every route, so a REJECTION here — the auth server unreachable rather than
+  // slow — was a 500 on every page and every tRPC call at once. The race now
+  // catches it and reports it as a stall with `cause: "rejected"`.
   const resolved = await resolveWithTimeout(
     () => supabase.auth.getUser(),
     AUTH_TIMEOUT_MS
   );
 
   if (resolved.timedOut) {
-    // PASS THROUGH. No redirect, no 401, whatever the route — a timeout must
+    // PASS THROUGH. No redirect, no 401, whatever the route — a stall must
     // never sign anyone out, because on bad signal it could be routine. Safe
     // because middleware is a redirect layer, not the security boundary:
     // `authedProcedure` and RLS re-check this request regardless.
@@ -84,7 +90,8 @@ export async function middleware(request: NextRequest) {
         pathname: request.nextUrl.pathname,
         method: request.method,
         elapsedMs: resolved.elapsedMs,
-        outcome: "timeout",
+        outcome: resolved.cause,
+        errorKind: errorKindOf(resolved.error),
       })
     );
     return supabaseResponse;

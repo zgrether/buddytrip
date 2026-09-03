@@ -157,10 +157,25 @@ describe("BOTH auth calls are raced, not just the fallback", () => {
     if (!resolved.timedOut) expect(resolved.value).toBeNull();
   });
 
-  it("would throw without that catch — which is why it is there", async () => {
-    // The control for the case above: an unprotected rejection propagates.
-    await expect(
-      resolveWithTimeout(() => Promise.reject(new Error("jwks down")), AUTH_TIMEOUT_MS)
-    ).rejects.toThrow("jwks down");
+  it("an UNPROTECTED rejection is now a stall, not a thrown request (#691)", async () => {
+    /**
+     * This was the control for the case above, and it asserted the opposite:
+     * `.rejects.toThrow("jwks down")`, on the reasoning that an unprotected
+     * rejection propagates. It did, and that was the bug — `src/middleware.ts`
+     * has no try/catch over a matcher covering essentially every route.
+     *
+     * The `.catch(() => null)` above is KEPT rather than removed, because the
+     * two are not the same answer: a rejected `getClaims()` should fall through
+     * to the network path (`value: null` → `if (!user)`), whereas this arm logs
+     * a probe and skips it. Same destination today, different meaning, and the
+     * one that says what it means is the one to keep.
+     */
+    const r = await resolveWithTimeout(
+      () => Promise.reject(new Error("jwks down")),
+      AUTH_TIMEOUT_MS
+    );
+    expect(r.timedOut).toBe(true);
+    if (!r.timedOut) throw new Error("unreachable");
+    expect(r.cause).toBe("rejected");
   });
 });

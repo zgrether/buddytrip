@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   AUTH_TIMEOUT_MS,
   authProbeLine,
+  errorKindOf,
   resolveWithTimeout,
 } from "@/lib/middlewareAuthTimeout";
 import { createClient } from "@/lib/supabase-server";
@@ -77,7 +78,8 @@ export default async function InvitePage({
         pathname: "/invite",
         method: "GET",
         elapsedMs: resolved.elapsedMs,
-        outcome: "timeout",
+        outcome: resolved.cause,
+        errorKind: errorKindOf(resolved.error),
       })
     );
   }
