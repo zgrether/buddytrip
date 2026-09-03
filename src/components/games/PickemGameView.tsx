@@ -21,6 +21,7 @@ import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useNow } from "@/hooks/useNow";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
+import { resetGameConfigHash } from "@/lib/gameConfigHash";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { Spinner } from "@/components/Spinner";
@@ -246,6 +247,28 @@ export function PickemGameView() {
    */
   const saveConfig = trpc.pickem.saveConfig.useMutation({
     onSuccess: async () => {
+      // THE SLATE WRITE MOVES THE CONFIG FINGERPRINT, and it is not obvious
+      // from here that it does — the slate itself is NOT hashed
+      // (`pickem_slate_games` is in `NOT_HASHED`). What moves it is
+      // `save_pickem_config`'s row-creating side effect: migration 176 ends
+      // with `INSERT INTO pickem_games (game_id) … ON CONFLICT DO NOTHING`,
+      // so a game whose digest folded `pickem: null` folds a real row
+      // afterwards. One transition, once per game, on the FIRST slate save.
+      //
+      // `resetGameConfigHash`'s own contract already covers this — "any write
+      // that changes a column `readGameConfigHash` folds in … or a row in …
+      // `pickem_games` … when the write does NOT go through
+      // `save_game_config`" — and this writer is the one that wasn't
+      // following it. Without the reset the settings page holds the
+      // pre-insert hash for up to `GAME_SYNC_INTERVAL_MS`, and a draft
+      // touched inside that window freezes its concurrency base on a hash
+      // that is already false: Save is then refused with "This game changed
+      // on another device", on a game nobody else has opened.
+      //
+      // RESET, not invalidate, for the reason that helper gives: invalidate
+      // leaves the stale value in place for one round trip, which is long
+      // enough for the next tap to freeze the baseline on it.
+      resetGameConfigHash(utils, { tripId: tripId!, gameId: gameId! });
       await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
     },
     onError: (e) => showToast(e.message, "error"),
@@ -905,8 +928,9 @@ export function PickemGameView() {
       pointsTotal: pointsTotalDraft,
       rollUp: rollUpDraft,
       useConfidence: useConfidenceDraft,
+      matches: matchesDraft,
     }),
-    [nameDraft, rulesDraft, delegatesDraft, pointsTotalDraft, rollUpDraft, useConfidenceDraft]
+    [nameDraft, rulesDraft, delegatesDraft, pointsTotalDraft, rollUpDraft, useConfidenceDraft, matchesDraft]
   );
   function resetSlices() {
     setNameDraft(null);
@@ -915,6 +939,7 @@ export function PickemGameView() {
     setPointsTotalDraft(undefined);
     setRollUpDraft(undefined);
     setUseConfidenceDraft(undefined);
+    setMatchesDraft(null);
   }
   const applyBundle = useCallback((b: typeof draftBundle) => {
     if (b.name !== null) setNameDraft(b.name);
@@ -923,7 +948,15 @@ export function PickemGameView() {
     if (b.pointsTotal !== undefined) setPointsTotalDraft(b.pointsTotal);
     if (b.rollUp !== undefined) setRollUpDraft(b.rollUp);
     if (b.useConfidence !== undefined) setUseConfidenceDraft(b.useConfidence);
-  }, []);
+    if (b.matches !== null) setMatchesDraft(b.matches);
+    // `setMatchesDraft` is listed and the other eight setters are not, because
+    // the React Compiler infers it as a dependency HERE and does not in
+    // `NonGolfGameView`, whose `applyBundle` is line-for-line the same shape
+    // with `[]`. Why the two differ is not established. A `useState` setter is
+    // referentially stable, so listing it changes nothing at runtime — and
+    // omitting it fails `eslint --max-warnings 0`, which is the gate's own
+    // command. Do not tidy it away.
+  }, [setMatchesDraft]);
 
   const dirtyRef = useRef(false);
   const discardRef = useRef<() => void>(() => {});

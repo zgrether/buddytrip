@@ -147,6 +147,20 @@ function hashMovingProcedures(): Set<string> {
  *     draft and applies a course to the game (the reported bug)
  *   • `src/components/games/GameDangerZone.tsx` — lives ON the settings page and
  *     resets status / scoring / the whole match structure
+ *   • `src/components/games/PickemGameView.tsx` — its slate modal lives ON the
+ *     settings page and calls `pickem.saveConfig`, whose RPC creates the
+ *     `pickem_games` row (migration 176) and so moves the hash
+ *
+ * THE PICK'EM ENTRY IS WORTH READING BEFORE ADDING ANOTHER, because the caveat
+ * below is not hypothetical — it is how that bug survived this guard. The
+ * justification written here enumerated `pickem.setPhase` / `setDeadline` /
+ * `setResult` (clock columns and the unhashed slate table, correctly harmless)
+ * and concluded "its settings save is `useConfigDraft`, which refetches the hash
+ * itself". True of `games.saveConfig`, and it says nothing about the file's OWN
+ * `pickem.saveConfig` call — the one mover in the file that was reachable with a
+ * settings draft frozen, and the only one not named. An allowlist entry whose
+ * reason covers three of four writers reads exactly like one that covers all of
+ * them. So: name every mover the file calls, or do not list it.
  *
  * Adding a file here is a claim that no settings draft can be frozen when it
  * writes. Removing one means it now refreshes the hash.
@@ -165,13 +179,6 @@ const NO_HASH_REFRESH_ALLOWED = [
   "src/components/competition/CompetitionLeaderboard.tsx",
   "src/components/competition/CompetitionSettingsModal.tsx",
   "src/components/games/NonGolfGameView.tsx",
-  // Its movers are `pickem.setPhase` / `setDeadline` / `setResult`, which write
-  // `pickem_games`'s CLOCK columns and `pickem_slate_games` — neither hashed
-  // (`HASH_COLS.pickem_games` is the two scoring settings only; the clock is the
-  // game's state, not its config). The detector flags any write to a hashed
-  // TABLE, which over-approximates here. Its settings save is `useConfigDraft`,
-  // which refetches the hash itself.
-  "src/components/games/PickemGameView.tsx",
   // `startRack` — the NEW-GAME path: create the game, then apply the picked
   // course to it. No settings draft can be frozen against a game that did not
   // exist a moment ago. (`MatchGameView` does the same thing in `handleCreate`
