@@ -24,6 +24,24 @@ import { resetGameConfigHash, type GameConfigHashUtils } from "./gameConfigHash"
 const ROOT = resolve(__dirname, "..", "..");
 const SRC = join(ROOT, "src");
 
+/**
+ * Strip comments before asserting over source.
+ *
+ * Not optional here, and not theoretical: the page this file checks explains
+ * #1226 in a doc block that NAMES `games.applyCourse` — so a raw `not.toContain`
+ * would fail against the prose describing the very removal it is verifying. The
+ * same trap is recorded in `middlewareAuthTimeout.test.ts` ("a source guard that
+ * can be satisfied or broken by a comment is not guarding anything") and solved
+ * the same way in `originConcat.guard.test.ts`.
+ *
+ * Blanks rather than deletes, so line/offset-based reasoning elsewhere in a file
+ * would still line up.
+ */
+function stripComments(src: string): string {
+  const blank = (m: string) => m.replace(/[^\n]/g, " ");
+  return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
+}
+
 // ── the helper itself ───────────────────────────────────────────────────────
 
 describe("resetGameConfigHash", () => {
@@ -226,16 +244,59 @@ describe("every client writer of hashed state refreshes games.configHash", () =>
     expect(offenders.sort()).toEqual([...NO_HASH_REFRESH_ALLOWED].sort());
   });
 
-  it("keeps the two reachable writers OUT of the exception list", () => {
+  it("keeps the reachable writer OUT of the exception list", () => {
     // Named separately from the derived check: that one would also go quiet if
-    // the detector stopped seeing these files at all, and a silent guard is how
+    // the detector stopped seeing this file at all, and a silent guard is how
     // this class of bug survives.
-    for (const fixed of ["src/app/courses/new/page.tsx", "src/components/games/GameDangerZone.tsx"]) {
-      expect(NO_HASH_REFRESH_ALLOWED).not.toContain(fixed);
-      // `refreshesHash`, not `toContain` — see its note: the import alone
-      // satisfied a substring check and both mutants passed.
-      expect(refreshesHash(readFileSync(join(ROOT, fixed), "utf8"))).toBe(true);
-    }
+    //
+    // ONE file, not two. `src/app/courses/new/page.tsx` was the other, and #1226
+    // removed its reason to be here rather than fixing it again — see the case
+    // below.
+    const fixed = "src/components/games/GameDangerZone.tsx";
+    expect(NO_HASH_REFRESH_ALLOWED).not.toContain(fixed);
+    // `refreshesHash`, not `toContain` — see its note: the import alone
+    // satisfied a substring check and both mutants passed.
+    expect(refreshesHash(readFileSync(join(ROOT, fixed), "utf8"))).toBe(true);
+  });
+
+  it("`/courses/new` no longer writes the GAME at all — the #1226 invariant", () => {
+    /**
+     * The stronger replacement for what this file used to assert about that
+     * page, and the reason the assertion changed shape rather than being
+     * deleted.
+     *
+     * #1227 made `/courses/new` refresh the hash after applying a course. That
+     * fixed the spurious CONFLICT and left the second bug standing: the write
+     * still moved the fingerprint, so `draftOutboxRecover` found `stored.base`
+     * no longer matching and threw the settings draft away, silently (#1226).
+     *
+     * The fix is that the page no longer applies anything — it creates the
+     * global course and hands it back for the settings draft to stage. So the
+     * property worth pinning is not "it refreshes the hash" but "it has nothing
+     * to refresh": no `games.*` mutation on this page means no fingerprint move,
+     * which is what makes the draft survive the round trip.
+     *
+     * Asserted over the SOURCE because the page is a client component that
+     * cannot be rendered in this `node` environment, and stated as an absence of
+     * the two specific movers rather than a general "no mutations" — the page
+     * legitimately calls `courses.create`, whose table is not hashed.
+     */
+    const source = readFileSync(join(ROOT, "src/app/courses/new/page.tsx"), "utf8");
+    const code = stripComments(source);
+
+    // The two writes that moved the hash, gone.
+    expect(code).not.toContain("games.applyCourse");
+    expect(code).not.toContain("games.setBackNine");
+    // The library write it legitimately keeps — asserted so this case fails if
+    // someone gutted the page rather than changing what it writes, which would
+    // satisfy the two checks above for the wrong reason.
+    expect(code).toContain("courses.create");
+    // And the hand-off it replaced them with.
+    expect(code).toContain("pendingCoursePut");
+
+    // It follows that the derived guard above must NOT be listing this file as
+    // an offender: with no mover called, it drops out of that scan entirely.
+    expect(NO_HASH_REFRESH_ALLOWED).not.toContain("src/app/courses/new/page.tsx");
   });
 
   it("names only real, currently-unhashed game columns as unhashed", () => {

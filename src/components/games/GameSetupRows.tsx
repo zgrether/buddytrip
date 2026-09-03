@@ -8,6 +8,7 @@ import { Stepper } from "@/components/games/Stepper";
 import { pointsReady } from "@/lib/matchDraft";
 import { composedCourseTitle } from "@/lib/courseProvenance";
 import { CourseRowContent } from "@/components/games/course/CourseRowContent";
+import { pendingCourseTake } from "@/lib/pendingCourse";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { evenShare, type PointsDistribution } from "@/lib/pointsDistribution";
@@ -134,6 +135,46 @@ export function GameSetupRows({
   const courseOpen = controlled ? !!courseOpenProp : courseOpenLocal;
   const openCourse = onOpenCourse ?? (() => setCourseOpenLocal(true));
   const closeEditor = onCloseEditor ?? (() => { setCourseOpenLocal(false); });
+
+  /**
+   * ── Stage a course imported at `/courses/new` (#1226) ──────────────────────
+   *
+   * The Course row's "search the wider database" navigates away, unmounting the
+   * settings page. That page used to APPLY the course to the game before coming
+   * back — a server write from inside a draft-then-save flow — and the moved
+   * fingerprint made `draftOutboxRecover` drop the whole draft on the return, so
+   * the points you set before importing were silently gone. It now hands the
+   * course over instead (`pendingCourse`), and this is where it lands: the same
+   * `onApplyFront` path picking a SAVED course has always taken.
+   *
+   * HERE rather than in each view because all three golf views render this
+   * component and pass the same callbacks, and NonGolf has no course row at all.
+   * One site, three views — the alternative is the same effect copied into
+   * `MatchGameView`, `RackGameView` and `StrokeGameView`, which is the #24 shape
+   * where one of the three later drifts.
+   *
+   * CONTROLLED MODE ONLY. Without `onApplyFront` there is no draft to stage into
+   * and `CourseRowContent` owns its own mutations, so a hand-off would be
+   * dropped — but that combination is unreachable from the row that navigates:
+   * the picker only renders inside this component, and all three views pass the
+   * callbacks. The guard is here so the invariant is stated rather than assumed.
+   *
+   * `pendingCourseTake` CONSUMES, so a remount cannot re-stage over a course the
+   * user has since changed by hand.
+   */
+  const gameId = game?.id;
+  useEffect(() => {
+    if (!gameId || !canEdit || !onApplyFront) return;
+    const pending = pendingCourseTake(gameId);
+    if (!pending) return;
+    if (pending.slot === "back") onApplyBack?.(pending.courseId, pending.teeName);
+    else onApplyFront(pending.courseId, pending.teeName);
+    // A one-shot hand-off keyed to the game, not a subscription: re-running it
+    // when the callbacks' identities change would be a second take (a no-op,
+    // since the first consumed it) and re-running it on a new `game` object
+    // would not. Keyed on the id for that reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId]);
 
   // Course resolved = a complete 18 (W-9HOLE-01): a real 18-hole course, or a
   // 9-hole front with a back nine composed in. A lone 9-hole front (schema count
