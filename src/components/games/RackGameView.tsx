@@ -149,7 +149,7 @@ export function RackGameView() {
   // same idempotent upsert + retry + outbox + per-cell status as stroke/match
   // (was a raw fire-and-forget mutate with no retry/status). Per-user entries, so
   // no participantType. `values` is seeded once from the server below.
-  const { values, saveStatus, onChange, onClear, retryCell, reconcile, clearAll: clearScores } = useScoreSaver(tripId, gid);
+  const { values, saveStatus, refusals, onChange, onClear, retryCell, reconcile, clearAll: clearScores } = useScoreSaver(tripId, gid);
 
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
@@ -934,6 +934,7 @@ export function RackGameView() {
             onChange={onChange}
             onClear={onClear}
             saveStatus={saveStatus}
+            refusals={refusals}
             onRetryCell={retryCell}
             onBack={back}
             onOpenGrid={() => setGridOpen(true)}

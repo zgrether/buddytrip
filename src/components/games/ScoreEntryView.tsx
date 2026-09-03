@@ -52,7 +52,12 @@ interface ScoreEntryViewProps {
   onConfig?: () => void;
   /** Per-cell save state (Connectivity Layer 1) — drives the cell badges + the
    *  unsaved-scores banner. Keyed by `${participantId}:${unitLabel}`. */
-  saveStatus?: SaveStatusMap;
+    saveStatus?: SaveStatusMap;
+  /** cellKey → the server's own sentence for a TERMINALLY refused cell (#1230).
+   *  Passed straight to the banner, which uses it to explain the failure and to
+   *  hide a Retry that could not work. Persistence-agnostic: this view takes it
+   *  as a prop like every other piece of save state. */
+  refusals?: Record<string, string>;
   /** Re-fire the save for a flagged cell. */
   onRetryCell?: (participantId: string, unitLabel: string) => void;
   /** Handicap stroke holes per participant (`{ [pid]: Set<unitLabel> }`) — a pip
@@ -96,6 +101,7 @@ export function ScoreEntryView({
   onOpenGrid,
   onConfig,
   saveStatus = {},
+  refusals,
   onRetryCell,
   pips,
   banner,
@@ -259,7 +265,7 @@ export function ScoreEntryView({
       )}
 
       {/* ── Unsaved-scores safety net (Connectivity Layer 1) ── */}
-      <UnsavedScoresBanner count={errorCount} onRetry={retryAll} />
+      <UnsavedScoresBanner count={errorCount} onRetry={retryAll} refusals={refusals} />
       {banner}
 
       {/* ── Hole navigation ── (Wave 2: the redundant SCORES summary strip was
