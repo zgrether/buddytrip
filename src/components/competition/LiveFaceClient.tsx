@@ -149,28 +149,32 @@ function LiveFaceInner({
   //
   // The STRUCTURE children (competition, games, teams, assignments) are seeded
   // ALWAYS — they're kept (STRUCTURE_QUERY) and the seed value is the same kept
-  // structure, so re-seeding on remount is a harmless no-op overwrite. But the
-  // STATE child (competitions.leaderboard) is seeded ONLY-IF-ABSENT: with
-  // faceBootstrap now kept, `boot.leaderboard` can be staler than the live 30s
-  // poll (individual score entry doesn't invalidate faceBootstrap), so an
-  // always-seed would clobber fresher standings on every remount. Seed it for the
-  // cold first paint; thereafter the leaderboard's own poll + direct invalidation
-  // own it (the structure/state cut, applied at the seed).
+  // structure, so re-seeding on remount is a harmless no-op overwrite.
+  //
+  // ── THE LEADERBOARD SEED IS GONE (#1281 step 1) ───────────────────────────
+  //
+  // It used to be seeded here ONLY-IF-ABSENT, and that qualifier is what made
+  // removing it cheap: whoever wrote it had already spotted that
+  // `boot.leaderboard` could be staler than the live query, so it was skipped
+  // on every remount and served exactly ONE purpose — the cold-open first
+  // paint. One purpose, against 9 of `faceBootstrap`'s 14 Supabase reads, on
+  // the only field in that payload a score entry changes.
+  //
+  // `CompetitionLeaderboard` observes `competitions.leaderboard` directly and
+  // fetches it itself, so the standings still arrive; a cold open now pays one
+  // extra round trip for them rather than receiving them in the bootstrap. The
+  // nine reads happen either way — only the round trip is new, and it is once
+  // per cold open against nine reads per client per score event.
+  //
+  // This is the structure/state cut (#1277) applied at the SOURCE rather than
+  // at the seed. The seed no longer has to know the difference, because the
+  // payload no longer mixes the two.
   useMemo(() => {
     if (!boot) return;
     utils.competitions.getByTrip.setData({ tripId }, boot.competition as never);
     utils.games.myDelegateGameIds.setData({ tripId }, boot.myDelegateGameIds);
     if (boot.competition) {
       const cid = boot.competition.id as string;
-      if (
-        utils.competitions.leaderboard.getData({ tripId, competitionId: cid }) ===
-        undefined
-      ) {
-        utils.competitions.leaderboard.setData(
-          { tripId, competitionId: cid },
-          boot.leaderboard as never,
-        );
-      }
       utils.games.listByTrip.setData({ tripId }, boot.games as never);
       utils.teams.list.setData({ tripId, competitionId: cid }, boot.teams as never);
       utils.teamAssignments.list.setData(

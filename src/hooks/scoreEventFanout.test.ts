@@ -48,8 +48,9 @@ import {
  * past the end of the router. Both wrong answers were produced on the way here;
  * this is CLAUDE.md's "measure the thing, not the region around it".
  *
- *   faceBootstrap        4 direct + myDelegateGameIds (1)
- *                                 + computeCompetitionLeaderboard (9) = 14
+ *   faceBootstrap        4 direct + myDelegateGameIds (1)            =  5
+ *                        (was 14 — computeCompetitionLeaderboard's 9 left
+ *                         with the state half in #1281 step 1)
  *   leaderboard          0 direct + computeCompetitionLeaderboard (9) =  9
  *   matches.listByGame   4
  *   scores.listByGame    2
@@ -108,7 +109,7 @@ import {
 
 /** Supabase reads performed by each procedure a score event invalidates. */
 const READS_PER_QUERY: Record<string, number> = {
-  faceBootstrap: 14,
+  faceBootstrap: 5,
   leaderboard: 9,
   "matches.listByGame": 4,
   "scores.listByGame": 2,
@@ -244,7 +245,7 @@ describe("score-event fan-out — the instrument", () => {
       "matches.listByGame",
       "scores.listByGame",
     ]);
-    expect(r.reads).toBe(29);
+    expect(r.reads).toBe(20);
 
     h.unsubscribe();
   });
