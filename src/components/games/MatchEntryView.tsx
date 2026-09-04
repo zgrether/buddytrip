@@ -7,7 +7,7 @@ import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/glorious
 import { StrokeKeypad } from "./StrokeKeypad";
 import { MatchCard } from "./MatchCard";
 import type { SidePlayer } from "./MatchSides";
-import { fitName } from "@/lib/nameLadder";
+import { fitName, ENTRY_NAME_CAPACITY_EM } from "@/lib/nameLadder";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { Avatar } from "@/components/Avatar";
 import { GolfChip } from "./GolfChip";
@@ -619,12 +619,12 @@ function PlayerRow({
         */}
       <div className="min-w-0 flex-1">
         {(() => {
-          const fit = fitName(player.name, 17);
+          const fit = fitName(player.name, ENTRY_NAME_CAPACITY_EM);
           return (
             <span
               className="block truncate"
               data-name-step={fit.step}
-              style={{ fontSize: fit.fontSize, fontWeight: 500, color: "var(--color-bt-text)" }}
+              style={{ fontSize: "clamp(15px, 4.5vw, 17px)", fontWeight: 500, color: "var(--color-bt-text)" }}
             >
               {fit.text}
               {isMe && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
