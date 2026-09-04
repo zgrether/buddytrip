@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import { SurfaceVisibility } from "@/lib/surfaceVisibility";
 import { GameActionRow } from "@/components/shell/GameActionRow";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
 import { CompetitionSettingsModal } from "./CompetitionSettingsModal";
@@ -323,6 +324,26 @@ export function CompetitionFace({
         }`}
         data-testid="board-pane"
       >
+      {/*
+        * THE BOARD IS COVERED WHILE A GAME PANEL IS OPEN.
+        *
+        * `lg:hidden` above (and the `fixed` panel below `lg`) already hides it;
+        * this says the same thing to the QUERY layer, which had no way to know.
+        * The board stays MOUNTED and warm — that is the panel idiom (#12) and it
+        * is not changing — so its observers survived and refetched on every
+        * score event fired anywhere in the competition. Measured 2026-09-04:
+        * ~200 Supabase reads per score entered, 95% of it write-triggered
+        * fan-out, ending in connection-pool exhaustion.
+        *
+        * Covered queries are marked stale and NOT fetched, then refetched on
+        * reveal — both halves fall out of React Query's own `enabled` semantics
+        * (see `surfaceVisibility.tsx`, pinned by its test).
+        *
+        * It wraps the pane rather than the leaderboard so that anything added
+        * inside the board later inherits the rule instead of having to
+        * rediscover it.
+        */}
+      <SurfaceVisibility visible={!panelOpen}>
       <CompetitionLeaderboard
         competitionId={competition.id}
         tripId={tripId}
@@ -342,6 +363,7 @@ export function CompetitionFace({
         // edits identity (roster read-only), a plain member sees it read-only.
         onEditTeam={handleEditTeam}
       />
+      </SurfaceVisibility>
       </div>
 
       {/* Add a game opens the GameSheet modal directly over the board (the
