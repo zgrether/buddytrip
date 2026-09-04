@@ -60,7 +60,25 @@ const TYPE_TILES = [
   },
 ];
 
-const PRESET_ORDER: Exclude<StablefordPresetId, "custom">[] = ["standard", "modified", "bbmi_2024"];
+/**
+ * The presets the panel NAMES, in order. `bbmi_2024` is deliberately absent: its
+ * numbers are still the CUSTOM tile's seed (below), but a scale named after one
+ * trip is not a product preset, and the tile that offers it reads "Custom".
+ *
+ * Keeping the entry in `STABLEFORD_PRESETS` rather than deleting it preserves
+ * what it is FOR — the values the 2024 card was scored under, pinned to that
+ * card's printed legend by `stableford.test.ts`. The data is provenance; only
+ * the naming moved.
+ */
+const NAMED_PRESETS: Exclude<StablefordPresetId, "custom" | "bbmi_2024">[] = ["standard", "modified"];
+
+/**
+ * What tapping CUSTOM applies — the wider scale, because that is what a custom
+ * rubric is almost always reached for: with a standard floor at +2 and scores in
+ * the high 90s, nearly every hole pays zero and the card stops being a game.
+ * Landing on a usable wider spread beats landing on a copy of Standard.
+ */
+const CUSTOM_SEED = STABLEFORD_PRESETS.bbmi_2024.rubric;
 
 export function StrokeScoringRow({
   value,
@@ -91,12 +109,18 @@ export function StrokeScoringRow({
     // The preset LABEL is derived from the numbers on every edit, so it can
     // never claim a preset the values no longer match.
     const resolved =
-      preset ?? (PRESET_ORDER.find((p) => matchesPreset(rubric, p)) ?? "custom");
+      preset ?? (NAMED_PRESETS.find((p) => matchesPreset(rubric, p)) ?? "custom");
     onChange({ type: "stableford", stableford: { preset: resolved, ...rubric } });
   };
 
   return (
-    <div data-testid="row-scoring-type" style={{ padding: "12px 12px 4px" }}>
+    // NO horizontal padding. The neighbouring settings rows are ChecklistRow
+    // CARDS that span this container edge to edge, so an inset here made the
+    // tiles 24px narrower than every card above and below them — measured at
+    // 373px against their 397px, which reads as a misalignment rather than as a
+    // deliberate inset. The label keeps `px-1` to sit over the tile's own
+    // padding, matching how Competition Format labels its row.
+    <div data-testid="row-scoring-type" style={{ padding: "12px 0 4px" }}>
       <div
         className="flex items-center gap-1.5 px-1 pb-2"
         style={{ fontSize: TYPE_SCALE.captionPlus, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
@@ -189,44 +213,32 @@ function RubricPanel({
         Points per hole
       </div>
 
+      {/* Standard · Modified · Custom. CUSTOM IS A REAL TILE, not a note beside
+          the presets: it is the state any edited rubric lands in, so giving it a
+          tile means one thing on screen says which scale is in force instead of
+          a lit preset plus a caption contradicting it. */}
       <div className="grid grid-cols-3 gap-2 pb-3" data-testid="stableford-preset-options">
-        {PRESET_ORDER.map((id) => {
-          const p = STABLEFORD_PRESETS[id];
-          const selected = config.preset === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              disabled={!editable}
-              onClick={() => onChange(p.rubric, id)}
-              aria-pressed={selected}
-              className="rounded-lg px-2 py-1.5 text-left disabled:cursor-not-allowed"
-              style={{
-                background: selected ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
-                border: `1px solid ${selected ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-                opacity: editable ? 1 : 0.6,
-              }}
-              data-testid={`stableford-preset-${id}`}
-            >
-              <span className="font-semibold" style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text)", lineHeight: 1.25 }}>
-                {p.label}
-              </span>
-            </button>
-          );
-        })}
+        {NAMED_PRESETS.map((id) => (
+          <PresetTile
+            key={id}
+            id={id}
+            label={STABLEFORD_PRESETS[id].label}
+            selected={config.preset === id}
+            editable={editable}
+            onClick={() => onChange(STABLEFORD_PRESETS[id].rubric, id)}
+          />
+        ))}
+        <PresetTile
+          id="custom"
+          label="Custom"
+          // A rubric that matches no named scale IS custom, however it got there
+          // — picked, edited, or read back from a row saved before this tile
+          // existed (those carry `preset: "bbmi_2024"`).
+          selected={config.preset === "custom" || config.preset === "bbmi_2024"}
+          editable={editable}
+          onClick={() => onChange(CUSTOM_SEED, "custom")}
+        />
       </div>
-
-      {config.preset === "custom" && (
-        <div
-          className="mb-2 rounded-lg px-2 py-1.5"
-          style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-          data-testid="stableford-custom-note"
-        >
-          <span style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}>
-            Custom — edited from a preset.
-          </span>
-        </div>
-      )}
 
       {/* One row per bucket, best first. The ends carry "or better" / "or worse"
           so the catch-all reads as a range rather than a single score. */}
@@ -276,6 +288,36 @@ function RubricPanel({
         />
       </div>
     </div>
+  );
+}
+
+function PresetTile({
+  id, label, selected, editable, onClick,
+}: {
+  id: string;
+  label: string;
+  selected: boolean;
+  editable: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!editable}
+      onClick={onClick}
+      aria-pressed={selected}
+      className="rounded-lg px-2 py-1.5 text-left disabled:cursor-not-allowed"
+      style={{
+        background: selected ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
+        border: `1px solid ${selected ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+        opacity: editable ? 1 : 0.6,
+      }}
+      data-testid={`stableford-preset-${id}`}
+    >
+      <span className="font-semibold" style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text)", lineHeight: 1.25 }}>
+        {label}
+      </span>
+    </button>
   );
 }
 

@@ -56,13 +56,33 @@ describe("scoringToDraft — reading games.config", () => {
     expect(scoringToDraft(undefined)).toEqual({ type: "traditional", stableford: null });
   });
 
-  it("recognises each preset from its NUMBERS", () => {
-    for (const id of ["standard", "modified", "bbmi_2024"] as const) {
+  it("recognises the two NAMED scales from their numbers", () => {
+    for (const id of ["standard", "modified"] as const) {
       const r = STABLEFORD_PRESETS[id].rubric;
       const d = scoringToDraft({ scoringType: "stableford", stableford: { preset: id, ...r } });
       expect(d.type).toBe("stableford");
       expect(d.stableford?.preset, id).toBe(id);
     }
+  });
+
+  it("the BBMI scale reads as CUSTOM — the UI stopped naming it", () => {
+    // The tile that offers these values reads "Custom", so the draft must agree:
+    // a lit preset saying one thing while the screen says another is the drift
+    // this resolution exists to avoid. The values are unchanged and still
+    // pinned to the 2024 card's legend in `stableford.test.ts` — only the
+    // naming moved.
+    const d = scoringToDraft({ scoringType: "stableford", stableford: { preset: "bbmi_2024", ...BBMI } });
+    expect(d.stableford?.preset).toBe("custom");
+    expect(d.stableford?.points).toEqual(BBMI.points);
+  });
+
+  it("a row SAVED as bbmi_2024 before the rename reads back as Custom", () => {
+    // Migration-free by construction: the label is re-derived from the numbers
+    // on every read, so rows written by the previous build resolve to whatever
+    // the current UI names — no backfill, and no row that renders a tile the
+    // panel no longer has.
+    const stored = { scoringType: "stableford", stableford: { preset: "bbmi_2024", ...BBMI } };
+    expect(scoringToDraft(stored).stableford?.preset).toBe("custom");
   });
 
   it("an EDITED rubric reads as Custom even when the stored label says otherwise", () => {
@@ -75,9 +95,9 @@ describe("scoringToDraft — reading games.config", () => {
     expect(d.stableford?.points).toEqual([9, 6, 4, 2, 1, 1]);
   });
 
-  it("recovers the preset when the LABEL is missing but the numbers match", () => {
-    const d = scoringToDraft({ scoringType: "stableford", stableford: { ...BBMI } });
-    expect(d.stableford?.preset).toBe("bbmi_2024");
+  it("recovers a NAMED preset when the label is missing but the numbers match", () => {
+    const d = scoringToDraft({ scoringType: "stableford", stableford: { ...STANDARD } });
+    expect(d.stableford?.preset).toBe("standard");
   });
 
   it("a MALFORMED rubric falls back to Traditional", () => {
@@ -92,7 +112,7 @@ describe("configToStrokeDraft carries the scoring slice", () => {
     // never passes it compiles and reads Traditional forever.
     const d = draftOf({ scoringType: "stableford", stableford: { preset: "bbmi_2024", ...BBMI } });
     expect(d.scoring.type).toBe("stableford");
-    expect(d.scoring.stableford).toEqual({ preset: "bbmi_2024", ...BBMI });
+    expect(d.scoring.stableford).toEqual({ preset: "custom", ...BBMI });
   });
 
   it("reads a game with no config as Traditional", () => {

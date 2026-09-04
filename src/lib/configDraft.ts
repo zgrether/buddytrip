@@ -1078,14 +1078,17 @@ export function configToStrokeDraft(
 export function scoringToDraft(config: unknown): StrokeScoringDraft {
   const { type, rubric } = scoringOf(config);
   if (type === "traditional" || !rubric) return { type: "traditional", stableford: null };
-  const stored = (config as { stableford?: { preset?: unknown } } | null)?.stableford?.preset;
-  // The stored preset name is a HINT, never the authority: a row whose values
-  // were edited but whose `preset` was not is Custom, and believing the label
-  // over the numbers would light the wrong tile.
+  // Resolved from the NUMBERS against the scales the UI names, never from the
+  // stored label: a row whose values were edited but whose `preset` was not must
+  // read Custom, or the panel lights a preset the game does not score by.
+  //
+  // `bbmi_2024` is deliberately NOT in this list. Its values are still the
+  // Custom tile's seed and still pinned to the 2024 card's legend, but the UI
+  // stopped naming it — so a row holding that scale (including rows saved as
+  // `preset: "bbmi_2024"` before the rename) resolves to `custom`, which is what
+  // the screen now says.
   const preset: StablefordPresetId =
-    typeof stored === "string" && stored !== "custom" && matchesPreset(rubric, stored as StablefordPresetId)
-      ? (stored as StablefordPresetId)
-      : ((["standard", "modified", "bbmi_2024"] as const).find((p) => matchesPreset(rubric, p)) ?? "custom");
+    (["standard", "modified"] as const).find((p) => matchesPreset(rubric, p)) ?? "custom";
   return { type: "stableford", stableford: { preset, ...rubric } };
 }
 
