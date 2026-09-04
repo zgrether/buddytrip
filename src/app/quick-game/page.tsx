@@ -560,7 +560,6 @@ function QuickGamePageInner() {
         participants={gridParticipants}
         values={state.values}
         pips={pips}
-        direction="low_wins"
         onCellTap={onCellTap}
       />
     );
@@ -701,7 +700,6 @@ function QuickGamePageInner() {
           participants={state.players}
           values={state.values}
           pips={pips}
-          direction="low_wins"
           currentHole={state.currentHole}
           onHoleChange={setCurrentHole}
           onChange={onChange}

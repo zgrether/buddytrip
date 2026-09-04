@@ -18,7 +18,6 @@ import {
   type ScoreUnit,
   type Participant,
   type ScoreValues,
-  type ScoreDirection,
   type SaveStatusMap,
 } from "./types";
 
@@ -39,7 +38,6 @@ interface ScoreEntryViewProps {
   units: ScoreUnit[];
   participants: Participant[];
   values: ScoreValues;
-  direction: ScoreDirection;
   onChange: (participantId: string, unitLabel: string, value: number) => void;
   onClear?: (participantId: string, unitLabel: string) => void;
   currentHole?: number; // 1-based index into units; defaults to 1

@@ -1653,7 +1653,6 @@ export function MatchGameView() {
         gameId={gameId}
         participants={entryParticipants}
         values={values}
-        direction="low_wins"
         pips={entryPips}
         saveStatus={saveStatus}
         glorious={glorious}

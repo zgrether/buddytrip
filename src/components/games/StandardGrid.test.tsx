@@ -19,7 +19,7 @@ const units: ScoreUnit[] = [
 
 describe("StandardGrid — empty (scores-off) preview", () => {
   const html = renderToStaticMarkup(
-    <StandardGrid units={units} participants={[]} values={{}} direction="low_wins" tee={{ name: "Blue" }} />
+    <StandardGrid units={units} participants={[]} values={{}} tee={{ name: "Blue" }} />
   );
 
   it("renders the course-structure rows from units alone (Par / Yards / Index)", () => {
@@ -58,7 +58,7 @@ describe("StandardGrid — multi-tee yardage rows (5b)", () => {
     { name: "Red", color: "#ef4444", yards: [300, 120, 430, 340], total: 1190, isChosen: false, defaultVisible: false },
   ];
   const html = renderToStaticMarkup(
-    <StandardGrid units={units} participants={[]} values={{}} direction="low_wins" teeRows={teeRows} />
+    <StandardGrid units={units} participants={[]} values={{}} teeRows={teeRows} />
   );
 
   it("collapses the tee selector behind a disclosure, summarizing the chosen tee", () => {
@@ -111,7 +111,7 @@ const g = (n: number): GloriousConfig => ({ enabled: true, n });
 describe("StandardGrid — Glorious Finishing Holes (gate a: marks the right holes)", () => {
   it("N=3: diamond + bracket on holes 16/17/18 only; tees-bar label reads '3 ...'", () => {
     const html = renderToStaticMarkup(
-      <StandardGrid units={round18} participants={[]} values={{}} direction="low_wins" tee={{ name: "Blue" }} glorious={g(3)} />
+      <StandardGrid units={round18} participants={[]} values={{}} tee={{ name: "Blue" }} glorious={g(3)} />
     );
     for (const h of [16, 17, 18]) expect(html).toContain(`glorious-diamond-${h}"`);
     // Quote-terminated match — "glorious-diamond-1" is a PREFIX of
@@ -124,7 +124,7 @@ describe("StandardGrid — Glorious Finishing Holes (gate a: marks the right hol
 
   it("N=4: the marked span shifts to holes 15–18 (not hardcoded to 3)", () => {
     const html = renderToStaticMarkup(
-      <StandardGrid units={round18} participants={[]} values={{}} direction="low_wins" tee={{ name: "Blue" }} glorious={g(4)} />
+      <StandardGrid units={round18} participants={[]} values={{}} tee={{ name: "Blue" }} glorious={g(4)} />
     );
     for (const h of [15, 16, 17, 18]) expect(html).toContain(`glorious-diamond-${h}`);
     expect(html).not.toContain("glorious-diamond-14");
@@ -133,7 +133,7 @@ describe("StandardGrid — Glorious Finishing Holes (gate a: marks the right hol
 
   it("off: none of the treatment renders, and the grid is otherwise unchanged", () => {
     const html = renderToStaticMarkup(
-      <StandardGrid units={round18} participants={[]} values={{}} direction="low_wins" tee={{ name: "Blue" }} glorious={NO_GLORIOUS} />
+      <StandardGrid units={round18} participants={[]} values={{}} tee={{ name: "Blue" }} glorious={NO_GLORIOUS} />
     );
     expect(html).not.toContain("glorious-diamond-");
     expect(html).not.toContain("glorious-bracket");
@@ -145,7 +145,7 @@ describe("StandardGrid — Glorious Finishing Holes (gate a: marks the right hol
   });
 
   it("defaults to NO_GLORIOUS when the prop is omitted entirely", () => {
-    const html = renderToStaticMarkup(<StandardGrid units={round18} participants={[]} values={{}} direction="low_wins" />);
+    const html = renderToStaticMarkup(<StandardGrid units={round18} participants={[]} values={{}} />);
     expect(html).not.toContain("glorious-diamond-");
   });
 });
@@ -154,7 +154,7 @@ describe("StandardGrid — Glorious (gate b: score legend untouched)", () => {
   it("legend keeps exactly its five score-value chips, unaffected by glorious state", () => {
     for (const glorious of [NO_GLORIOUS, g(3)]) {
       const html = renderToStaticMarkup(
-        <StandardGrid units={round18} participants={[]} values={{}} direction="low_wins" tee={{ name: "Blue" }} glorious={glorious} />
+        <StandardGrid units={round18} participants={[]} values={{}} tee={{ name: "Blue" }} glorious={glorious} />
       );
       for (const label of ["Eagle", "Birdie", "Par", "Bogey", "Dbl+"]) expect(html).toContain(label);
       // The tees-bar label (a real string this glorious=g(3) case DOES render) must
@@ -169,7 +169,7 @@ describe("StandardGrid — Glorious (gate b: score legend untouched)", () => {
 describe("StandardGrid — Glorious (gate e: pure-config, not gated on emptiness)", () => {
   it("zero participants AND zero scores still renders the full treatment (the in-game setup-preview case, #501)", () => {
     const html = renderToStaticMarkup(
-      <StandardGrid units={round18} participants={[]} values={{}} direction="low_wins" tee={{ name: "Blue" }} glorious={g(3)} />
+      <StandardGrid units={round18} participants={[]} values={{}} tee={{ name: "Blue" }} glorious={g(3)} />
     );
     expect(html).not.toContain("score-cell-"); // confirms genuinely empty (no participants)
     expect(html).toContain("glorious-diamond-16");
@@ -181,7 +181,7 @@ describe("StandardGrid — Glorious (gate e: pure-config, not gated on emptiness
 describe("StandardGrid — Glorious (gate f: no-course degradation)", () => {
   it("no tee/teeRows → diamond + bracket present, no tees-bar label, no crash", () => {
     const render = () =>
-      renderToStaticMarkup(<StandardGrid units={round18} participants={[]} values={{}} direction="low_wins" glorious={g(3)} />);
+      renderToStaticMarkup(<StandardGrid units={round18} participants={[]} values={{}} glorious={g(3)} />);
     expect(render).not.toThrow();
     const html = render();
     expect(html).toContain("glorious-diamond-16");
@@ -193,7 +193,7 @@ describe("StandardGrid — Glorious (gate f: no-course degradation)", () => {
 describe("StandardGrid — Glorious (9-hole round: the 18−N inertness is inherited, not special-cased)", () => {
   it("no hole on a 9-hole round ever qualifies, so nothing renders — even with glorious enabled", () => {
     const html = renderToStaticMarkup(
-      <StandardGrid units={round9} participants={[]} values={{}} direction="low_wins" tee={{ name: "Blue" }} glorious={g(3)} />
+      <StandardGrid units={round9} participants={[]} values={{}} tee={{ name: "Blue" }} glorious={g(3)} />
     );
     expect(html).not.toContain("glorious-diamond-");
     expect(html).not.toContain("glorious-bracket");
@@ -228,7 +228,6 @@ describe("StandardGrid — NET column", () => {
         participants={[{ id: "zach", name: "Zach", color: "#2dd4bf" }]}
         values={{ zach: { "1": 5 } }}
         pips={{ zach: new Set(["1"]) }}
-        direction="low_wins"
       />
     );
     // The cell itself is untouched — GROSS is what you shot.
@@ -248,7 +247,6 @@ describe("StandardGrid — NET column", () => {
         // 5 + 4 + 6 + 5 = 20 gross; strokes fall on holes 1 and 10.
         values={{ zach: { "1": 5, "2": 4, "10": 6, "18": 5 } }}
         pips={{ zach: new Set(["1", "10"]) }}
-        direction="low_wins"
       />
     );
     const total = subCell(html, "scorecard-total-zach");
@@ -267,7 +265,6 @@ describe("StandardGrid — NET column", () => {
         // Only hole 1 played; the stroke on hole 10 must not come off yet.
         values={{ zach: { "1": 5 } }}
         pips={{ zach: new Set(["1", "10"]) }}
-        direction="low_wins"
       />
     );
     expect(subCell(html, "scorecard-net-zach")?.value).toBe("4"); // not 3
@@ -286,7 +283,6 @@ describe("StandardGrid — NET column", () => {
           matt: { "1": 4, "2": 4, "10": 6, "18": 5 }, // gross 19 → net 19 (scratch)
         }}
         pips={{ zach: new Set(["1", "10"]) }}
-        direction="low_wins"
       />
     );
     // Matt is the GROSS leader (19 < 20); Zach is the NET leader (18 < 19).
@@ -304,7 +300,6 @@ describe("StandardGrid — NET column", () => {
         units={units}
         participants={[{ id: "matt", name: "Matt", color: "#f59e0b" }]}
         values={{ matt: { "1": 4, "2": 3, "10": 5, "18": 4 } }}
-        direction="low_wins"
       />
     );
     expect(html).not.toContain('data-testid="scorecard-net-');
@@ -321,7 +316,6 @@ describe("StandardGrid — NET column", () => {
         participants={[{ id: "zach", name: "Zach", color: "#2dd4bf" }]}
         values={{ zach: { "1": 5 } }}
         pips={{ zach: new Set(["1"]) }}
-        direction="low_wins"
         tee={{ name: "Blue" }}
       />
     );
@@ -353,7 +347,6 @@ describe("StandardGrid — a scored row still carries Out / In / Total", () => {
       units={units}
       participants={[{ id: "p1", name: "Ann", color: "#22c55e" }]}
       values={{ p1: { "1": 4, "2": 3, "10": 5, "18": 4 } }}
-      direction="low_wins"
       tee={{ name: "Blue" }}
     />,
   );

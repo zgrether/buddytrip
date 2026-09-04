@@ -40,17 +40,19 @@ export type ScoreValues = Record<string, Record<string, number>>;
 export type OutcomeValues = Record<string, Record<string, import("@/lib/matchPlay").HoleOutcomeResult>>;
 
 /**
- * Which way a score ranks. RE-EXPORTED, not redeclared — the canonical
- * definition moved to `@/lib/strokePlay` when Stableford made `high_wins` real,
- * because direction is a SCORING fact and the server's persisted result needs
- * the same type the grid does. Pointing `src/server` at a components file to
- * get it would have been the parallel seam this was extending instead of.
+ * `ScoreDirection` was re-exported here for the grid. It is gone from
+ * `components/` entirely now: `StandardGrid` and `ScoreEntryView` each declared
+ * a required `direction` prop that eight call sites passed as the literal
+ * `"low_wins"` and NEITHER COMPONENT EVER READ. The scorecard takes a RUBRIC
+ * instead — its presence is what switches the card to points — and the one
+ * direction decision lives in `rankingDirection`, derived from the scoring type
+ * so no caller can name a direction at all.
  *
- * The comment this replaces read "Slice A is always low_wins; typed so later
- * strategies can extend" — which is what happened, so the seam is spent rather
- * than removed.
+ * The type itself is alive and canonical in `@/lib/strokePlay`; import it from
+ * there if a component ever genuinely needs it. This note stays because the
+ * previous one claimed the grid used it, and a comment that outlives its facts
+ * is how the next reader re-adds the prop.
  */
-export type { ScoreDirection } from "@/lib/strokePlay";
 
 /**
  * Per-cell save lifecycle (Connectivity Layer 1). A score lives optimistically
