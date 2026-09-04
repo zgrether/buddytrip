@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireGameEdit, canEditGame } from "../middleware";
+import { rowOrThrow } from "../lib/rowOrThrow";
 import { assertGameReady } from "../lib/gameReadiness";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 
@@ -41,11 +42,17 @@ async function assertGameInTrip(
   gameId: string,
   tripId: string
 ) {
-  const { data: game } = await (
+  // The cast now declares `error`. It did not, which is why this site could not
+  // have distinguished a failed check from an absent row even if it had tried —
+  // the type made the error invisible as well as the code ignoring it.
+  const result = await (
     ctx.supabase.from("games") as unknown as {
       select: (s: string) => {
         eq: (c: string, v: string) => {
-          eq: (c: string, v: string) => { maybeSingle: () => Promise<{ data: unknown }> };
+          eq: (
+            c: string,
+            v: string
+          ) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> };
         };
       };
     }
@@ -54,9 +61,7 @@ async function assertGameInTrip(
     .eq("id", gameId)
     .eq("trip_id", tripId)
     .maybeSingle();
-  if (!game) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-  }
+  rowOrThrow(result, { code: "NOT_FOUND", message: "Game not found" }, "game");
 }
 
 export const matchesRouter = router({
