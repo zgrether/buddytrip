@@ -39,8 +39,18 @@ export type ScoreValues = Record<string, Record<string, number>>;
  *  an outcome belongs to the match, not either player. */
 export type OutcomeValues = Record<string, Record<string, import("@/lib/matchPlay").HoleOutcomeResult>>;
 
-/** Slice A is always low_wins; typed so later strategies can extend. */
-export type ScoreDirection = "low_wins";
+/**
+ * Which way a score ranks. RE-EXPORTED, not redeclared — the canonical
+ * definition moved to `@/lib/strokePlay` when Stableford made `high_wins` real,
+ * because direction is a SCORING fact and the server's persisted result needs
+ * the same type the grid does. Pointing `src/server` at a components file to
+ * get it would have been the parallel seam this was extending instead of.
+ *
+ * The comment this replaces read "Slice A is always low_wins; typed so later
+ * strategies can extend" — which is what happened, so the seam is spent rather
+ * than removed.
+ */
+export type { ScoreDirection } from "@/lib/strokePlay";
 
 /**
  * Per-cell save lifecycle (Connectivity Layer 1). A score lives optimistically

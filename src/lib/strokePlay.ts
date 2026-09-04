@@ -14,6 +14,72 @@
  * No server/DB deps — safe to import from client components (the live strip).
  */
 
+import { stablefordPoints, type ScoringType, type StablefordRubric } from "./stableford";
+
+/**
+ * Which way a score ranks. The canonical definition — `src/components/games/
+ * types.ts` re-exports it, so the grid and the server's persisted result share
+ * one type rather than two that agree by coincidence.
+ *
+ * It was `"low_wins"` alone until Stableford, with a comment saying it was
+ * "typed so later strategies can extend". This is that.
+ */
+export type ScoreDirection = "low_wins" | "high_wins";
+
+/**
+ * THE ONE MAPPING from a scoring type to a ranking direction.
+ *
+ * ── Why this is a derivation and not an argument ────────────────────────────
+ *
+ * Stableford is the first format in this app whose direction depends on a
+ * CONFIG FLAG rather than on its type, so `result_strategy: "stroke_total"` no
+ * longer tells a reader which way to sort. #1245 is what that costs when it
+ * goes wrong: two fields with opposite conventions were collapsed into one
+ * number, a team that won 35 read as "position 35", and the cup went to the
+ * side that lost every match. Every step was plausible, which is why nothing
+ * caught it.
+ *
+ * The guard against a repeat is NOT an assertion that a passed-in direction
+ * matches the scoring type. Both values would be derived by the same caller
+ * from the same config, so such a check cannot fail — it is the exact shape
+ * CLAUDE.md's compressed rule names, an instrument incapable of a red result
+ * reporting success indistinguishable from a real one.
+ *
+ * So the mismatch is made INEXPRESSIBLE instead: the ranking functions below
+ * take the SCORING TYPE and derive the direction here. There is no parameter to
+ * get wrong. `strokeRankingDirection.guard.test.ts` is the other half — a source
+ * scan pinning that no ranking site in the stroke path writes a direction
+ * literal of its own, which is the only way a second, drifting answer could
+ * appear.
+ */
+export function rankingDirection(scoring: ScoringType): ScoreDirection {
+  return scoring === "stableford" ? "high_wins" : "low_wins";
+}
+
+/**
+ * The two ranking primitives for a scoring type, derived TOGETHER.
+ *
+ * A sort comparator and a strictly-better predicate, from one branch. They are
+ * handed out as a pair rather than as two functions because ranking needs both
+ * — the sort puts rows in order, the predicate counts how many beat you — and a
+ * site that took one and hand-rolled the other is precisely how a sort and its
+ * position count come to disagree. Standard competition ranking (1, 2, 2, 4)
+ * depends on them being the same decision.
+ *
+ * This is also the only place below the mapping that names a direction, which
+ * `strokeRankingDirection.guard.test.ts` pins.
+ */
+export function ranking(scoring: ScoringType): {
+  compare: (a: number, b: number) => number;
+  beats: (a: number, b: number) => boolean;
+} {
+  const low = rankingDirection(scoring) === "low_wins";
+  return {
+    compare: (a, b) => (low ? a - b : b - a),
+    beats: (a, b) => (low ? a < b : a > b),
+  };
+}
+
 export interface StrokeEntry {
   participant_id: string;
   value: number | null;
@@ -44,14 +110,62 @@ export function netStrokeEntries(
   entries: RawStrokeEntry[],
   strokedByPlayer: Record<string, Set<string>>
 ): StrokeEntry[] {
+  // Expressed through the label-preserving variant below so the gross→net
+  // subtraction stays in ONE place. Same inputs, same outputs, same order — the
+  // label is dropped rather than the arithmetic repeated.
+  return netStrokeEntriesByHole(entries, strokedByPlayer).map((e) => ({
+    participant_id: e.participant_id,
+    value: e.value,
+  }));
+}
+
+/**
+ * Per-hole NET entries that KEEP their hole label.
+ *
+ * Deliberately a SECOND function beside `netStrokeEntries` rather than a
+ * widening of it. Stableford needs the label to find that hole's par; every
+ * existing caller needs only the value, and `netStrokeEntries` sits on the
+ * Traditional path that must stay byte-identical. Changing its return shape to
+ * serve the new format is exactly the "do not change the Traditional path"
+ * line, so this returns the richer row and `netStrokeEntries` is re-expressed
+ * in terms of it — one subtraction, still in one place (CLAUDE.md #8).
+ */
+export function netStrokeEntriesByHole(
+  entries: RawStrokeEntry[],
+  strokedByPlayer: Record<string, Set<string>>
+): { participant_id: string; unit_label: string; value: number }[] {
   return entries
     .filter((e) => e.value != null)
     .map((e) => ({
       participant_id: e.participant_id,
+      unit_label: e.unit_label,
       value:
         (e.value as number) -
         (strokedByPlayer[e.participant_id]?.has(e.unit_label) ? 1 : 0),
     }));
+}
+
+/**
+ * Per-hole STABLEFORD POINTS from net entries — the derivation that replaces
+ * "count the strokes" and the only thing Stableford changes about scoring.
+ *
+ * A hole with no par in `parByHole` is SKIPPED rather than scored against a par
+ * of 0, which would hand out the floor value for a hole the course snapshot
+ * simply does not describe. Empty is not the same as "par 0", and a missing par
+ * is a configuration gap, not a quintuple bogey.
+ */
+export function stablefordEntries(
+  netByHole: { participant_id: string; unit_label: string; value: number }[],
+  parByHole: Record<string, number>,
+  rubric: StablefordRubric
+): StrokeEntry[] {
+  const out: StrokeEntry[] = [];
+  for (const e of netByHole) {
+    const par = parByHole[e.unit_label];
+    if (par == null) continue;
+    out.push({ participant_id: e.participant_id, value: stablefordPoints(e.value - par, rubric) });
+  }
+  return out;
 }
 
 export interface StrokeStanding {
@@ -79,6 +193,14 @@ export interface StrokeLeaderboardRow {
    *  trailing position and sort to the bottom — a thru-0 late arrival is never "leading". */
   position: number;
   started: boolean;
+  /**
+   * STABLEFORD points over scored holes, and the field the board ranks on when
+   * the game is Stableford. Always 0 for a Traditional game, where `toPar` is
+   * the ranking measure — read `scoring` (not this) to know which column means
+   * something, because 0 points and "this game does not use points" render the
+   * same otherwise.
+   */
+  points: number;
 }
 
 /**
@@ -97,16 +219,30 @@ export interface StrokeLeaderboardRow {
 export function computeStrokeLeaderboard(
   participantIds: string[],
   entries: { participant_id: string; unit_label: string; value: number }[],
-  parByHole: Record<string, number>
+  parByHole: Record<string, number>,
+  /**
+   * STABLEFORD only: the game's rubric. Passing it switches the board's ranking
+   * measure from to-par (lowest) to points (highest) — one argument, because a
+   * rubric and a scoring type cannot meaningfully disagree here and two
+   * arguments would let them.
+   *
+   * Omit for Traditional, which keeps every line of the previous behaviour.
+   */
+  rubric?: StablefordRubric | null
 ): StrokeLeaderboardRow[] {
-  const agg = new Map<string, { strokes: number; holes: number; par: number }>();
-  for (const id of participantIds) agg.set(id, { strokes: 0, holes: 0, par: 0 });
+  const agg = new Map<string, { strokes: number; holes: number; par: number; points: number }>();
+  for (const id of participantIds) agg.set(id, { strokes: 0, holes: 0, par: 0, points: 0 });
   for (const e of entries) {
     const a = agg.get(e.participant_id);
     if (!a) continue; // an entry for a participant not in the field (e.g. ungrouped) is ignored
     a.strokes += e.value;
     a.holes += 1;
-    a.par += parByHole[e.unit_label] ?? 0;
+    const par = parByHole[e.unit_label];
+    a.par += par ?? 0;
+    // A hole with no par in the snapshot scores no points — the same skip
+    // `stablefordEntries` makes, and for the same reason: a missing par is a
+    // configuration gap, not a differential of `value - 0`.
+    if (rubric && par != null) a.points += stablefordPoints(e.value - par, rubric);
   }
 
   const rows = participantIds.map((id) => {
@@ -116,14 +252,22 @@ export function computeStrokeLeaderboard(
       totalStrokes: a.strokes,
       holesPlayed: a.holes,
       toPar: a.strokes - a.par,
+      points: a.points,
       started: a.holes > 0,
     };
   });
 
+  // The RANKING MEASURE, chosen once. Stableford ranks on points and MORE is
+  // better; Traditional ranks on to-par and LESS is. Expressed as one signed
+  // key so the sort, the tie-break and the position count below all read the
+  // same number — the alternative is three places that each have to remember
+  // which way the format goes, which is #1245's shape.
+  const rank = (r: { toPar: number; points: number }) => (rubric ? -r.points : r.toPar);
+
   const sorted = [...rows].sort((x, y) => {
     if (x.started !== y.started) return x.started ? -1 : 1; // started before not-started
     if (!x.started) return x.entityId < y.entityId ? -1 : 1; // stable order for not-started
-    if (x.toPar !== y.toPar) return x.toPar - y.toPar; // lower to-par leads
+    if (rank(x) !== rank(y)) return rank(x) - rank(y); // better rank leads
     if (x.holesPlayed !== y.holesPlayed) return y.holesPlayed - x.holesPlayed; // more holes ranks higher
     return x.entityId < y.entityId ? -1 : 1;
   });
@@ -133,7 +277,7 @@ export function computeStrokeLeaderboard(
   return sorted.map((r) => ({
     ...r,
     position: r.started
-      ? 1 + startedRows.filter((o) => o.toPar < r.toPar).length
+      ? 1 + startedRows.filter((o) => rank(o) < rank(r)).length
       : trailingPos,
   }));
 }
@@ -157,7 +301,20 @@ export function computeStrokePlayStandings(
    * are correct on a live surface and wrong in `game_results`; the option is
    * what separates the two. The PERSISTED path always passes it.
    */
-  opts?: { requiredUnits?: number }
+  opts?: {
+    requiredUnits?: number;
+    /**
+     * The game's SCORING TYPE, which decides the direction (`rankingDirection`).
+     * Defaults to `"traditional"`, so every existing caller keeps lowest-wins
+     * with no change — the byte-identity constraint this whole feature rests on.
+     *
+     * Note this takes the TYPE and not a direction. See `rankingDirection`: a
+     * direction parameter would let a caller pass one that contradicts the
+     * config, and an assertion catching that could not fail, because the same
+     * caller derives both from the same place.
+     */
+    scoring?: ScoringType;
+  }
 ): StrokeStanding[] {
   const totals = new Map<string, number>();
   const scored = new Map<string, number>();
@@ -178,12 +335,17 @@ export function computeStrokePlayStandings(
   const rows = Array.from(totals, ([entityId, rawScore]) => ({ entityId, rawScore })).filter(
     (r) => required == null || (scored.get(r.entityId) ?? 0) >= required
   );
-  rows.sort((a, b) => a.rawScore - b.rawScore); // low wins
+  // Traditional: low wins, exactly as before. Stableford: high wins. The
+  // comparator is derived from the type in ONE place so the sort and the
+  // position count can never disagree with each other — they are the same
+  // predicate used twice, not two predicates that happen to match.
+  const { compare, beats } = ranking(opts?.scoring ?? "traditional");
+  rows.sort((a, b) => compare(a.rawScore, b.rawScore));
   return rows.map((r) => ({
     entityId: r.entityId,
     rawScore: r.rawScore,
     // ties share position; next position skips (standard competition ranking).
-    position: 1 + rows.filter((o) => o.rawScore < r.rawScore).length,
+    position: 1 + rows.filter((o) => beats(o.rawScore, r.rawScore)).length,
   }));
 }
 
@@ -244,7 +406,10 @@ export interface StrokeTeamStanding {
 export function computeStrokeTeamStandings(
   standings: StrokeStanding[],
   /** userId → teamId, from `team_assignments` for the game's competition. */
-  teamOf: Record<string, string>
+  teamOf: Record<string, string>,
+  /** The game's scoring type — see `computeStrokePlayStandings`. Defaults to
+   *  `"traditional"`, keeping every existing caller on lowest-total-wins. */
+  scoring: ScoringType = "traditional"
 ): StrokeTeamStanding[] {
   const totals = new Map<string, { total: number; playerCount: number }>();
   for (const s of standings) {
@@ -259,9 +424,13 @@ export function computeStrokeTeamStandings(
   // Sort by total asc; teamId breaks ties so the output order is deterministic
   // (an unstable order would churn `configHash`-adjacent reads and make diffs
   // unreadable, even though position is what actually scores).
+  // Direction from the same single mapping the player standings use. Under
+  // Stableford a team's points ADD UP the same way strokes do, so the aggregate
+  // rule is untouched — only which end of the sorted list wins moves.
+  const { compare } = ranking(scoring);
   const rows = [...totals.entries()]
     .map(([teamId, { total, playerCount }]) => ({ teamId, total, playerCount }))
-    .sort((a, b) => a.total - b.total || a.teamId.localeCompare(b.teamId));
+    .sort((a, b) => compare(a.total, b.total) || a.teamId.localeCompare(b.teamId));
 
   // Standard competition ranking (1, 2, 2, 4) — the same convention
   // `computeStrokePlayStandings` uses for players.
