@@ -79,20 +79,90 @@ import {
  * also not mounted for a match-play game, which is the shape being measured.
  * Its refetch is still COUNTED, so it cannot vanish from the fan-out unnoticed.
  *
- * ── What this is not ───────────────────────────────────────────────────────
+ * ── What this is not, and HOW TO TURN IT INTO A PRODUCTION NUMBER ──────────
  *
  * Not an end-to-end measurement. It models ONE client with every observer
- * mounted, and multiplies nothing by the number of people on the trip. The
- * production number is `reads ÷ score_writes` from `edge_logs` — measured at
- * 208 / 191 / 226 across three consecutive minutes on 2026-09-04. This
- * instrument is the deterministic half that runs in CI; that query is the half
- * that needs real load.
+ * mounted, and multiplies nothing by the number of people on the trip. This
+ * instrument is the deterministic half that runs in CI; the `edge_logs` query
+ * below is the half that needs real load.
+ *
+ * TWO CORRECTIONS ARE REQUIRED to get from this number to a production one,
+ * and both were established by measuring two real stress tests (2026-09-04,
+ * 18:00 and 21:25 UTC, six clients each). Carry them or the estimate is wrong.
+ *
+ * **1. THIS IS PER-EVENT. PRODUCTION IS PER-WRITE. They are not the same.**
+ *
+ * `invalidationCoalescer` sits between them: a trailing window collapses
+ * several score writes into ONE flush, so production's reads-per-write is this
+ * number divided by the collapse factor. For a window `W` and a write rate `λ`
+ * the collapse is roughly `1 + λW`, and it is RATE-DEPENDENT — the coalescer
+ * does more work the busier the system gets, and almost nothing when writes are
+ * sparse. Measured: 1.05 writes per flush at 0.47 writes/s with W=100ms;
+ * 3.53 at 1.27 writes/s with W=2000ms.
+ *
+ * This is a real limitation of the tool, not a discrepancy to explain away. An
+ * unchanged number here can still mean a large production change, and vice
+ * versa, purely because the write rate moved.
+ *
+ * **2. MULTIPLY BY ~1.22 FOR PER-REQUEST OVERHEAD, which this cannot see.**
+ *
+ * The weights below count each PROCEDURE's own Supabase reads. Every tRPC HTTP
+ * request additionally pays the `trip_members` membership gate and the
+ * middleware's `/auth/v1/user` call, and no procedure weight includes them.
+ * Measured over 12,649 reads on 2026-09-04 21:26–21:29: `trip_members` 1,821
+ * (14.4%) and `/auth/v1/user` 950 (7.5%) — **~22% of all reads**.
+ *
+ * (Worth knowing on its own: the membership gate is now the SECOND-LARGEST read
+ * path in the system, behind only `games`. It did not get more expensive —
+ * everything around it shrank. That is #1097 / #1214 territory.)
+ *
+ * ── The model, and it predicts both runs ───────────────────────────────────
+ *
+ *     reads per write ≈ [ N × R / (1 + λW) ] × 1.22 + baseline/write
+ *
+ *   N = clients · R = this instrument's number · λ = writes/s · W = window
+ *
+ *   2026-09-04 18:03  R=29 W=0.1s λ=0.47  → predicted 212, observed 191
+ *   2026-09-04 21:26  R=20 W=2.0s λ=1.27  → predicted  46, observed  49
+ *
+ * Within 6% and 11%. `R=20` rather than 11 for the second because most clients
+ * were on the GAME PAGE, where `GamePageHeader` keeps `leaderboard` active even
+ * though the board beneath is covered (#1280) — the visibility rule composes
+ * per-surface, so which R applies depends on what is on screen.
+ *
+ * ── The write rate dominates everything, and a real round is GENTLE ────────
+ *
+ * A stress test is not a scaled-down trip. Six people tapping produced **76
+ * writes/min**. A real 16-player round is 16 × 18 holes over ~4.5 hours ≈
+ * **1.1 writes/min** — roughly **70× less**. Projections from the same model:
+ *
+ *   16 clients, stress-shaped (λ=3.4/s)      ~186 req/s
+ *   16 clients, real-round-shaped (λ=0.02/s)  ~24 req/s
+ *   6 clients, measured 2026-09-04 21:25      ~63 req/s   (held, zero PGRST003)
+ *   6 clients, measured 2026-09-04 18:03      ~89 req/s   (pool exhausted)
+ *
+ * So the coalescer buys the most in the shape that does not occur in play and
+ * the least in the shape that does — at a real round's rate there is nothing
+ * arriving close enough together to collapse, and the load is simply `λ·N·R`
+ * with a tiny λ. Baseline polling (~55 reads/client/min) becomes the dominant
+ * term instead. Know which shape you are estimating before quoting a number.
  *
  * ── The production half, so a re-run is comparable ─────────────────────────
  *
  * Run this against the Supabase logs over the stress-test window. Keep the
- * window and the shape identical between runs or the comparison is worthless —
- * the baseline below is 18:00–18:05 UTC on 2026-09-04, six clients.
+ * window and the shape identical between runs or the comparison is worthless.
+ *
+ * COUNT BOTH WRITE PATHS. The first run of this query counted only
+ * `score_entries`; the second window had `match_hole_outcomes` writes as well,
+ * and omitting them would have inflated reads-per-write by a third. (The
+ * 2026-09-04 18:00 window happens to have zero outcome writes, so the two
+ * baselines remain comparable — verified rather than assumed.)
+ *
+ * AND COMPARE LIKE WITH LIKE ON RATE. A per-SECOND peak against a per-MINUTE
+ * average is not a comparison. Both runs peaked at ~262 requests in a single
+ * second; what actually diverged was SUSTAINED load (89/s vs 63/s over a
+ * minute) and reads-per-write. Reporting the peaks as a 3× improvement was one
+ * keystroke away and would have been wrong.
  *
  *     select toStartOfMinute(timestamp) as min,
  *       countIf(log_attributes['request.method']='POST'
@@ -102,9 +172,18 @@ import {
  *       and timestamp >= toDateTime('<start>') and timestamp < toDateTime('<end>')
  *     group by min order by min
  *
- * Divide `reads` by `score_writes` per minute. Ignore minutes where the pool
- * was already exhausted — retries inflate the numerator and the ratio stops
- * meaning what it says. The three clean minutes above are the baseline to beat.
+ * Divide `reads` by (score_writes + outcome_writes) per minute. Ignore minutes
+ * where the pool was already exhausted — retries inflate the numerator and the
+ * ratio stops meaning what it says.
+ *
+ * TWO MEASURED RUNS, six clients each, both 2026-09-04:
+ *
+ *   18:02–18:04  208 / 191 / 226 reads per write   pool EXHAUSTED (PGRST003)
+ *   21:26 / 21:28   48.8 / 58.3 reads per write    zero PGRST003, zero 5xx
+ *
+ * The second run is the current baseline. Use its clean high-write minutes
+ * (21:26 and 21:28 had no over-5s requests); the low-write minutes give wildly
+ * inflated ratios because baseline polling does not scale with writes.
  */
 
 /** Supabase reads performed by each procedure a score event invalidates. */
