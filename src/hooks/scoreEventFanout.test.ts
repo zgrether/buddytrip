@@ -48,13 +48,31 @@ import {
  * past the end of the router. Both wrong answers were produced on the way here;
  * this is CLAUDE.md's "measure the thing, not the region around it".
  *
- *   faceBootstrap        4 direct + computeCompetitionLeaderboard (9) = 13
+ *   faceBootstrap        4 direct + myDelegateGameIds (1)
+ *                                 + computeCompetitionLeaderboard (9) = 14
  *   leaderboard          0 direct + computeCompetitionLeaderboard (9) =  9
  *   matches.listByGame   4
  *   scores.listByGame    2
  *
- * 13 is independently corroborated by the companion Phase 0 report, which
- * arrived at the same figure by reading the procedure by hand.
+ * ── faceBootstrap was 13 here, and the "corroboration" was not one ─────────
+ *
+ * This said "13 is independently corroborated by the companion Phase 0 report,
+ * which arrived at the same figure by reading the procedure by hand." Both
+ * numbers were wrong and they were wrong the SAME WAY: each counted the four
+ * direct `.from(...)` calls plus `computeCompetitionLeaderboard`'s nine, and
+ * each missed that `myDelegateGameIds` is a helper doing its own read of
+ * `game_delegates`. Two methods sharing one blind spot agree, and the agreement
+ * reads as confirmation.
+ *
+ * That is a FALSE CONFIRMATION, not a weak check — the same shape as the
+ * em-dash regex satisfied by the row's own sub-title, arriving through
+ * arithmetic instead of a matcher. The tell was available and I did not take
+ * it: "independent" was doing work the two derivations had not earned, because
+ * both counted reads the same way and only the reads' LOCATIONS differed.
+ *
+ * The correction is worth more than one read. Every delta in the fan-out work
+ * is measured against this baseline (#1281 step 0), so carrying a wrong
+ * denominator would have made each later step look slightly better than it was.
  *
  * `bracketDraw` delegates its reads to a helper and is not weighted here; it is
  * also not mounted for a match-play game, which is the shape being measured.
@@ -90,7 +108,7 @@ import {
 
 /** Supabase reads performed by each procedure a score event invalidates. */
 const READS_PER_QUERY: Record<string, number> = {
-  faceBootstrap: 13,
+  faceBootstrap: 14,
   leaderboard: 9,
   "matches.listByGame": 4,
   "scores.listByGame": 2,
@@ -226,7 +244,7 @@ describe("score-event fan-out — the instrument", () => {
       "matches.listByGame",
       "scores.listByGame",
     ]);
-    expect(r.reads).toBe(28);
+    expect(r.reads).toBe(29);
 
     h.unsubscribe();
   });
