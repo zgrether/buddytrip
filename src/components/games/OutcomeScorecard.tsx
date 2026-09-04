@@ -4,6 +4,8 @@ import { buildDecidedFromOutcomes, matchState, type DecidedHole, type HoleOutcom
 import { holeWeight, isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { ScorecardChrome, RightGutter, SUB_W, TOTAL_W } from "./StandardGrid";
 import type { SidePlayer } from "./MatchSides";
+import { fitName } from "@/lib/nameLadder";
+
 import type { TeeRow } from "@/lib/teeRows";
 import type { Participant, ScoreUnit } from "./types";
 
@@ -21,6 +23,10 @@ import type { Participant, ScoreUnit } from "./types";
  * `MatchCard`'s history strip uses (win/lose/halve), reused here for the
  * per-hole win-green treatment.
  */
+
+/** This scorecard's step-1 size. Denser grid than the match card, so it starts
+ *  lower; the ladder steps down from here exactly as it does elsewhere. */
+const SCORECARD_NAME_SIZE = 15;
 
 const WIN_GREEN = "#22c55e"; // = --color-bt-place-1 base; matches MatchCard's neutral "winning" color
 
@@ -209,15 +215,34 @@ function LeadRow({
         {stacked ? (
           // 2v2 → two stacked NAMES, no avatar disks — avatars don't fit the dense
           // grid; the row grows to fit two full-size names (same as MatchCard).
-          players!.map((p) => (
-            <span key={p.id} className="max-w-full truncate" style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35 }}>
-              {p.name}
-            </span>
-          ))
+          // The same ladder, per name, at this surface's base size (15). The
+          // column is narrower here than on the match card and now shrinks with
+          // the viewport, so the step-down matters more, not less.
+          players!.map((p) => {
+            const fit = fitName(p.name, SCORECARD_NAME_SIZE);
+            return (
+              <span
+                key={p.id}
+                className="max-w-full truncate"
+                data-name-step={fit.step}
+                style={{ fontSize: fit.fontSize, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35 }}
+              >
+                {fit.text}
+              </span>
+            );
+          })
         ) : (
-          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {name}
-          </span>
+          (() => {
+            const fit = fitName(name, SCORECARD_NAME_SIZE);
+            return (
+              <span
+                data-name-step={fit.step}
+                style={{ fontSize: fit.fontSize, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+              >
+                {fit.text}
+              </span>
+            );
+          })()
         )}
       </div>
       {track.map((c, i) => (

@@ -6,6 +6,7 @@ import { matchState, type DecidedHole } from "@/lib/matchPlay";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { SidePlayer } from "./MatchSides";
+import { fitName } from "@/lib/nameLadder";
 import type { Participant } from "./types";
 
 /**
@@ -27,6 +28,11 @@ const NEU_WON_L = "#eaeef4"; // left won — bright
 const NEU_WON_R = "#566275"; // right won — dark (wide gap)
 const NEU_HALF = "#8c97a8"; // halved — mid
 
+/** The match card's step-1 name size. The ladder steps down from here — see
+ *  `nameLadder.ts`. Both the 1v1 and 2v2 branches read this ONE value, so a
+ *  doubles pairing can never render smaller than a singles name by accident. */
+const NAME_BASE_SIZE = 17;
+
 interface MatchCardProps {
   a: Participant;
   b: Participant;
@@ -46,7 +52,19 @@ interface MatchCardProps {
    *  for a 1v1 (keeps the compact single-name strip). */
   aPlayers?: SidePlayer[];
   bPlayers?: SidePlayer[];
-  /** Current user's id — appends "(you)" to their name. */
+  /**
+   * Current user's id — highlights the whole card when they are in this match.
+   *
+   * It used to append "(you)" to their name. The card colour says the same
+   * thing from further away, and "(you)" cost six characters on precisely the
+   * row where the name was already tightest — it was competing with the fix.
+   *
+   * "(you)" is UNCHANGED on the five other surfaces that use it (CrewRoster,
+   * DatePollStackedCards, ExpensesSection, SplitPanel, FloatingChatPanel).
+   * None of those has a colour treatment, so they stay consistent with each
+   * other; this card diverges because it is the one surface that gained a
+   * better signal.
+   */
   youId?: string;
   /** Hide the "· 1v1" suffix in the header (entry page shows just "MATCH #"). */
   hideFormat?: boolean;
@@ -90,18 +108,58 @@ export function MatchCard({
   const bLeads = st.leader === "B";
   const square = st.leader === null;
   const headerWord = st.over ? "FINAL" : st.dormie ? "DORMIE" : "THRU";
-  const headerGreen = st.over || st.dormie;
+  /**
+   * DORMIE IS NOT FINAL, AND THEY NO LONGER SHARE A COLOUR.
+   *
+   * Both used to read `place-1-text`. They are different states: dormie can
+   * still be halved, final is over — so a glance that cannot separate them is
+   * telling you the match is decided when it is not. Amber (`bt-warning`, the
+   * existing token) for the one still in play, the place-1 green kept for the
+   * one that is done.
+   */
+  const headerColor = st.over
+    ? "var(--color-bt-place-1-text)"
+    : st.dormie
+      ? "var(--color-bt-warning)"
+      : "var(--color-bt-text-dim)";
   const centerNum = st.over ? "F" : String(st.thru);
   // Leader margin text: closed margin ("3&2") or won-18 ("2 UP") from matchState,
   // else the live lead while in progress.
   const leadText = st.over ? (st.margin ?? "") : `${st.up} UP`;
 
+  /**
+   * THE VIEWER'S OWN MATCH. Same treatment as the rack's group rows
+   * (`rack/FoursomeEntry.tsx`) — `accent-faint` fill, `accent-border` edge —
+   * reused rather than re-invented, because two teal treatments for "yours" is
+   * how surfaces start disagreeing about what teal means.
+   *
+   * NO "Enter" affordance, deliberately: the rack row has one because tapping
+   * it is how you get into scoring, and this card is already a tap target when
+   * `onClick` is passed.
+   *
+   * A 2v2's `a.id` is the play_group id, not a person, so membership has to be
+   * checked against the PLAYERS as well — checking the side ids alone would
+   * silently never match on the doubles cards this whole change is about.
+   */
+  const mine =
+    !!youId &&
+    (a.id === youId ||
+      b.id === youId ||
+      (aPlayers ?? []).some((p) => p.id === youId) ||
+      (bPlayers ?? []).some((p) => p.id === youId));
+
   const Container = onClick ? "button" : "div";
   return (
     <Container
       onClick={onClick}
+      data-mine={mine || undefined}
       className={`block w-full text-left ${onClick ? "transition-transform active:scale-[0.99]" : ""}`}
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", borderRadius: 14, overflow: "hidden" }}
+      style={{
+        background: mine ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
+        border: `1px solid ${mine ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
+        borderRadius: 14,
+        overflow: "hidden",
+      }}
     >
       {/* 1 · Header */}
       <div className="flex items-center" style={{ height: 26, padding: "0 12px", borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
@@ -110,7 +168,7 @@ export function MatchCard({
         </span>
         <span
           className="flex-1 text-center"
-          style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: headerGreen ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}
+          style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: headerColor }}
         >
           {headerWord}
         </span>
@@ -140,13 +198,13 @@ export function MatchCard({
           the strip instead of clipping (item 3); a 1v1 keeps the 50px single-name row. */}
       <div className="flex" style={{ minHeight: 50, alignItems: "stretch" }}>
         <Margin active={aLeads} square={square} text={aLeads ? leadText : "AS"} color={lc} closed={st.closed} />
-        <NameCell name={a.name} players={aPlayers} align="right" tinted={aLeads} color={lc} you={!!youId && a.id === youId} />
+        <NameCell name={a.name} players={aPlayers} align="right" tinted={aLeads} color={lc} />
         <div style={{ width: 3, background: wonL }} />
         <div className="flex items-center justify-center" style={{ width: 40, background: "var(--color-bt-card-raised)", fontSize: 19, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {centerNum}
         </div>
         <div style={{ width: 3, background: wonR }} />
-        <NameCell name={b.name} players={bPlayers} align="left" tinted={bLeads} color={rc} you={!!youId && b.id === youId} />
+        <NameCell name={b.name} players={bPlayers} align="left" tinted={bLeads} color={rc} />
         <Margin active={bLeads} square={square} text={bLeads ? leadText : "AS"} color={rc} closed={st.closed} />
       </div>
 
@@ -185,7 +243,7 @@ function Margin({ active, square, text, color, closed }: { active: boolean; squa
 
 /** Name column — leans inward (left col right-justified, right col left-justified);
  *  leading side gets a faint tint of its emphasis color. Uniform 600 weight. */
-function NameCell({ name, players, align, tinted, color, you }: { name: string; players?: SidePlayer[]; align: "left" | "right"; tinted: boolean; color: string; you?: boolean }) {
+function NameCell({ name, players, align, tinted, color }: { name: string; players?: SidePlayer[]; align: "left" | "right"; tinted: boolean; color: string }) {
   const bg = tinted ? `${color}29` : "transparent";
   // 2v2 → two stacked NAMES, NO avatar disks (item 6). Avatars on the scoreboard
   // were a mistake; the 1v1's avatar-free single line is the reference — this just
@@ -197,32 +255,46 @@ function NameCell({ name, players, align, tinted, color, you }: { name: string; 
         className="flex min-w-0 flex-1 flex-col justify-center"
         style={{ alignItems: align === "right" ? "flex-end" : "flex-start", padding: "8px 10px", background: bg }}
       >
-        {players.map((p) => (
-          <span
-            key={p.id}
-            className="max-w-full truncate"
-            // Match the 1v1's short-name size (17) — a 2v2 must NOT read smaller;
-            // the row grows (minHeight + stretch) to fit two full-size lines.
-            style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.3 }}
-          >
-            {p.name}
-          </span>
-        ))}
+        {/* THE LADDER, PER NAME. Only the name that does not fit steps down, so
+            a short partner beside a long one keeps full size. The `truncate` is
+            a backstop that should now never fire. */}
+        {players.map((p) => {
+          const fit = fitName(p.name, NAME_BASE_SIZE);
+          return (
+            <span
+              key={p.id}
+              className="max-w-full truncate"
+              data-name-step={fit.step}
+              style={{ fontSize: fit.fontSize, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.3 }}
+            >
+              {fit.text}
+            </span>
+          );
+        })}
       </div>
     );
   }
-  // 1v1 → the compact single name; shrink the font for long names (narrow cell)
-  // instead of truncating.
-  const len = name.length + (you ? 6 : 0);
-  const fontSize = len > 16 ? 13 : len > 12 ? 15 : 17;
+  /**
+   * 1v1 → the same ladder, from the same module.
+   *
+   * This branch is where the ladder came FROM: it read
+   * `len > 16 ? 13 : len > 12 ? 15 : 17`, and the 2v2 branch above never got
+   * it — which is the whole reason a 2v2 truncated where a 1v1 shrank. The
+   * sizes move slightly (15/13 → a single 14, the rack group tile's existing
+   * size) so that one rule serves both branches and a 2v2 cannot read smaller
+   * than a 1v1 by accident.
+   */
+  const fit = fitName(name, NAME_BASE_SIZE);
   return (
     <div
       className="flex min-w-0 flex-1 items-center"
       style={{ justifyContent: align === "right" ? "flex-end" : "flex-start", padding: "0 10px", background: bg }}
     >
-      <span style={{ fontSize, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {name}
-        {you && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
+      <span
+        data-name-step={fit.step}
+        style={{ fontSize: fit.fontSize, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+      >
+        {fit.text}
       </span>
     </div>
   );
