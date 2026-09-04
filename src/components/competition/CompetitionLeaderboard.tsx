@@ -6,6 +6,7 @@ import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/router";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
+import { useVisibleEnabled } from "@/lib/surfaceVisibility";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useFirstClinchView } from "@/hooks/useFirstClinchView";
 import { useMyTeamId } from "@/hooks/useMyTeamColor";
@@ -151,9 +152,21 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // freshness mechanism — see queryConfig.ts.
   useRealtimeScoreEvents(tripId, competitionId);
 
+  /**
+   * `useVisibleEnabled` — the board is HIDDEN, not unmounted, once a game panel
+   * is open (`CompetitionFace.tsx`), so this observer survives and used to
+   * refetch on every score event fired anywhere in the competition. Gated on
+   * surface visibility it is marked stale and refetched on reveal instead.
+   *
+   * NOTE this does not decide the question on its own, and that is the point:
+   * `GamePageHeader` observes the SAME key and stays visible on the game page,
+   * where the cup totals really are on screen. So the leaderboard keeps
+   * refetching while any visible surface shows it, and stops only when none
+   * does — which is emergent from the rule rather than hand-coded here.
+   */
   const { data: lb, isLoading, isError, refetch } = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
-    { ...LEADERBOARD_QUERY, enabled: !!competitionId }
+    { ...LEADERBOARD_QUERY, enabled: useVisibleEnabled(!!competitionId) }
   );
 
   const data = lb as LeaderboardData | undefined;
