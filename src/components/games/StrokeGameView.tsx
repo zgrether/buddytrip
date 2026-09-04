@@ -1229,6 +1229,7 @@ export function StrokeGameView() {
           ) : (
             <>
               <ScoreEntryView
+                rubric={cardRubric}
                 hideHeader={inPanel}
                 gameName={entryGroup.name}
                 units={scUnits}
