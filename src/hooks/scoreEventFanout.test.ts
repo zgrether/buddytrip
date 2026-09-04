@@ -186,11 +186,26 @@ describe("score-event fan-out — the instrument", () => {
     const handler = makeScoreEventHandler(h.utils, TRIP, COMP);
 
     handler(GAME);
-    await vi.waitFor(() =>
-      expect(Object.values(h.fetches).some((n) => n > 0)).toBe(true)
+
+    /**
+     * EVERY WAIT HERE IS EXPRESSED IN `COALESCE_WINDOW_MS`, and that is not
+     * tidiness — it is the bug this line already had.
+     *
+     * The invalidations are queued through `invalidationCoalescer` and flush on
+     * a trailing timer, so any wait with a duration of its own is coupled to a
+     * constant in another file. This used a bare `vi.waitFor`, whose default
+     * timeout is 1000 ms. #1273 then moved the window from 100 ms to 2000 ms —
+     * and because CI tests the MERGE RESULT while this branch still carried
+     * 100 ms, the suite passed locally and failed in CI with the flush arriving
+     * a second after the assertion had given up.
+     *
+     * Drain the window first, THEN wait for the refetches it triggered.
+     */
+    await new Promise((r) => setTimeout(r, COALESCE_WINDOW_MS + 100));
+    await vi.waitFor(
+      () => expect(Object.values(h.fetches).some((n) => n > 0)).toBe(true),
+      { timeout: COALESCE_WINDOW_MS + 2000 }
     );
-    // Let the whole coalesce window drain.
-    await new Promise((r) => setTimeout(r, COALESCE_WINDOW_MS + 50));
 
     const r = report(h.fetches);
     console.log(
@@ -267,7 +282,7 @@ describe("score-event fan-out — the instrument", () => {
     } as unknown as Parameters<typeof makeScoreEventHandler>[0];
 
     makeScoreEventHandler(utils, TRIP, COMP)(GAME);
-    await new Promise((r) => setTimeout(r, COALESCE_WINDOW_MS + 50));
+    await new Promise((r) => setTimeout(r, COALESCE_WINDOW_MS + 100));
 
     const r = report(fetches);
     console.log(
