@@ -15,6 +15,20 @@ const ROLE_LEVEL: Record<TripRole, number> = {
   Member: 1,
 };
 
+/** The trip membership check RAN and the answer was no. A real refusal. */
+export const NOT_A_MEMBER_MESSAGE = "You are not a member of this trip";
+
+/**
+ * The trip membership check COULD NOT RUN. Not a refusal — we do not know.
+ *
+ * Names the failed check rather than a conclusion, and gives the one action
+ * that helps (wait, retry), because the conditions that produce it are
+ * transient by nature. Never tell someone they have been removed from a trip
+ * on the strength of a query that did not answer.
+ */
+export const GATE_UNAVAILABLE_MESSAGE =
+  "Couldn't check your access to this trip just now. Nothing is lost — try again in a moment.";
+
 // ---------------------------------------------------------------------------
 // requireTripMember
 //
@@ -344,7 +358,7 @@ export function requireGameRunAction() {
 // trips or sessions.
 // ---------------------------------------------------------------------------
 
-async function resolveTripRole(
+export async function resolveTripRole(
   ctx: {
     supabase: { from: (t: string) => unknown };
     user: { id: string } | null;
@@ -366,7 +380,7 @@ async function resolveTripRole(
             c: string,
             v: string
           ) => {
-            single: () => Promise<{
+            maybeSingle: () => Promise<{
               data: { role: TripRole } | null;
               error: unknown;
             }>;
@@ -378,12 +392,77 @@ async function resolveTripRole(
     .select("role")
     .eq("trip_id", tripId)
     .eq("user_id", ctx.user!.id)
-    .single();
+    .maybeSingle();
 
-  if (error || !member) {
+  /**
+   * ── A FAILED CHECK IS NOT A REFUSAL ────────────────────────────────────────
+   *
+   * These were one branch — `if (error || !member) throw FORBIDDEN "You are not
+   * a member of this trip"` — so any failure of the QUERY told the caller they
+   * had been removed from the trip.
+   *
+   * Lived 2026-09-04, 18:06:44 UTC. Six people stress-testing exhausted
+   * PostgREST's connection pool (`PGRST003: Timed out acquiring connection from
+   * connection pool`), and this exact SELECT came back 504:
+   *
+   *     GET /trip_members?select=role&trip_id=eq.1fccd7cb…&user_id=eq.0a567efb…
+   *       → 504
+   *
+   * Everyone on the trip was told they were not on it, mid-round. It is the
+   * CLAUDE.md "empty is not unknown" rule — `error` means *we do not know*,
+   * `!member` means *definitively not a member* — landing in the security gate,
+   * where the wrong answer accuses the user and sends them looking for a
+   * permissions problem that does not exist.
+   *
+   * ── Why `maybeSingle`, and why the naive split would have been WORSE ───────
+   *
+   * `.single()` raises an error for zero rows (PGRST116) as well as for a real
+   * failure, so splitting `error` from `!member` while keeping `.single()`
+   * would route every GENUINE non-member into the "check failed" branch — the
+   * same conflation pointed the other way, and this time it would hide real
+   * permission refusals behind a retry suggestion. `maybeSingle()` returns
+   * `data: null, error: null` for zero rows, which makes the distinction
+   * STRUCTURAL rather than a string comparison on an error code.
+   *
+   * ── The log line is the other half ────────────────────────────────────────
+   *
+   * The 504 was invisible from inside the app: it presented only as a
+   * membership refusal, which is why the outage read as a permissions bug for
+   * the first twenty minutes. A gate that cannot answer now says so where the
+   * next investigation will find it.
+   *
+   * Thirteen other non-test call sites share the `if (error || !data)` shape
+   * (`games.ts:442`'s "Game not found" among them). They are a class sweep
+   * AFTER the trip; this one is the security gate and runs on every request.
+   */
+  if (error) {
+    // `String(err)` renders a PostgREST error object as "[object Object]" —
+    // which is the SHAPE THIS GATE ACTUALLY RECEIVES (supabase-js returns a
+    // plain `{ code, message, details, hint }`, not an Error), so the naive
+    // version would have discarded `PGRST003` and reproduced the invisibility
+    // this log exists to end. Caught by the test below, not by reading.
+    console.error(
+      JSON.stringify({
+        tag: "trip-gate-unavailable",
+        tripId,
+        error:
+          error instanceof Error
+            ? error.message
+            : typeof error === "object" && error !== null
+              ? error
+              : String(error),
+      })
+    );
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: GATE_UNAVAILABLE_MESSAGE,
+    });
+  }
+
+  if (!member) {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "You are not a member of this trip",
+      message: NOT_A_MEMBER_MESSAGE,
     });
   }
 
