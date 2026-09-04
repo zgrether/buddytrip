@@ -29,6 +29,14 @@ import { evenShare, isPlacement, type PointsDistribution } from "./pointsDistrib
 import { isMatchPlayFormat } from "./gameRoutes";
 import { MATCHES_COMPETITION_FORMAT } from "./resultStrategy";
 import type { ModifiersMap } from "./modifiers";
+import {
+  configFor,
+  matchesPreset,
+  scoringOf,
+  type ScoringType,
+  type StablefordConfig,
+  type StablefordPresetId,
+} from "./stableford";
 import { buildDraw, type BracketDrawMatch } from "./bracket";
 import { buildDoubleDraw } from "./bracketDouble";
 
@@ -376,6 +384,8 @@ export interface ConfigGameSnapshot {
   course_id?: string | null;
   back_course_id?: string | null;
   scorecard_schema?: unknown | null;
+  /** `games.config` — stroke's SCORING TYPE + Stableford rubric (migration 179). */
+  config?: unknown | null;
 }
 
 /**
@@ -480,6 +490,12 @@ export interface SaveConfigPayload {
    *  COALESCE-PRESERVES, so sending null would be indistinguishable from
    *  "clear it" for a column only a bracket speaks for. */
   bracketConfig?: BracketConfig | null;
+  /**
+   * `games.config` (179) — stroke's scoring type + rubric. Optional and
+   * COALESCE-PRESERVED by the RPC, so only the format that owns it sends it;
+   * every other format omits the key and its value is left alone.
+   */
+  config?: Record<string, unknown>;
   /** The bracket POOL, seed-ordered. Emitted only for a bracket with entrants —
    *  its presence is what gates the RPC's whole pool+draw block. */
   bracketEntrants?: { seed: number; teamId: string | null; userIds: string[] }[];
@@ -981,10 +997,32 @@ function rackGroupsEqual(a: string[][], b: string[][]): boolean {
  *  - `modifiers` — the round modifiers (`games.modifiers`; stroke has them, rack didn't).
  *  - `course` — the shared course sub-object.
  */
+/**
+ * Stroke's SCORING TYPE slice — Traditional or Stableford, and when Stableford,
+ * the rubric it scores against.
+ *
+ * The rubric travels WITH the type rather than beside it because the two are one
+ * choice: a Stableford game without a rubric cannot score a hole, and a rubric on
+ * a Traditional game means nothing. Keeping them in one object is what stops a
+ * draft from expressing that pair.
+ *
+ * `preset` is display state, not scoring input — it names which tile is lit and
+ * flips to "custom" the moment a value is edited (`matchesPreset`). It rides in
+ * the draft so the panel survives a Save/Cancel round trip without re-deriving
+ * which preset a set of numbers happens to equal.
+ */
+export interface StrokeScoringDraft {
+  type: ScoringType;
+  /** Null exactly when `type === "traditional"`. */
+  stableford: StablefordConfig | null;
+}
+
 export interface StrokeConfigDraft extends BaseConfigDraft {
   strokes: Record<string, number>;
   modifiers: ModifiersMap;
   course: DraftCourse;
+  /** SCORING TYPE + rubric (`games.config`, migration 179). */
+  scoring: StrokeScoringDraft;
   /** GROUPINGS (P3 3.2) — tee-groups over the create-only roster, one user-id array per
    *  group in group order. Optional (a stroke game needn't group its players). Reuses
    *  rack's `play_groups` data path: the RPC UPSERTS participants (never deletes the
@@ -1024,8 +1062,31 @@ export function configToStrokeDraft(
       backId: game.back_course_id ?? null,
       scorecardSchema: game.scorecard_schema ?? null,
     },
+    scoring: scoringToDraft(game.config),
     groups: groups.map((g) => [...g]),
   };
+}
+
+/**
+ * `games.config` → the scoring draft slice.
+ *
+ * `scoringOf` already resolves absent, malformed and explicitly-Traditional to
+ * Traditional, so this only has to decide which PRESET the rubric matches for
+ * display. A rubric equal to no preset is Custom — which is the honest answer,
+ * not a fallback: someone edited it.
+ */
+export function scoringToDraft(config: unknown): StrokeScoringDraft {
+  const { type, rubric } = scoringOf(config);
+  if (type === "traditional" || !rubric) return { type: "traditional", stableford: null };
+  const stored = (config as { stableford?: { preset?: unknown } } | null)?.stableford?.preset;
+  // The stored preset name is a HINT, never the authority: a row whose values
+  // were edited but whose `preset` was not is Custom, and believing the label
+  // over the numbers would light the wrong tile.
+  const preset: StablefordPresetId =
+    typeof stored === "string" && stored !== "custom" && matchesPreset(rubric, stored as StablefordPresetId)
+      ? (stored as StablefordPresetId)
+      : ((["standard", "modified", "bbmi_2024"] as const).find((p) => matchesPreset(rubric, p)) ?? "custom");
+  return { type: "stableford", stableford: { preset, ...rubric } };
 }
 
 /**
@@ -1052,6 +1113,10 @@ export function strokeDraftToPayload(draft: StrokeConfigDraft, baseline?: Stroke
     backCourseId: draft.course.backId,
     scorecardSchema: draft.course.scorecardSchema,
     participants: Object.entries(draft.strokes).map(([userId, strokes]) => ({ userId, strokes })),
+    // SCORING TYPE (179). Always sent, even for Traditional — the RPC
+    // COALESCE-PRESERVES an absent key, so omitting it on a Traditional game
+    // would make "switch back to Traditional" unsaveable rather than a no-op.
+    config: configFor(draft.scoring.type, draft.scoring.stableford),
     // GROUPINGS (P3 3.2) — reuse rack's groups[] path: the STRUCTURE unit, clean-replaced
     // on a real change (refused with scores) and skipped when unchanged. The RPC upserts
     // the roster union (never deletes), so grouping only ORGANIZES stroke's existing roster.
@@ -1070,6 +1135,11 @@ export function strokeDraftsEqual(a: StrokeConfigDraft, b: StrokeConfigDraft): b
     canonical(a.course.scorecardSchema) === canonical(b.course.scorecardSchema) &&
     canonical(a.strokes) === canonical(b.strokes) &&
     canonical(a.modifiers) === canonical(b.modifiers) &&
+    // The scoring slice compared WHOLE — type AND rubric. Comparing only the
+    // type would leave a rubric edit unable to enable Save: the page would say
+    // "All changes saved" over an edit it had not saved, which is the
+    // staged-state lie (#18) in its quietest form.
+    canonical(a.scoring) === canonical(b.scoring) &&
     rackGroupsEqual(a.groups, b.groups)
   );
 }

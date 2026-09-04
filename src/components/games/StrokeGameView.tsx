@@ -26,7 +26,8 @@ import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRo
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
-import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerTakesAll, type StrokeConfigDraft } from "@/lib/configDraft";
+import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerTakesAll, type StrokeConfigDraft, type StrokeScoringDraft } from "@/lib/configDraft";
+import { StrokeScoringRow } from "@/components/games/StrokeScoringRow";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
@@ -177,6 +178,9 @@ export function StrokeGameView() {
   const [strokesDraft, setStrokesDraft] = useState<Record<string, number> | null>(null);
   const [groupsDraft, setGroupsDraft] = useState<string[][] | null>(null); // P3 3.2 groupings slice
   const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap | null>(null);
+  // SCORING TYPE + rubric (179). Named `scoringType` because `scoringDraft` above
+  // is the `scoring_enabled` BOOLEAN — two different things one word apart.
+  const [scoringTypeDraft, setScoringTypeDraft] = useState<StrokeScoringDraft | null>(null);
 
   const createGame = trpc.games.create.useMutation();
   // Auto-group the picked players into a default "Group 1" on Start (mandatory groupings,
@@ -303,7 +307,8 @@ export function StrokeGameView() {
   const anyTouched =
     nameDraft !== null || rulesDraft !== null || scoringDraft !== null || delegatesDraft !== null ||
     pointsTotalDraft !== undefined || pointsDistDraft !== undefined || courseDraft !== null ||
-    strokesDraft !== null || modifiersDraft !== null || groupsDraft !== null;
+    strokesDraft !== null || modifiersDraft !== null || groupsDraft !== null ||
+    scoringTypeDraft !== null;
 
   const configDraft = useMemo<StrokeConfigDraft>(
     () => ({
@@ -318,8 +323,9 @@ export function StrokeGameView() {
       strokes: strokesDraft ?? serverConfigDraft.strokes,
       modifiers: modifiersDraft ?? serverConfigDraft.modifiers,
       groups: groupsDraft ?? serverConfigDraft.groups,
+      scoring: scoringTypeDraft ?? serverConfigDraft.scoring,
     }),
-    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft],
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft, scoringTypeDraft],
   );
 
   // The game row as the DRAFT sees it — the inline course row renders course/tee
@@ -511,6 +517,7 @@ export function StrokeGameView() {
     setNameDraft(null); setRulesDraft(null); setScoringDraft(null); setDelegatesDraft(null);
     setPointsTotalDraft(undefined); setPointsDistDraft(undefined); setCourseDraft(null);
     setStrokesDraft(null); setModifiersDraft(null); setGroupsDraft(null);
+    setScoringTypeDraft(null);
   }
   // Draft durability (Layer 2 — hard-teardown outbox), mirroring the WHOLE composite draft.
   const draftBundle = useMemo(
@@ -518,8 +525,9 @@ export function StrokeGameView() {
       name: nameDraft, rules: rulesDraft, scoring: scoringDraft, delegates: delegatesDraft,
       pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, course: courseDraft,
       strokes: strokesDraft, modifiers: modifiersDraft, groups: groupsDraft,
+      scoringType: scoringTypeDraft,
     }),
-    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, pointsDistDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft],
+    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, pointsDistDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft, scoringTypeDraft],
   );
   const applyBundle = useCallback((b: typeof draftBundle) => {
     if (b.name != null) setNameDraft(b.name);
@@ -532,6 +540,7 @@ export function StrokeGameView() {
     if (b.strokes != null) setStrokesDraft(b.strokes);
     if (b.modifiers != null) setModifiersDraft(b.modifiers);
     if (b.groups != null) setGroupsDraft(b.groups);
+    if (b.scoringType != null) setScoringTypeDraft(b.scoringType);
   }, []);
 
   // Draft-then-save lifecycle (baseline / dirty / hash-poll / outbox / Save / Cancel /
@@ -1094,6 +1103,17 @@ export function StrokeGameView() {
             <GameSetupRows {...setupRowsProps} slot="config" placementPoints={placementControlled} />
           }
           courseRow={<GameSetupRows {...setupRowsProps} slot="course" locked={scoresExist} />}
+          // SCORING TYPE (179) — locked once scores exist, mirroring the server’s
+          // SCORING_TYPE_LOCKED. Same `scoresExist` the course row locks on: for a
+          // stroke game `score_entries` IS what makes `game_started` true.
+          scoringTypeRow={
+            <StrokeScoringRow
+              value={configDraft.scoring}
+              canEdit={canEdit}
+              locked={scoresExist}
+              onChange={setScoringTypeDraft}
+            />
+          }
           // Points term of the go-live gate (competition games only) — mirrors Match's
           // C3 gate. Standalone games (gameCompetitionId null) are unaffected. Stroke had
           // no client readiness gate at all before this (server still enforces mandatory
