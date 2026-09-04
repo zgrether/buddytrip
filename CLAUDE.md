@@ -264,7 +264,31 @@ seam, never on a calendar.
   halves have to be true for it to bite, which is why it survives review: the
   assertion looks specific and the haystack looks small.
 
-  **All four were caught by a mutation check and none by reading.** That is the
+  **FIFTH INSTANCE, 2026-09-04, AND IT DEFEATS THE TELL ABOVE — the collision was
+  with a NESTED COPY OF THE COMPONENT UNDER TEST.** A guard for the name ladder
+  had to fail against a build that fixed the match card and left score entry
+  alone. It asserted `toContain('data-name-step="2"')` on `MatchEntryView`'s
+  markup — and passed against exactly that broken build, because
+  **`MatchEntryView` renders a `MatchCard` inside itself**. The card supplied the
+  attribute; the rows the test existed to check were untouched.
+
+  Note what is NOT true here: `data-name-step="2"` is neither short nor generic.
+  It is a bespoke attribute added for this test, and it still collided. **So the
+  tell is not the string — it is the SCOPE.** A substring assertion is scoped to
+  the DOCUMENT, not to the thing you are looking at, and any component that
+  renders a smaller version of itself (a card inside its own entry view, a row
+  inside its own table, a preview inside its own editor) will satisfy an
+  assertion meant for the outer one.
+
+  The fix was a row-specific anchor — `<span class="block truncate"
+  data-name-step="2" style="font-size:14px` — which only the row emits. And the
+  first repair did not work either: `toContain('data-name-step')` had already
+  passed against a hardcoded `step: 1`, so this took three rounds.
+
+  **Before writing a substring assertion, ask what ELSE in this document could
+  emit it — including another instance of the component you are testing.**
+
+  **All five were caught by a mutation check and none by reading.** That is the
   argument for the discipline in the next rule being non-negotiable rather than a
   nice-to-have: a decorative assertion is invisible in a green run and invisible in
   a diff, and breaking the code is the only thing that has ever surfaced one.
