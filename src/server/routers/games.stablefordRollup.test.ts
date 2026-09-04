@@ -199,13 +199,30 @@ describe("the fixture makes the two formats disagree", () => {
 });
 
 describe("STABLEFORD — the banked result and the cup", () => {
-  it("banks position 1 for the HIGHER points total, and pays that team", async () => {
-    const { gameId, competitionId, teamA, teamB } = await fixture("SF", {
+  /**
+   * ONE fixture, finalized ONCE, for both assertions below.
+   *
+   * They check different rows of the same write — the team rows that decide the
+   * cup, and the user rows the finish notification reads — so a second fixture
+   * would re-run an identical computation for no extra coverage. Each fixture
+   * is ~45 DB round trips against a Supabase stack shared with every other
+   * suite, and this file was observed taking a PostgREST 502 under that load.
+   * Sharing the setup is what a `beforeAll` is for; the two `it`s stay separate
+   * because they fail against DIFFERENT wrong builds and the names are how you
+   * tell which.
+   */
+  let sf: Awaited<ReturnType<typeof fixture>>;
+
+  beforeAll(async () => {
+    sf = await fixture("SF", {
       scoringType: "stableford",
       stableford: { preset: "bbmi_2024", ...BBMI },
     });
+    await ctx.caller().games.finish({ tripId, gameId: sf.gameId });
+  });
 
-    await ctx.caller().games.finish({ tripId, gameId });
+  it("banks position 1 for the HIGHER points total, and pays that team", async () => {
+    const { gameId, competitionId, teamA, teamB } = sf;
 
     // ── The banked rows ────────────────────────────────────────────────────
     const rows = await teamResults(gameId);
@@ -248,14 +265,7 @@ describe("STABLEFORD — the banked result and the cup", () => {
      * wrong winner while the board pays the right team — two surfaces
      * disagreeing about one game, with nothing on screen to reconcile them.
      */
-    const { gameId } = await fixture("SFU", {
-      scoringType: "stableford",
-      stableford: { preset: "bbmi_2024", ...BBMI },
-    });
-
-    await ctx.caller().games.finish({ tripId, gameId });
-
-    const rows = await userResults(gameId);
+    const rows = await userResults(sf.gameId);
     const spiky = rows.find((r) => r.entity_id === member)!;
     const steady = rows.find((r) => r.entity_id === owner)!;
 
