@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, canEditGame } from "../middleware";
+import { rowOrThrow } from "../lib/rowOrThrow";
 import { canWriteScore } from "../lib/scoreAccess";
 import { createAdminClient } from "@/lib/supabase-admin";
 
@@ -41,15 +42,16 @@ export const scoresRouter = router({
       // !corrections_open) has frozen scores — editing requires the owner/
       // delegate to open score correction first (Run-Post §3). Results stay
       // visible; only entry is closed.
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id, status, corrections_open, scoring_enabled")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-      }
+      const game = rowOrThrow(
+        await ctx.supabase
+          .from("games")
+          .select("id, status, corrections_open, scoring_enabled")
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle(),
+        { code: "NOT_FOUND", message: "Game not found" },
+        "game"
+      );
       if (game.status === "complete" && !game.corrections_open) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -185,15 +187,16 @@ export const scoresRouter = router({
     )
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-      }
+      rowOrThrow(
+        await ctx.supabase
+          .from("games")
+          .select("id")
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle(),
+        { code: "NOT_FOUND", message: "Game not found" },
+        "game"
+      );
 
       // Same scoped gate as upsertEntry — clearing a cell is a score write too, so
       // a member can only clear scores in their own unit (owner/delegate anywhere).
@@ -234,15 +237,16 @@ export const scoresRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id, status")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-      }
+      const game = rowOrThrow(
+        await ctx.supabase
+          .from("games")
+          .select("id, status")
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle(),
+        { code: "NOT_FOUND", message: "Game not found" },
+        "game"
+      );
       // A2-core access gate: a member can't read scores for a SETUP-mode (pending)
       // game — only the owner/organizer/delegate setting it up can. (RLS enforces
       // this at the raw layer too.)
