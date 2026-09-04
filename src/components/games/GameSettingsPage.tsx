@@ -102,6 +102,7 @@ export function GameSettingsPage({
   onDelegateChange,
   totalPointsRow,
   courseRow,
+  scoringTypeRow,
   standaloneRows,
   management,
   settingsRows,
@@ -151,6 +152,11 @@ export function GameSettingsPage({
    *  no course; `FORMAT_SURFACE[surface].course` records that answer and
    *  `oneSettingsPage.test.ts` pins the two together. */
   courseRow?: ReactNode;
+  /** GAME MANAGEMENT, 3rd — stroke’s Scoring Type (Traditional / Stableford) and
+   *  its rubric. Sits beside the course deliberately: the rubric scores a hole
+   *  against its PAR, so the two are the same tier of decision. Omitted by every
+   *  other format, whose scoring type is not a setting. */
+  scoringTypeRow?: ReactNode;
   /** Rows shown only on a STANDALONE game (match's read-only Players echo). In a
    *  competition the rosters live on the competition face, so this is redundant
    *  noise there and the row is hidden entirely. */
@@ -244,6 +250,7 @@ export function GameSettingsPage({
             <ZoneHeader>Game Management</ZoneHeader>
             {competitionId && totalPointsRow}
             {courseRow}
+            {scoringTypeRow}
             {FORMAT_SURFACE[surface].gameState && (
               <GameManagementPanel
                 mode={management.scoringEnabled ? "scoring" : "setup"}

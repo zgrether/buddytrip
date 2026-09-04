@@ -1581,6 +1581,17 @@ export const gamesRouter = router({
           // entry_mode and defaults modifiers to {}.
           entryMode: z.string().optional(),
           modifiers: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+          // `games.config` (179) — stroke's SCORING TYPE + Stableford rubric.
+          // Optional because only stroke owns it, and the RPC COALESCE-PRESERVES
+          // an absent key rather than wiping (deliberately unlike `modifiers`).
+          //
+          // Deliberately a loose record and not a shaped object: the RPC compares
+          // this against the stored value to decide whether the scoring lock
+          // applies, and a zod schema that stripped an unrecognised sub-key would
+          // make an untouched game look CHANGED to that guard — refusing a save
+          // nobody meant to make. `scoringOf` validates the shape where it is
+          // read, which is where a malformed rubric can actually do harm.
+          config: z.record(z.string(), z.unknown()).optional(),
           pointsTotal: z.number().nullable(),
           pointsDistribution: z.unknown().nullable(),
           // competition_format (086) — non-golf's structure label. Optional: only
