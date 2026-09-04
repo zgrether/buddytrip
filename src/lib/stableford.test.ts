@@ -106,6 +106,72 @@ describe("the three presets carry the ratified numbers", () => {
   });
 });
 
+describe("BBMI 2024 — checked against the scorecard it came from", () => {
+  /**
+   * The 2024 card ("Stableford @ Old South") prints its own scoring legend in a
+   * box beside every group:
+   *
+   *     Triple Bogey   0
+   *     Double Bogey  +1
+   *     Bogey         +2
+   *     Par           +4
+   *     Birdie        +6
+   *     Eagle         +9
+   *
+   * That is the SOURCE for the `bbmi_2024` preset, whose numbers had until now
+   * only been transcribed through the spec. This pins the preset to the legend
+   * rather than to the retyping of it.
+   *
+   * ── What is NOT asserted here, and why ─────────────────────────────────────
+   *
+   * Not the round's totals (161 / 157 / 162), and not any player's card. The
+   * card image is dense enough that my transcription of the PAR LINE fails the
+   * card's own checksum — the per-hole pars I read sum to 72 against a printed
+   * Total of 70 — so any fixture built on it would be a guess dressed as
+   * evidence, and one that could be quietly "corrected" until it matched. A
+   * fixture reverse-engineered from its own answer proves nothing about the
+   * rubric. Those totals stay a verification step against the real entered
+   * round, and the hole-by-hole test lands when the sheet data does.
+   *
+   * The legend, by contrast, is six lines of large text with no arithmetic in
+   * it, and every value is independently confirmed by the assertions below
+   * agreeing with the six preset numbers that were transcribed separately.
+   */
+  const LEGEND: [string, number][] = [
+    ["Eagle", 9],
+    ["Birdie", 6],
+    ["Par", 4],
+    ["Bogey", 2],
+    ["Double bogey", 1],
+    ["Triple bogey", 0],
+  ];
+
+  it("scores every bucket the card's legend names, by name", () => {
+    // Read best-first, the way the preset stores it, and labelled the way the
+    // card prints it — so the two can be compared by eye without arithmetic.
+    const got = rubricBuckets(BBMI).map((b) => [bucketLabel(b.differential), b.points] as [string, number]);
+    expect(got).toEqual(LEGEND);
+  });
+
+  it("the legend's two ends are the rubric's catch-alls", () => {
+    // The card lists no albatross and nothing past a triple, which is what
+    // makes Eagle the ceiling and Triple the floor rather than merely the best
+    // and worst rows anybody happened to score that day.
+    expect(BBMI.ceiling).toBe(-2);
+    expect(BBMI.floor).toBe(3);
+    expect(stablefordPoints(-3, BBMI)).toBe(9); // an albatross pays the eagle value
+    expect(stablefordPoints(9, BBMI)).toBe(0); // a blow-up pays the triple value
+  });
+
+  it("a par-70 round of straight pars scores 72 under this rubric", () => {
+    // The sanity number worth having: par pays 4, so eighteen pars is 72
+    // points regardless of the course's par line. It is independent of the
+    // transcription problem above, and it is the figure to check first against
+    // the real round once it is entered.
+    expect(18 * stablefordPoints(0, BBMI)).toBe(72);
+  });
+});
+
 describe("labels are rendered from the differential, never stored", () => {
   it("names the seven buckets golf has words for", () => {
     expect([-3, -2, -1, 0, 1, 2, 3].map(bucketLabel)).toEqual([
