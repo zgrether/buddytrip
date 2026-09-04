@@ -33,6 +33,44 @@ const NEU_HALF = "#8c97a8"; // halved — mid
  *  doubles pairing can never render smaller than a singles name by accident. */
 const NAME_BASE_SIZE = 17;
 
+/**
+ * THE CARD'S FIXED CHROME WAS 53% OF A 375px PHONE, and that — not the names —
+ * is why they did not fit.
+ *
+ * The row is [Margin][Name][bar][hole][bar][Name][Margin]. Every piece except
+ * the names was a fixed pixel value: two 56px margin chips, a 40px centre, two
+ * 3px bars, and 10px of padding on each side of each name cell. 198px of
+ * furniture before a single letter renders, leaving `(375 − 198) / 2 = 88px`
+ * per name — at which "Matt Facchine" (89px at 14px) truncates.
+ *
+ * Measured against the real font stack rather than guessed:
+ *
+ *   widest margin chip content   "10 UP"  41.3px   (typical "2 UP"/"3&2" ≈ 34)
+ *   widest centre content        "18"     21.9px
+ *
+ * So the floors sit just above what the content actually needs, and the
+ * ceilings keep today's exact geometry on anything wider than ~430px — the
+ * device this was reported on is unchanged, and only narrow phones reclaim
+ * space. At 375px this returns ~25px to the row, ~12px per name.
+ *
+ * ── The chips MUST stay symmetric ─────────────────────────────────────────
+ *
+ * Both edges render the same `Margin` component reading the same constant, so
+ * they cannot drift apart. A card with a 56px chip on one side and 48px on the
+ * other looks broken in a way nobody can name — deliberately ONE value, not two
+ * that happen to agree.
+ *
+ * ── Why this lands BEFORE the name ladder's width estimate ────────────────
+ *
+ * Its failure mode is VISIBLE: shrink the chrome too far and the chips look
+ * cramped the moment the card opens. A per-character width estimate fails
+ * QUIETLY, on one untested name, on a font that cannot be measured from here.
+ * Fix the loud one first — and it makes the quiet one's job smaller.
+ */
+const MARGIN_CHIP_W = "clamp(46px, 13vw, 56px)";
+const CENTRE_W = "clamp(30px, 9vw, 40px)";
+const NAME_PAD_X = "clamp(6px, 2.4vw, 10px)";
+
 interface MatchCardProps {
   a: Participant;
   b: Participant;
@@ -200,7 +238,7 @@ export function MatchCard({
         <Margin active={aLeads} square={square} text={aLeads ? leadText : "AS"} color={lc} closed={st.closed} />
         <NameCell name={a.name} players={aPlayers} align="right" tinted={aLeads} color={lc} />
         <div style={{ width: 3, background: wonL }} />
-        <div className="flex items-center justify-center" style={{ width: 40, background: "var(--color-bt-card-raised)", fontSize: 19, fontWeight: 700, color: "var(--color-bt-text)" }}>
+        <div className="flex items-center justify-center" style={{ width: CENTRE_W, flexShrink: 0, background: "var(--color-bt-card-raised)", fontSize: 19, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {centerNum}
         </div>
         <div style={{ width: 3, background: wonR }} />
@@ -231,7 +269,7 @@ export function MatchCard({
  *  both when square; empty otherwise. */
 function Margin({ active, square, text, color, closed }: { active: boolean; square: boolean; text: string; color: string; closed: boolean }) {
   return (
-    <div className="flex items-center justify-center" style={{ width: 56, flexShrink: 0, background: active ? color : "transparent" }}>
+    <div className="flex items-center justify-center" style={{ width: MARGIN_CHIP_W, flexShrink: 0, background: active ? color : "transparent" }}>
       {(active || square) && (
         <span style={{ fontSize: closed && active ? 14 : 15, fontWeight: 800, color: active ? teamTextColor(color) : NEU_HALF, whiteSpace: "nowrap" }}>
           {text}
@@ -253,7 +291,7 @@ function NameCell({ name, players, align, tinted, color }: { name: string; playe
     return (
       <div
         className="flex min-w-0 flex-1 flex-col justify-center"
-        style={{ alignItems: align === "right" ? "flex-end" : "flex-start", padding: "8px 10px", background: bg }}
+        style={{ alignItems: align === "right" ? "flex-end" : "flex-start", padding: `8px ${NAME_PAD_X}`, background: bg }}
       >
         {/* THE LADDER, PER NAME. Only the name that does not fit steps down, so
             a short partner beside a long one keeps full size. The `truncate` is
@@ -288,7 +326,7 @@ function NameCell({ name, players, align, tinted, color }: { name: string; playe
   return (
     <div
       className="flex min-w-0 flex-1 items-center"
-      style={{ justifyContent: align === "right" ? "flex-end" : "flex-start", padding: "0 10px", background: bg }}
+      style={{ justifyContent: align === "right" ? "flex-end" : "flex-start", padding: `0 ${NAME_PAD_X}`, background: bg }}
     >
       <span
         data-name-step={fit.step}

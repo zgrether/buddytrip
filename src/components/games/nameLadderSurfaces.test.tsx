@@ -202,3 +202,58 @@ describe("the sticky name column is capped and can shrink", () => {
     expect(html).toContain(SHORT_B);
   });
 });
+
+describe("the match card's chrome is responsive and symmetric", () => {
+  const card = () =>
+    renderToStaticMarkup(
+      <MatchCard
+        a={{ id: "pgA", name: "A side", color: "#22c55e" }}
+        b={{ id: "pgB", name: "B side", color: "#f97316" }}
+        aPlayers={[
+          { id: "p1", name: SHORT_A },
+          { id: "p2", name: LONG_A },
+        ]}
+        bPlayers={[
+          { id: "p3", name: SHORT_B },
+          { id: "p4", name: LONG_B },
+        ]}
+        results={[]}
+      />
+    );
+
+  /**
+   * COUNTED, not `toContain`. The margin chips are the one thing that must be
+   * identical on both edges — a 56px chip beside a 48px one looks broken in a
+   * way nobody can name — and `toContain` would pass with one chip responsive
+   * and the other left fixed, which is exactly the asymmetry being guarded.
+   *
+   * Two chips, therefore exactly two occurrences of one shared value.
+   */
+  it("renders the SAME chip width on both edges", () => {
+    const html = card();
+    const chips = html.match(/clamp\(46px, 13vw, 56px\)/g) ?? [];
+    expect(chips).toHaveLength(2);
+  });
+
+  /**
+   * The fixed values this replaced. 198px of furniture on a 375px phone left
+   * 88px per name, at which "Matt Facchine" (89px at 14px) truncated — the
+   * names were never the problem.
+   */
+  it("has no fixed pixel widths left in the row", () => {
+    const html = card();
+    expect(html).not.toMatch(/width:\s*56px/);
+    expect(html).not.toMatch(/width:\s*40px/);
+    expect(html).not.toMatch(/padding:\s*8px 10px/);
+    expect(html).not.toMatch(/padding:\s*0 10px/);
+  });
+
+  /** The ceilings keep today's geometry on wider phones — this change is aimed
+   *  at narrow ones and must not move the device it was reported on. */
+  it("keeps the old values as the ceiling", () => {
+    const html = card();
+    expect(html).toContain("clamp(46px, 13vw, 56px)"); // was a flat 56
+    expect(html).toContain("clamp(30px, 9vw, 40px)"); // was a flat 40
+    expect(html).toContain("clamp(6px, 2.4vw, 10px)"); // was a flat 10
+  });
+});
