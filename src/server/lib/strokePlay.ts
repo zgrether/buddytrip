@@ -4,10 +4,13 @@ import {
   computeStrokePlayStandings,
   computeStrokeTeamStandings,
   netStrokeEntries,
+  netStrokeEntriesByHole,
+  stablefordEntries,
   type RawStrokeEntry,
   type StrokeStanding,
 } from "@/lib/strokePlay";
 import { strokeHoles } from "@/lib/matchPlay";
+import { scoringOf } from "@/lib/stableford";
 import { strokeIndexOf, unitsFromSchema } from "@/lib/strokePlayConfig";
 import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
 
@@ -73,13 +76,24 @@ export async function computeStrokePlayResults(
     .eq("participant_type", "user");
   const { data: game } = await supabase
     .from("games")
-    .select("scorecard_schema, competition_id")
+    .select("scorecard_schema, competition_id, config")
     .eq("id", gameId)
     .single();
 
+  /**
+   * THE SCORING TYPE, read from `games.config` (migration 179).
+   *
+   * Absent, malformed and explicitly-Traditional all resolve to Traditional —
+   * see `scoringOf`. Every game that exists today holds `config = '{}'`, so
+   * this line changes nothing for any of them, which is the constraint the
+   * whole feature rests on.
+   */
+  const { type: scoring, rubric } = scoringOf(game?.config);
+
   // Hole-stroke index from the game's course snapshot (sequential fallback when
   // no course is applied). Each player's stroked holes drive the gross→net.
-  const strokeIndex = strokeIndexOf(unitsFromSchema(game?.scorecard_schema));
+  const units = unitsFromSchema(game?.scorecard_schema);
+  const strokeIndex = strokeIndexOf(units);
   const strokedByPlayer: Record<string, Set<string>> = {};
   for (const p of participants ?? []) {
     strokedByPlayer[p.user_id as string] = new Set(
@@ -96,11 +110,31 @@ export async function computeStrokePlayResults(
   // Always applied on this path, not only at finalize: the setup recompute
   // writes `game_results` too, so gating it on finalize alone would leave the
   // corrupt zero-rows reachable by every other write.
-  const requiredUnits = unitsFromSchema(game?.scorecard_schema).length;
+  const requiredUnits = units.length;
+
+  /**
+   * WHAT A HOLE IS WORTH. Traditional counts net strokes; Stableford converts
+   * each net hole into rubric points and counts those. One branch, and it is
+   * the only thing the format changes about scoring — `result_strategy` stays
+   * `stroke_total` and the entry schema is untouched.
+   *
+   * Note the qualification count still works: `stablefordEntries` emits one row
+   * per SCORED hole, so a player thru 18 produces 18 entries either way and
+   * `requiredUnits` means the same thing in both branches.
+   */
+  const scored =
+    scoring === "stableford" && rubric
+      ? stablefordEntries(
+          netStrokeEntriesByHole((entries ?? []) as RawStrokeEntry[], strokedByPlayer),
+          Object.fromEntries(units.map((u) => [u.label, u.par ?? 0])),
+          rubric
+        )
+      : netStrokeEntries((entries ?? []) as RawStrokeEntry[], strokedByPlayer);
+
   const standings = computeStrokePlayStandings(
     (participants ?? []).map((p) => p.user_id as string),
-    netStrokeEntries((entries ?? []) as RawStrokeEntry[], strokedByPlayer),
-    { requiredUnits }
+    scored,
+    { requiredUnits, scoring }
   );
 
   // Nobody finished. Recording this as a result would either write nothing and
@@ -130,7 +164,12 @@ export async function computeStrokePlayResults(
       .eq("competition_id", game.competition_id as string);
     for (const a of assigns ?? []) teamOf[a.user_id as string] = a.team_id as string;
   }
-  const teamStandings = computeStrokeTeamStandings(standings, teamOf);
+  // Same scoring type as the player standings — a team total is the sum of its
+  // players' scores, so under Stableford MORE wins here too. Passing it is what
+  // makes the banked `position` direction-correct, and `position` is what the
+  // competition roll-up ranks: it reads `position ?? raw_score`, preferring
+  // position, so a Stableford cup is won or lost on this line (#1245).
+  const teamStandings = computeStrokeTeamStandings(standings, teamOf, scoring);
 
   // #776: one atomic replace instead of a bare delete + bare insert. Note there
   // is no early return above — an empty game legitimately clears its results, so
