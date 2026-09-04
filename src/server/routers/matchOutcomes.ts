@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, canEditGame } from "../middleware";
+import { rowOrThrow } from "../lib/rowOrThrow";
 import { canWriteOutcome } from "../lib/outcomeAccess";
 
 /**
@@ -45,15 +46,16 @@ export const matchOutcomesRouter = router({
     )
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id, status, corrections_open, scoring_enabled")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-      }
+      const game = rowOrThrow(
+        await ctx.supabase
+          .from("games")
+          .select("id, status, corrections_open, scoring_enabled")
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle(),
+        { code: "NOT_FOUND", message: "Game not found" },
+        "game"
+      );
       // Same posted/enabled gates as scores.upsertEntry — format-agnostic rules.
       if (game.status === "complete" && !game.corrections_open) {
         throw new TRPCError({
@@ -69,15 +71,16 @@ export const matchOutcomesRouter = router({
         });
       }
 
-      const { data: match } = await ctx.supabase
-        .from("game_matches")
-        .select("id")
-        .eq("id", input.matchId)
-        .eq("game_id", input.gameId)
-        .maybeSingle();
-      if (!match) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
-      }
+      rowOrThrow(
+        await ctx.supabase
+          .from("game_matches")
+          .select("id")
+          .eq("id", input.matchId)
+          .eq("game_id", input.gameId)
+          .maybeSingle(),
+        { code: "NOT_FOUND", message: "Match not found" },
+        "match"
+      );
 
       // Outcome-entry permissions (SERVER — the real gate; the UI only reflects
       // it). Owner / co-admin / delegate-of-this-game → any match; a plain
@@ -120,15 +123,16 @@ export const matchOutcomesRouter = router({
     )
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id, status, corrections_open")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-      }
+      const game = rowOrThrow(
+        await ctx.supabase
+          .from("games")
+          .select("id, status, corrections_open")
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle(),
+        { code: "NOT_FOUND", message: "Game not found" },
+        "game"
+      );
       if (game.status === "complete" && !game.corrections_open) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -165,15 +169,16 @@ export const matchOutcomesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id, status")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-      }
+      const game = rowOrThrow(
+        await ctx.supabase
+          .from("games")
+          .select("id, status")
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle(),
+        { code: "NOT_FOUND", message: "Game not found" },
+        "game"
+      );
       if ((game.status as string) === "pending" && !(await canEditGame(ctx, ctx.tripId, input.gameId))) {
         return [];
       }
