@@ -7,6 +7,7 @@ import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/glorious
 import { StrokeKeypad } from "./StrokeKeypad";
 import { MatchCard } from "./MatchCard";
 import type { SidePlayer } from "./MatchSides";
+import { fitName } from "@/lib/nameLadder";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
 import { Avatar } from "@/components/Avatar";
 import { GolfChip } from "./GolfChip";
@@ -605,11 +606,31 @@ function PlayerRow({
       }}
     >
       <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={player.color} sizePx={34} />
+      {/*
+        * THE SAME LADDER, one level deeper — this is the same bug as the match
+        * card, not a second one. A long name here wrapped to two lines and
+        * pushed the score subtitle ("Double — net Bogey") into the bottom edge
+        * of the row.
+        *
+        * `minWidth: 0` on the wrapper is what lets the name shrink rather than
+        * force the row wider; the ladder is what keeps it on ONE line so the
+        * subtitle below it never moves. The score line keeps its space because
+        * the name above it can no longer take two.
+        */}
       <div className="min-w-0 flex-1">
-        <span style={{ fontSize: 17, fontWeight: 500, color: "var(--color-bt-text)" }}>
-          {player.name}
-          {isMe && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
-        </span>
+        {(() => {
+          const fit = fitName(player.name, 17);
+          return (
+            <span
+              className="block truncate"
+              data-name-step={fit.step}
+              style={{ fontSize: fit.fontSize, fontWeight: 500, color: "var(--color-bt-text)" }}
+            >
+              {fit.text}
+              {isMe && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
+            </span>
+          );
+        })()}
         <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
       </div>
       <ScoreSaveBadge state={saveState} onRetry={onRetry} />

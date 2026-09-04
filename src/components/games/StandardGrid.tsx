@@ -90,7 +90,28 @@ interface StandardGridProps {
   glorious?: GloriousConfig;
 }
 
-export const NAME_W = 124;
+/**
+ * The sticky name column's width — RESPONSIVE, with a ceiling and a floor.
+ *
+ * ── Why this was the whole "12 of 18 holes" problem ───────────────────────
+ *
+ * This column is `position: sticky, left: 0`, so its width is subtracted from
+ * the visible holes for the ENTIRE time the scorecard is open — not once on
+ * scroll. It was a flat `124`, which is **33% of a 375 px phone**, and that is
+ * where "a long pairing shows 12 of 18 columns" came from.
+ *
+ * Note what it was NOT: the column never sized to content, so nothing was
+ * overflowing and a content CAP would have done nothing. The fix is the
+ * opposite of a ceiling on growth — it is letting the column SHRINK on a narrow
+ * viewport. 124 px stays as the ceiling for wide screens, where it was fine.
+ *
+ * `clamp` rather than a media query so it is continuous across every device
+ * width, and a floor so two names never end up in a 60 px gutter on a 320 px
+ * phone. The NAMES inside it step down independently — see `nameLadder.ts`.
+ */
+export const NAME_W_MAX = 124;
+export const NAME_W_MIN = 92;
+export const NAME_W = `clamp(${NAME_W_MIN}px, 25vw, ${NAME_W_MAX}px)`;
 export const HOLE_W = 30;
 export const SUB_W = 44;
 export const TOTAL_W = 50;
@@ -527,7 +548,11 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
               data-testid="glorious-bracket"
               style={{
                 position: "absolute",
-                left: NAME_W + Math.min(...gloriousCols) * HOLE_W,
+                // `calc`, because NAME_W is now a responsive CSS length rather
+                // than a number — the bracket has to start wherever the sticky
+                // column actually ends at THIS viewport width, and adding a
+                // number to a `clamp()` in JS would silently produce "NaNpx".
+                left: `calc(${NAME_W} + ${Math.min(...gloriousCols) * HOLE_W}px)`,
                 width: (Math.max(...gloriousCols) - Math.min(...gloriousCols) + 1) * HOLE_W,
                 top: 0,
                 bottom: 0,
