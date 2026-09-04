@@ -113,11 +113,15 @@ export const competitionsRouter = router({
   // -----------------------------------------------------------------------
   // faceBootstrap — the competition face's single boundary resolve (Stage A).
   //
-  // ONE round-trip that returns everything BOTH face states need: the shared
-  // base (competition + teams + games + assignments) plus the leaderboard
-  // roll-up (board) and the raw games rows the setup guide reads for per-game
-  // config status. Collapses the old 3-wave client waterfall into one parallel
-  // fetch, and serves both states so flipping setup↔leaderboard never re-fetches.
+  // ONE round-trip that returns the competition's STRUCTURE: competition +
+  // teams + games + assignments + the viewer's delegate ids. Collapses the old
+  // 3-wave client waterfall into one parallel fetch, and serves both face
+  // states so flipping setup↔leaderboard never re-fetches.
+  //
+  // It used to carry the leaderboard roll-up too. It does not any more (#1281
+  // step 1) — that was 9 of its 14 reads and the only score-derived field in
+  // it, so a score event re-ran the whole standings once per client while
+  // refetching structure. The board reads `competitions.leaderboard` directly.
   //
   // It is the ONE place trip-coupling lives: the viewer's competition role is
   // live-derived from THIS request's trip role (resolved fresh by
@@ -125,7 +129,7 @@ export const competitionsRouter = router({
   // co-admin on the next load). Standalone later swaps only this resolve.
   //
   // Shapes match the individual procedures (getByTrip / teams.list /
-  // teamAssignments.list / games.listByTrip / myDelegateGameIds / leaderboard)
+  // teamAssignments.list / games.listByTrip / myDelegateGameIds)
   // so the client can seed those caches from one call.
   // -----------------------------------------------------------------------
   faceBootstrap: authedProcedure
@@ -157,19 +161,45 @@ export const competitionsRouter = router({
           teams: [] as unknown[],
           assignments: [] as unknown[],
           games: [] as unknown[],
-          leaderboard: null,
         };
       }
       const competitionId = competition.id as string;
 
-      // All independent — one round-trip, parallel DB work. `leaderboard` is the
-      // SAME compute competitions.leaderboard runs (parallelized internally), so
-      // its shape matches for cache-seeding. `myDelegateGameIds` is the SAME
+      // All independent — one round-trip, parallel DB work. `myDelegateGameIds` is the SAME
       // helper `games.myDelegateGameIds` calls (server/lib/myDelegateGameIds) —
       // must stay identical, since this payload seeds that query's cache
       // (LiveFaceClient.tsx) and a drifting second implementation would desync
       // the two the moment one of them changed.
-      const [teams, assignments, games, myDelegateGameIds, leaderboard] =
+      /**
+       * ── `leaderboard` IS NO LONGER IN THIS PAYLOAD (#1281 step 1) ──────────
+       *
+       * It was 9 of this procedure's 14 Supabase reads — `computeCompetition-
+       * Leaderboard`, the same computation `competitions.leaderboard` runs —
+       * and it is the ONLY field here that a score entry changes. Every score
+       * event therefore re-ran the whole competition standings once per client
+       * as part of re-fetching the competition's STRUCTURE, which is what took
+       * production down on 2026-09-04 (~200 Supabase reads per score entered,
+       * ending in `PGRST003: Timed out acquiring connection from connection
+       * pool`).
+       *
+       * It also bought less than it looks. `LiveFaceClient` already seeded it
+       * ONLY-IF-ABSENT, because whoever wrote that had already spotted that
+       * `boot.leaderboard` can be staler than the live query — so it served
+       * exactly one purpose, the cold-open first paint, and was skipped on
+       * every subsequent remount.
+       *
+       * The standings now come from `competitions.leaderboard`, which already
+       * exists, is already observed by `CompetitionLeaderboard`, and is already
+       * gated by the visibility rule (#1280). The cost is one extra round trip
+       * on a cold open; the nine reads happen either way.
+       *
+       * This is the STATE half of the structure/state cut (#1277). What is left
+       * here is structure — competition, teams, assignments, games, delegates —
+       * plus `games.status`, which a score flips once per GAME rather than once
+       * per score. Removing that last one needs the broadcast to distinguish a
+       * score from a lifecycle change, which it currently does not (#1284).
+       */
+      const [teams, assignments, games, myDelegateGameIds] =
         await Promise.all([
           ctx.supabase
             .from("teams")
@@ -211,7 +241,6 @@ export const competitionsRouter = router({
             .order("created_at", { ascending: false })
             .then((r) => r.data ?? []),
           computeMyDelegateGameIds(ctx.supabase, ctx.user!.id),
-          computeCompetitionLeaderboard(ctx.supabase, competitionId),
         ]);
 
       return {
@@ -221,7 +250,6 @@ export const competitionsRouter = router({
         teams,
         assignments,
         games,
-        leaderboard,
       };
     }),
 

@@ -4,11 +4,16 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 /**
  * competitions.faceBootstrap — the Stage-A single boundary resolve.
  *
- * One call returns everything both face states need: the shared base
- * (competition + teams + games + assignments), the leaderboard roll-up, the
- * viewer's live-derived competition role, and their delegated game ids. These
- * tests assert both states' data is present, the no-competition case is clean,
- * and the role is derived in both directions (owner/co-admin/member).
+ * One call returns the competition's STRUCTURE: competition + teams + games +
+ * assignments, the viewer's live-derived competition role, and their delegated
+ * game ids. These tests assert that structure is present, the no-competition
+ * case is clean, and the role is derived in both directions
+ * (owner/co-admin/member).
+ *
+ * It used to carry the leaderboard roll-up as well. It does not any more
+ * (#1281 step 1) — that was the STATE half, 9 of the procedure's 14 Supabase
+ * reads, and the only field in it a score entry changed. Its absence is pinned
+ * below rather than merely unasserted.
  */
 
 const MANUAL = "gtt_manual";
@@ -47,17 +52,41 @@ afterAll(async () => {
 });
 
 describe("faceBootstrap — both states in one resolve", () => {
-  it("returns the shared base + leaderboard for the owner", async () => {
+  it("returns the shared STRUCTURE base for the owner", async () => {
     const boot = await ctx.caller().competitions.faceBootstrap({ tripId });
     expect(boot.competition?.id).toBe(competitionId);
     expect(boot.myCompetitionRole).toBe("owner");
     expect(boot.teams.length).toBe(2); // shared base (setup guide + board)
     expect((boot.games as { id: string }[]).some((g) => g.id === gameId)).toBe(true);
-    // Leaderboard roll-up present (the board state) — same shape as the
-    // competitions.leaderboard endpoint.
-    expect(boot.leaderboard).not.toBeNull();
-    expect(boot.leaderboard!.teams.length).toBe(2);
-    expect(boot.leaderboard!.pointsAvailable).toBeGreaterThan(0);
+  });
+
+  /**
+   * THE SPLIT, PINNED (#1281 step 1) — asserted as an ABSENCE on purpose.
+   *
+   * These three assertions used to say the opposite: that the roll-up was
+   * present and populated. Deleting them would have left the removal
+   * unguarded, and the field is cheap to re-add by accident — it is one line
+   * in a `Promise.all` and it would look like an optimisation ("one round trip
+   * instead of two on cold open") to anyone who had not measured it.
+   *
+   * It was 9 of this procedure's 14 Supabase reads and the ONLY score-derived
+   * field in it, so re-adding it puts the whole competition standings back on
+   * the structure refetch that every score event triggers on every client.
+   */
+  it("does NOT carry the leaderboard roll-up — that is the state half", async () => {
+    const boot = await ctx.caller().competitions.faceBootstrap({ tripId });
+    expect(Object.hasOwn(boot, "leaderboard")).toBe(false);
+  });
+
+  /**
+   * The other side of the same claim: removing it from the bootstrap must not
+   * have removed it from the app. An absence assertion alone would pass just as
+   * happily if the standings had stopped being computed anywhere at all.
+   */
+  it("...and competitions.leaderboard still serves the same roll-up", async () => {
+    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    expect(lb.teams.length).toBe(2);
+    expect(lb.pointsAvailable).toBeGreaterThan(0);
   });
 
   it("derives the competition role in both directions (live, per request)", async () => {
@@ -83,7 +112,7 @@ describe("faceBootstrap — no-competition trip is a clean state, not an error",
     const noCompTrip = await ctx.createTrip("No-comp trip");
     const boot = await ctx.caller().competitions.faceBootstrap({ tripId: noCompTrip });
     expect(boot.competition).toBeNull();
-    expect(boot.leaderboard).toBeNull();
+    expect(Object.hasOwn(boot, "leaderboard")).toBe(false);
     expect(boot.teams).toEqual([]);
     expect(boot.games).toEqual([]);
     expect(boot.myDelegateGameIds).toEqual([]);
