@@ -28,8 +28,9 @@ import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerTakesAll, type StrokeConfigDraft, type StrokeScoringDraft } from "@/lib/configDraft";
 import { StrokeScoringRow } from "@/components/games/StrokeScoringRow";
-import { scoringOf } from "@/lib/stableford";
+import { scoringOf, type ScoringType } from "@/lib/stableford";
 import { teamColorByUser, UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
+import { rollUpOf, type StrokeRollUp } from "@/lib/strokeGameConfig";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
@@ -43,9 +44,16 @@ import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
-import { computeStrokeLeaderboard } from "@/lib/strokePlay";
+import {
+  computeStrokeLeaderboard,
+  computeStrokePlayStandings,
+  computeStrokeTeamStandings,
+  stablefordEntries,
+} from "@/lib/strokePlay";
 import { allUnitsComplete } from "@/lib/gameCompleteness";
 import { StrokeLeaderboard } from "@/components/games/StrokeLeaderboard";
+import { StrokeTeamTotals } from "@/components/games/StrokeTeamTotals";
+import { StrokeRollUpRow } from "@/components/games/StrokeRollUpRow";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -183,6 +191,9 @@ export function StrokeGameView() {
   // SCORING TYPE + rubric (179). Named `scoringType` because `scoringDraft` above
   // is the `scoring_enabled` BOOLEAN — two different things one word apart.
   const [scoringTypeDraft, setScoringTypeDraft] = useState<StrokeScoringDraft | null>(null);
+  // BOARD ROLL-UP — individual scores or team totals. A display choice, so it
+  // carries no lock and stays editable at every point in a round.
+  const [rollUpDraft, setRollUpDraft] = useState<StrokeRollUp | null>(null);
 
   const createGame = trpc.games.create.useMutation();
   // Auto-group the picked players into a default "Group 1" on Start (mandatory groupings,
@@ -310,7 +321,7 @@ export function StrokeGameView() {
     nameDraft !== null || rulesDraft !== null || scoringDraft !== null || delegatesDraft !== null ||
     pointsTotalDraft !== undefined || pointsDistDraft !== undefined || courseDraft !== null ||
     strokesDraft !== null || modifiersDraft !== null || groupsDraft !== null ||
-    scoringTypeDraft !== null;
+    scoringTypeDraft !== null || rollUpDraft !== null;
 
   const configDraft = useMemo<StrokeConfigDraft>(
     () => ({
@@ -326,8 +337,9 @@ export function StrokeGameView() {
       modifiers: modifiersDraft ?? serverConfigDraft.modifiers,
       groups: groupsDraft ?? serverConfigDraft.groups,
       scoring: scoringTypeDraft ?? serverConfigDraft.scoring,
+      rollUp: rollUpDraft ?? serverConfigDraft.rollUp,
     }),
-    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft, scoringTypeDraft],
+    [serverConfigDraft, nameDraft, rulesDraft, scoringDraft, pointsTotalDraft, pointsDistDraft, delegatesDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft, scoringTypeDraft, rollUpDraft],
   );
 
   // The game row as the DRAFT sees it — the inline course row renders course/tee
@@ -543,7 +555,7 @@ export function StrokeGameView() {
     setNameDraft(null); setRulesDraft(null); setScoringDraft(null); setDelegatesDraft(null);
     setPointsTotalDraft(undefined); setPointsDistDraft(undefined); setCourseDraft(null);
     setStrokesDraft(null); setModifiersDraft(null); setGroupsDraft(null);
-    setScoringTypeDraft(null);
+    setScoringTypeDraft(null); setRollUpDraft(null);
   }
   // Draft durability (Layer 2 — hard-teardown outbox), mirroring the WHOLE composite draft.
   const draftBundle = useMemo(
@@ -551,9 +563,9 @@ export function StrokeGameView() {
       name: nameDraft, rules: rulesDraft, scoring: scoringDraft, delegates: delegatesDraft,
       pointsTotal: pointsTotalDraft, pointsDist: pointsDistDraft, course: courseDraft,
       strokes: strokesDraft, modifiers: modifiersDraft, groups: groupsDraft,
-      scoringType: scoringTypeDraft,
+      scoringType: scoringTypeDraft, rollUp: rollUpDraft,
     }),
-    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, pointsDistDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft, scoringTypeDraft],
+    [nameDraft, rulesDraft, scoringDraft, delegatesDraft, pointsTotalDraft, pointsDistDraft, courseDraft, strokesDraft, modifiersDraft, groupsDraft, scoringTypeDraft, rollUpDraft],
   );
   const applyBundle = useCallback((b: typeof draftBundle) => {
     if (b.name != null) setNameDraft(b.name);
@@ -567,6 +579,7 @@ export function StrokeGameView() {
     if (b.modifiers != null) setModifiersDraft(b.modifiers);
     if (b.groups != null) setGroupsDraft(b.groups);
     if (b.scoringType != null) setScoringTypeDraft(b.scoringType);
+    if (b.rollUp != null) setRollUpDraft(b.rollUp);
   }, []);
 
   // Draft-then-save lifecycle (baseline / dirty / hash-poll / outbox / Save / Cancel /
@@ -828,6 +841,54 @@ export function StrokeGameView() {
     () => computeStrokeLeaderboard(fieldIds, netLeaderboardEntries, parByHole, boardRubric),
     [fieldIds, netLeaderboardEntries, parByHole, boardRubric],
   );
+
+  // The board's ROLL-UP — the SERVER's, for the same reason `boardRubric` is:
+  // the board reports the game as saved, not as staged in an unsaved draft.
+  const boardRollUp = useMemo(() => rollUpOf(gameQ.data?.config), [gameQ.data?.config]);
+  /**
+   * TEAM TOTALS, live — the SAME pipeline `computeStrokePlayResults` banks, with
+   * one deliberate difference and no new scoring maths.
+   *
+   * The difference is the input set: only players who have STARTED are fed in.
+   * The server path excludes non-finishers via `requiredUnits`, which mid-round
+   * would exclude everyone and empty the section; passing no `requiredUnits`
+   * instead would total an unstarted player at 0 and — under lowest-wins — hand
+   * their team the lead for not having teed off. That is the exact production
+   * corruption `computeStrokePlayStandings`' own doc records. Filtering the
+   * field to starters is neither of those: it counts what has been played, and
+   * a team with nobody started gets no row at all rather than a winning zero.
+   */
+  const teamOfUserId = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const a of (assignQ.data ?? []) as { user_id: string; team_id: string }[]) m[a.user_id] = a.team_id;
+    return m;
+  }, [assignQ.data]);
+  const teamTotalRows = useMemo(() => {
+    if (boardRollUp !== "team_totals") return [];
+    const started = new Set(leaderboardRows.filter((r) => r.started).map((r) => r.entityId));
+    if (started.size === 0) return [];
+    const startedEntries = netLeaderboardEntries.filter((e) => started.has(e.participant_id));
+    // ONE branch, the same one the server makes: Stableford counts rubric points
+    // per net hole, Traditional counts net strokes. Derived from `boardRubric`
+    // so the section and the individual board cannot disagree about which game
+    // this is — the defect this whole spec started from.
+    const scoring: ScoringType = boardRubric ? "stableford" : "traditional";
+    const scored = boardRubric
+      ? stablefordEntries(startedEntries, parByHole, boardRubric)
+      : startedEntries.map((e) => ({ participant_id: e.participant_id, value: e.value }));
+    const standings = computeStrokePlayStandings([...started], scored, { scoring });
+    return computeStrokeTeamStandings(standings, teamOfUserId, scoring);
+  }, [boardRollUp, leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId]);
+  /** teamId → holes played, summed off the individual rows that already carry it. */
+  const thruByTeam = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of leaderboardRows) {
+      const teamId = teamOfUserId[r.entityId];
+      if (!teamId) continue;
+      m[teamId] = (m[teamId] ?? 0) + r.holesPlayed;
+    }
+    return m;
+  }, [leaderboardRows, teamOfUserId]);
 
   // Game-level finalize gate (just like rack): every player of the LIVE whole field
   // is thru every hole. Reuses the shipped scoreboard's own rows (no parallel path) —
@@ -1163,6 +1224,16 @@ export function StrokeGameView() {
               onChange={setScoringTypeDraft}
             />
           }
+          // No `locked` term, deliberately — see StrokeRollUpRow: the roll-up
+          // decides which of two banked result sets the board shows, so scores
+          // existing is not a reason to freeze it.
+          boardRollUpRow={
+            <StrokeRollUpRow
+              value={configDraft.rollUp}
+              canEdit={canEdit}
+              onChange={setRollUpDraft}
+            />
+          }
           // Points term of the go-live gate (competition games only) — mirrors Match's
           // C3 gate. Standalone games (gameCompetitionId null) are unaffected. Stroke had
           // no client readiness gate at all before this (server still enforces mandatory
@@ -1337,6 +1408,14 @@ export function StrokeGameView() {
             pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
           />
         </div>
+        {boardRollUp === "team_totals" && (
+          <StrokeTeamTotals
+            rows={teamTotalRows}
+            teams={(teamsQ.data ?? []) as { id: string; name: string; color: string }[]}
+            rubric={boardRubric}
+            thruByTeam={thruByTeam}
+          />
+        )}
         <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} rubric={boardRubric} />
         <FoursomeEntry
           groups={groupViews}

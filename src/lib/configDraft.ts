@@ -30,13 +30,13 @@ import { isMatchPlayFormat } from "./gameRoutes";
 import { MATCHES_COMPETITION_FORMAT } from "./resultStrategy";
 import type { ModifiersMap } from "./modifiers";
 import {
-  configFor,
   matchesPreset,
   scoringOf,
   type ScoringType,
   type StablefordConfig,
   type StablefordPresetId,
 } from "./stableford";
+import { rollUpOf, writeStrokeConfig, type StrokeRollUp } from "./strokeGameConfig";
 import { buildDraw, type BracketDrawMatch } from "./bracket";
 import { buildDoubleDraw } from "./bracketDouble";
 
@@ -1023,6 +1023,10 @@ export interface StrokeConfigDraft extends BaseConfigDraft {
   course: DraftCourse;
   /** SCORING TYPE + rubric (`games.config`, migration 179). */
   scoring: StrokeScoringDraft;
+  /** How the BOARD reads — players, or their teams (`games.config.rollUp`).
+   *  A display choice: both result sets are banked on every finalize either
+   *  way, so this picks which of two existing answers is shown. No lock. */
+  rollUp: StrokeRollUp;
   /** GROUPINGS (P3 3.2) — tee-groups over the create-only roster, one user-id array per
    *  group in group order. Optional (a stroke game needn't group its players). Reuses
    *  rack's `play_groups` data path: the RPC UPSERTS participants (never deletes the
@@ -1063,6 +1067,7 @@ export function configToStrokeDraft(
       scorecardSchema: game.scorecard_schema ?? null,
     },
     scoring: scoringToDraft(game.config),
+    rollUp: rollUpOf(game.config),
     groups: groups.map((g) => [...g]),
   };
 }
@@ -1119,7 +1124,7 @@ export function strokeDraftToPayload(draft: StrokeConfigDraft, baseline?: Stroke
     // SCORING TYPE (179). Always sent, even for Traditional — the RPC
     // COALESCE-PRESERVES an absent key, so omitting it on a Traditional game
     // would make "switch back to Traditional" unsaveable rather than a no-op.
-    config: configFor(draft.scoring.type, draft.scoring.stableford),
+    config: writeStrokeConfig({ scoring: draft.scoring, rollUp: draft.rollUp }),
     // GROUPINGS (P3 3.2) — reuse rack's groups[] path: the STRUCTURE unit, clean-replaced
     // on a real change (refused with scores) and skipped when unchanged. The RPC upserts
     // the roster union (never deletes), so grouping only ORGANIZES stroke's existing roster.
@@ -1143,6 +1148,11 @@ export function strokeDraftsEqual(a: StrokeConfigDraft, b: StrokeConfigDraft): b
     // "All changes saved" over an edit it had not saved, which is the
     // staged-state lie (#18) in its quietest form.
     canonical(a.scoring) === canonical(b.scoring) &&
+    // The roll-up is part of the page like any other drafted scalar. Omitting
+    // it here is the staged-state lie (#18): the control would move, Save would
+    // stay disabled, and the page would say "All changes saved" over an edit it
+    // had never saved.
+    a.rollUp === b.rollUp &&
     rackGroupsEqual(a.groups, b.groups)
   );
 }

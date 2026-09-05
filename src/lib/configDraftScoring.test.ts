@@ -140,8 +140,30 @@ describe("strokeDraftToPayload — the scoring slice is ALWAYS sent", () => {
     // "switch back to Traditional" a save that reports success and changes
     // nothing — the user picks Traditional and the game stays Stableford.
     const p = strokeDraftToPayload(draftOf(undefined));
-    expect(p.config).toEqual({ scoringType: "traditional" });
+    expect(p.config).toEqual({ scoringType: "traditional", rollUp: "individual" });
     expect(p.config).not.toBeUndefined();
+  });
+
+  it("sends the WHOLE config — a present `config` key replaces, so a partial one wipes", () => {
+    /**
+     * `save_game_config` preserves an ABSENT `config` and replaces a PRESENT
+     * one, so once the column holds two settings a payload carrying one of them
+     * silently clears the other. This is the assertion for that: both keys, on
+     * every stroke save, whatever the draft says.
+     *
+     * `toEqual` on the whole object rather than two `toHaveProperty` checks —
+     * the failure being guarded against is an omission, and a property check
+     * cannot see a key that is not there unless it is the key you thought to
+     * name. An exact-shape assertion fails for any missing one, including a
+     * third added later.
+     */
+    const stableford = strokeDraftToPayload(
+      draftOf({ scoringType: "stableford", stableford: { preset: "bbmi_2024", ...BBMI } })
+    );
+    expect(Object.keys(stableford.config as object).sort()).toEqual(["rollUp", "scoringType", "stableford"]);
+
+    const traditional = strokeDraftToPayload(draftOf(undefined));
+    expect(Object.keys(traditional.config as object).sort()).toEqual(["rollUp", "scoringType"]);
   });
 
   it("a Stableford→Traditional switch emits Traditional", () => {
