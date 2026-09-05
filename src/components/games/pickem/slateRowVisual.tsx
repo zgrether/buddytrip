@@ -121,13 +121,25 @@ export function MultiplierBadge({ multiplier }: { multiplier: number }) {
   );
 }
 
+/**
+ * The line, beside the home team it belongs to.
+ *
+ * Sized UP and weighted DOWN against the version that sat on the old one-line
+ * matchup (11px/700 → 12px/500). It shared that line with two truncating team
+ * names and had to shout over them; on its own line beside a single name it
+ * does not, and 700 next to a 500 team name read as the louder fact of the two.
+ *
+ * COLOURS ARE UNCHANGED — the mock's hexes are placeholder (its own banner says
+ * so) and this keeps the `planning` tokens it already used. Only size and
+ * weight, which the mock is authoritative for, move.
+ */
 export function SpreadBadge({ spread }: { spread: string }) {
   return (
     <span
-      className="rounded px-1.5"
+      className="shrink-0 rounded px-1.5"
       style={{
-        fontSize: TYPE_SCALE.caption,
-        fontWeight: 700,
+        fontSize: TYPE_SCALE.bodyDense,
+        fontWeight: 500,
         background: "var(--color-bt-planning-faint)",
         color: "var(--color-bt-planning)",
       }}
@@ -138,61 +150,102 @@ export function SpreadBadge({ spread }: { spread: string }) {
 }
 
 /**
- * "Alabama at Georgia  −3.5 ............ 2×" over
- * "Sat Nov 8, 7:30p · Night game".
+ * "Milwaukee Brewers" over "at Cincinnati Reds  −3.5", with the multiplier
+ * pinned top-right, over "Fri Sep 4, 6:10p · Tyler".
  *
  * `leading` is whatever sits to the left — the slate's ordinal, the sheet's
  * rank chip. It is a slot rather than a prop the component interprets, because
  * the lists number their rows for different reasons and none of them should
  * have to explain itself to this file.
  *
- * ── THE MULTIPLIER IS RIGHT-JUSTIFIED (r7 §12) ────────────────────────────
+ * ── ONE TEAM PER LINE, ALWAYS — AND THIS REVERSES r7 §12 ──────────────────
  *
- * It used to sit immediately after the spread, inside a `flex-wrap` run, so its
- * x position moved with the length of the two team names and with whether the
- * game had a line at all. On a sixteen-row list that is sixteen different
- * places to find the one badge that changes how you spend confidence.
+ * §12 put both teams on ONE line and had it TRUNCATE, explicitly so that
+ * "every row [is] the same height". The reasoning was sound and it was aimed at
+ * a real problem: a `flex-wrap` run let a long matchup push the multiplier onto
+ * a second line, so the same game occupied one line on one surface and two on
+ * another. Uniformity across surfaces was the goal; a fixed single line was the
+ * means.
  *
- * Pinned right, the weighted games line up in a column and the eye finds them
- * in one pass down the edge — the same argument the stripe already makes on the
- * other side of the row.
+ * What that traded away is the thing this reverses. Real slates are college
+ * football, where "Lebanon Valley Flying Dutchmen at Franklin & Marshall
+ * Diplomats" is 61 characters — so the single line did not hold a matchup at
+ * 390px, it held the first one and a half teams and an ellipsis. On the results
+ * page, where four controls already compete for the row, that is the reported
+ * truncation bug.
  *
- * `flex-wrap` goes with it. Wrapping is what let a long matchup push the badge
- * onto a second line, which is the divergence §12 is about: the same game
- * occupying one line here and two there. The matchup TRUNCATES instead, which
- * keeps every row the same height.
+ * Two lines ALWAYS — never conditional on length — keeps §12's actual goal
+ * intact. Every row is still the same height and the same game still occupies
+ * the same space on every surface; the constant is just two lines rather than
+ * one. Each name gets its own line and truncates within it, so a pathological
+ * name still cannot spill to a third.
+ *
+ * The multiplier keeps §12's other decision — it is pinned RIGHT so weighted
+ * games line up in a column and the eye finds them in one pass down the edge —
+ * but it is now ABSOLUTE rather than the end of a flex run, so its position no
+ * longer depends on the names at all. The name block pads to clear it.
+ *
+ * ── The badge and the multiplier cannot collide ───────────────────────────
+ *
+ * The multiplier is absolute within THIS component's box, not the card's. Where
+ * a surface puts something to the right of the matchup — the sheet's `NOT
+ * PICKED` stamp, the head-to-head's result chip — that sibling takes its own
+ * width and the matchup's box shrinks, so the badge lands just left of it
+ * instead of underneath it. Where there is no sibling (the common case) this
+ * component fills the row and its right edge IS the card's.
  *
  * ── The sub-line truncates, and that is a known open issue ─────────────────
  * Kickoff and note share one line with `truncate`, and since Phase 2b the
  * kickoff carries a date, so the note loses more of itself at 390px than it
  * used to. Raised at the Phase 2 look and still open; kept identical in every
- * surface on purpose, so whatever fixes it fixes them all at once.
+ * surface on purpose, so whatever fixes it fixes them all at once. It is
+ * deliberately NOT padded to clear the multiplier — the badge sits on line 1
+ * only, and stealing 44px from the line that already truncates worst would pay
+ * for clearance nothing needs.
  */
+
+/**
+ * How far the name lines pad to clear the pinned multiplier.
+ *
+ * Wide enough for a two-digit badge (`10×`) plus a gap, so the clearance does
+ * not depend on which multipliers a slate happens to use.
+ */
+const MULTIPLIER_CLEARANCE = 44;
+
 export function MatchupLine({
   game,
   leading,
-  trailing,
 }: {
   game: MatchupLineGame;
   leading?: ReactNode;
-  trailing?: ReactNode;
 }) {
   const meta = [game.kickoff, game.note].filter(Boolean).join(" · ");
+  const multiplier = game.multiplier ?? 1;
+  const weighted = multiplier > 1;
+  const name = { fontSize: TYPE_SCALE.name, fontWeight: 500, lineHeight: 1.3 } as const;
   return (
-    <div className="flex min-w-0 flex-1 items-start gap-2.5">
+    <div className="relative flex min-w-0 flex-1 items-start gap-2.5">
       {leading}
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-x-1.5">
-          <span className="min-w-0 truncate" style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>
-            {game.awayTeam}{" "}
-            <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 500 }}>at</span>{" "}
+        <span
+          className="block truncate"
+          data-testid="pickem-matchup-away"
+          style={{ ...name, paddingRight: weighted ? MULTIPLIER_CLEARANCE : undefined }}
+        >
+          {game.awayTeam}
+        </span>
+        <span className="flex min-w-0 items-baseline gap-x-1.5">
+          <span
+            className="min-w-0 truncate"
+            data-testid="pickem-matchup-home"
+            style={{ ...name, paddingRight: weighted ? MULTIPLIER_CLEARANCE : undefined }}
+          >
+            <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>at </span>
             {game.homeTeam}
           </span>
           {/* WITH the home team, because the line is the home team's — the one
               badge whose position is meaningful rather than tidy. */}
           {game.spread && <SpreadBadge spread={game.spread} />}
-          <span className="flex-1" />
-          {(game.multiplier ?? 1) > 1 && <MultiplierBadge multiplier={game.multiplier as number} />}
         </span>
         {meta && (
           <span
@@ -203,7 +256,15 @@ export function MatchupLine({
           </span>
         )}
       </span>
-      {trailing}
+      {weighted && (
+        <span
+          className="absolute"
+          data-testid="pickem-matchup-multiplier-slot"
+          style={{ top: 0, right: 0 }}
+        >
+          <MultiplierBadge multiplier={multiplier} />
+        </span>
+      )}
     </div>
   );
 }

@@ -73,7 +73,6 @@ const h2hMarkup = () =>
           homeTeam: "Michigan State Spartans",
           spread: "-9.5",
           kickoff: "Fri Sep 4, 8:00p",
-          note: null,
           multiplier: 1,
         },
       ]}
