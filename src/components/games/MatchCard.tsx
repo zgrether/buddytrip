@@ -3,7 +3,7 @@
 import { PointsAtStake } from "./PointsAtStake";
 import { Table2 } from "lucide-react";
 import { matchState, type DecidedHole } from "@/lib/matchPlay";
-import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
+import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { SidePlayer } from "./MatchSides";
 import { fitName, CARD_NAME_CAPACITY_EM } from "@/lib/nameLadder";
@@ -270,7 +270,45 @@ export function MatchCard({
           } else if (st.closed) {
             op = 0.25; // dead — past close-out
           }
-          return <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: bg, opacity: op }} />;
+          const bar = <div style={{ height: 4, borderRadius: 2, background: bg, opacity: op }} />;
+          /**
+           * Glorious marker — a SECOND AXIS, not a colour swap. The segment
+           * already spends blue/red/grey on who won the hole (`bg` above), so
+           * doubling has to live somewhere else: the scorecard's own answer
+           * (`ScorecardChrome`'s per-cell wash) is a tint + border layered
+           * UNDER the content, reused here rather than invented twice. Shown
+           * for an UNPLAYED hole too (glorious is about what's coming, not
+           * what happened) — the wrapper is keyed on the hole number alone,
+           * never on `results`.
+           *
+           * The wrapper insets the bar with padding so the wash is actually
+           * visible as a ring around the (opaque) bar rather than painted
+           * fully underneath and hidden by it — worth stating because on the
+           * scorecard the wash sits under a transparent-background number
+           * cell where that question doesn't arise.
+           */
+          if (!isGloriousHole(i + 1, glorious)) {
+            return (
+              <div key={i} style={{ flex: 1 }}>
+                {bar}
+              </div>
+            );
+          }
+          return (
+            <div
+              key={i}
+              data-testid={`match-history-glorious-${i + 1}`}
+              style={{
+                flex: 1,
+                padding: 2,
+                borderRadius: 4,
+                background: "var(--color-bt-glorious-faint)",
+                border: "1px solid var(--color-bt-glorious-border)",
+              }}
+            >
+              {bar}
+            </div>
+          );
         })}
       </div>
     </Container>
