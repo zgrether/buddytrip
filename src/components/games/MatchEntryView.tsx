@@ -456,6 +456,7 @@ export function MatchEntryView({
                 valueFor={valueFor}
                 onTap={() => setOverride({ hole, pid: m.a.id })}
                 isMe={!!meId && m.a.id === meId}
+                meId={meId}
                 par={par}
                 celebrate={lastCommit?.pid === m.a.id && lastCommit?.hole === hole}
                 saveState={saveStatus[scoreCellKey(m.a.id, label)]}
@@ -473,6 +474,7 @@ export function MatchEntryView({
                 valueFor={valueFor}
                 onTap={() => setOverride({ hole, pid: m.b.id })}
                 isMe={!!meId && m.b.id === meId}
+                meId={meId}
                 par={par}
                 celebrate={lastCommit?.pid === m.b.id && lastCommit?.hole === hole}
                 saveState={saveStatus[scoreCellKey(m.b.id, label)]}
@@ -543,6 +545,7 @@ function PlayerRow({
   valueFor,
   onTap,
   isMe,
+  meId,
   par,
   celebrate,
   last,
@@ -569,7 +572,12 @@ function PlayerRow({
   dead: boolean;
   valueFor: (pid: string, l: string) => number | undefined;
   onTap: () => void;
+  /** Whether the SIDE is the viewer — correct for a 1v1, where a side is a
+   *  person. Never true for a 2v2, whose side id is a play_group id. */
   isMe?: boolean;
+  /** The viewer's user id, so a 2v2 can ask the question PER PLAYER — the only
+   *  form in which it has an answer for doubles. */
+  meId?: string;
   par?: number;
   celebrate?: boolean;
   last?: boolean;
@@ -617,16 +625,27 @@ function PlayerRow({
         // rows and the match card's 2v2 branch already do. A 1v1 is unchanged at
         // 62, since minHeight and height agree when there is one line.
         minHeight: 62,
-        padding: "0 14px 0 0",
+        // UNCONDITIONAL vertical padding. `minHeight` let the row grow but the
+        // padding did not grow with it, so a 2v2's names sat against the top
+        // edge and the score subtitle against the bottom. The 1v1 was tight too
+        // — only visibly so once a 2v2 stood beside it — which is why this is
+        // not conditioned on `stacked`.
+        padding: "10px 14px 10px 11px",
         cursor: dead ? "default" : "pointer",
         opacity: dead ? 0.55 : 1,
         background: active ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
         borderTop: last ? "1px solid var(--color-bt-subtle-border)" : undefined,
         borderLeft: `3px solid ${active ? "var(--color-bt-accent)" : "transparent"}`,
-        paddingLeft: 11,
       }}
     >
-      <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={player.color} sizePx={34} />
+      {/* A 2v2's avatars are PER PLAYER and live inside the name block, one
+          beside each name — so this side-level avatar renders for a 1v1 only.
+          It keeps `avatarIcon`, which a 1v1 side has and a `SidePlayer` does
+          not; the per-player chips use the §11 team-colored initial, matching
+          `PlayerChip` everywhere else. */}
+      {!stacked && (
+        <Avatar name={player.name} avatarIcon={player.avatarIcon} teamColor={player.color} sizePx={34} />
+      )}
       {/*
         * THE SAME LADDER, one level deeper — this is the same bug as the match
         * card, not a second one. A long name here wrapped to two lines and
@@ -657,19 +676,41 @@ function PlayerRow({
            * ONE person's name, so the array is the input and the joined label is
            * never fitted.
            */
-          players!.map((p) => {
-            const fit = fitName(p.name, ENTRY_NAME_CAPACITY_EM);
-            return (
-              <span
-                key={p.id}
-                className="block truncate"
-                data-name-step={fit.step}
-                style={{ fontSize: "clamp(15px, 4.5vw, 17px)", fontWeight: 500, color: "var(--color-bt-text)", lineHeight: 1.3 }}
-              >
-                {fit.text}
-              </span>
-            );
-          })
+          /**
+           * ONE AVATAR PER NAME, the `PlayerChip` treatment: the team-colored
+           * §11 initial beside its own name, at the same 30-against-15 size
+           * relationship the chip uses everywhere else. `PlayerChip` itself is
+           * not reused — it carries a card background, a border and a fixed
+           * 44px height, which would put boxed chips inside a row that already
+           * has its own surface. What transfers is the treatment, not the box.
+           *
+           * The side-level avatar this replaces was the same defect as the
+           * joined name: one player's disk standing for both.
+           */
+          <div className="flex flex-col" style={{ gap: 4 }}>
+            {players!.map((p) => {
+              const fit = fitName(p.name, ENTRY_NAME_CAPACITY_EM);
+              // Per PLAYER, not per side: `isMe` compares the SIDE id, which for
+              // a 2v2 is a play_group id and can never equal a user id — so a
+              // doubles player never saw "(you)" on their own row.
+              const isMine = !!meId && p.id === meId;
+              return (
+                <div key={p.id} className="flex min-w-0 items-center" style={{ gap: 8 }}>
+                  <Avatar name={p.name} teamColor={p.teamColor} sizePx={30} />
+                  <div className="min-w-0 flex-1">
+                    <span
+                      className="block truncate"
+                      data-name-step={fit.step}
+                      style={{ fontSize: "clamp(15px, 4.5vw, 17px)", fontWeight: 500, color: "var(--color-bt-text)", lineHeight: 1.3 }}
+                    >
+                      {fit.text}
+                      {isMine && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         ) : (
           (() => {
             const fit = fitName(player.name, ENTRY_NAME_CAPACITY_EM);
@@ -685,7 +726,10 @@ function PlayerRow({
             );
           })()
         )}
-        <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
+        {/* The subtitle is per SIDE — one score, so one golf word — and stays
+            one line. Indented to the names' left edge when stacked (avatar 30 +
+            gap 8), or it would sit flush under the avatars instead. */}
+        <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)", paddingLeft: stacked ? 38 : 0 }}>{subtitle}</div>
       </div>
       <ScoreSaveBadge state={saveState} onRetry={onRetry} />
       <MatchScoreCell value={v} active={active} stroked={stroked} par={par} celebrate={celebrate} />
