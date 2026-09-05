@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MatchResultBanner, matchDefeatText } from "@/components/games/MatchResultBanner";
 import { ChevronLeft, Table2, Settings } from "lucide-react";
 import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
@@ -340,19 +341,7 @@ export function MatchEntryView({
 
               {/* Closed-out result banner (§4) */}
               {st.over && (
-                <div
-                  className="flex items-center justify-between"
-                  style={{
-                    marginTop: 6,
-                    padding: "7px 12px",
-                    borderRadius: 10,
-                    background: "var(--color-bt-place-1-bg)",
-                    border: "1px solid rgba(34,197,94,0.25)",
-                  }}
-                >
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
-                    {winner && loser ? `${winner.name} def. ${loser.name} · ${st.margin}` : `Match halved · ${st.margin}`}
-                  </span>
+                <MatchResultBanner text={matchDefeatText(winner, loser, st.margin)}>
                   {st.closed && g.isDeadHole(hole) && (
                     <button
                       onClick={() =>
@@ -373,7 +362,7 @@ export function MatchEntryView({
                       {playOut.has(m.matchId) ? "Stop" : "Play it out"}
                     </button>
                   )}
-                </div>
+                </MatchResultBanner>
               )}
             </div>
           );

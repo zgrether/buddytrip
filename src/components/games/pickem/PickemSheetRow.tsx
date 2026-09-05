@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { TYPE_SCALE } from "@/lib/typeScale";
 import { type MatchupLineGame } from "./slateRowVisual";
 import { PickemGameCard, PickemSegments, SELECT_HOLD_MS } from "./PickemGameCard";
+import { PickemAbsenceNotice, NOT_PICKED } from "./PickemAbsenceNotice";
 
 /**
  * One game on the picks sheet — the shared card, with two segments on line 3.
@@ -116,33 +116,21 @@ export function isPlayedOutcome(outcome: PickOutcome | null): boolean {
  * renders it outside.
  */
 function NotPickedStamp() {
+  /**
+   * The SHARED notice — the same component the board's per-side `NO PICKS`
+   * renders. This markup used to live here, and the board grew its own
+   * `NOTHING SUBMITTED` pill in a different visual language for the same fact
+   * at a different scale (no pick on one game / no sheet at all). One family,
+   * so a reader who has learned the dashed stamp on their own sheet recognises
+   * it on the board.
+   *
+   * `opaque` because this is the one instance that OVERLAPS something: it is
+   * pinned to the same corner as the multiplier chip and sits over it, so it
+   * has to occlude rather than let the chip show through. The board's copies
+   * overlap nothing and stay unfilled.
+   */
   return (
-    <span
-      data-testid="pickem-row-not-picked"
-      className="rounded px-1.5"
-      style={{
-        fontSize: TYPE_SCALE.caption,
-        fontWeight: 700,
-        letterSpacing: "0.08em",
-        color: "var(--color-bt-text-dim)",
-        border: "1px dashed var(--color-bt-border)",
-        whiteSpace: "nowrap",
-        /**
-         * OPAQUE, because it now OVERLAPS the multiplier chip rather than
-         * pushing it aside — and a transparent stamp over a chip shows both at
-         * once, which is worse than the displacement it replaced.
-         *
-         * `--color-bt-card` is the row's resting background, and this badge only
-         * ever appears on a settled sheet row, which `PickemSheetRow` renders
-         * with neither `quiet` nor `active` — so the surface underneath is
-         * always exactly this colour. If this stamp is ever reused on a row that
-         * is tinted or flat, that assumption is what breaks.
-         */
-        background: "var(--color-bt-card)",
-      }}
-    >
-      NOT PICKED
-    </span>
+    <PickemAbsenceNotice label={NOT_PICKED} testId="pickem-row-not-picked" opaque />
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar } from "@/components/Avatar";
+import { PickemAbsenceNotice, NO_PICKS } from "./PickemAbsenceNotice";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import type { MatchStanding } from "@/lib/pickemBoard";
 
@@ -138,11 +138,16 @@ export function matchNote(
      * ── SHORTENED, because the PILL beside it already says the fact ────────
      *
      * This read "X didn't submit a sheet — it scores nothing, so Y takes the
-     * match", which repeated the pill ("Nothing submitted") and then overran
-     * the line it shares with it. Both surfaces that render this note render
-     * that pill — the card's `Pill kind="no-sheet"` and the head-to-head's
-     * `h2hPill` — so the fact is not lost by dropping it here, which is the
-     * thing to check before shortening a sentence into a label.
+     * match", which repeated the badge beside it and then overran the line it
+     * shares with it. Both surfaces that render this note also state the
+     * absence somewhere the reader will see it — the card's per-side
+     * `NO PICKS` notices and the head-to-head's — so the fact is not lost by
+     * dropping it here, which is the thing to check before shortening a
+     * sentence into a label.
+     *
+     * (The card's version WAS a single centred `Nothing submitted` pill when
+     * this was written. It is now one notice per side, under the person it is
+     * about, because centred under two names it read as the left player's.)
      *
      * WHAT IS GENUINELY GONE is the explicit consequence, "it scores
      * nothing". The longer version existed to state it because an empty sheet
@@ -202,6 +207,52 @@ export function h2hNote(
   const needs = Math.abs(s.margin) + 1;
   const games = `${s.remaining} game${s.remaining === 1 ? "" : "s"}`;
   return `${trailer} needs ${needs} from ${games} · ${s.trailingUpside} in play`;
+}
+
+/**
+ * One side's running total, at the card's outer edge.
+ *
+ * ── The colour is the TEAM's, and only the leader gets it ─────────────────
+ *
+ * Match play's margin chip does the same job — solid team colour on the side
+ * that is ahead, neutral on the side that is not — so the two boards teach one
+ * rule between them. What is NOT borrowed is the chip's content: golf shows a
+ * differential ("2 UP", "3&2") because a hole is worth one and the difference is
+ * the whole story. Pick'em games are worth 1..32, so the totals carry
+ * information the difference throws away, and they are printed rather than
+ * subtracted.
+ *
+ * `teamColor` null is an ordinary case, not a fallback for an error: a player
+ * with no team assignment has none. The leader then takes full text colour,
+ * which keeps the who-is-ahead signal without inventing a team identity for
+ * somebody who has not got one.
+ */
+function SideScore({
+  value,
+  leading,
+  teamColor,
+}: {
+  value: number;
+  leading: boolean;
+  teamColor: string | null;
+}) {
+  return (
+    <span
+      className="shrink-0"
+      data-testid={leading ? "pickem-side-score-leading" : "pickem-side-score"}
+      style={{
+        fontSize: 17,
+        fontWeight: leading ? 700 : 600,
+        letterSpacing: "-0.01em",
+        fontVariantNumeric: "tabular-nums",
+        color: leading
+          ? teamColor ?? "var(--color-bt-text)"
+          : "var(--color-bt-text-dim)",
+      }}
+    >
+      {value}
+    </span>
+  );
 }
 
 function Pill({ kind }: { kind: MatchPill }) {
@@ -321,6 +372,7 @@ export function PickemMatchCard({
 }) {
   const s = standing;
   const aLead = s.margin > 0;
+  const bLeads = s.margin < 0;
   const leaderName = aLead ? aName : bName;
   const pill = matchPill(s, resolvedCount, picked);
   const live = pill === "live" || pill === "clinched";
@@ -356,70 +408,75 @@ export function PickemMatchCard({
           dot and then drops, so the NAME is never the thing that truncates
           first. The card does not choose between disk and dot — the avatar
           does, from the width it is actually given. */}
+      {/* ── SCORES AT THE OUTER EDGES, IN TEAM COLOUR ─────────────────────
+          Match play's arrangement, borrowed rather than the component itself:
+          each side's number sits at its own edge with its name beside it, so
+          the card reads outward-in instead of everything crowding a centre
+          pair. The leader's score carries their TEAM colour at 700; the
+          trailer is grey at 600.
+
+          The avatars are gone. They were the only thing saying which team a
+          person was on, and they said it in a 26px disk that `collapse` could
+          reduce to a dot or drop entirely — so the signal was the first thing
+          sacrificed when a name got long. The colour on the number cannot
+          collapse, and it is on the element a reader is already looking at.
+
+          THE RAW SCORES STAY. 8-7 and 1-0 are both "1 UP" and are not the same
+          match; a margin chip alone would flatten the difference that pick'em's
+          weighted scoring exists to create. */}
       <span className="flex items-center gap-2">
+        <SideScore value={s.aTotal} leading={aLead} teamColor={aAvatar?.teamColor ?? null} />
         <span
-          className="@container flex min-w-0 flex-1 items-center gap-1.5"
+          className="min-w-0 flex-1 truncate"
           style={{
             fontSize: TYPE_SCALE.name,
             fontWeight: aLead ? 700 : 500,
             color: aLead ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
           }}
         >
-          {aAvatar && (
-            <Avatar
-              name={aName}
-              avatarIcon={aAvatar.avatarIcon}
-              teamColor={aAvatar.teamColor}
-              sizePx={26}
-              collapse
-              collapseAt="chip"
-            />
-          )}
-          <span className="min-w-0 truncate">
-            {aName}
-          </span>
+          {aName}
         </span>
         <span
-          className="shrink-0"
-          style={{
-            fontSize: 16,
-            fontWeight: 700,
-            letterSpacing: "-0.01em",
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          {s.aTotal} – {s.bTotal}
-        </span>
-        {/* Mirrored: name then face, so the two avatars sit at the card's
-            outer edges and the names meet the score in the middle. */}
-        <span
-          className="@container flex min-w-0 flex-1 items-center justify-end gap-1.5"
+          className="min-w-0 flex-1 truncate text-right"
           style={{
             fontSize: TYPE_SCALE.name,
-            fontWeight: !aLead && s.margin !== 0 ? 700 : 500,
-            color: !aLead && s.margin !== 0 ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+            fontWeight: bLeads ? 700 : 500,
+            color: bLeads ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
           }}
         >
-          <span className="min-w-0 truncate text-right">
-            {bName}
-          </span>
-          {bAvatar && (
-            <Avatar
-              name={bName}
-              avatarIcon={bAvatar.avatarIcon}
-              teamColor={bAvatar.teamColor}
-              sizePx={26}
-              collapse
-              collapseAt="chip"
-            />
-          )}
+          {bName}
         </span>
+        <SideScore value={s.bTotal} leading={bLeads} teamColor={bAvatar?.teamColor ?? null} />
       </span>
+
+      {/* ── THE ABSENCE SITS UNDER THE PERSON IT IS ABOUT ─────────────────
+          It used to be one centred `NOTHING SUBMITTED` pill under the row,
+          which read as belonging to the LEFT player — so on a card where the
+          right-hand player was the one missing, the badge named the wrong
+          person. Per side, under their own name, and only on the side it is
+          true of. */}
+      {(!picked.a || !picked.b) && (
+        <span className="flex items-center gap-2">
+          <span className="flex min-w-0 flex-1">
+            {!picked.a && (
+              <PickemAbsenceNotice label={NO_PICKS} testId="pickem-match-nopicks-a" />
+            )}
+          </span>
+          <span className="flex min-w-0 flex-1 justify-end">
+            {!picked.b && (
+              <PickemAbsenceNotice label={NO_PICKS} testId="pickem-match-nopicks-b" />
+            )}
+          </span>
+        </span>
+      )}
 
       <MarginBar margin={s.margin} live={live} />
 
       <span className="flex min-w-0 items-center gap-2">
-        <Pill kind={pill} />
+        {/* The no-sheet case is now stated PER SIDE above, under the person
+            it is about. Repeating it here would be the same fact twice on one
+            card, and the centred copy is the one that named the wrong player. */}
+        {pill !== "no-sheet" && <Pill kind={pill} />}
         <span
           className="min-w-0 flex-1 truncate"
           data-testid="pickem-match-note"

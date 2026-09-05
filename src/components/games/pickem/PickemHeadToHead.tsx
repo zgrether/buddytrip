@@ -1,10 +1,12 @@
 "use client";
 
 import { PickemBackHeader } from "./PickemBackHeader";
+import { PickemAbsenceNotice, NO_PICKS } from "./PickemAbsenceNotice";
+import { MatchResultBanner } from "@/components/games/MatchResultBanner";
 import { Avatar } from "@/components/Avatar";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
-import { matchPill, type SidesPicked } from "./PickemMatchCard";
+import { matchPill, matchNote, type SidesPicked } from "./PickemMatchCard";
 import { matchStanding, type BoardRow, type ZeroKind } from "@/lib/pickemBoard";
 import type { BoardSlateGame } from "./PickemBoard";
 
@@ -106,13 +108,24 @@ export function swingCell(row: BoardRow): SwingCell {
 export function h2hPill(
   rows: BoardRow[],
   resolved: number,
-  picked: SidesPicked
+  picked: SidesPicked,
+  /**
+   * `noSheetOnSides` — the SIDES are carrying the absence, so this pill should
+   * fall through to the lifecycle instead of repeating it.
+   *
+   * A flag rather than two functions: the detail page states the absence under
+   * each player and the pill would otherwise say the same thing a third time on
+   * one card (twice under the names, once between them). Every other state is
+   * identical either way, and two near-identical pill functions is how the two
+   * screens would start disagreeing about what "Clinched" means.
+   */
+  opts: { noSheetOnSides?: boolean } = {}
 ): string {
   const s = matchStanding(rows);
   const pill = matchPill(s, resolved, picked);
   if (pill === "final") return "Final";
   if (pill === "clinched") return "Clinched";
-  if (pill === "no-sheet") return "Nothing submitted";
+  if (pill === "no-sheet" && !opts.noSheetOnSides) return "Nothing submitted";
   return `${s.remaining} left`;
 }
 
@@ -158,6 +171,30 @@ export function PickemHeadToHead({
   const a = avatarFor(aUserId);
   const b = avatarFor(bUserId);
 
+  /**
+   * Is this match OVER — and if so, what does the banner say?
+   *
+   * Two ways to be decided and they need different sentences:
+   *
+   *   - every game is in (`remaining === 0`), which `matchNote` already words
+   *     as "Ty takes it by 12" or "Dead even — half a point each";
+   *   - somebody never submitted, which ends the match before the games do.
+   *
+   * The second is the one that needs its reason attached. `matchNote` shortens
+   * it to "JohnnyD takes it" because on the CARD the per-side NO PICKS badge is
+   * right there; the banner is a wider surface and a decided 0-0 with no
+   * explanation reads as a bug. So the why is appended here rather than by
+   * widening the shared note, which would put it back on the card too.
+   */
+  const noSheet = !picked.a || !picked.b;
+  const decided = s.remaining === 0 || noSheet;
+  const missingName = !picked.a ? aName : bName;
+  const resultLine = noSheet
+    ? picked.a || picked.b
+      ? `${picked.a ? aName : bName} takes it · ${missingName} submitted no picks`
+      : "Nothing scores — neither submitted a sheet"
+    : matchNote(s, resolved, s.margin > 0 ? aName : bName, picked, { a: aName, b: bName });
+
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-board-detail">
       <PickemBackHeader
@@ -191,22 +228,42 @@ export function PickemHeadToHead({
           avatarIcon={a.avatarIcon}
           teamColor={a.teamColor}
           align="left"
+          /* ── THE ABSENCE BELONGS TO A PERSON, SO IT SITS UNDER THEM ──────
+             It was the CENTRE pill — "NOTHING SUBMITTED" between the two
+             names — which is the same defect as the card's, one level down:
+             centred between two people it names neither, and a reader has to
+             work out which of them it is about from the scores. */
+          missing={!picked.a}
         />
-        <span
-          data-testid="pickem-h2h-pill"
-          className="shrink-0 rounded-full"
-          style={{
-            fontSize: 9.5,
-            fontWeight: 700,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            padding: "2px 7px",
-            color: "var(--color-bt-text-dim)",
-            background: "var(--color-bt-card-raised)",
-          }}
-        >
-          {h2hPill(rows, resolved, picked)}
-        </span>
+        {/* ── THE PILL IS THE LIVE STATE, AND STANDS DOWN WHEN THE BANNER
+               TAKES OVER ──────────────────────────────────────────────────
+            Found by looking at it: a match decided by a missing sheet showed
+            the green "JohnnyD takes it" band with "1 LEFT" sitting between the
+            two names. Both were TRUE — one game genuinely was unresolved — and
+            together they said the match was over and still running.
+
+            The banner is the authority on a decided match, so the pill does not
+            speak there. On a live match it is the only thing carrying how much
+            is left, and it keeps that job. `noSheetOnSides` still suppresses the
+            absence wording for the case where a sheet is missing but games
+            remain to be entered. */}
+        {!decided && (
+          <span
+            data-testid="pickem-h2h-pill"
+            className="shrink-0 rounded-full"
+            style={{
+              fontSize: 9.5,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              padding: "2px 7px",
+              color: "var(--color-bt-text-dim)",
+              background: "var(--color-bt-card-raised)",
+            }}
+          >
+            {h2hPill(rows, resolved, picked, { noSheetOnSides: true })}
+          </span>
+        )}
         <Side
           name={bName}
           total={s.bTotal}
@@ -214,16 +271,37 @@ export function PickemHeadToHead({
           avatarIcon={b.avatarIcon}
           teamColor={b.teamColor}
           align="right"
+          missing={!picked.b}
         />
       </div>
 
-      <div
-        className="px-1"
-        data-testid="pickem-h2h-note"
-        style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}
-      >
-        {note}
-      </div>
+      {/* ── A DECIDED MATCH GETS THE RESULT BANNER, NOT A GREY LINE ────────
+          The same green band golf's match play has used for a closed-out match
+          since §4 — `MatchResultBanner`, which had to be extracted from the two
+          entry views to be reusable at all (it was inline in both, and pick'em
+          would have been a third copy).
+
+          Only when the match is DECIDED. A live match's note is a running
+          commentary — "Ty needs 8 from 6 games" — and putting that in a result
+          treatment would announce a result that has not happened. So the band
+          is the settled case and the quiet line is the live one, which is the
+          same split the results page makes between a status and a kickoff.
+
+          The no-sheet case says WHY in the same line, because that is the one
+          decided state whose reason is not visible in the numbers: a reader
+          seeing "JohnnyD takes it" beside 0-0 needs to know it was won by
+          default rather than played. */}
+      {decided ? (
+        <MatchResultBanner text={resultLine} testId="pickem-h2h-result" />
+      ) : (
+        <div
+          className="px-1"
+          data-testid="pickem-h2h-note"
+          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}
+        >
+          {note}
+        </div>
+      )}
 
       <div className="px-1" style={EYEBROW}>
         Game by game
@@ -348,6 +426,7 @@ function Side({
   avatarIcon,
   teamColor,
   align,
+  missing = false,
 }: {
   name: string;
   total: number;
@@ -355,9 +434,12 @@ function Side({
   avatarIcon: string | null;
   teamColor: string | null;
   align: "left" | "right";
+  /** This person submitted no sheet. Stated here, under their own name. */
+  missing?: boolean;
 }) {
   return (
     <span
+      data-testid={`pickem-h2h-side-${align}`}
       className={`flex min-w-0 flex-1 flex-col items-center gap-1 ${align === "right" ? "text-right" : "text-left"}`}
     >
       <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={40} />
@@ -383,6 +465,12 @@ function Side({
       >
         {total}
       </span>
+      {missing && (
+        <PickemAbsenceNotice
+          label={NO_PICKS}
+          testId={`pickem-h2h-nopicks-${align}`}
+        />
+      )}
     </span>
   );
 }
