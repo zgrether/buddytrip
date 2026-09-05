@@ -2,10 +2,9 @@
 
 import { buildDecidedFromOutcomes, matchState, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { holeWeight, isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
-import { ScorecardChrome, RightGutter, SUB_W, TOTAL_W } from "./StandardGrid";
+import { ScorecardChrome, RightGutter, ScorecardLabelCell, scorecardPeople, SUB_W, TOTAL_W } from "./StandardGrid";
 import { matchDefeatText } from "./MatchResultBanner";
 import type { SidePlayer } from "./MatchSides";
-import { fitName, SCORECARD_NAME_CAPACITY_EM } from "@/lib/nameLadder";
 
 import type { TeeRow } from "@/lib/teeRows";
 import type { Participant, ScoreUnit } from "./types";
@@ -24,11 +23,6 @@ import type { Participant, ScoreUnit } from "./types";
  * `MatchCard`'s history strip uses (win/lose/halve), reused here for the
  * per-hole win-green treatment.
  */
-
-/** The scorecard's name size, keyed to viewport like the sticky column it sits
- *  in — `clamp(92px, 25vw, 124px)` — so the fit is a ratio rather than a pixel
- *  comparison. Reaches the old flat 15px at ~430px and above. */
-const SCORECARD_NAME_FONT = "clamp(12px, 3.5vw, 15px)";
 
 const WIN_GREEN = "#22c55e"; // = --color-bt-place-1 base; matches MatchCard's neutral "winning" color
 
@@ -211,45 +205,26 @@ function LeadRow({
   gloriousWash: React.CSSProperties;
   hasSections: boolean;
 }) {
-  const stacked = players && players.length > 1;
   return (
     // minHeight (not fixed 44) so a 2v2's two-line names grow the row and every
     // cell stretches to match; a 1v1 keeps the 44px single-name row.
     <div className="flex" style={{ minHeight: 44, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
-      <div className={`flex ${stacked ? "flex-col justify-center" : "items-center"}`} style={{ ...nameCell, padding: stacked ? "6px 10px" : "0 10px" }}>
-        {stacked ? (
-          // 2v2 → two stacked NAMES, no avatar disks — avatars don't fit the dense
-          // grid; the row grows to fit two full-size names (same as MatchCard).
-          // The same ladder, per name, at this surface's base size (15). The
-          // column is narrower here than on the match card and now shrinks with
-          // the viewport, so the step-down matters more, not less.
-          players!.map((p) => {
-            const fit = fitName(p.name, SCORECARD_NAME_CAPACITY_EM);
-            return (
-              <span
-                key={p.id}
-                className="max-w-full truncate"
-                data-name-step={fit.step}
-                style={{ fontSize: SCORECARD_NAME_FONT, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35 }}
-              >
-                {fit.text}
-              </span>
-            );
-          })
-        ) : (
-          (() => {
-            const fit = fitName(name, SCORECARD_NAME_CAPACITY_EM);
-            return (
-              <span
-                data-name-step={fit.step}
-                style={{ fontSize: SCORECARD_NAME_FONT, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-              >
-                {fit.text}
-              </span>
-            );
-          })()
-        )}
-      </div>
+      {/*
+        * PARITY ITEM 3 — the same row label the stroke card uses.
+        *
+        * This cell used to be private: 15px, weight 700, no dots, and its own
+        * stacked/single branch. The stroke card had the dot treatment. Same
+        * names, two surfaces, two answers — the shape of every finding in this
+        * pass, and the reason the cell is now one component rather than two
+        * that happen to agree.
+        *
+        * The dot takes the SIDE's colour here (a 2v2's partners share a team),
+        * which is the same value the lead pill in this row already uses.
+        */}
+      <ScorecardLabelCell
+        people={scorecardPeople({ id: side, name, color }, players)}
+        nameCell={nameCell}
+      />
       {track.map((c, i) => (
         <div
           key={c.hole}

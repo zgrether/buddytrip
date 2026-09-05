@@ -7,6 +7,7 @@ import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, t
 import type { TeeRow } from "@/lib/teeRows";
 import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { fitName, SCORECARD_LABEL_CAPACITY_EM } from "@/lib/nameLadder";
+import type { SidePlayer } from "./MatchSides";
 import { stablefordPoints, type StablefordRubric } from "@/lib/stableford";
 import { GolfChip } from "./GolfChip";
 import {
@@ -133,9 +134,15 @@ interface StandardGridProps {
  * 124 was never reachable by this column's content. Measured in the browser at
  * the label's shipped type (11px / 600), the widest abbreviated roster name —
  * `J. Schumacher` — is 70.5px, and the cell's chrome is 34px, so this column
- * tops out at ~105. The ceiling is 110 rather than 105 because
- * `OutcomeScorecard`'s lead rows share `NAME_W` and need it: 6.0em at their 15px
- * wide-viewport size is 90px of text plus 20px of padding.
+ * tops out at ~105.
+ *
+ * The ceiling is 110 rather than 105 because `OutcomeScorecard`'s lead rows
+ * shared `NAME_W` and needed it: 6.0em at their own 15px name. **That reason is
+ * now spent** — both scorecards render the same 11px `ScorecardLabelCell`, so
+ * nothing needs the extra 5px and the ceiling could come down to ~105 for
+ * another ~0.17 holes at a wide viewport. Left at 110 deliberately: it is a
+ * measured number that was reviewed, and re-deriving it belongs with a device
+ * look rather than with this parity change.
  *
  * Measured, at a 500px viewport: 124 gave 12.53 visible holes, 110 gives 13.00,
  * and nothing clips at either. **0.47 holes for free.**
@@ -185,10 +192,63 @@ export const FADE_W = 24;
  * The dot takes the PLAYER's team color when there is one; a 1v1 falls back to
  * the participant's own identity color, which is the value it always used.
  */
-function peopleOf(p: Participant): Array<{ id: string; name: string; color: string }> {
-  return p.players?.length
-    ? p.players.map((q) => ({ id: q.id, name: q.name, color: q.teamColor ?? p.color }))
-    : [{ id: p.id, name: p.name, color: p.color }];
+export function scorecardPeople(
+  fallback: { id: string; name: string; color: string },
+  players?: SidePlayer[]
+): Array<{ id: string; name: string; color: string }> {
+  return players?.length
+    ? players.map((q) => ({ id: q.id, name: q.name, color: q.teamColor ?? fallback.color }))
+    : [fallback];
+}
+
+/**
+ * The scorecard's sticky row label, shared by BOTH scorecards.
+ *
+ * A ROW LABEL, not content. In score entry the names ARE the content and earn
+ * avatars and full weight; here they identify a row of numbers, so they take the
+ * least space that still identifies it — the TEE ROW's own treatment (8px dot,
+ * gap-1.5, 11px, weight 600), which is already on this screen.
+ *
+ * NO BRANCH: the two shapes are normalised into one list by `scorecardPeople`,
+ * so a 1v1 is a list of one and renders through the identical path. That is also
+ * what drops the ampersand — the joined side label is never rendered here, only
+ * the people in it.
+ *
+ * ── Why this is a component and not a copy ────────────────────────────────
+ *
+ * `OutcomeScorecard` rendered its own name cell at 15px/700 with no dots while
+ * this one had the dot treatment — the same names, two surfaces, two answers,
+ * which is the exact shape of every finding in this parity pass. One cell means
+ * a change to the label lands on both cards or on neither.
+ */
+export function ScorecardLabelCell({
+  people,
+  nameCell,
+  background,
+}: {
+  people: Array<{ id: string; name: string; color: string }>;
+  nameCell: React.CSSProperties;
+  background?: string;
+}) {
+  return (
+    <div className="flex flex-col justify-center" style={{ ...nameCell, background, padding: "4px 10px", gap: 2 }}>
+      {people.map((q) => {
+        const fit = fitName(q.name, SCORECARD_LABEL_CAPACITY_EM);
+        return (
+          <span key={q.id} className="flex min-w-0 items-center gap-1.5">
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: q.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
+            <span
+              className="truncate"
+              data-name-step={fit.step}
+              style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text)" }}
+            >
+              {fit.text}
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 /** Everything a `ScorecardChrome` body (the `children` render-prop) needs to
@@ -785,23 +845,7 @@ export function StandardGrid({
                   * identical path. That is also what drops the ampersand — the
                   * joined label is never rendered here, only the people in it.
                   */}
-                <div className="flex flex-col justify-center" style={{ ...nameCell, background: rowBg, padding: "4px 10px", gap: 2 }}>
-                  {peopleOf(p).map((q) => {
-                    const fit = fitName(q.name, SCORECARD_LABEL_CAPACITY_EM);
-                    return (
-                      <span key={q.id} className="flex min-w-0 items-center gap-1.5">
-                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: q.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
-                        <span
-                          className="truncate"
-                          data-name-step={fit.step}
-                          style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text)" }}
-                        >
-                          {fit.text}
-                        </span>
-                      </span>
-                    );
-                  })}
-                </div>
+                <ScorecardLabelCell people={scorecardPeople(p, p.players)} nameCell={nameCell} background={rowBg} />
                 {units.map((u, i) => {
                   const v = valOf(p.id, u.label);
                   const hasPip = pips?.[p.id]?.has(u.label);
