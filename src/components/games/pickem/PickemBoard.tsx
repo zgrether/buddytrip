@@ -240,9 +240,6 @@ export function PickemBoard({
                 aAvatar={avatarFor(m.sideAId)}
                 bAvatar={avatarFor(m.sideBId)}
                 mine={meId != null && (m.sideAId === meId || m.sideBId === meId)}
-                youSide={
-                  meId == null ? null : m.sideAId === meId ? "a" : m.sideBId === meId ? "b" : null
-                }
                 selected={openMatch === m.id}
                 onOpen={() => setOpenMatch(m.id)}
               />

@@ -25,41 +25,86 @@ const GAME = {
 describe("the matchup line", () => {
   const html = renderToStaticMarkup(<MatchupLine game={GAME} />);
 
-  it("pins the multiplier RIGHT, past a spacer", () => {
+  /** One element's opening tag, found by testid — anchored to the LINE rather
+   *  than searched for in a document that repeats team names below. */
+  const tag = (markup: string, testId: string) => {
+    const at = markup.indexOf(`data-testid="${testId}"`);
+    if (at === -1) return "";
+    return markup.slice(markup.lastIndexOf("<", at), markup.indexOf(">", at) + 1);
+  };
+
+  it("gives each team its OWN line — two, always, whatever the names are", () => {
     /**
-     * It used to follow the spread inside a wrapping run, so its x position
-     * moved with the length of the team names and with whether the game had a
-     * line at all — sixteen places to find the one badge that changes how you
-     * spend confidence.
+     * This REPLACES "does not WRAP — a long matchup truncates instead", which
+     * asserted the r7 §12 arrangement this reverses. That test would still pass
+     * against the current build (there is no `flex-wrap` and there is a
+     * `truncate`), which is exactly why it had to go rather than be kept as a
+     * bonus: its NAME claims a single-line matchup, the code no longer renders
+     * one, and a test whose name describes a path it does not take is worse
+     * than no test.
      *
-     * The spacer is what pins it. Asserted as ORDER rather than as the presence
-     * of a class: the badge must come after the flex filler, and the spread
-     * before it.
+     * The mechanism is that the two names live in SEPARATE elements. The old
+     * build held both inside one span with an "at" between them, so the away
+     * line containing the home team's name is the precise signature of the
+     * arrangement being reversed.
      */
-    const spread = html.indexOf("-3.5");
-    const spacer = html.indexOf('class="flex-1"');
-    const badge = html.indexOf("pickem-multiplier-badge");
-    expect(spread).toBeGreaterThan(-1);
-    expect(spacer).toBeGreaterThan(spread);
-    expect(badge).toBeGreaterThan(spacer);
+    const away = tag(html, "pickem-matchup-away");
+    const home = tag(html, "pickem-matchup-home");
+    expect(away).not.toBe("");
+    expect(home).not.toBe("");
+
+    // Two elements, not one — and the away line is not secretly the whole
+    // matchup. Sliced to the away element's own text, so the home team
+    // appearing anywhere else in the document cannot satisfy this.
+    const awayStart = html.indexOf('data-testid="pickem-matchup-away"');
+    const awayText = html.slice(awayStart, html.indexOf("</span>", awayStart));
+    expect(awayText).toContain("Alabama");
+    expect(awayText).not.toContain("Georgia");
+
+    // Each line holds itself to ONE line, so a long name cannot make a third.
+    expect(away).toContain("truncate");
+    expect(home).toContain("truncate");
   });
 
-  it("does not WRAP — a long matchup truncates instead", () => {
+  it("pins the multiplier out of the text flow, so names cannot move it", () => {
     /**
-     * Wrapping is what let a long matchup push the badge onto a second line,
-     * which is the divergence §12 is about: one line here and two there for the
-     * same game. Asserted on the line's own class list rather than the page,
-     * because the card around it legitimately stacks.
+     * §12's goal kept, its mechanism replaced. The badge used to be the end of
+     * a flex run after a `flex-1` spacer, which pinned it right but left it
+     * INSIDE the line — so it competed with the names for width. It is now
+     * absolute, and the names pad to clear it.
+     *
+     * The clearance is the half worth asserting: a build that positions the
+     * badge absolutely and forgets the padding renders the badge ON TOP of a
+     * long team name, which looks fine on "Alabama" and breaks on
+     * "Lebanon Valley Flying Dutchmen".
      */
-    expect(html).not.toContain("flex-wrap");
-    expect(html).toContain("truncate");
+    expect(tag(html, "pickem-matchup-multiplier-slot")).toContain("right:0");
+    expect(tag(html, "pickem-matchup-away")).toContain("padding-right:44px");
+    expect(tag(html, "pickem-matchup-home")).toContain("padding-right:44px");
+  });
+
+  it("does not pay for clearance on a game that has no multiplier", () => {
+    /**
+     * The mutation this exists for: making the padding unconditional. Every
+     * assertion above still passes, and every 1x row — which is most of a slate
+     * — silently loses 44px of name it had no reason to.
+     */
+    const plain = renderToStaticMarkup(<MatchupLine game={{ ...GAME, multiplier: 1 }} />);
+    expect(plain).not.toContain("pickem-matchup-multiplier-slot");
+    expect(tag(plain, "pickem-matchup-away")).not.toContain("padding-right");
+    expect(tag(plain, "pickem-matchup-home")).not.toContain("padding-right");
   });
 
   it("keeps the spread WITH the home team", () => {
     // The one badge whose position is meaningful rather than tidy: the line
-    // belongs to the home side, so it sits at that end of the matchup.
-    const home = html.indexOf("Georgia");
-    expect(html.indexOf("-3.5")).toBeGreaterThan(home);
+    // belongs to the home side, so it sits on that line — which is now a
+    // stronger claim than "after it in the markup", because the away team has
+    // its own line for the spread to be absent from.
+    const homeStart = html.indexOf('data-testid="pickem-matchup-home"');
+    const awayStart = html.indexOf('data-testid="pickem-matchup-away"');
+    const spread = html.indexOf("-3.5");
+    expect(spread).toBeGreaterThan(homeStart);
+    expect(homeStart).toBeGreaterThan(awayStart);
   });
 });
 
@@ -163,11 +208,63 @@ describe("the segments", () => {
     expect(two).not.toContain('data-testid="t-cancelled"');
   });
 
-  it("splits evenly with two values and reserves the short columns with four", () => {
-    // Push and Void are short fixed words; the teams take what is left. With
-    // only two values there is nothing to reserve for.
-    expect(render()).toContain("1fr 1fr 52px 52px");
-    expect(render({ values: ["away", "home"] as const })).toContain("grid-template-columns:1fr 1fr");
+  it("gives the TEAMS a full-width row and drops the outcomes beneath", () => {
+    /**
+     * This REPLACES "splits evenly with two values and reserves the short
+     * columns with four", which asserted `1fr 1fr 52px 52px`.
+     *
+     * That layout is the reported truncation. At 390px the card's content box
+     * is ~340px, so 104px of fixed columns plus gaps left each team ~115px —
+     * enough for "Toledo", not for "Michigan State Spartans". The teams now
+     * take a row of their own.
+     *
+     * Asserted as the ABSENCE of the fixed columns plus the presence of a
+     * second row, rather than on the grid string alone: a build that kept the
+     * four in one row and merely restyled them would still satisfy a
+     * `toContain("1fr 1fr")`, since the teams' own row uses exactly that.
+     */
+    const four = render();
+    expect(four).not.toContain("52px");
+
+    // The outcomes are in their own `col-span-2` sub-grid — the structural
+    // signature of "second row", which a single flat grid cannot produce.
+    expect(four).toContain("col-span-2");
+
+    // ...and the two teams still split their row evenly.
+    expect(four).toContain("grid-template-columns:1fr 1fr");
+  });
+
+  it("leaves a TWO-value control as one row — the sheet is not the results page", () => {
+    /**
+     * The mutation this exists for: applying the second row unconditionally.
+     * Every assertion above still passes, and the picks sheet — which has no
+     * outcomes to put in a second row — grows an empty one.
+     */
+    const two = render({ values: ["away", "home"] as const });
+    expect(two).toContain("grid-template-columns:1fr 1fr");
+    expect(two).not.toContain("col-span-2");
+  });
+
+  it("makes the outcomes SECONDARY, not equal siblings of the teams", () => {
+    /**
+     * Push and Cancelled are rare; a control whose common case is visually
+     * primary reads faster than four equal buttons. `segmentStyle` already
+     * said this in colour and now the size says it too — one statement, twice,
+     * rather than two.
+     *
+     * Anchored per-BUTTON via testid. A document-wide `toContain("30px")`
+     * would be satisfied by any other 30px in the card, which is the substring
+     * corollary exactly.
+     */
+    const four = render();
+    const tagFor = (v: string) => {
+      const at = four.indexOf(`data-testid="t-${v}"`);
+      return four.slice(four.lastIndexOf("<", at), four.indexOf(">", at) + 1);
+    };
+    expect(tagFor("away")).toContain("height:34px");
+    expect(tagFor("home")).toContain("height:34px");
+    expect(tagFor("push")).toContain("height:30px");
+    expect(tagFor("cancelled")).toContain("height:30px");
   });
 
   it("paints a chosen TEAM in accent and a chosen Push/Void neutrally", () => {

@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
-import { pickemRowSurface } from "./slateRowVisual";
+/* `pickemRowSurface` is gone from this file: the entered row used to build its
+   own surface and now renders the shared `PickemGameCard`, which owns it. */
+import { type SideEmphasis, type StatusTone } from "./slateRowVisual";
 import { PickemGameCard, PickemSegments, segmentStyle } from "./PickemGameCard";
 
 /**
@@ -36,15 +38,18 @@ import { resolvedCount, type SlateResult, type ScoredSlateGame } from "@/lib/pic
  * "11 of 16 in", never "thru 11". There is no order to be eleven-deep into, and
  * "thru" would assert a sequence the runner does not work in.
  *
- * ── Four outcomes, two weights ─────────────────────────────────────────────
+ * ── Four outcomes, two ROWS ────────────────────────────────────────────────
  *
  * One segmented control, because the four are alternatives and a control that
  * looks like a choice is easier to read than two tiers of buttons that are.
- * The two teams take the width; Push and Void get 52px each, since they are
- * rare and their size should say so.
+ * They no longer share a LINE, though: the two teams take a full-width row and
+ * Push / Cancelled sit beneath it. `1fr 1fr 52px 52px` gave each team about
+ * 115px at 390px, which holds "Toledo" and loses "Michigan State Spartans" —
+ * the reported truncation, on the surface where the names matter most because
+ * the runner is matching them against a scoreboard.
  *
  * They differ in COLOUR too, and that is the load-bearing part: a selected team
- * is accent, a selected Push or Void is a neutral fill. Push and cancelled
+ * is accent, a selected Push or Cancelled is a neutral fill. Push and cancelled
  * score identically (zero for everyone) and are DIFFERENT FACTS — one happened
  * and nobody covered, the other never happened — but neither is a win, and
  * painting them like one would say a team did something.
@@ -61,27 +66,89 @@ export interface RunSlateGame extends ScoredSlateGame {
 /**
  * How a resolved row reads. Push and cancelled must not share a label.
  *
- * ── `cancelled` IS NO LONGER ALWAYS "never played" ─────────────────────────
+ * ── `Cancelled`, and this REVERSES the `Void`/`Voided` rename ─────────────
  *
- * That copy was right while a runner pressing Void was the only way to produce
- * the value: they were saying the contest did not happen. Finalizing with
- * contests outstanding is a SECOND producer of the same value, and those games
- * were very likely played — the runner just never entered a result. So
- * "never played" became a claim the row cannot support.
+ * The previous decision here was that `cancelled` cannot claim "never played":
+ * a runner pressing the button IS asserting the contest did not happen, but
+ * finalizing with contests outstanding produces the same value for games that
+ * probably WERE played and simply never got a result. That reasoning stands
+ * and is not what changed — the surviving fact is still about the stake.
  *
- * `Voided` is true of both producers, and it is what the glossary's own rule
- * gives: decide by asking what the label is ABOUT. This one is about the STAKE
- * — nobody was paid — and not about whether the game happened, which is exactly
- * the question the finalize path cannot answer. (CLAUDE.md's glossary row is
- * updated in the same change; this is a display-string rename, the cosmetic
- * tier, and the DB value is untouched.)
+ * What changed is who the word is FOR. `Voided` is the accurate term for
+ * "the stake is gone" and it is also jargon: the crew reading this screen are
+ * not database users, and "Void"/"Voided" reads as a form-processing word
+ * rather than a thing that happened to a football game. `Cancelled` is what a
+ * person would say, and the small loss of precision — it hints the game did
+ * not happen, which is only sometimes true — costs less than a word half the
+ * readers have to translate.
+ *
+ * So this deliberately reverses R3 #1132 and R4 #1133, on a ground neither of
+ * them weighed: both argued about WHAT the label is about, and this one is
+ * about who is reading it. ONE word everywhere, including the segment and the
+ * head-to-head cells, since the width argument that produced the original
+ * `Void`/`Voided` split is also gone — the segment is full-width now.
+ *
+ * Display-string tier. `pickem_slate_games.result` is still `'cancelled'` and
+ * no migration is involved. CLAUDE.md's glossary row moves in this same PR.
+ *
+ * ── `away`/`home` both read "Final" ───────────────────────────────────────
+ *
+ * They used to read "Away won" / "Home won", which named a SLOT rather than a
+ * team — so the runner mapped "Away" back onto a name sitting inches away, and
+ * a list of settled games was a column of near-identical pills. The winner is
+ * now carried by the NAMES (see `resultEmphasis`), which leaves this line free
+ * to say only what KIND of outcome it was.
  */
 const RESULT_LABEL: Record<SlateResult, string> = {
-  away: "Away won",
-  home: "Home won",
+  away: "Final",
+  home: "Final",
   push: "Pushed",
-  cancelled: "Voided",
+  cancelled: "Cancelled",
 };
+
+/**
+ * Which name is saying what, once a contest is settled.
+ *
+ * ── The status line names the KIND; the names carry the RESULT ─────────────
+ *
+ * "Away won" and "Home won" were doing both jobs badly. They named a SLOT
+ * rather than a team, so a runner reading a settled row had to map "Away" back
+ * onto a name that was sitting right there — and the status line was the only
+ * thing on the row that changed when a result landed, so a list of settled
+ * games was a column of near-identical two-word pills.
+ *
+ * Splitting it: the STATUS says what kind of outcome this was (Final / Pushed
+ * / Cancelled) and the NAMES say who won, by weight. That makes the winner
+ * readable without reading anything — which is the whole treatment.
+ *
+ * ── Push is not a faded final, and cancelled is not a push ────────────────
+ *
+ * `level` gives a push BOTH names at the loser's weight and the winner's
+ * colour: the absence of contrast is the signal. It cannot be confused with a
+ * decided game, because a decided game always has exactly one bold name and
+ * one dim one — so "no contrast" is a state the win case can never produce.
+ *
+ * `struck` is cancelled, and the ONLY thing separating it from a played game
+ * is `textDecoration`. No value, no text and no attribute differs. That is why
+ * its guard mutates the style rather than the data.
+ */
+export function resultEmphasis(result: SlateResult | null): {
+  away: SideEmphasis;
+  home: SideEmphasis;
+} {
+  if (result == null) return { away: "none", home: "none" };
+  if (result === "push") return { away: "level", home: "level" };
+  if (result === "cancelled") return { away: "struck", home: "struck" };
+  return result === "away"
+    ? { away: "won", home: "lost" }
+    : { away: "lost", home: "won" };
+}
+
+/** The status line's tone — `SlateResult` narrowed to the three things a
+ *  reader needs to tell apart. */
+export function resultTone(result: SlateResult): StatusTone {
+  return result === "push" ? "push" : result === "cancelled" ? "cancelled" : "final";
+}
 
 /**
  * The finalize / correct / re-lock block, as this surface receives it.
@@ -193,8 +260,12 @@ export function PickemRunView({
               color: "var(--color-bt-text-dim)",
             }}
           >
+            {/* "cancelled", matching the button it names. This said "void"
+                after the label had moved — the instruction and the control
+                disagreeing about what the reader is looking for, which is the
+                refusal rule's failure mode in an ordinary sentence. */}
             Mark the winner of the game, or if it resulted in a push. If a game
-            needs to be removed from the scoring, mark it as void.
+            needs to be removed from the scoring, mark it as cancelled.
           </span>
         )}
       </div>
@@ -362,13 +433,43 @@ function PendingCard({
 const RESULT_VALUES = ["away", "home", "push", "cancelled"] as const;
 
 /**
- * A game already marked — one line, and a way back into it.
+ * A game already marked — the same card as an unmarked one, and a way back in.
  *
  * The way back is the ROW, not a Clear button. Correcting a wrong result by
  * clearing first would pass through a state where the game reads unplayed and
  * every total on every other surface moves — for a mistake that is being fixed
  * in the same breath. Reopening shows the same control the game was marked
  * with, so a correction is one tap and one write.
+ *
+ * ── IT IS THE SHARED CARD NOW, NOT A PRIVATE ONE-LINER ────────────────────
+ *
+ * This used to be its own row: the matchup flattened to a dim
+ * "Toledo Rockets at Michigan State Spartans" at 12.5px with a small pill
+ * reading "Away won". Two things were wrong with it and they compound.
+ *
+ * First, the SLOT problem — "Away won" names a position, not a team, so the
+ * one fact the row exists to record was the one thing it made you work out,
+ * from a name printed dim inches to the left. Sixteen settled games were
+ * sixteen near-identical pills.
+ *
+ * Second, the DIVERGENCE — the same contest was drawn one way while it was
+ * work and a different way once it was done, which is precisely what r7 §12
+ * unified the three surfaces to stop. Being settled is a state of a game, not
+ * a reason for a different card.
+ *
+ * So: the shared `PickemGameCard`, with the result carried by the NAMES
+ * (`resultEmphasis`) and the kind carried by the status line in place of the
+ * kickoff. A runner scanning the entered list now reads winners by weight
+ * without reading words.
+ *
+ * ── Collapsed, but only HERE ──────────────────────────────────────────────
+ *
+ * Unmarked games keep their control open. Entering sixteen results is the job
+ * this screen exists for and putting a disclosure tap in front of each one
+ * would double it; a settled game, by contrast, is a record that only
+ * occasionally needs reopening. So the disclosure is on the group that is
+ * DONE, which is where it was before — this changes what a collapsed row looks
+ * like, not which rows collapse.
  */
 function EnteredRow({
   game: g,
@@ -385,57 +486,34 @@ function EnteredRow({
   onToggle: () => void;
   onSetResult: (slateGameId: string, result: SlateResult | null) => void;
 }) {
-  const line = (
-    <>
-      <span
-        className="min-w-0 flex-1 truncate text-left"
-        style={{ fontSize: TYPE_SCALE.captionPlus, color: "var(--color-bt-text-dim)" }}
-      >
-        {g.awayTeam} at {g.homeTeam}
-      </span>
-      <span
-        className="shrink-0 rounded"
-        style={{
-          fontSize: 9.5,
-          fontWeight: 700,
-          padding: "2px 6px",
-          color: open ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-          background: open ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-        }}
-      >
-        {busy ? "Saving…" : RESULT_LABEL[g.result as SlateResult]}
-      </span>
-    </>
-  );
-
+  const result = g.result as SlateResult;
+  const emphasis = resultEmphasis(result);
   return (
-    <div
-      data-testid="pickem-run-entered"
-      className="flex flex-col"
-      style={{
-        ...pickemRowSurface({ weighted: (g.multiplier ?? 1) > 1, quiet: !open }),
-        borderRadius: 11,
-      }}
+    <PickemGameCard
+      testId="pickem-run-entered"
+      game={g}
+      awayEmphasis={emphasis.away}
+      homeEmphasis={emphasis.home}
+      /* The HEADER is the disclosure, not the card — `children` is what the
+         tap reveals, so wrapping the whole card would nest the segments inside
+         the button that opens them. */
+      onHeaderTap={canEdit ? onToggle : undefined}
+      headerTestId="pickem-run-reopen"
+      headerOpen={open}
+      /* "Saving…" replaces the STATUS rather than sitting beside it: the row is
+         mid-write, so the status on screen is the one being replaced and
+         showing it next to a spinner would assert a result that may not be the
+         one that lands. */
+      status={
+        busy
+          ? { text: "Saving…", tone: "final" }
+          : { text: RESULT_LABEL[result], tone: resultTone(result) }
+      }
+      quiet={!open}
+      active={open}
     >
-      {canEdit ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          data-testid="pickem-run-reopen"
-          data-open={open ? "true" : "false"}
-          className="flex items-center gap-2 px-3"
-          style={{ minHeight: 40 }}
-        >
-          {line}
-        </button>
-      ) : (
-        <span className="flex items-center gap-2 px-3" style={{ minHeight: 40 }}>
-          {line}
-        </span>
-      )}
-
       {canEdit && open && (
-        <div className="flex flex-col gap-2 px-3 pb-2.5">
+        <div className="flex flex-col gap-2">
           <PickemSegments
             values={RESULT_VALUES}
             awayTeam={g.awayTeam}
@@ -463,6 +541,6 @@ function EnteredRow({
           </button>
         </div>
       )}
-    </div>
+    </PickemGameCard>
   );
 }

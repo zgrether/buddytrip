@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import { type MatchupLineGame } from "./slateRowVisual";
-import { PickemGameCard, PickemSegments } from "./PickemGameCard";
+import { PickemGameCard, PickemSegments, SELECT_HOLD_MS } from "./PickemGameCard";
 
 /**
  * One game on the picks sheet — the shared card, with two segments on line 3.
@@ -259,10 +260,68 @@ export function PickemSheetRow({
    *  tapped again. */
   onPick: (side: "away" | "home" | null) => void;
 }) {
+  /**
+   * ── OPEN STATE IS THE ROW'S OWN, and that is what makes the close work ────
+   *
+   * Held here rather than by the sheet, because the sheet re-renders on every
+   * keystroke of the draft — a pick writes straight into it — and open state
+   * hanging off that would be reset by the very action it is animating.
+   * Locally it survives, because React updates this instance in place.
+   *
+   * Independent per row rather than one-at-a-time. A pick closes its own row
+   * anyway, so the accordion never needs policing, and closing somebody's row
+   * because they opened another is a rule with no work to do.
+   */
+  const [open, setOpen] = useState(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // A row can be unmounted mid-hold — tab away, or the sheet re-sorts on a
+  // reorder — and a timer firing into a dead instance is a React warning and a
+  // leak.
+  useEffect(
+    () => () => {
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+    },
+    []
+  );
+
+  const handlePick = (side: "away" | "home" | null) => {
+    // The pick goes up IMMEDIATELY. The hold is a display decision and must
+    // never sit between somebody tapping and the draft recording it.
+    onPick(side);
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    /**
+     * CLEARING does not close. Tapping your current pick to clear it means you
+     * are changing your mind, so the control you need next is the one you are
+     * looking at — shutting it would make the second choice cost another tap.
+     */
+    if (side != null) {
+      holdTimer.current = setTimeout(() => setOpen(false), SELECT_HOLD_MS);
+    }
+  };
+
   return (
     <PickemGameCard
       testId="pickem-sheet-row"
       game={game}
+      /**
+       * ── THE PICK IS READABLE WITH THE ROW SHUT ────────────────────────────
+       *
+       * This is what makes collapsing by default honest rather than hiding the
+       * answer: the chosen side's NAME takes the accent, so a closed sixteen-row
+       * sheet can be read straight down without opening anything.
+       *
+       * `chosen` on both phases, settled rows included. The row's FATE is the
+       * rank chip's job — filled, struck, outlined — and painting the name by
+       * outcome here would put the results page's vocabulary on the sheet,
+       * where the question is what you took rather than how it went.
+       */
+      awayEmphasis={pick === "away" ? "chosen" : "none"}
+      homeEmphasis={pick === "home" ? "chosen" : "none"}
+      onHeaderTap={() => setOpen((v) => !v)}
+      headerTestId="pickem-sheet-disclosure"
+      headerOpen={open}
+      collapsible={{ open }}
       /**
        * ONE dim, on the row's content, chip included.
        *
@@ -298,7 +357,7 @@ export function PickemSheetRow({
            null for a tap on the current value, which is what the team targets
            did before and what the runner's four-segment version has always
            done. */
-        onSelect={(side) => onPick(side)}
+        onSelect={(side) => handlePick(side)}
         testIdPrefix="pickem-pick"
       />
     </PickemGameCard>

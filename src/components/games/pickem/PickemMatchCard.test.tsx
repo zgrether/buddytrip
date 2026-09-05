@@ -115,7 +115,7 @@ describe("a side that never picked — NOT a clinch", () => {
     expect(matchPill(s, 7, BOTH)).toBe("clinched");
   });
 
-  it("names who did not submit, and states the CONSEQUENCE rather than a way out", () => {
+  it("names who takes it, and leaves the FACT to the pill beside it", () => {
     /**
      * It used to end "unless that changes". Nothing can change it: this
      * surface renders on a LOCKED game and nowhere else, and
@@ -123,9 +123,15 @@ describe("a side that never picked — NOT a clinch", () => {
      * person nor a captain proxying for them can add a sheet. The sentence was
      * the refusal rule pointing the other way, an invitation nobody can accept.
      *
-     * What replaces it is the part a reader cannot derive: that an absent sheet
-     * scores nothing. On a screen whose picking half defaults every game to the
-     * home team, that is genuinely not obvious.
+     * It then said "X didn't submit a sheet — it scores nothing, so Y takes
+     * the match", which repeated the PILL ("Nothing submitted") and overran
+     * the line it shares with it. The repetition is what went; the pill still
+     * carries the fact on both surfaces that render this note, which is the
+     * thing to verify before shortening a sentence into a label.
+     *
+     * The explicit consequence — "it scores nothing" — is genuinely lost and
+     * is now carried by implication. Recorded in `matchNote` rather than
+     * quietly dropped.
      */
     const note = matchNote(
       st({ remaining: 9, margin: -17, clinched: true, trailingUpside: 0 }),
@@ -134,10 +140,11 @@ describe("a side that never picked — NOT a clinch", () => {
       empty,
       NAMES
     );
-    expect(note).toBe(
-      "Zach didn't submit a sheet — it scores nothing, so Ty takes the match"
-    );
+    expect(note).toBe("Ty takes it");
     expect(note).not.toContain("unless that changes");
+    // The pill's own words must not be repeated here — that is the whole
+    // reason this line is short.
+    expect(note).not.toContain("submit");
     // The line before that one is gone too: "only 0 in play" is true and
     // explains nothing.
     expect(note).not.toContain("in play");
@@ -147,8 +154,11 @@ describe("a side that never picked — NOT a clinch", () => {
   it("says NEITHER when both are empty — no leader to name", () => {
     // Two guests paired together. Naming one as taking it would invent a winner.
     const note = matchNote(st({ remaining: 9 }), 7, "Zach", { a: false, b: false }, NAMES);
-    expect(note).toBe("Neither submitted a sheet — nothing scores");
+    expect(note).toBe("Nothing scores");
     expect(note).not.toContain("yet");
+    // No winner invented where there is none: "takes it" belongs only to the
+    // branch that has somebody to name.
+    expect(note).not.toContain("takes it");
   });
 
   it("is FINAL once nothing is left, not DIDN'T PICK", () => {
@@ -180,7 +190,6 @@ describe("PickemMatchCard", () => {
         resolvedCount={2}
         picked={BOTH}
         mine={false}
-        youSide={null}
         onOpen={() => {}}
         {...over}
       />
@@ -203,8 +212,37 @@ describe("PickemMatchCard", () => {
     expect(html).toContain("var(--color-bt-text-dim)");
   });
 
-  it("tags the viewer's own side", () => {
-    expect(render({ mine: true, youSide: "b" })).toContain("You");
+  it("marks the viewer's own match with the card FILL, not a badge", () => {
+    /**
+     * This replaces "tags the viewer's own side", which asserted a "YOU"
+     * badge. The badge existed because `mine` only changed the 1px border —
+     * a difference you have to hunt for in a list of eight — and it was the
+     * only such tag in the app. A filled card says it from further away.
+     *
+     * Asserted as the PAIR, because the fill is what the badge's removal
+     * rests on: a build that removed the tag and left `mine` as a border
+     * change makes your own match harder to find than before, and every other
+     * assertion here would still pass.
+     */
+    /**
+     * Anchored to the CARD's own opening tag, not the document. The first
+     * version of this test asserted over the whole render and failed against
+     * correct code: the LIVE pill inside the card also uses
+     * `--color-bt-accent-faint`, so "this card is mine" was being answered by
+     * a descendant that means something else entirely. The substring
+     * corollary, caught by the assertion going red rather than by reading it.
+     */
+    const cardTag = (markup: string) => markup.slice(0, markup.indexOf(">") + 1);
+
+    const own = cardTag(render({ mine: true }));
+    expect(own).toContain("var(--color-bt-accent-faint)");
+    expect(own).toContain("var(--color-bt-accent-border)");
+    expect(render({ mine: true })).not.toContain(">You<");
+
+    // ...and a match that is not yours takes neither.
+    const other = cardTag(render({ mine: false }));
+    expect(other).not.toContain("var(--color-bt-accent-faint)");
+    expect(other).toContain("var(--color-bt-card)");
   });
 
   it("appends the runner's note after the status, not instead of it", () => {

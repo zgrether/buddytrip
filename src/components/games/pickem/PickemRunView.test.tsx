@@ -238,7 +238,7 @@ describe("what hangs on an unmarked game", () => {
     expect(html).not.toContain("still to mark");
     expect(html).not.toContain("hang on them");
     expect(html).toContain("Mark the winner of the game");
-    expect(html).toContain("mark it as void");
+    expect(html).toContain("mark it as cancelled");
   });
 
   it("keeps the instructions away from a member", () => {
@@ -323,22 +323,27 @@ describe("a voided contest", () => {
   const voided = (i: number) =>
     SLATE.map((g, n) => ({ ...g, result: n === i ? ("cancelled" as const) : g.result }));
 
-  it("sits in ENTERED and reads Voided", () => {
+  it("sits in ENTERED and reads Cancelled", () => {
     const html = render({ slate: voided(0) });
     expect(html).toContain("Entered");
-    expect(html).toContain("Voided");
+    expect(html).toContain("Cancelled");
   });
 
   it("does NOT claim the game was never played", () => {
     /**
-     * The copy said "Cancelled — never played", which was true while a runner
-     * pressing Void was the only producer of the value. A game voided at
-     * finalize was probably played and simply never entered, so the clause
-     * became a claim the row cannot support.
+     * The copy said "Cancelled — never played". The CLAUSE is what was wrong,
+     * not the word: a runner pressing the button is asserting the contest did
+     * not happen, but a game cancelled at finalize was probably played and
+     * simply never entered, so the row cannot support "never played" either
+     * way.
+     *
+     * This used to also assert `not.toContain("Cancelled")`, from the round
+     * that renamed the label to `Voided`. That assertion is now the OPPOSITE of
+     * the intent — the word is back, deliberately — so what survives is the
+     * claim itself, which is the part that was ever the problem.
      */
     const html = render({ slate: voided(0) });
     expect(html).not.toContain("never played");
-    expect(html).not.toContain("Cancelled");
   });
 
   it("is still distinct from a PUSH — two facts, two labels", () => {
@@ -349,7 +354,7 @@ describe("a voided contest", () => {
         n === 0 ? { ...g, result: "cancelled" as const } : n === 1 ? { ...g, result: "push" as const } : g
       ),
     });
-    expect(html).toContain("Voided");
+    expect(html).toContain("Cancelled");
     expect(html).toContain("Pushed");
   });
 });

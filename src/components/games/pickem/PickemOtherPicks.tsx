@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
+import { PickemBackHeader } from "./PickemBackHeader";
 import { Avatar } from "@/components/Avatar";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 
@@ -363,21 +363,13 @@ function PersonRow({
  */
 export function PickemReadingHeader({ name, onBack }: { name: string; onBack: () => void }) {
   return (
-    <div className="flex items-center gap-1 px-1" data-testid="pickem-reading-header">
-      <button
-        type="button"
-        onClick={onBack}
-        data-testid="pickem-reading-back"
-        aria-label="Back to the list"
-        className="-ml-1 flex shrink-0 items-center justify-center"
-        style={{ width: 32, height: 32, color: "var(--color-bt-accent)" }}
-      >
-        <ChevronLeft size={20} />
-      </button>
-      <span className="min-w-0 flex-1 truncate" style={{ fontSize: 17, fontWeight: 700 }}>
-        {name}&rsquo;s picks
-      </span>
-    </div>
+    <PickemBackHeader
+      testId="pickem-reading-header"
+      backTestId="pickem-reading-back"
+      backLabel="Back to the list"
+      onBack={onBack}
+      title={<>{name}&rsquo;s picks</>}
+    />
   );
 }
 

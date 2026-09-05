@@ -90,6 +90,111 @@ export function pickemRowSurface(opts: {
   };
 }
 
+/**
+ * What one side's NAME is saying, on whichever surface is asking.
+ *
+ * ── A shared vocabulary, so two surfaces cannot invent two teals ───────────
+ *
+ * The picks sheet marks the side you took; the results page marks the side
+ * that won. Those are different facts and they get different treatments — but
+ * both are "emphasise one of these two names", and the way to keep that from
+ * becoming two private style tables is the way `segmentStyle` already did it:
+ * the surface picks a STATE, this file decides what the state looks like.
+ *
+ * ── `level` and `struck` exist because absence is not a state ──────────────
+ *
+ * A push and a void both pay nobody, and it is tempting to render them the
+ * same way as "nothing decided yet". They are not the same: a push HAPPENED
+ * and nobody covered; a void means the stake is gone. And neither is a win, so
+ * neither may borrow the winner's weight.
+ *
+ * `level` is the push: BOTH names at the loser's weight but the winner's
+ * colour. The absence of contrast is the signal, and it cannot be mistaken for
+ * a decided game because a decided game always has exactly one bold name and
+ * one dim one.
+ *
+ * `struck` is the void, and it is the one distinction in this file that lives
+ * ENTIRELY in a style property. Nothing about the value, the text or the
+ * markup separates a voided row from a played one — only `textDecoration`. So
+ * it is the case a value-level guard cannot see (CLAUDE.md's tenth instance),
+ * and its test has to mutate the paint rather than the data.
+ */
+export type SideEmphasis =
+  | "none"
+  | "chosen"
+  | "won"
+  | "lost"
+  | "level"
+  | "struck";
+
+export function sideEmphasisStyle(emphasis: SideEmphasis): CSSProperties {
+  switch (emphasis) {
+    case "chosen":
+      return { color: "var(--color-bt-accent)", fontWeight: 500 };
+    case "won":
+      return { color: "var(--color-bt-text)", fontWeight: 700 };
+    case "lost":
+      return { color: "var(--color-bt-text-dim)", fontWeight: 500 };
+    case "level":
+      // FULL colour, loser's weight. The absence of contrast is the signal —
+      // dimming both here would make a push read as two losers, and it must
+      // NOT collapse into `lost`. (It briefly did, while the strike was being
+      // split out; the guard in `resultTreatment.test.tsx` caught it.)
+      return { color: "var(--color-bt-text)", fontWeight: 500 };
+    case "struck":
+      return { color: "var(--color-bt-text-dim)", fontWeight: 500 };
+    default:
+      return { color: "var(--color-bt-text)", fontWeight: 500 };
+  }
+}
+
+/**
+ * The strike, applied to the TEAM NAME ALONE.
+ *
+ * ── `text-decoration` CANNOT BE TURNED OFF BY A DESCENDANT ────────────────
+ *
+ * This was first written as one style on the whole line, with
+ * `textDecoration: "none"` on the "at" span to keep the connective clear. That
+ * does nothing: a decoration drawn by an ancestor is propagated to its in-flow
+ * descendants and there is no value a child can set to remove it. So the line
+ * went through "at" as well, and the row read as damaged markup rather than as
+ * a cancelled stake.
+ *
+ * Worse, the TEST passed. It asserted the `text-decoration:none` declaration
+ * was present — which it was, and which CSS ignored. An assertion about a
+ * declaration that has no effect is the "instrument cannot produce a red"
+ * family with the instrument pointed at the right element and the wrong
+ * property. Caught by looking at it in a browser, which is the only thing that
+ * could have.
+ *
+ * The fix is structural rather than another declaration: the decoration is
+ * applied to a span wrapping ONLY the team name, so the connective is never
+ * inside the decorated box in the first place.
+ */
+export function sideDecoration(emphasis: SideEmphasis): CSSProperties | undefined {
+  return emphasis === "struck"
+    ? { textDecoration: "line-through", textDecorationColor: "var(--color-bt-text-dim)" }
+    : undefined;
+}
+
+/**
+ * The line that replaces the kickoff once a contest is settled.
+ *
+ * `tone` rather than a colour, for the same reason `SideEmphasis` is a state:
+ * the results page should not be choosing hex values, and the three tones have
+ * to stay distinguishable from each other rather than each being individually
+ * reasonable.
+ */
+export type StatusTone = "final" | "push" | "cancelled";
+
+export function statusToneColor(tone: StatusTone): string {
+  return tone === "final"
+    ? "var(--color-bt-accent)"
+    : tone === "cancelled"
+      ? "var(--color-bt-danger)"
+      : "var(--color-bt-text-dim)";
+}
+
 export interface MatchupLineGame {
   awayTeam: string;
   homeTeam: string;
@@ -121,13 +226,25 @@ export function MultiplierBadge({ multiplier }: { multiplier: number }) {
   );
 }
 
+/**
+ * The line, beside the home team it belongs to.
+ *
+ * Sized UP and weighted DOWN against the version that sat on the old one-line
+ * matchup (11px/700 → 12px/500). It shared that line with two truncating team
+ * names and had to shout over them; on its own line beside a single name it
+ * does not, and 700 next to a 500 team name read as the louder fact of the two.
+ *
+ * COLOURS ARE UNCHANGED — the mock's hexes are placeholder (its own banner says
+ * so) and this keeps the `planning` tokens it already used. Only size and
+ * weight, which the mock is authoritative for, move.
+ */
 export function SpreadBadge({ spread }: { spread: string }) {
   return (
     <span
-      className="rounded px-1.5"
+      className="shrink-0 rounded px-1.5"
       style={{
-        fontSize: TYPE_SCALE.caption,
-        fontWeight: 700,
+        fontSize: TYPE_SCALE.bodyDense,
+        fontWeight: 500,
         background: "var(--color-bt-planning-faint)",
         color: "var(--color-bt-planning)",
       }}
@@ -138,72 +255,174 @@ export function SpreadBadge({ spread }: { spread: string }) {
 }
 
 /**
- * "Alabama at Georgia  −3.5 ............ 2×" over
- * "Sat Nov 8, 7:30p · Night game".
+ * "Milwaukee Brewers" over "at Cincinnati Reds  −3.5", with the multiplier
+ * pinned top-right, over "Fri Sep 4, 6:10p · Tyler".
  *
  * `leading` is whatever sits to the left — the slate's ordinal, the sheet's
  * rank chip. It is a slot rather than a prop the component interprets, because
  * the lists number their rows for different reasons and none of them should
  * have to explain itself to this file.
  *
- * ── THE MULTIPLIER IS RIGHT-JUSTIFIED (r7 §12) ────────────────────────────
+ * ── ONE TEAM PER LINE, ALWAYS — AND THIS REVERSES r7 §12 ──────────────────
  *
- * It used to sit immediately after the spread, inside a `flex-wrap` run, so its
- * x position moved with the length of the two team names and with whether the
- * game had a line at all. On a sixteen-row list that is sixteen different
- * places to find the one badge that changes how you spend confidence.
+ * §12 put both teams on ONE line and had it TRUNCATE, explicitly so that
+ * "every row [is] the same height". The reasoning was sound and it was aimed at
+ * a real problem: a `flex-wrap` run let a long matchup push the multiplier onto
+ * a second line, so the same game occupied one line on one surface and two on
+ * another. Uniformity across surfaces was the goal; a fixed single line was the
+ * means.
  *
- * Pinned right, the weighted games line up in a column and the eye finds them
- * in one pass down the edge — the same argument the stripe already makes on the
- * other side of the row.
+ * What that traded away is the thing this reverses. Real slates are college
+ * football, where "Lebanon Valley Flying Dutchmen at Franklin & Marshall
+ * Diplomats" is 61 characters — so the single line did not hold a matchup at
+ * 390px, it held the first one and a half teams and an ellipsis. On the results
+ * page, where four controls already compete for the row, that is the reported
+ * truncation bug.
  *
- * `flex-wrap` goes with it. Wrapping is what let a long matchup push the badge
- * onto a second line, which is the divergence §12 is about: the same game
- * occupying one line here and two there. The matchup TRUNCATES instead, which
- * keeps every row the same height.
+ * Two lines ALWAYS — never conditional on length — keeps §12's actual goal
+ * intact. Every row is still the same height and the same game still occupies
+ * the same space on every surface; the constant is just two lines rather than
+ * one. Each name gets its own line and truncates within it, so a pathological
+ * name still cannot spill to a third.
+ *
+ * The multiplier keeps §12's other decision — it is pinned RIGHT so weighted
+ * games line up in a column and the eye finds them in one pass down the edge —
+ * but it is now ABSOLUTE rather than the end of a flex run, so its position no
+ * longer depends on the names at all. The name block pads to clear it.
+ *
+ * ── The badge and the multiplier cannot collide ───────────────────────────
+ *
+ * The multiplier is absolute within THIS component's box, not the card's. Where
+ * a surface puts something to the right of the matchup — the sheet's `NOT
+ * PICKED` stamp, the head-to-head's result chip — that sibling takes its own
+ * width and the matchup's box shrinks, so the badge lands just left of it
+ * instead of underneath it. Where there is no sibling (the common case) this
+ * component fills the row and its right edge IS the card's.
  *
  * ── The sub-line truncates, and that is a known open issue ─────────────────
  * Kickoff and note share one line with `truncate`, and since Phase 2b the
  * kickoff carries a date, so the note loses more of itself at 390px than it
  * used to. Raised at the Phase 2 look and still open; kept identical in every
- * surface on purpose, so whatever fixes it fixes them all at once.
+ * surface on purpose, so whatever fixes it fixes them all at once. It is
+ * deliberately NOT padded to clear the multiplier — the badge sits on line 1
+ * only, and stealing 44px from the line that already truncates worst would pay
+ * for clearance nothing needs.
  */
+
+/**
+ * How far the name lines pad to clear the pinned multiplier.
+ *
+ * Wide enough for a two-digit badge (`10×`) plus a gap, so the clearance does
+ * not depend on which multipliers a slate happens to use.
+ */
+const MULTIPLIER_CLEARANCE = 44;
+
 export function MatchupLine({
   game,
   leading,
-  trailing,
+  awayEmphasis = "none",
+  homeEmphasis = "none",
+  status,
 }: {
   game: MatchupLineGame;
   leading?: ReactNode;
-  trailing?: ReactNode;
+  /** What each NAME is saying on this surface — see `SideEmphasis`. */
+  awayEmphasis?: SideEmphasis;
+  homeEmphasis?: SideEmphasis;
+  /**
+   * Replaces the KICKOFF once a contest is settled, keeping the note.
+   *
+   * "Status replaces the date" literally: the date is spent the moment the
+   * game is over, the runner's note ("Rob and Matt", "Most of the Golf Trip")
+   * is not — so the note survives beside the status rather than being replaced
+   * along with it.
+   */
+  status?: { text: string; tone: StatusTone };
 }) {
-  const meta = [game.kickoff, game.note].filter(Boolean).join(" · ");
+  const meta = status
+    ? game.note || null
+    : [game.kickoff, game.note].filter(Boolean).join(" · ") || null;
+  const multiplier = game.multiplier ?? 1;
+  const weighted = multiplier > 1;
+  const name = { fontSize: TYPE_SCALE.name, lineHeight: 1.3 } as const;
+  const clearance = weighted ? MULTIPLIER_CLEARANCE : undefined;
   return (
-    <div className="flex min-w-0 flex-1 items-start gap-2.5">
+    <div className="relative flex min-w-0 flex-1 items-start gap-2.5">
       {leading}
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-x-1.5">
-          <span className="min-w-0 truncate" style={{ fontSize: TYPE_SCALE.body, fontWeight: 600 }}>
-            {game.awayTeam}{" "}
-            <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 500 }}>at</span>{" "}
-            {game.homeTeam}
+        <span
+          className="block truncate"
+          data-testid="pickem-matchup-away"
+          style={{
+            ...name,
+            ...sideEmphasisStyle(awayEmphasis),
+            paddingRight: clearance,
+          }}
+        >
+          <span data-testid="pickem-matchup-away-name" style={sideDecoration(awayEmphasis)}>
+            {game.awayTeam}
+          </span>
+        </span>
+        <span className="flex min-w-0 items-baseline gap-x-1.5">
+          <span
+            className="min-w-0 truncate"
+            data-testid="pickem-matchup-home"
+            style={{
+              ...name,
+              ...sideEmphasisStyle(homeEmphasis),
+              paddingRight: clearance,
+            }}
+          >
+            {/* "at" is the CONNECTIVE and never carries the side's emphasis.
+                It sits OUTSIDE the decorated span rather than trying to opt
+                out of one — a descendant cannot remove an ancestor's
+                `text-decoration`, so structure is the only thing that works
+                here. See `sideDecoration`. */}
+            <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>at{" "}</span>
+            <span data-testid="pickem-matchup-home-name" style={sideDecoration(homeEmphasis)}>
+              {game.homeTeam}
+            </span>
           </span>
           {/* WITH the home team, because the line is the home team's — the one
               badge whose position is meaningful rather than tidy. */}
           {game.spread && <SpreadBadge spread={game.spread} />}
-          <span className="flex-1" />
-          {(game.multiplier ?? 1) > 1 && <MultiplierBadge multiplier={game.multiplier as number} />}
         </span>
-        {meta && (
-          <span
-            className="mt-0.5 block truncate"
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-          >
-            {meta}
+        {(status || meta) && (
+          <span className="mt-0.5 flex min-w-0 items-baseline gap-x-1">
+            {status && (
+              <span
+                className="shrink-0"
+                data-testid="pickem-matchup-status"
+                style={{
+                  fontSize: TYPE_SCALE.bodyDense,
+                  fontWeight: 600,
+                  letterSpacing: "0.03em",
+                  color: statusToneColor(status.tone),
+                }}
+              >
+                {status.text}
+              </span>
+            )}
+            {meta && (
+              <span
+                className="min-w-0 truncate"
+                style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+              >
+                {status ? `· ${meta}` : meta}
+              </span>
+            )}
           </span>
         )}
       </span>
-      {trailing}
+      {weighted && (
+        <span
+          className="absolute"
+          data-testid="pickem-matchup-multiplier-slot"
+          style={{ top: 0, right: 0 }}
+        >
+          <MultiplierBadge multiplier={multiplier} />
+        </span>
+      )}
     </div>
   );
 }

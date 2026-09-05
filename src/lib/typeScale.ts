@@ -47,6 +47,20 @@ export const TYPE_SCALE = {
   caption: 11,
   /** 29 — the half-step between caption and bodyDense. */
   captionPlus: 12.5,
+  /**
+   * 17 — the SCREEN/PANEL TITLE. The name of the thing you are looking at,
+   * once per screen: `GameStandaloneHeader`, the entry views' game name,
+   * `CoursePicker`, `HandicapRoster`, the scorecard page.
+   *
+   * Derived the same way as the seven above — 17 inline `fontSize: 17`
+   * occurrences across `src/` when this was added, which is more than
+   * `captionPlus` has. It was simply never collected, so every title re-typed
+   * the literal — and the two pick'em back-headers picked `fontWeight: 700`
+   * where the other fifteen use 600. That divergence is LEFT ALONE here (it is
+   * a visible change, not a token one); it is just what an uncollected size
+   * lets happen.
+   */
+  title: 17,
 } as const;
 
 /**

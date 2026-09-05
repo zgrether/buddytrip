@@ -2,7 +2,13 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { TYPE_SCALE } from "@/lib/typeScale";
-import { MatchupLine, pickemRowSurface, type MatchupLineGame } from "./slateRowVisual";
+import {
+  MatchupLine,
+  pickemRowSurface,
+  type MatchupLineGame,
+  type SideEmphasis,
+  type StatusTone,
+} from "./slateRowVisual";
 
 /**
  * ONE card for one contest, wherever it is shown (r7 §12).
@@ -42,10 +48,79 @@ import { MatchupLine, pickemRowSurface, type MatchupLineGame } from "./slateRowV
  *  about what "dealt with" looks like. */
 export const SETTLED_DIM = 0.38;
 
+/**
+ * The collapse timings, exported so the row that schedules the close and the
+ * card that performs it cannot disagree about how long it takes.
+ *
+ * `HOLD` is the part with a reason rather than a taste: it is how long the
+ * chosen segment stays on screen AFTER it turns accent, and it exists because
+ * a row that starts closing in the same frame the selection lands never shows
+ * the pick at all. 150ms of selection fade inside a 400ms hold leaves a
+ * quarter-second where the answer is simply readable.
+ */
+export const COLLAPSE_MS = 280;
+export const SELECT_HOLD_MS = 400;
+
+/** The cap on an animating body. Must exceed the tallest `children` any card
+ *  holds — one segment control, or a control plus a link — or it clips with no
+ *  error. Several times either. */
+const COLLAPSE_MAX_HEIGHT = 200;
+
+/**
+ * The card's top row — a plain row, or a disclosure button when the surface
+ * wants tapping the matchup to open something.
+ *
+ * ── Why the button wraps the HEADER and not the card ──────────────────────
+ *
+ * The obvious shape is to wrap the whole card in a `<button>` and be done. It
+ * is wrong the moment the card is open: `children` is the control the tap
+ * REVEALS — segments, a Clear link — so the open state would nest buttons
+ * inside a button. That is invalid, and browsers resolve it by dropping one,
+ * which means the thing that breaks is the control rather than the disclosure.
+ *
+ * So the tap target is the header row only, and `children` stays a sibling of
+ * it inside the same bordered box. The card still reads as one object; only
+ * the top of it is pressable.
+ */
+function header({
+  onTap,
+  headerTestId,
+  headerOpen,
+  children,
+}: {
+  onTap?: () => void;
+  headerTestId?: string;
+  headerOpen?: boolean;
+  children: ReactNode;
+}) {
+  if (!onTap) {
+    return <div className="flex items-start gap-2">{children}</div>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onTap}
+      data-testid={headerTestId}
+      data-open={headerOpen ? "true" : "false"}
+      aria-expanded={headerOpen}
+      className="flex w-full items-start gap-2 text-left"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function PickemGameCard({
   game,
   leading,
   badge,
+  awayEmphasis,
+  homeEmphasis,
+  status,
+  onHeaderTap,
+  headerTestId,
+  headerOpen,
+  collapsible,
   settled = false,
   active = false,
   quiet = false,
@@ -54,6 +129,41 @@ export function PickemGameCard({
   children,
 }: {
   game: MatchupLineGame;
+  /** Passed straight through to `MatchupLine` — the card holds no opinion
+   *  about what a name is saying, only about where it sits. */
+  awayEmphasis?: SideEmphasis;
+  homeEmphasis?: SideEmphasis;
+  status?: { text: string; tone: StatusTone };
+  /** Makes the header row a disclosure button — see `header`. Absent leaves it
+   *  a plain row, which is what every surface but the entered results list
+   *  wants. */
+  onHeaderTap?: () => void;
+  headerTestId?: string;
+  headerOpen?: boolean;
+  /**
+   * Renders `children` inside a COLLAPSING container instead of mounting and
+   * unmounting them.
+   *
+   * ── Why not just `{open && children}` ─────────────────────────────────────
+   *
+   * Because the whole point is that the pick visibly LANDS before the row
+   * shuts. Conditional mounting gives you no closing frame at all — the
+   * control is there and then it is not — so the 400ms hold would be 400ms of
+   * nothing followed by a jump cut.
+   *
+   * The element therefore stays mounted and animates its height. That also
+   * makes the row's re-render harmless: React updates the selected segment in
+   * place on a DOM node that never moves, so the 150ms selection fade and the
+   * 280ms collapse both run to completion. (The row cannot be reordered by a
+   * pick either — its position comes from the slate index, not from its
+   * contents.)
+   *
+   * `maxHeight` rather than `height`, since the content's height is not known
+   * here — with the cost that the cap must exceed the tallest body this card
+   * ever holds or it silently clips. The bodies are one segment control and,
+   * on the results page, a control plus a link; 200px is several times either.
+   */
+  collapsible?: { open: boolean };
   /** The rank chip, the ordinal — whatever numbers this row on this surface. */
   leading?: ReactNode;
   /**
@@ -76,7 +186,11 @@ export function PickemGameCard({
   return (
     <div
       data-testid={testId}
-      className="flex flex-col gap-2"
+      /* No flex GAP when collapsing: a zero-height body still takes its share
+         of a gap, so a closed row would sit 8px taller than it should and the
+         collapse would stop 8px short of shut. The body carries the spacing as
+         its own padding instead, and animates it away with everything else. */
+      className={collapsible ? "flex flex-col" : "flex flex-col gap-2"}
       style={{
         ...pickemRowSurface({ weighted: (game.multiplier ?? 1) > 1, active, quiet }),
         borderRadius: 13,
@@ -84,16 +198,53 @@ export function PickemGameCard({
         ...style,
       }}
     >
-      <div className="flex items-start gap-2">
-        {/* The dim wraps the CONTENT, not the card: the surface keeps its full
-            border and stripe, so a settled weighted game still announces
-            itself, and the badge below stays out of the fade entirely. */}
-        <div className="flex min-w-0 flex-1" style={dim} data-testid="pickem-card-content">
-          <MatchupLine game={game} leading={leading} />
-        </div>
-        {badge}
-      </div>
-      {children != null && <div style={dim}>{children}</div>}
+      {/* The dim wraps the CONTENT, not the card: the surface keeps its full
+          border and stripe, so a settled weighted game still announces
+          itself, and the badge below stays out of the fade entirely. */}
+      {header({
+        onTap: onHeaderTap,
+        headerTestId,
+        headerOpen,
+        children: (
+          <>
+            <div className="flex min-w-0 flex-1" style={dim} data-testid="pickem-card-content">
+              <MatchupLine
+                game={game}
+                leading={leading}
+                awayEmphasis={awayEmphasis}
+                homeEmphasis={homeEmphasis}
+                status={status}
+              />
+            </div>
+            {badge}
+          </>
+        ),
+      })}
+      {children != null &&
+        (collapsible ? (
+          <div
+            data-testid="pickem-card-body"
+            data-open={collapsible.open ? "true" : "false"}
+            /* `aria-hidden` while shut, so a screen reader is not offered a
+               control the sighted reader cannot see. The header carries
+               `aria-expanded`, which is what announces there is something to
+               open. */
+            aria-hidden={!collapsible.open}
+            style={{
+              ...dim,
+              overflow: "hidden",
+              maxHeight: collapsible.open ? COLLAPSE_MAX_HEIGHT : 0,
+              opacity: collapsible.open ? 1 : 0,
+              paddingTop: collapsible.open ? 8 : 0,
+              transition:
+                `max-height ${COLLAPSE_MS}ms ease, opacity 200ms ease, padding-top ${COLLAPSE_MS}ms ease`,
+            }}
+          >
+            {children}
+          </div>
+        ) : (
+          <div style={dim}>{children}</div>
+        ))}
     </div>
   );
 }
@@ -183,54 +334,95 @@ export function PickemSegments<V extends SegmentValue>({
   testIdPrefix: string;
 }) {
   const label = (v: SegmentValue) =>
-    v === "away" ? awayTeam : v === "home" ? homeTeam : v === "push" ? "Push" : "Void";
+    v === "away" ? awayTeam : v === "home" ? homeTeam : v === "push" ? "Push" : "Cancelled";
+
+  /**
+   * ── THE FOUR NO LONGER SHARE A ROW, AND THAT IS THE TRUNCATION FIX ────────
+   *
+   * They used to: `1fr 1fr 52px 52px`, on the reasoning that Push and Void are
+   * short words deserving small fixed columns while the teams take the rest.
+   * The arithmetic does not survive a real slate. At 390px the card's content
+   * box is about 340px, so after 104px of fixed columns and the gaps the two
+   * teams get roughly 115px EACH — which holds "Toledo" and loses
+   * "Michigan State Spartans" entirely. That is the reported bug, and it is
+   * worst on exactly the surface where the names matter most, because the
+   * runner is matching them against a scoreboard.
+   *
+   * Teams now take a full-width row of their own and the two outcomes sit
+   * beneath them. Same control, same values, same toggle — the four are still
+   * alternatives and still one group — but a team name gets ~165px instead of
+   * ~115px.
+   *
+   * The second row is quieter (30px against 34px, caption against bodyDense):
+   * Push and Cancelled are rare, and a control whose common case is visually
+   * primary reads faster than four equal buttons. `segmentStyle` was already
+   * making that distinction in COLOUR; this makes it in size too, which is the
+   * same statement rather than a second one.
+   *
+   * A TWO-value control is untouched — one row, split evenly, as before.
+   */
+  const teams = values.filter((v) => v === "away" || v === "home");
+  const outcomes = values.filter((v) => v === "push" || v === "cancelled");
+
+  const segment = (v: V, secondary: boolean) => {
+    const isSelected = selected === v;
+    return (
+      <button
+        key={v}
+        type="button"
+        disabled={busy || disabled}
+        onClick={() => onSelect(isSelected ? null : v)}
+        data-testid={`${testIdPrefix}-${v}`}
+        data-selected={isSelected ? "true" : "false"}
+        /* Both surfaces are toggles — tapping the current value clears it —
+           so the pressed state belongs in the accessibility tree. The
+           sheet had this on its team targets and the results page never
+           did; unifying the control unified that too. */
+        aria-pressed={isSelected}
+        /* `disabled:opacity-40` only while SAVING. A read-only sheet is
+           disabled too, and fading it would put the whole answer behind a
+           treatment that means "wait" — including the segment carrying the
+           pick, which is the one thing a locked sheet exists to show. */
+        className={busy ? "truncate px-1 disabled:opacity-40" : "truncate px-1"}
+        style={{
+          height: secondary ? 30 : 34,
+          borderRadius: 9,
+          fontSize: secondary ? TYPE_SCALE.caption : TYPE_SCALE.bodyDense,
+          fontWeight: isSelected ? 700 : 600,
+          cursor: disabled ? "default" : "pointer",
+          /* The selection FADES IN rather than snapping, so that on a row which
+             then closes itself the eye has something to follow. Colour only —
+             animating the border WIDTH would shift the label a pixel as it
+             lands, which reads as a wobble at this size. */
+          transition: "background-color 150ms ease, color 150ms ease, border-color 150ms ease",
+          ...segmentStyle(v, isSelected),
+        }}
+      >
+        {label(v)}
+      </button>
+    );
+  };
+
   return (
     <div
       className="grid gap-0.5"
+      data-testid={`${testIdPrefix}-segments`}
       style={{
-        /* The two fixed columns are for Push and Void, which are short words
-           with fixed widths; the teams take what is left. A two-value control
-           has no fixed columns and splits the row evenly. */
-        gridTemplateColumns:
-          values.length > 2 ? "1fr 1fr 52px 52px" : "1fr 1fr",
+        gridTemplateColumns: "1fr 1fr",
         background: "var(--color-bt-card-raised)",
         borderRadius: 11,
         padding: 2,
       }}
     >
-      {values.map((v) => {
-        const isSelected = selected === v;
-        return (
-          <button
-            key={v}
-            type="button"
-            disabled={busy || disabled}
-            onClick={() => onSelect(isSelected ? null : v)}
-            data-testid={`${testIdPrefix}-${v}`}
-            data-selected={isSelected ? "true" : "false"}
-            /* Both surfaces are toggles — tapping the current value clears it —
-               so the pressed state belongs in the accessibility tree. The
-               sheet had this on its team targets and the results page never
-               did; unifying the control unified that too. */
-            aria-pressed={isSelected}
-            /* `disabled:opacity-40` only while SAVING. A read-only sheet is
-               disabled too, and fading it would put the whole answer behind a
-               treatment that means "wait" — including the segment carrying the
-               pick, which is the one thing a locked sheet exists to show. */
-            className={busy ? "truncate px-1 disabled:opacity-40" : "truncate px-1"}
-            style={{
-              height: 34,
-              borderRadius: 9,
-              fontSize: TYPE_SCALE.bodyDense,
-              fontWeight: isSelected ? 700 : 600,
-              cursor: disabled ? "default" : "pointer",
-              ...segmentStyle(v, isSelected),
-            }}
-          >
-            {label(v)}
-          </button>
-        );
-      })}
+      {teams.map((v) => segment(v, false))}
+      {outcomes.length > 0 && (
+        /* `col-span-2` then its own even split, rather than four cells in one
+           grid: the two rows have different metrics, and a single grid would
+           have to give both rows the taller row's height. */
+        <div className="col-span-2 grid gap-0.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          {outcomes.map((v) => segment(v, true))}
+        </div>
+      )}
     </div>
   );
 }
