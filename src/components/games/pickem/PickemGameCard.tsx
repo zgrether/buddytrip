@@ -189,8 +189,11 @@ export function PickemGameCard({
       /* No flex GAP when collapsing: a zero-height body still takes its share
          of a gap, so a closed row would sit 8px taller than it should and the
          collapse would stop 8px short of shut. The body carries the spacing as
-         its own padding instead, and animates it away with everything else. */
-      className={collapsible ? "flex flex-col" : "flex flex-col gap-2"}
+         its own padding instead, and animates it away with everything else.
+
+         `relative` so `badge` can be pinned to the card's own corner — see the
+         badge slot below. */
+      className={`relative ${collapsible ? "flex flex-col" : "flex flex-col gap-2"}`}
       style={{
         ...pickemRowSurface({ weighted: (game.multiplier ?? 1) > 1, active, quiet }),
         borderRadius: 13,
@@ -206,20 +209,48 @@ export function PickemGameCard({
         headerTestId,
         headerOpen,
         children: (
-          <>
-            <div className="flex min-w-0 flex-1" style={dim} data-testid="pickem-card-content">
-              <MatchupLine
-                game={game}
-                leading={leading}
-                awayEmphasis={awayEmphasis}
-                homeEmphasis={homeEmphasis}
-                status={status}
-              />
-            </div>
-            {badge}
-          </>
+          <div className="flex min-w-0 flex-1" style={dim} data-testid="pickem-card-content">
+            <MatchupLine
+              game={game}
+              leading={leading}
+              awayEmphasis={awayEmphasis}
+              homeEmphasis={homeEmphasis}
+              status={status}
+            />
+          </div>
         ),
       })}
+      {/* ── THE BADGE OVERLAPS THE MULTIPLIER; IT DOES NOT PUSH IT ──────────
+          It used to be a flow sibling of the matchup, so on a row that was both
+          weighted AND unpicked it took its own width, the matchup's box shrank,
+          and the multiplier — which is pinned to the RIGHT of that box — slid
+          left. The one badge whose whole purpose is to sit in the same place on
+          every row moved, and it moved only on the rows carrying a second
+          badge.
+
+          Both are now pinned to the card's top-right and the stamp sits OVER
+          the chip. That is Zach's call and the reasoning is that the multiplier
+          is background information by then: it says what the game was worth,
+          and on a row you did not pick it is worth nothing to you.
+
+          It stays OUTSIDE the dimmed content for the reason the note at the top
+          of this file gives — opacity multiplies, so a stamp inside a settled
+          row's fade cannot be made legible from the inside. */}
+      {badge && (
+        <span
+          data-testid="pickem-card-badge"
+          /* `flex` so the inline stamp's border box starts at the slot's top.
+             Without it the stamp sat 5px lower than the chip it covers, and an
+             opaque badge that is 5px out lets the top edge of the chip peek
+             above it — which reads as a rendering fault rather than as one
+             badge over another. */
+          className="absolute flex"
+          style={{ top: 9, right: 11, zIndex: 1 }}
+        >
+          {badge}
+        </span>
+      )}
+
       {children != null &&
         (collapsible ? (
           <div
@@ -296,9 +327,27 @@ export type SegmentValue = "away" | "home" | "push" | "cancelled";
 export function segmentStyle(value: SegmentValue, selected: boolean): CSSProperties {
   const team = value === "away" || value === "home";
   if (!selected) {
+    /**
+     * ── EACH SEGMENT CARRIES ITS OWN EDGE ─────────────────────────────────
+     *
+     * The unselected border was `transparent`, so four controls sat inside one
+     * shaded tray with nothing between them and read as a panel of TEXT rather
+     * than as four buttons. Reported from a device, and it is the kind of thing
+     * only a device reports: every segment was individually correct, tappable
+     * and correctly labelled, and the defect was that nothing said so.
+     *
+     * A visible edge on the resting state, the same `--color-bt-border` every
+     * other control in the app uses. The tray behind them stays — with borders
+     * on the segments it reads as a segmented control rather than a box of
+     * words.
+     *
+     * Applies to the picks sheet's two segments as well as the runner's four:
+     * r7 §12 made them ONE control deliberately, and giving the four an
+     * affordance the two lack would start them drifting apart again.
+     */
     return {
       background: "transparent",
-      border: "1px solid transparent",
+      border: "1px solid var(--color-bt-border)",
       color: "var(--color-bt-text)",
     };
   }

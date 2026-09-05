@@ -80,7 +80,28 @@ describe("the matchup line", () => {
      */
     expect(tag(html, "pickem-matchup-multiplier-slot")).toContain("right:0");
     expect(tag(html, "pickem-matchup-away")).toContain("padding-right:44px");
-    expect(tag(html, "pickem-matchup-home")).toContain("padding-right:44px");
+    // The HOME clearance is on the LINE, not the name — see the next test.
+    expect(tag(html, "pickem-matchup-home-line")).toContain("padding-right:44px");
+  });
+
+  it("clears the badge without pushing the SPREAD away from its team", () => {
+    /**
+     * THE MUTATION, and it is the build that shipped in #1292: put the home
+     * clearance on `pickem-matchup-home` — the name span — instead of on the
+     * line.
+     *
+     * The name span has a SIBLING, the spread badge. Padding the name therefore
+     * pushed the badge 44px right instead of reserving space at the end of the
+     * line. Measured at 390px: the gap between the home team and its spread was
+     * 6px on an ordinary row and 50px on a weighted one, which is why it read as
+     * a spacing bug that appeared on "some rows but not all" — the affected rows
+     * were exactly the 2x ones.
+     *
+     * Every other assertion in this file passes against that build. The
+     * placement is the whole difference.
+     */
+    expect(tag(html, "pickem-matchup-home")).not.toContain("padding-right");
+    expect(tag(html, "pickem-matchup-home-line")).toContain("padding-right:44px");
   });
 
   it("does not pay for clearance on a game that has no multiplier", () => {
@@ -92,7 +113,7 @@ describe("the matchup line", () => {
     const plain = renderToStaticMarkup(<MatchupLine game={{ ...GAME, multiplier: 1 }} />);
     expect(plain).not.toContain("pickem-matchup-multiplier-slot");
     expect(tag(plain, "pickem-matchup-away")).not.toContain("padding-right");
-    expect(tag(plain, "pickem-matchup-home")).not.toContain("padding-right");
+    expect(tag(plain, "pickem-matchup-home-line")).not.toContain("padding-right");
   });
 
   it("keeps the spread WITH the home team", () => {
@@ -243,6 +264,33 @@ describe("the segments", () => {
     const two = render({ values: ["away", "home"] as const });
     expect(two).toContain("grid-template-columns:1fr 1fr");
     expect(two).not.toContain("col-span-2");
+  });
+
+  it("gives every RESTING segment a visible edge, so four read as four buttons", () => {
+    /**
+     * THE MUTATION: put the unselected border back to `transparent`.
+     *
+     * That is what shipped, and on a device the four controls inside one shaded
+     * tray read as a panel of TEXT rather than as buttons — every segment
+     * individually correct, tappable and labelled, with nothing saying so.
+     *
+     * It survived the first mutation run of this round: the existing assertions
+     * covered the unselected BACKGROUND and the selected colours, and nobody had
+     * ever asserted the resting border. An unguarded change is one a later
+     * cleanup silently reverts.
+     *
+     * Asserted for all four AND for the sheet's two, because r7 §12 made them
+     * one control deliberately — giving the runner's four an affordance the
+     * picker's two lack is how they start drifting apart again.
+     */
+    for (const v of ["away", "home", "push", "cancelled"] as const) {
+      expect(segmentStyle(v, false).border, v).toBe("1px solid var(--color-bt-border)");
+    }
+    // ...and the selected states still swap it for their own edge, so this is
+    // not passing by giving every state the same border.
+    expect(segmentStyle("home", true).border).toContain("accent-border");
+    expect(segmentStyle("push", true).border).toContain("--color-bt-border");
+    expect(segmentStyle("home", true).border).not.toBe(segmentStyle("home", false).border);
   });
 
   it("makes the outcomes SECONDARY, not equal siblings of the teams", () => {
