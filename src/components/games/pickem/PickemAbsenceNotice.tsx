@@ -34,6 +34,24 @@ export function PickemAbsenceNotice({
   label,
   testId,
   /**
+   * ── TWO TREATMENTS, BECAUSE THE TWO PLACES ARE NOT ALIKE ──────────────────
+   *
+   * `stamp` (the default) is the sheet's: a dashed bordered chip pinned to a
+   * row's corner, where it has to hold its own against a multiplier chip it
+   * OVERLAPS and against a row that has faded to 0.38. It needs an edge to be
+   * a thing at all up there.
+   *
+   * `caption` is the board's: plain light-grey text under a player's name,
+   * inside a card that is already saying "not scoring" by muting the name.
+   * A bordered chip there competes with the name it is annotating, and it
+   * makes the cell taller — which is what pushed the two names in a row out of
+   * alignment with each other.
+   *
+   * This is a deliberate split of what was ONE treatment, not drift. The
+   * shared thing is the WORD and the fact; the chrome belongs to the place.
+   */
+  variant = "stamp",
+  /**
    * An opaque fill, for the one caller that OVERLAPS something.
    *
    * On the sheet this stamp is pinned to the same corner as the multiplier chip
@@ -46,7 +64,25 @@ export function PickemAbsenceNotice({
   label: string;
   testId?: string;
   opaque?: boolean;
+  variant?: "stamp" | "caption";
 }) {
+  if (variant === "caption") {
+    return (
+      <span
+        data-testid={testId}
+        className="shrink-0"
+        style={{
+          fontSize: TYPE_SCALE.micro,
+          fontWeight: 600,
+          letterSpacing: "0.06em",
+          color: "var(--color-bt-text-dim)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+    );
+  }
   return (
     <span
       data-testid={testId}

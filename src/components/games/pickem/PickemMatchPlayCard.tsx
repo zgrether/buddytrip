@@ -117,10 +117,14 @@ export function PickemMatchPlayCard({
            should READ that way before a badge says so. The badge confirms what
            the weight already told you, which is also why it can now be small
            and sit under the name instead of competing with it. */
-      aNote={!picked.a ? <PickemAbsenceNotice label={NO_PICKS} testId="pickem-mp-nopicks-a" /> : undefined}
-      bNote={!picked.b ? <PickemAbsenceNotice label={NO_PICKS} testId="pickem-mp-nopicks-b" /> : undefined}
+      aNote={!picked.a ? <PickemAbsenceNotice label={NO_PICKS} testId="pickem-mp-nopicks-a" variant="caption" /> : undefined}
+      bNote={!picked.b ? <PickemAbsenceNotice label={NO_PICKS} testId="pickem-mp-nopicks-b" variant="caption" /> : undefined}
       aMuted={!picked.a}
       bMuted={!picked.b}
+      /* LEFT n and "# UP" instead of THRU n and "4&3" — see MatchCard's own
+         note. Both follow from one fact: a slate's length is not fixed and
+         known the way a golf round's is. */
+      dialect="slate"
       onClick={onOpen}
     />
   );
