@@ -217,6 +217,28 @@ describe("the segments", () => {
       />
     );
 
+  /**
+   * ROUND 3 ITEM 7 — the tray is gone, and this is the second attempt at it.
+   *
+   * Round 2 asked for the four controls to read as four BUTTONS. Borders were
+   * added to the segments and the shaded, rounded, padded container stayed, so
+   * the device still saw a block with four things in it: an edge inside a box
+   * makes a bordered box.
+   *
+   * Asserted on the CONTAINER's own style, because that is what was left behind
+   * — a test on the segments would have passed after round 2 as it does now.
+   */
+  it("draws no tray behind the segments — no surface, no radius, no padding", () => {
+    const html = render();
+    const container = html.match(/data-testid="t-segments"[^>]*style="([^"]*)"/)?.[1];
+    expect(container, "the segments container is missing entirely").toBeDefined();
+    expect(container).not.toMatch(/background:/);
+    expect(container).not.toMatch(/border-radius:/);
+    expect(container).not.toMatch(/padding:/);
+    // The grid itself stays — it is layout, not surface.
+    expect(container).toMatch(/grid-template-columns:/);
+  });
+
   it("offers TWO on the picks version and four on the results one", () => {
     const four = render();
     for (const v of ["away", "home", "push", "cancelled"]) {

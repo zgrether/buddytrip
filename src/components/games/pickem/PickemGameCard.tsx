@@ -337,9 +337,19 @@ export function segmentStyle(value: SegmentValue, selected: boolean): CSSPropert
      * and correctly labelled, and the defect was that nothing said so.
      *
      * A visible edge on the resting state, the same `--color-bt-border` every
-     * other control in the app uses. The tray behind them stays — with borders
-     * on the segments it reads as a segmented control rather than a box of
-     * words.
+     * other control in the app uses.
+     *
+     * ── AND THE TRAY IS GONE, which reverses what this note used to say ────
+     *
+     * It read: "The tray behind them stays — with borders on the segments it
+     * reads as a segmented control rather than a box of words." The device says
+     * otherwise. Borders alone did not clear it: the shaded, rounded, padded
+     * container still reads as one block with four things inside it, and the
+     * ask was four BUTTONS. Adding an edge inside a box makes a bordered box.
+     *
+     * So the container's surface goes and the buttons stand on the card. Two
+     * rounds on one control, and the lesson is that the second fix was aimed at
+     * the segments when the thing being seen was the box around them.
      *
      * Applies to the picks sheet's two segments as well as the runner's four:
      * r7 §12 made them ONE control deliberately, and giving the four an
@@ -454,13 +464,18 @@ export function PickemSegments<V extends SegmentValue>({
 
   return (
     <div
-      className="grid gap-0.5"
+      className="grid gap-1.5"
       data-testid={`${testIdPrefix}-segments`}
       style={{
+        /* No background, no radius, no padding — see `segmentStyle`. The grid
+           stays because it is LAYOUT; what went is the surface that made four
+           buttons read as one block.
+
+           The gap goes 2px → 6px with it: 2px was the spacing of a segmented
+           control, where near-touching cells are the point. Standing on the
+           card with their own edges, that same 2px reads as buttons jammed
+           together, which is the block again by another route. */
         gridTemplateColumns: "1fr 1fr",
-        background: "var(--color-bt-card-raised)",
-        borderRadius: 11,
-        padding: 2,
       }}
     >
       {teams.map((v) => segment(v, false))}
@@ -468,7 +483,7 @@ export function PickemSegments<V extends SegmentValue>({
         /* `col-span-2` then its own even split, rather than four cells in one
            grid: the two rows have different metrics, and a single grid would
            have to give both rows the taller row's height. */
-        <div className="col-span-2 grid gap-0.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <div className="col-span-2 grid gap-1.5" style={{ gridTemplateColumns: "1fr 1fr" }}>
           {outcomes.map((v) => segment(v, true))}
         </div>
       )}

@@ -264,8 +264,24 @@ export function ScorecardLabelCell({
   nameCell: React.CSSProperties;
   background?: string;
 }) {
+  /**
+   * `background ?? nameCell.background` — NOT `background`.
+   *
+   * The sticky column has to be OPAQUE: it sits at `left: 0` with the grid
+   * scrolling beneath it, so a transparent cell lets the hole numbers pass
+   * behind the names and stay readable through them. `nameCell` sets that
+   * background, and spreading it then writing `background` unconditionally
+   * OVERWROTE it with `undefined` for any caller that did not pass one — which
+   * was `OutcomeScorecard`, both its lead rows, from the moment this cell was
+   * extracted.
+   *
+   * The stroke card passes `rowBg` and was never affected, which is why the
+   * extraction's own parity test — comparing the two cards' LABELS — passed
+   * throughout: it compared the dots and the text, and the bug was in the box
+   * around them.
+   */
   return (
-    <div className="flex flex-col justify-center" style={{ ...nameCell, background, padding: "4px 10px", gap: 2 }}>
+    <div className="flex flex-col justify-center" style={{ ...nameCell, background: background ?? nameCell.background, padding: "4px 10px", gap: 2 }}>
       {people.map((q) => {
         const fit = fitName(q.name, SCORECARD_LABEL_CAPACITY_EM);
         return (
@@ -1093,10 +1109,23 @@ export function StandardGrid({
   );
 }
 
-/** Eagle / birdie / par / bogey / dbl+ chips with labels (Slice C §2). */
+/**
+ * Eagle / birdie / par / bogey / dbl+ chips with labels (Slice C §2).
+ *
+ * ── Eagle reads 2, and the old 3 was not a typo ────────────────────────────
+ *
+ * It was `{ gross: 3, par: 5 }` — arithmetically a real eagle, three on a par
+ * five. But Birdie is `{ gross: 3, par: 4 }`, so the legend showed **two chips
+ * both reading 3**, one labelled Eagle and one Birdie, and a reader comparing
+ * them learns nothing about which number means what. The chip's SHAPE is what
+ * the legend teaches, and putting the same digit on two of them fights it.
+ *
+ * Every row is par 4 now, so the numbers climb 2·3·4·5·6 — one ladder, each
+ * step a different number, and the shape still doing the teaching.
+ */
 function Legend() {
   const items: { label: string; gross: number; par: number }[] = [
-    { label: "Eagle", gross: 3, par: 5 },
+    { label: "Eagle", gross: 2, par: 4 },
     { label: "Birdie", gross: 3, par: 4 },
     { label: "Par", gross: 4, par: 4 },
     { label: "Bogey", gross: 5, par: 4 },
