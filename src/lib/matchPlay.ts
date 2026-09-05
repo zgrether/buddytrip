@@ -295,3 +295,93 @@ function finalize(
     margin,
   };
 }
+
+/** One hole's place in a match, as both surfaces need to read it. */
+export interface MatchTrackCell {
+  hole: number;
+  /**
+   * W/L/H from side A's perspective, or null when the hole has no result — see
+   * `dead` for WHY it has none.
+   */
+  result: HoleResult | null;
+  /** Signed running lead as of this hole (+A, −B); null wherever `result` is. */
+  lead: number | null;
+  /**
+   * Past the freeze boundary of a decided match — never played and never will
+   * be. Distinct from a null `result` on a live hole, which is simply not
+   * entered yet: the two look identical in the data and mean opposite things to
+   * a reader, so the display has to separate them.
+   */
+  dead: boolean;
+  /**
+   * This unit is worth more than one — golf's Glorious Finishing Holes, or any
+   * other weighting the engine is driven with.
+   *
+   * Derived as `weightOf(unit) > 1` rather than by calling `isGloriousHole`,
+   * which takes golf's config specifically and cannot answer for a `UnitWeight`.
+   * The two are identical for a `GloriousConfig` (`isGloriousHole` IS
+   * `holeWeight(...) === 2`), so this loses nothing and gains the general case.
+   */
+  glorious: boolean;
+}
+
+/**
+ * The per-hole track — every hole of a match, carrying BOTH what happened on it
+ * and where the match stood after it.
+ *
+ * ── Why one function and not two ───────────────────────────────────────────
+ *
+ * `matchState` returns a terminal snapshot: thru, up, margin, the final answer.
+ * It folds the running lead internally and throws it away, so any surface
+ * wanting the hole-by-hole had to re-derive it. Exactly one did — the outcome
+ * scorecard, in a private copy inside the component — and the stroke scorecard,
+ * which shows the very strokes these results come from, could not say who won a
+ * single hole.
+ *
+ * The two surfaces want different halves: the outcome card draws the running
+ * `lead`, the stroke card marks the per-hole `result`. Deriving them separately
+ * is how two cards end up disagreeing about one match, which is the failure this
+ * whole module exists to prevent (pattern #8) — so it is ONE fold emitting both,
+ * not two folds over the same holes.
+ *
+ * ── The three states, and they are not two ─────────────────────────────────
+ *
+ * A cell is dead (the match closed before this hole), or unplayed (`result`
+ * null, live), or decided. Collapsing the first two is the *empty is not
+ * unknown* trap: "nobody will ever play this" and "nobody has played this yet"
+ * are the same absence in the data and opposite facts on a card.
+ *
+ * Halved is a FOURTH state and a real result: `H` carries the lead forward
+ * unchanged, which is why it is a value rather than a gap.
+ */
+export function matchTrack(
+  decided: DecidedHole[],
+  holeCount: number,
+  weighting: Weighting = NO_GLORIOUS
+): { track: MatchTrackCell[]; st: MatchState } {
+  // The same normalisation `matchState` does, for the same reason: this walk
+  // must weight units exactly as the state it is reported alongside.
+  const weightOf = toUnitWeight(weighting);
+  const st = matchState(decided, holeCount, weighting);
+  const byHole = new Map(decided.map((d) => [d.hole, d.result]));
+  let diff = 0;
+  const track: MatchTrackCell[] = [];
+  for (let h = 1; h <= holeCount; h++) {
+    const w = weightOf(h);
+    const glorious = w > 1;
+    if (st.closed && h > st.thru) {
+      track.push({ hole: h, result: null, lead: null, dead: true, glorious });
+      continue;
+    }
+    const result = byHole.get(h);
+    if (result == null) {
+      track.push({ hole: h, result: null, lead: null, dead: false, glorious });
+      continue;
+    }
+    if (result === "W") diff += w;
+    else if (result === "L") diff -= w;
+    // "H" carries the lead forward unchanged — a result, not a gap.
+    track.push({ hole: h, result, lead: diff, dead: false, glorious });
+  }
+  return { track, st };
+}
