@@ -651,6 +651,17 @@ export function StandardGrid({
   const ptsOf = (pid: string, l: string) => ptsByCell.get(scoreCellKey(pid, l));
   const ptsSumOf = (pid: string, list: ScoreUnit[]) =>
     list.reduce((a, u) => a + (ptsOf(pid, u.label) ?? 0), 0);
+  /**
+   * The points subtotal, or NULL when nothing in this stretch has been played.
+   *
+   * EMPTY IS NOT UNKNOWN, and under Stableford the collision is worse than it is
+   * for strokes: 0 points is a REAL score — it is what the floor pays — so an
+   * unplayed back nine and a back nine where every hole blew up render the same
+   * number. Nobody shoots 0 STROKES, which is why the strokes row can get away
+   * with summing to zero and this row cannot.
+   */
+  const ptsSubtotal = (pid: string, list: ScoreUnit[]): number | null =>
+    list.some((u) => ptsOf(pid, u.label) != null) ? ptsSumOf(pid, list) : null;
   const netTotals = new Map<string, number>();
   for (const e of entries)
     netTotals.set(e.participant_id, (netTotals.get(e.participant_id) ?? 0) + (e.value ?? 0));
@@ -816,12 +827,12 @@ export function StandardGrid({
                       {ptsOf(p.id, u.label) ?? ""}
                     </div>
                   ))}
-                  {hasSections && <SubCell value={ptsSumOf(p.id, front)} />}
-                  {hasSections && <SubCell value={ptsSumOf(p.id, back)} />}
+                  {hasSections && <PtsSub value={ptsSubtotal(p.id, front)} testId={`scorecard-points-out-${p.id}`} />}
+                  {hasSections && <PtsSub value={ptsSubtotal(p.id, back)} testId={`scorecard-points-in-${p.id}`} />}
                   {/* The leader marker lives HERE under Stableford, not on the
                       strokes Total — points are what the game is won on. */}
-                  <SubCell
-                    value={ptsSumOf(p.id, units)}
+                  <PtsSub
+                    value={ptsSubtotal(p.id, units)}
                     wide
                     bold
                     leader={isLeader}
@@ -972,6 +983,13 @@ function VsPar({ diff }: { diff: number }) {
 
 /** Blank subtotal cell — keeps the Out/In/Total/Net tint columns continuous on a
  *  structure row that has no meaningful value there (an index sum, a net par). */
+/** A points subtotal. `null` renders the same em-dash an unplayed hole does —
+ *  “not played” and “scored nothing” must not look alike (see `ptsSubtotal`). */
+function PtsSub({ value, wide, bold, leader, testId }: { value: number | null; wide?: boolean; bold?: boolean; leader?: boolean; testId?: string }) {
+  if (value == null) return <BlankSub wide={wide} />;
+  return <SubCell value={value} wide={wide} bold={bold} leader={leader} testId={testId} />;
+}
+
 function BlankSub({ wide }: { wide?: boolean }) {
   return (
     <div
