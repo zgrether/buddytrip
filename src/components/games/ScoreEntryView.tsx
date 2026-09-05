@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ChevronLeft, Table2, Settings } from "lucide-react";
 import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, stablefordEntries, type RawStrokeEntry } from "@/lib/strokePlay";
-import type { StablefordRubric } from "@/lib/stableford";
+import { stablefordPoints, type StablefordRubric } from "@/lib/stableford";
 import { Avatar } from "@/components/Avatar";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
@@ -92,6 +92,15 @@ interface ScoreEntryViewProps {
    *  "Saves results · shows final standings" line doesn't apply. A save/error
    *  reason (`finishReason`) always overrides this regardless. */
   finishSubtext?: string;
+}
+
+/**
+ * A points figure with its unit, singular where it should be. "1 pts" is the
+ * kind of small wrongness that makes a screen feel unfinished, and a Stableford
+ * rubric hands out exactly one point often enough for it to be seen constantly.
+ */
+function ptsLabel(points: number): string {
+  return `${points} ${points === 1 ? "pt" : "pts"}`;
 }
 
 export function ScoreEntryView({
@@ -185,6 +194,42 @@ export function ScoreEntryView({
     : computeStrokePlayStandings(scoredIds, entries);
   const standingById = new Map(standings.map((s) => [s.entityId, s]));
   const totalOf = (pid: string) => standingById.get(pid)?.rawScore ?? 0;
+  /**
+   * WHAT THIS HOLE WAS WORTH — the points for one player on one hole.
+   *
+   * The running total beside it answers "where am I", and a bucket name answers
+   * "how did I play it", but neither says what the hole PAID. Under a rubric
+   * where a blow-up stops costing past the floor, those come apart: a triple
+   * and a quintuple read differently and score the same, and the row could not
+   * tell you that.
+   *
+   * ── Two things it must not get wrong ────────────────────────────────────
+   *
+   * It is scored off the NET value, not the gross one shown in the keypad. A
+   * stroked hole is worth its net bucket, which is exactly why the row already
+   * prints "Bogey · net Par" — the points belong to the second word, not the
+   * first.
+   *
+   * And it goes through `netStrokeEntriesByHole` + `stablefordPoints`, the same
+   * two functions in the same order the running total above is built from,
+   * rather than an inline `value - par` that would agree with them today. A
+   * per-hole figure that disagreed with the total it sums into is worse than no
+   * per-hole figure.
+   *
+   * `null` for a Traditional game (no rubric), an unscored cell, or a hole with
+   * no par in the snapshot — the last matching `stablefordEntries`, which skips
+   * such a hole rather than scoring it against a par of 0.
+   */
+  const holePointsOf = (pid: string, unitLabel: string, unitPar: number | null | undefined) => {
+    if (!rubric || unitPar == null) return null;
+    const gross = valueFor(pid, unitLabel);
+    if (gross == null) return null;
+    const [netted] = netStrokeEntriesByHole(
+      [{ participant_id: pid, unit_label: unitLabel, value: gross }],
+      pips ?? {}
+    );
+    return netted ? stablefordPoints(netted.value - unitPar, rubric) : null;
+  };
   const isLeading = (pid: string) =>
     scoredIds.length > 0 && standingById.get(pid)?.position === 1;
   const doneCount = (pid: string) =>
@@ -340,6 +385,7 @@ export function ScoreEntryView({
           const done = doneCount(p.id) === units.length;
           // Handicap: does this player get a stroke on THIS hole? (course index)
           const stroked = pips?.[p.id]?.has(label) ?? false;
+          const holePts = holePointsOf(p.id, label, par);
           return (
             <div key={p.id}>
               {/* role=button (not <button>) so the per-cell Retry button can
@@ -400,6 +446,23 @@ export function ScoreEntryView({
                             {stroked && golfWord(v - 1, par)
                               ? `${golfWord(v, par)} · net ${golfWord(v - 1, par)}`
                               : golfWord(v, par)}
+                            {/* What the hole PAID, after the word that earned it —
+                                so a stroked row reads "Bogey · net Par · 3 pts"
+                                and the points sit against the net word they are
+                                actually scored from. Same colour, because the word
+                                and its value are one fact about one hole. */}
+                            {holePts != null && ` · ${ptsLabel(holePts)}`}
+                          </span>
+                        ) : holePts != null && par != null && v != null ? (
+                          /* SCORED, but past ±3 so golf has no name worth printing
+                             (`golfWord` returns null on purpose). The points still
+                             exist, and this is the hole where "what was that worth?"
+                             matters MOST — a rubric's whole point is that a blow-up
+                             stops costing, and the row used to say nothing at all
+                             here. The signed differential stands in for the name,
+                             which is the fallback `bucketLabel` already uses. */
+                          <span style={{ fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
+                            {` · ${v - par > 0 ? "+" : ""}${v - par} · ${ptsLabel(holePts)}`}
                           </span>
                         ) : lead ? (
                           <span style={{ fontWeight: 600, color: "var(--color-bt-place-1-text)" }}> · Leading</span>
