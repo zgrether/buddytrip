@@ -207,6 +207,20 @@ export function StrokeGameView() {
     return m;
   }, [crew.data]);
 
+  /**
+   * userId -> their chosen avatar icon. Stroke had no such map and every path
+   * to `Participant.avatarIcon` hardcoded `null`, so the board, the group tiles
+   * and the scorecard have always rendered initials for people who had picked
+   * an icon. `tripMembers.list` has selected `avatar_icon` the whole time —
+   * nothing was missing but the lookup, which is the same shape as the team
+   * colours (#1305). Idiom copied from `RackGameView.avatarOf`, which is right.
+   */
+  const avatarIconOf = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const c of crew.data ?? []) m.set(c.user_id, c.user?.avatar_icon ?? null);
+    return m;
+  }, [crew.data]);
+
   const toParticipants = (userIds: string[]): Participant[] =>
     userIds.map((uid, i) => {
       const name = memberById.get(uid)?.name ?? "Player";
@@ -393,7 +407,7 @@ export function StrokeGameView() {
     const crewList = (crew.data ?? []).map((c) => ({
       id: c.user_id,
       name: c.displayName ?? c.user?.name ?? "Player",
-      avatarIcon: null as string | null,
+      avatarIcon: avatarIconOf.get(c.user_id) ?? null,
     }));
     const sections: GroupBuilderTeam[] = [];
     for (const t of (teamsQ.data ?? []) as { id: string; name: string; color: string }[]) {
@@ -405,7 +419,7 @@ export function StrokeGameView() {
     // the excluder cannot drift onto two spellings of one string.
     if (unassigned.length) sections.push({ id: UNASSIGNED_TEAM_ID, name: "Crew", color: "var(--color-bt-text-dim)", players: unassigned });
     return sections;
-  }, [teamsQ.data, assignQ.data, crew.data]);
+  }, [teamsQ.data, assignQ.data, crew.data, avatarIconOf]);
 
   // b2: the Handicaps roster is the LIVE DRAFTED FIELD — every player across the CURRENT
   // draft groups (`configDraft.groups`), NOT the stale create-time `game.participants`
@@ -798,6 +812,16 @@ export function StrokeGameView() {
    * amber, Taj blue and Steve teal against teams of red, amber and green. In a
    * team competition a player's colour is their team's; the palette is the
    * fallback for a game that has no teams, where a per-player colour is right.
+   *
+   * The AVATAR ICON comes from `avatarIconOf` for the same reason, and it is a
+   * plain fix rather than a preference: `nameColorOf` is built off
+   * `game.participants`, which this view assembles as `{id, name, color}` and
+   * has never carried an icon at all — so `meta?.avatarIcon` was structurally
+   * always `undefined` and every player on this page rendered initials. Nothing
+   * was missing but the lookup; `tripMembers.list` has selected `avatar_icon`
+   * throughout. Exactly the shape of the team-colour bug one field over, in the
+   * same expression, which is worth noticing: `?? null` reads like a considered
+   * fallback and is indistinguishable from a value that can never arrive.
    */
   const fieldParticipants = useMemo<Participant[]>(
     () => fieldIds.map((id, i) => {
@@ -806,10 +830,10 @@ export function StrokeGameView() {
         id,
         name: meta?.name ?? (crew.data ?? []).find((c) => c.user_id === id)?.displayName ?? "Player",
         color: teamColorOf.get(id) ?? meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
-        avatarIcon: meta?.avatarIcon ?? null,
+        avatarIcon: avatarIconOf.get(id) ?? meta?.avatarIcon ?? null,
       };
     }),
-    [fieldIds, nameColorOf, crew.data, teamColorOf],
+    [fieldIds, nameColorOf, crew.data, teamColorOf, avatarIconOf],
   );
 
   // Net per-hole entries (feed to-par) + par-by-hole from the course snapshot. Nets against
@@ -879,16 +903,6 @@ export function StrokeGameView() {
     const standings = computeStrokePlayStandings([...started], scored, { scoring });
     return computeStrokeTeamStandings(standings, teamOfUserId, scoring);
   }, [boardRollUp, leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId]);
-  /** teamId → holes played, summed off the individual rows that already carry it. */
-  const thruByTeam = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const r of leaderboardRows) {
-      const teamId = teamOfUserId[r.entityId];
-      if (!teamId) continue;
-      m[teamId] = (m[teamId] ?? 0) + r.holesPlayed;
-    }
-    return m;
-  }, [leaderboardRows, teamOfUserId]);
 
   // Game-level finalize gate (just like rack): every player of the LIVE whole field
   // is thru every hole. Reuses the shipped scoreboard's own rows (no parallel path) —
@@ -1413,7 +1427,6 @@ export function StrokeGameView() {
             rows={teamTotalRows}
             teams={(teamsQ.data ?? []) as { id: string; name: string; color: string }[]}
             rubric={boardRubric}
-            thruByTeam={thruByTeam}
           />
         )}
         <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} rubric={boardRubric} />
