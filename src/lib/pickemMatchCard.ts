@@ -50,6 +50,20 @@ export interface PickemCardModel {
   decidedStake: Record<number, "void" | "none">;
   /** Slate length — the engine's `holeCount`. */
   unitCount: number;
+  /**
+   * What each side can still GAIN — the engine's per-side ceiling.
+   *
+   * Golf omits it: both players are on the tee, so either can take any unplayed
+   * hole and the symmetric swing is right. Pick'em has a case golf does not — a
+   * player who submitted no sheet scores nothing on every remaining game, so
+   * their opponent's lead is unassailable from the first game they win.
+   *
+   * Without this the engine reported `over: false` and the card read
+   * "1 UP · THRU 1" on a finished match. The fix belongs here rather than in a
+   * display branch: the state was wrong, and every other consumer of it was
+   * wrong in the same way.
+   */
+  upside: { a?: number; b?: number };
 }
 
 /** A slate game, in the shape the board already holds. */
@@ -66,6 +80,8 @@ export function pickemCardModel(
   const results: DecidedHole[] = [];
   const decidedStake: Record<number, "void" | "none"> = {};
   const weights = new Map<number, number>();
+  let upsideA = 0;
+  let upsideB = 0;
 
   slate.forEach((game, i) => {
     const unit = i + 1;
@@ -80,7 +96,22 @@ export function pickemCardModel(
     const row = byGame.get(game.id);
     // No row, or no result yet — an UNPLAYED unit. Absent from `results`, which
     // is how the engine already distinguishes "still to come" from "drawn".
-    if (!row || row.result == null) return;
+    if (!row || row.result == null) {
+      /**
+       * An unplayed game's contribution to each side's CEILING, summed from the
+       * row's own `upsideA`/`upsideB` — the same fields `matchStanding` sums for
+       * `trailingUpside`, read rather than re-derived. A side with no sheet
+       * contributes 0 on every game, which is what closes the match out.
+       *
+       * A missing ROW contributes nothing to either side, which is correct: a
+       * game the board has not returned is not a game anyone can gain on.
+       */
+      if (row) {
+        upsideA += row.upsideA;
+        upsideB += row.upsideB;
+      }
+      return;
+    }
 
     /**
      * `swing` is the signed points this game moved the match, and its sign
@@ -110,6 +141,7 @@ export function pickemCardModel(
     weightOf: (unit: number) => weights.get(unit) ?? 1,
     decidedStake,
     unitCount: slate.length,
+    upside: { a: upsideA, b: upsideB },
   };
 }
 

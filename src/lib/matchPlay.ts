@@ -237,15 +237,60 @@ function unplayedHoles(holeCount: number, played: Set<number>): number[] {
  * multiplier for glorious — and this is the line that lets it say so with the
  * same engine rather than a second one that resembles it.
  */
+/**
+ * A per-side ceiling on what is still gainable — the second assumption removed
+ * from this engine, after #1311 removed the per-unit one.
+ *
+ * ── Why the symmetric model was not enough ────────────────────────────────
+ *
+ * `remainingSwing` answers "how much is left on the table", and close-out
+ * compares the lead to it. That silently assumes EITHER side could take any
+ * unplayed unit, which is true of golf — both players are on the tee — and
+ * false the moment a side cannot score at all.
+ *
+ * Pick'em has exactly that case and it is live: a player who submitted no sheet
+ * gains nothing on any remaining game, so their opponent's lead is unassailable
+ * from the first game they win. `matchState` reported `over: false` and the card
+ * read "1 UP · THRU 1" on a match that was finished.
+ *
+ * A cap is the total that side can still gain across the remaining units. Give
+ * `{ b: 0 }` for an absent sheet. Omitted means "no constraint beyond the
+ * physical swing", which is golf, unchanged.
+ *
+ * ── `Math.min` with the swing, deliberately ───────────────────────────────
+ *
+ * A cap can only ever TIGHTEN the ceiling. A caller passing something larger
+ * than the units can physically produce cannot inflate the match into staying
+ * open, so a wrong cap fails safe in the direction that keeps today's answer.
+ */
+export interface SideUpside {
+  a?: number;
+  b?: number;
+}
+
 export function matchState(
   decided: DecidedHole[],
   holeCount = HOLES,
-  weighting: Weighting = NO_GLORIOUS
+  weighting: Weighting = NO_GLORIOUS,
+  upside?: SideUpside
 ): MatchState {
   const weightOf = toUnitWeight(weighting);
   const played = new Set<number>();
   let diff = 0;
   let count = 0;
+  /**
+   * The ceiling the LEAD is measured against — the TRAILING side's, because a
+   * leader's own upside has no bearing on whether they are safe.
+   *
+   * This is the same shape `pickemBoard.matchStanding` has always used, and the
+   * fact that two functions independently needed it is the argument for it
+   * living in the engine rather than beside it (#1317).
+   */
+  const trailingCeiling = (swingLeft: number, d: number) => {
+    const upA = Math.min(upside?.a ?? swingLeft, swingLeft);
+    const upB = Math.min(upside?.b ?? swingLeft, swingLeft);
+    return d > 0 ? upB : d < 0 ? upA : Math.max(upA, upB);
+  };
   for (const { hole, result } of decided) {
     count++;
     played.add(hole);
@@ -254,26 +299,31 @@ export function matchState(
     else if (result === "L") diff -= w;
     const holesLeftRaw = holeCount - count; // raw units still to play (margin Y)
     const swingLeft = remainingSwing(unplayedHoles(holeCount, played), weightOf); // weighted (§4)
+    const ceiling = trailingCeiling(swingLeft, diff);
     const up = Math.abs(diff);
-    if (holesLeftRaw > 0 && up > swingLeft) return finalize(count, diff, holesLeftRaw, swingLeft, true, true);
+    if (holesLeftRaw > 0 && up > ceiling) return finalize(count, diff, holesLeftRaw, ceiling, true, true);
     if (holesLeftRaw === 0) break;
   }
   const holesLeftRaw = holeCount - count;
   const swingLeft = remainingSwing(unplayedHoles(holeCount, played), weightOf);
-  return finalize(count, diff, holesLeftRaw, swingLeft, holesLeftRaw === 0, false);
+  return finalize(count, diff, holesLeftRaw, trailingCeiling(swingLeft, diff), holesLeftRaw === 0, false);
 }
 
 function finalize(
   played: number,
   diff: number,
   holesLeftRaw: number,
-  swingLeft: number,
+  /** The TRAILING side's ceiling — the weighted swing left, tightened by any
+   *  per-side cap. Close-out and dormie both measure against this. */
+  ceiling: number,
   over: boolean,
   closedEarly: boolean
 ): MatchState {
   const up = Math.abs(diff);
-  // Dormie / close-out are against the WEIGHTED remaining swing (§4), not raw holes.
-  const dormie = !over && up === swingLeft && diff !== 0; // up by exactly the swing left
+  // Dormie / close-out are against the WEIGHTED remaining swing (§4), not raw
+  // holes — and against the TRAILING side's share of it, which is the same
+  // number in golf and smaller wherever a side cannot score.
+  const dormie = !over && up === ceiling && diff !== 0; // up by exactly what is left to them
   let margin: string | null = null;
   // Margin string: X = the WEIGHTED lead, Y = RAW holes-to-play. Under glorious the
   // weighted lead can EXCEED the raw holes remaining, so "4&2" (or even "6&2") is a
@@ -357,12 +407,16 @@ export interface MatchTrackCell {
 export function matchTrack(
   decided: DecidedHole[],
   holeCount: number,
-  weighting: Weighting = NO_GLORIOUS
+  weighting: Weighting = NO_GLORIOUS,
+  /** Passed straight through — the track and the state it is reported beside
+   *  must agree about when the match closed, or the dead cells and the margin
+   *  would disagree on one card. */
+  upside?: SideUpside
 ): { track: MatchTrackCell[]; st: MatchState } {
   // The same normalisation `matchState` does, for the same reason: this walk
   // must weight units exactly as the state it is reported alongside.
   const weightOf = toUnitWeight(weighting);
-  const st = matchState(decided, holeCount, weighting);
+  const st = matchState(decided, holeCount, weighting, upside);
   const byHole = new Map(decided.map((d) => [d.hole, d.result]));
   let diff = 0;
   const track: MatchTrackCell[] = [];

@@ -2,7 +2,7 @@
 
 import { PointsAtStake } from "./PointsAtStake";
 import { Table2 } from "lucide-react";
-import { matchState, type DecidedHole } from "@/lib/matchPlay";
+import { matchState, type DecidedHole, type SideUpside } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { SidePlayer } from "./MatchSides";
@@ -159,6 +159,14 @@ interface MatchCardProps {
   bNote?: React.ReactNode;
   aMuted?: boolean;
   bMuted?: boolean;
+  /**
+   * Per-side ceiling on what is still gainable, passed straight to the engine.
+   *
+   * Golf omits it — both players are on the tee. Pick em supplies it because a
+   * side with no sheet can gain nothing, which is what makes their opponent
+   * safe. Without it this card renders THRU on a finished match.
+   */
+  upside?: SideUpside;
 }
 
 export function MatchCard({
@@ -183,8 +191,9 @@ export function MatchCard({
   bNote,
   aMuted,
   bMuted,
+  upside,
 }: MatchCardProps) {
-  const st = matchState(results, holeCount, glorious);
+  const st = matchState(results, holeCount, glorious, upside);
   /* Golf answers "is this unit weighted?" from its trailing window; a caller
      that weights per unit passes its own predicate. One default, so the loop
      below never branches on which format it is drawing. */

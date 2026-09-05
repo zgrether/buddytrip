@@ -83,6 +83,12 @@ export function PickemMatchPlayCard({
            pick'em passes the multiplier off each game's own row. */
       isWeightedUnit={pickemWeightedUnit(model)}
       decidedStake={model.decidedStake}
+      /* THE CLOSE-OUT, not a display branch. A side with no sheet gains nothing
+         on any remaining game, so the engine needs their ceiling to know the
+         match is over — without it the card read "1 UP - THRU 1" on a match
+         JohnnyD had already won. Summed from the board rows own upside fields,
+         the same ones matchStanding reads. */
+      upside={model.upside}
       label={`MATCH ${matchNumber}`}
       /* No "· 1v1" suffix — a pick'em match is always one sheet against one
            sheet, so the format word would be noise on every card. */
