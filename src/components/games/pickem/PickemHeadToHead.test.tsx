@@ -161,7 +161,7 @@ describe("h2hNote — the trailer's question, not the leader's", () => {
     expect(h2hNote(st({ remaining: 3 }), 5, "Zach", BOTH, NAMES)).toBe("Level with 3 to play");
     expect(
       h2hNote(st({ remaining: 9, margin: -17 }), 7, "Ty", { a: false, b: true }, NAMES)
-    ).toBe("Zach didn't submit a sheet — it scores nothing, so Ty takes the match");
+    ).toBe("Ty takes it");
   });
 });
 

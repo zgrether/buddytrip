@@ -360,10 +360,14 @@ function Side({
     <span
       className={`flex min-w-0 flex-1 flex-col items-center gap-1 ${align === "right" ? "text-right" : "text-left"}`}
     >
-      <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={30} />
+      <Avatar name={name} avatarIcon={avatarIcon} teamColor={teamColor} sizePx={40} />
+      {/* The two people ARE the subject of this screen, so they get the
+          standard name chip rather than the dim caption they had. A 30px disk
+          over 12px dim text read as metadata about the totals; at 40/15 the
+          header says whose match this is. */}
       <span
         className="block w-full truncate text-center"
-        style={{ fontSize: TYPE_SCALE.bodyDense, color: "var(--color-bt-text-dim)" }}
+        style={{ fontSize: TYPE_SCALE.name, fontWeight: 600, color: "var(--color-bt-text)" }}
       >
         {name}
       </span>

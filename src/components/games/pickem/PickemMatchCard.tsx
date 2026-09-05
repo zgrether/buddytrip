@@ -134,10 +134,27 @@ export function matchNote(
    * whose picking half defaults every game to the home team.
    */
   if (!picked.a || !picked.b) {
-    if (!picked.a && !picked.b) return "Neither submitted a sheet — nothing scores";
-    const missing = picked.a ? names.b : names.a;
+    /**
+     * ── SHORTENED, because the PILL beside it already says the fact ────────
+     *
+     * This read "X didn't submit a sheet — it scores nothing, so Y takes the
+     * match", which repeated the pill ("Nothing submitted") and then overran
+     * the line it shares with it. Both surfaces that render this note render
+     * that pill — the card's `Pill kind="no-sheet"` and the head-to-head's
+     * `h2hPill` — so the fact is not lost by dropping it here, which is the
+     * thing to check before shortening a sentence into a label.
+     *
+     * WHAT IS GENUINELY GONE is the explicit consequence, "it scores
+     * nothing". The longer version existed to state it because an empty sheet
+     * scoring zero is not obvious on a screen whose picking half defaults
+     * every game to the home team. The pair now has to carry it by
+     * implication — "Nothing submitted" beside "Grether takes it" — which is
+     * a real if small loss and the reason this is written down rather than
+     * just done.
+     */
+    if (!picked.a && !picked.b) return "Nothing scores";
     const other = picked.a ? names.a : names.b;
-    return `${missing} didn't submit a sheet — it scores nothing, so ${other} takes the match`;
+    return `${other} takes it`;
   }
 
   if (resolvedCount === 0) return "No games in yet";
@@ -269,7 +286,6 @@ export function PickemMatchCard({
   resolvedCount,
   picked,
   mine,
-  youSide,
   note,
   selected,
   onOpen,
@@ -298,8 +314,6 @@ export function PickemMatchCard({
    */
   picked: SidesPicked;
   mine: boolean;
-  /** Which side the viewer is on, for the YOU tag. Null when neither. */
-  youSide: "a" | "b" | null;
   /** The runner's per-match note, if any. Ellipsised beside the status. */
   note?: string | null;
   selected?: boolean;
@@ -319,7 +333,14 @@ export function PickemMatchCard({
       className="flex flex-col gap-1.5 px-3 py-2.5 text-left active:scale-[0.98]"
       style={{
         borderRadius: 13,
-        background: selected ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
+        /* ── YOUR OWN MATCH TAKES THE CARD TEAL, NOT A BADGE ──────────────
+           `mine` used to change the BORDER only, which is a 1px difference
+           that has to be hunted for in a list of eight — so the card also
+           carried a "YOU" tag to make itself findable. The tag exists nowhere
+           else in the app, and a filled card says the same thing from much
+           further away, so the fill replaces it rather than joining it. */
+        background:
+          selected || mine ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
         border:
           selected || mine
             ? "1px solid var(--color-bt-accent-border)"
@@ -339,7 +360,7 @@ export function PickemMatchCard({
         <span
           className="@container flex min-w-0 flex-1 items-center gap-1.5"
           style={{
-            fontSize: TYPE_SCALE.bodyDense,
+            fontSize: TYPE_SCALE.name,
             fontWeight: aLead ? 700 : 500,
             color: aLead ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
           }}
@@ -349,20 +370,19 @@ export function PickemMatchCard({
               name={aName}
               avatarIcon={aAvatar.avatarIcon}
               teamColor={aAvatar.teamColor}
-              sizePx={22}
+              sizePx={26}
               collapse
               collapseAt="chip"
             />
           )}
           <span className="min-w-0 truncate">
             {aName}
-            {youSide === "a" && <YouTag />}
           </span>
         </span>
         <span
           className="shrink-0"
           style={{
-            fontSize: 15,
+            fontSize: 16,
             fontWeight: 700,
             letterSpacing: "-0.01em",
             fontVariantNumeric: "tabular-nums",
@@ -375,21 +395,20 @@ export function PickemMatchCard({
         <span
           className="@container flex min-w-0 flex-1 items-center justify-end gap-1.5"
           style={{
-            fontSize: TYPE_SCALE.bodyDense,
+            fontSize: TYPE_SCALE.name,
             fontWeight: !aLead && s.margin !== 0 ? 700 : 500,
             color: !aLead && s.margin !== 0 ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
           }}
         >
           <span className="min-w-0 truncate text-right">
             {bName}
-            {youSide === "b" && <YouTag />}
           </span>
           {bAvatar && (
             <Avatar
               name={bName}
               avatarIcon={bAvatar.avatarIcon}
               teamColor={bAvatar.teamColor}
-              sizePx={22}
+              sizePx={26}
               collapse
               collapseAt="chip"
             />
@@ -414,21 +433,3 @@ export function PickemMatchCard({
   );
 }
 
-/** The viewer's own match, findable at a glance in a list of eight. */
-function YouTag() {
-  return (
-    <span
-      className="ml-1 rounded px-1"
-      style={{
-        fontSize: 9,
-        fontWeight: 700,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-        color: "var(--color-bt-accent)",
-        background: "var(--color-bt-accent-faint)",
-      }}
-    >
-      You
-    </span>
-  );
-}
