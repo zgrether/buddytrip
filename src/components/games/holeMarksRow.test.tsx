@@ -40,17 +40,28 @@ describe("the hole-marks row", () => {
    * A build that rendered the halved treatment for both — or blanked both —
    * passes every other assertion in this file.
    */
-  it("is blank on an unplayed hole and marked on a halved one", () => {
-    const html = render([null, "halved"]);
+  it("is blank on an unplayed hole and marked on a level one", () => {
+    const html = render([null, "level"]);
     expect(cell(html, 1)).toBe("");
     expect(cell(html, 2)).not.toBe("");
-    expect(cell(html, 2)).toContain('aria-label="Halved"');
+    expect(cell(html, 2)).toContain("AS");
   });
 
-  it("marks a won hole in the side's own colour", () => {
-    const html = render(["won"]);
-    expect(cell(html, 1)).toContain('aria-label="Won"');
-    expect(cell(html, 1)).toContain(`background:${A_COLOR}`);
+  /**
+   * THE RUNNING MARGIN, in the outcome card's own chip.
+   *
+   * This REPLACES a bare colour rectangle that marked "this side won this
+   * hole". The two are different values and the chip is the one that survives:
+   * the number climbing is how you see you took the hole, the strokes directly
+   * above already say who won it outright, and the two scorecards stop saying a
+   * related thing in two vocabularies.
+   */
+  it("shows the leader's margin in their own colour, as the outcome card does", () => {
+    const html = render([{ lead: 3 }]);
+    expect(cell(html, 1)).toContain("outcome-lead-pill");
+    expect(cell(html, 1)).toContain("3");
+    expect(cell(html, 1)).toContain("▲");
+    expect(cell(html, 1)).toContain(A_COLOR);
   });
 
   /** The third state: past close-out is not the same absence as not-yet-played. */
@@ -63,7 +74,7 @@ describe("the hole-marks row", () => {
   /** All four renderings differ from each other — the property that makes the
    *  row readable at all, asserted as a set rather than pairwise. */
   it("renders four distinguishable states", () => {
-    const html = render([null, "halved", "won", "dead"]);
+    const html = render([null, "level", { lead: 2 }, "dead"]);
     const rendered = [1, 2, 3, 4].map((h) => cell(html, h));
     expect(new Set(rendered).size).toBe(4);
   });
@@ -87,7 +98,7 @@ describe("the hole-marks row", () => {
    * "the columns look empty" impulse has to argue with the reasoning.
    */
   it("leaves the subtotal columns empty", () => {
-    const html = render(["won", "won", "halved"]);
+    const html = render([{ lead: 1 }, { lead: 2 }, "level"]);
     // Addressed by testid rather than by slicing the region after the row —
     // the first version of this matched hole LABELS further down the document
     // and failed against correct code, which is "measure the thing, not the

@@ -1,6 +1,6 @@
 "use client";
 
-import { Delete, Check } from "lucide-react";
+import { Delete, Check, CloudOff, RefreshCw } from "lucide-react";
 
 /**
  * StrokeKeypad — the stroke-play entry control (entry_schema = 'user_holes').
@@ -21,6 +21,25 @@ interface StrokeKeypadProps {
   onCommit: (value: number) => void;
   onClear: () => void;
   onConfirm: () => void;
+  /**
+   * An unsaved-score error for the cell being entered, shown INSTEAD of the
+   * caption — an error outranks knowing whose score you are typing, and the
+   * caption's line is already there, so it costs no vertical.
+   *
+   * ── The retry travels WITH the message, and that is the point ─────────────
+   *
+   * The copy this replaces said "N scores didn't save — retry above", and
+   * "above" already pointed at two different controls: `UnsavedScoresBanner`'s
+   * Retry-all at the top of the view, and the per-cell retry badge on the row.
+   * Putting the same sentence at the BOTTOM, in the keypad, would have given it
+   * a third possible referent while moving it further from all of them — and
+   * the row area can be scrolled or partly covered by the keypad itself.
+   *
+   * So the action comes along instead of being pointed at. CLAUDE.md: a refusal
+   * must name an action the reader can take, and the shortest version of that
+   * is putting the control in the same element as the sentence.
+   */
+  error?: { text: string; onRetry?: () => void };
 }
 
 const KEY_H = 54;
@@ -31,6 +50,7 @@ export function StrokeKeypad({
   onCommit,
   onClear,
   onConfirm,
+  error,
 }: StrokeKeypadProps) {
   const hasValue = value != null;
   const tensSelected = value != null && value >= 10;
@@ -69,12 +89,59 @@ export function StrokeKeypad({
         padding: "12px 16px 22px",
       }}
     >
-      <div
-        className="text-center"
-        style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginBottom: 10 }}
-      >
-        {participantName} — Enter score
-      </div>
+      {/* THE ERROR TAKES THE CAPTION'S LINE. Same slot, same 10px gap below —
+          no vertical is added, and the treatment is `UnsavedScoresBanner`'s
+          (danger tint, danger border, `CloudOff`) rather than a second error
+          language invented for this one place. */}
+      {error ? (
+        <div
+          role="alert"
+          data-testid="keypad-error"
+          className="flex items-center justify-between gap-3"
+          style={{
+            marginBottom: 10,
+            padding: "6px 10px",
+            borderRadius: 8,
+            background: "var(--color-bt-danger-faint)",
+            border: "1px solid var(--color-bt-danger-border)",
+          }}
+        >
+          <span
+            className="flex min-w-0 items-center gap-2"
+            style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-danger)" }}
+          >
+            <CloudOff size={15} className="shrink-0" />
+            <span className="truncate">{error.text}</span>
+          </span>
+          {error.onRetry && (
+            <button
+              type="button"
+              onClick={error.onRetry}
+              data-testid="keypad-error-retry"
+              className="flex shrink-0 items-center gap-1.5"
+              style={{
+                padding: "3px 10px",
+                borderRadius: 9999,
+                background: "var(--color-bt-card)",
+                border: "1px solid var(--color-bt-danger-border)",
+                color: "var(--color-bt-danger)",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              <RefreshCw size={12} strokeWidth={2.5} />
+              Retry
+            </button>
+          )}
+        </div>
+      ) : (
+        <div
+          className="text-center"
+          style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginBottom: 10 }}
+        >
+          {participantName} — Enter score
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(numKey)}

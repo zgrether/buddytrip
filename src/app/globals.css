@@ -78,7 +78,23 @@
   --color-bt-tile-bg: transparent;
   --color-bt-past-bg: #f8fafc;
   --color-bt-surface-invitation: rgba(255, 255, 255, 0.6);
-  --color-bt-nav-bg: rgba(244, 247, 250, 0.85); /* translucent base for sticky chrome */
+  /* Translucent base for sticky chrome.
+   *
+   * THE 0.85 ONLY WORKS WITH ITS BLUR. Every consumer pairs this with
+   * `backdrop-filter: blur(14px)` — that is the frosted bar, and the alpha is
+   * what lets the blur show through. The two are one treatment.
+   *
+   * So if `backdrop-filter` ever fails to apply — an old engine, a device or
+   * browser setting that disables it, a reduced-transparency accessibility
+   * mode — the bar does not degrade to opaque. It degrades to a plainly
+   * see-through panel with content legible behind it, which looks exactly like
+   * a missing background and will be reported as one.
+   *
+   * Written down because that diagnosis is expensive to reach from the symptom
+   * and cheap to read here: a sticky bar you can see through is this pairing
+   * coming apart, NOT a token that forgot its colour. Chased once already, in
+   * a sweep of six sticky elements that were all correctly opaque. */
+  --color-bt-nav-bg: rgba(244, 247, 250, 0.85);
 
   /* Live height of the bottom nav, published by BottomNav while mounted.
      Defaults to 0px so bottom-anchored surfaces (chat panel/sheet) sit flush
@@ -221,7 +237,9 @@
   --color-bt-tile-bg: transparent;
   --color-bt-past-bg: #161c2b;
   --color-bt-surface-invitation: rgba(255, 255, 255, 0.03);
-  --color-bt-nav-bg: rgba(10, 14, 26, 0.85); /* matches marketing page nav */
+  /* Matches the marketing page nav. Same alpha-plus-blur pairing as the light
+   * value above — see that note for what a see-through bar actually means. */
+  --color-bt-nav-bg: rgba(10, 14, 26, 0.85);
   color-scheme: dark;
 }
 

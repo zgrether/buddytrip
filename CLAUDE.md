@@ -490,9 +490,18 @@ seam, never on a calendar.
   sheet is not a contest. The two states differ in what a reader can DO: a clinch is
   decided, while this one is decided only because nobody entered, and a captain can
   undecide it by proxying before the lock. So the label has to carry the distinction that
-  the number cannot, and the fix was a new state (`no-picks`) ranked above clinch and
+  the number cannot, and the fix was a new state (`no-sheet`) ranked above clinch and
   below final — not a change to any maths. Watch for it wherever a derived predicate is
   named for the ordinary case and then reused for the degenerate one.
+
+  **This entry said `no-picks` for months and the code has always said `no-sheet`**
+  (`matchPill`, `src/components/games/pickem/PickemMatchCard.tsx`, whose label is
+  "Nothing submitted"). One concept, two names, in the file whose own Glossary opens by
+  saying that is how seams drift — and the code's name is the better one, which is why
+  the doc moved rather than the identifier. `no-picks` invites the reading that this
+  person's picks are missing from a sheet that exists; what is missing is the SHEET.
+  Corrected 2026-09-06, after the drift was found while diagnosing a related bug and
+  cost a search for a state that appeared not to exist.
 
   **How to apply:** whenever a value can be absent, ask what ELSE renders the same way,
   and whether those two states should lead the reader to the same action. If they should

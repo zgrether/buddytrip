@@ -67,58 +67,61 @@ export function PickemMatchPlayCard({
 }) {
   const model = pickemCardModel(slate, rows);
 
+  // No wrapper: it existed only to stack the card and the absence notice, and
+  // the notice is inside the card now. A single-child flex column is the kind of
+  // leftover that later reads as deliberate.
   return (
-    <div className="flex flex-col" style={{ gap: 4 }}>
-      <MatchCard
-        /* `color` is `Participant`'s identity colour. The CARD paints from
+    <MatchCard
+      /* `color` is `Participant`'s identity colour. The CARD paints from
            `leftColor`/`rightColor`, so this is only the fallback the neutral
            build would use; passing the team colour keeps the two consistent. */
-        a={{ id: "a", name: aName, color: aColor ?? "" }}
-        b={{ id: "b", name: bName, color: bColor ?? "" }}
-        results={model.results}
-        holeCount={model.unitCount}
-        /* The seam. Golf passes a trailing-window config and nothing here;
+      a={{ id: "a", name: aName, color: aColor ?? "" }}
+      b={{ id: "b", name: bName, color: bColor ?? "" }}
+      results={model.results}
+      holeCount={model.unitCount}
+      /* The seam. Golf passes a trailing-window config and nothing here;
            pick'em passes the multiplier off each game's own row. */
-        isWeightedUnit={pickemWeightedUnit(model)}
-        decidedStake={model.decidedStake}
-        label={`MATCH ${matchNumber}`}
-        /* No "· 1v1" suffix — a pick'em match is always one sheet against one
+      isWeightedUnit={pickemWeightedUnit(model)}
+      decidedStake={model.decidedStake}
+      /* THE CLOSE-OUT, not a display branch. A side with no sheet gains nothing
+         on any remaining game, so the engine needs their ceiling to know the
+         match is over — without it the card read "1 UP - THRU 1" on a match
+         JohnnyD had already won. Summed from the board rows own upside fields,
+         the same ones matchStanding reads. */
+      upside={model.upside}
+      label={`MATCH ${matchNumber}`}
+      /* No "· 1v1" suffix — a pick'em match is always one sheet against one
            sheet, so the format word would be noise on every card. */
-        hideFormat
-        /* `leftColor`/`rightColor` are what turn the margin chip and the segment
+      hideFormat
+      /* `leftColor`/`rightColor` are what turn the margin chip and the segment
            bar from the neutral value-ramp into team colours. Null is an ordinary
            case (a player with no team), and `MatchCard` already falls back to
            its own neutral treatment for it. */
-        leftColor={aColor ?? undefined}
-        rightColor={bColor ?? undefined}
-        youId={mine ? "a" : undefined}
-        onClick={onOpen}
-      />
+      leftColor={aColor ?? undefined}
+      rightColor={bColor ?? undefined}
+      youId={mine ? "a" : undefined}
+      /* ── THE ABSENCE IS INSIDE THE CARD NOW, AND THIS REVERSES A DECISION ──
+           It used to be a SIBLING below the card, on the reasoning that "a
+           missing SHEET is a pick'em concept with no golf analogue" and should
+           not enter the shared component. The reasoning was sound; the
+           placement was not. On a phone the notice escaped the card entirely,
+           floating below it and overlapping the next one — not displacing
+           something, outside its container.
 
-      {/* ── THE ABSENCE STAYS OUTSIDE THE CARD ───────────────────────────────
-          `MatchCard` has no slot for it and should not grow one: a missing
-          SHEET is a pick'em concept with no golf analogue, and pushing it into
-          the shared card would put a format-specific state in the one place
-          both formats read.
+           What goes in is not the concept. `aNote`/`bNote` take a NODE and
+           `aMuted`/`bMuted` say "this side is not scoring" — both true of a
+           withdrawal or a DQ, neither mentioning a sheet. The card learns a
+           shape, pick'em keeps the meaning.
 
-          Under the side it belongs to, never centred — centred between two
-          names it names neither, which is the defect this replaced. The
-          notice is the same `PickemAbsenceNotice` the sheet's NOT PICKED
-          uses: one family. */}
-      {(!picked.a || !picked.b) && (
-        <span className="flex items-center gap-2 px-1">
-          <span className="flex min-w-0 flex-1">
-            {!picked.a && (
-              <PickemAbsenceNotice label={NO_PICKS} testId="pickem-mp-nopicks-a" />
-            )}
-          </span>
-          <span className="flex min-w-0 flex-1 justify-end">
-            {!picked.b && (
-              <PickemAbsenceNotice label={NO_PICKS} testId="pickem-mp-nopicks-b" />
-            )}
-          </span>
-        </span>
-      )}
-    </div>
+           And the mute is the half that does the work: a player scoring nothing
+           should READ that way before a badge says so. The badge confirms what
+           the weight already told you, which is also why it can now be small
+           and sit under the name instead of competing with it. */
+      aNote={!picked.a ? <PickemAbsenceNotice label={NO_PICKS} testId="pickem-mp-nopicks-a" /> : undefined}
+      bNote={!picked.b ? <PickemAbsenceNotice label={NO_PICKS} testId="pickem-mp-nopicks-b" /> : undefined}
+      aMuted={!picked.a}
+      bMuted={!picked.b}
+      onClick={onOpen}
+    />
   );
 }

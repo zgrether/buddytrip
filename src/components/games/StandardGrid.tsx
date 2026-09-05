@@ -142,7 +142,40 @@ interface StandardGridProps {
  * unplayed one are never ambiguous on the assembled card, only within one row
  * read alone.
  */
-export type HoleMark = "won" | "halved" | "dead";
+export type HoleMark = { lead: number } | "level" | "dead";
+
+/**
+ * The running-margin chip — `3▲` in the side's colour.
+ *
+ * ── It lives here because BOTH scorecards draw it now ─────────────────────
+ *
+ * It was `OutcomeScorecard`'s. The stroke card drew a bare colour rectangle
+ * instead, which is the same row saying a related thing in a second
+ * vocabulary — the shape this whole parity pass exists to remove. It moved to
+ * this file rather than being imported from there because `OutcomeScorecard`
+ * already imports from here, and the other direction is a cycle.
+ */
+export function LeadPill({ value, color }: { value: number; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center justify-center"
+      data-testid="outcome-lead-pill"
+      style={{
+        minWidth: 30,
+        height: 26,
+        padding: "0 7px",
+        borderRadius: 7,
+        fontSize: 13,
+        fontWeight: 800,
+        background: `color-mix(in srgb, ${color} 16%, transparent)`,
+        color,
+      }}
+    >
+      {value}
+      <span style={{ fontSize: 8, marginLeft: 2 }}>▲</span>
+    </span>
+  );
+}
 
 /**
  * The sticky name column's width — RESPONSIVE, with a ceiling and a floor.
@@ -1305,12 +1338,11 @@ function HoleMarkCell({ mark, color }: { mark: HoleMark | null; color: string })
   // separate state rather than sharing this one.
   if (mark == null) return null;
   if (mark === "dead") return <span style={{ color: "var(--color-bt-text-dim)", opacity: 0.4, fontSize: 11 }}>·</span>;
-  if (mark === "halved")
+  if (mark === "level")
     return (
-      <span
-        aria-label="Halved"
-        style={{ width: 10, height: 3, borderRadius: 2, background: "var(--color-bt-text-dim)", opacity: 0.8 }}
-      />
+      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-text-dim)" }} data-testid="outcome-as">
+        AS
+      </span>
     );
-  return <span aria-label="Won" style={{ width: 10, height: 6, borderRadius: 2, background: color }} />;
+  return <LeadPill value={mark.lead} color={color} />;
 }

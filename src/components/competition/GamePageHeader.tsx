@@ -62,7 +62,24 @@ export function GamePageHeader({
 
   return (
     <div
-      className="px-4 pt-3"
+      /*
+       * `py-3`, not `pt-3` — the bottom half was missing and this header is
+       * STICKY, so content scrolls up to meet its edge with no gap at all. It
+       * reads as sliding through the header, and it was reported that way.
+       *
+       * NOTHING IS TRANSPARENT. This box is opaque `--color-bt-base`, and a
+       * sweep of every sticky element on these surfaces found all six correctly
+       * backed. The defect is the absent gap; the occlusion was working the
+       * whole time.
+       *
+       * Same shape as `GameLifecycleActions`' finalize arm, fixed in the same
+       * pass: a gap that other surfaces supplied from a neighbour, so the
+       * element never carried its own. Twice in one session — when a sticky
+       * element meets scrolling content the gap belongs to the STICKY one,
+       * because it is the only participant that knows it is being scrolled
+       * under.
+       */
+      className="px-4 py-3"
       style={{ position: "sticky", top: stickyTop, zIndex: 20, background: "var(--color-bt-base)" }}
       data-testid="game-page-header"
     >
