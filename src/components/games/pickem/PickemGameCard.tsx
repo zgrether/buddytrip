@@ -49,6 +49,24 @@ import {
 export const SETTLED_DIM = 0.38;
 
 /**
+ * The collapse timings, exported so the row that schedules the close and the
+ * card that performs it cannot disagree about how long it takes.
+ *
+ * `HOLD` is the part with a reason rather than a taste: it is how long the
+ * chosen segment stays on screen AFTER it turns accent, and it exists because
+ * a row that starts closing in the same frame the selection lands never shows
+ * the pick at all. 150ms of selection fade inside a 400ms hold leaves a
+ * quarter-second where the answer is simply readable.
+ */
+export const COLLAPSE_MS = 280;
+export const SELECT_HOLD_MS = 400;
+
+/** The cap on an animating body. Must exceed the tallest `children` any card
+ *  holds — one segment control, or a control plus a link — or it clips with no
+ *  error. Several times either. */
+const COLLAPSE_MAX_HEIGHT = 200;
+
+/**
  * The card's top row — a plain row, or a disclosure button when the surface
  * wants tapping the matchup to open something.
  *
@@ -102,6 +120,7 @@ export function PickemGameCard({
   onHeaderTap,
   headerTestId,
   headerOpen,
+  collapsible,
   settled = false,
   active = false,
   quiet = false,
@@ -121,6 +140,30 @@ export function PickemGameCard({
   onHeaderTap?: () => void;
   headerTestId?: string;
   headerOpen?: boolean;
+  /**
+   * Renders `children` inside a COLLAPSING container instead of mounting and
+   * unmounting them.
+   *
+   * ── Why not just `{open && children}` ─────────────────────────────────────
+   *
+   * Because the whole point is that the pick visibly LANDS before the row
+   * shuts. Conditional mounting gives you no closing frame at all — the
+   * control is there and then it is not — so the 400ms hold would be 400ms of
+   * nothing followed by a jump cut.
+   *
+   * The element therefore stays mounted and animates its height. That also
+   * makes the row's re-render harmless: React updates the selected segment in
+   * place on a DOM node that never moves, so the 150ms selection fade and the
+   * 280ms collapse both run to completion. (The row cannot be reordered by a
+   * pick either — its position comes from the slate index, not from its
+   * contents.)
+   *
+   * `maxHeight` rather than `height`, since the content's height is not known
+   * here — with the cost that the cap must exceed the tallest body this card
+   * ever holds or it silently clips. The bodies are one segment control and,
+   * on the results page, a control plus a link; 200px is several times either.
+   */
+  collapsible?: { open: boolean };
   /** The rank chip, the ordinal — whatever numbers this row on this surface. */
   leading?: ReactNode;
   /**
@@ -143,7 +186,11 @@ export function PickemGameCard({
   return (
     <div
       data-testid={testId}
-      className="flex flex-col gap-2"
+      /* No flex GAP when collapsing: a zero-height body still takes its share
+         of a gap, so a closed row would sit 8px taller than it should and the
+         collapse would stop 8px short of shut. The body carries the spacing as
+         its own padding instead, and animates it away with everything else. */
+      className={collapsible ? "flex flex-col" : "flex flex-col gap-2"}
       style={{
         ...pickemRowSurface({ weighted: (game.multiplier ?? 1) > 1, active, quiet }),
         borderRadius: 13,
@@ -173,7 +220,31 @@ export function PickemGameCard({
           </>
         ),
       })}
-      {children != null && <div style={dim}>{children}</div>}
+      {children != null &&
+        (collapsible ? (
+          <div
+            data-testid="pickem-card-body"
+            data-open={collapsible.open ? "true" : "false"}
+            /* `aria-hidden` while shut, so a screen reader is not offered a
+               control the sighted reader cannot see. The header carries
+               `aria-expanded`, which is what announces there is something to
+               open. */
+            aria-hidden={!collapsible.open}
+            style={{
+              ...dim,
+              overflow: "hidden",
+              maxHeight: collapsible.open ? COLLAPSE_MAX_HEIGHT : 0,
+              opacity: collapsible.open ? 1 : 0,
+              paddingTop: collapsible.open ? 8 : 0,
+              transition:
+                `max-height ${COLLAPSE_MS}ms ease, opacity 200ms ease, padding-top ${COLLAPSE_MS}ms ease`,
+            }}
+          >
+            {children}
+          </div>
+        ) : (
+          <div style={dim}>{children}</div>
+        ))}
     </div>
   );
 }
@@ -319,6 +390,11 @@ export function PickemSegments<V extends SegmentValue>({
           fontSize: secondary ? TYPE_SCALE.caption : TYPE_SCALE.bodyDense,
           fontWeight: isSelected ? 700 : 600,
           cursor: disabled ? "default" : "pointer",
+          /* The selection FADES IN rather than snapping, so that on a row which
+             then closes itself the eye has something to follow. Colour only —
+             animating the border WIDTH would shift the label a pixel as it
+             lands, which reads as a wobble at this size. */
+          transition: "background-color 150ms ease, color 150ms ease, border-color 150ms ease",
           ...segmentStyle(v, isSelected),
         }}
       >
