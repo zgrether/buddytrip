@@ -6,7 +6,7 @@ import { matchState, type DecidedHole } from "@/lib/matchPlay";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { SidePlayer } from "./MatchSides";
-import { fitName } from "@/lib/nameLadder";
+import { fitName, CARD_NAME_CAPACITY_EM } from "@/lib/nameLadder";
 import type { Participant } from "./types";
 
 /**
@@ -28,10 +28,22 @@ const NEU_WON_L = "#eaeef4"; // left won — bright
 const NEU_WON_R = "#566275"; // right won — dark (wide gap)
 const NEU_HALF = "#8c97a8"; // halved — mid
 
-/** The match card's step-1 name size. The ladder steps down from here — see
- *  `nameLadder.ts`. Both the 1v1 and 2v2 branches read this ONE value, so a
- *  doubles pairing can never render smaller than a singles name by accident. */
-const NAME_BASE_SIZE = 17;
+/**
+ * THE NAME SIZE IS KEYED TO THE VIEWPORT, exactly as the chrome below is.
+ *
+ * Was a flat 17px, which on a 375px phone put the LARGEST font in the
+ * NARROWEST cell — "Zach Grether" (12 chars, so the old length ladder left it
+ * at step 1) rendered 100px wide into an 85px slot and truncated, while
+ * "Bill Giesler" at the same 12 characters and the same 17px measured 81px and
+ * fit. The ladder was contributing nothing there; the viewport was the missing
+ * input.
+ *
+ * This is NOT the per-name scaling that is ruled out: every name on the screen
+ * gets the same size, and only the screen width changes it. 3.7vw resolves to
+ * ~13.9px at 375 and reaches the old 17px at ~460 and above, so larger phones
+ * are unchanged.
+ */
+const NAME_FONT = "clamp(13px, 3.7vw, 17px)";
 
 /**
  * THE CARD'S FIXED CHROME WAS 53% OF A 375px PHONE, and that — not the names —
@@ -297,13 +309,13 @@ function NameCell({ name, players, align, tinted, color }: { name: string; playe
             a short partner beside a long one keeps full size. The `truncate` is
             a backstop that should now never fire. */}
         {players.map((p) => {
-          const fit = fitName(p.name, NAME_BASE_SIZE);
+          const fit = fitName(p.name, CARD_NAME_CAPACITY_EM);
           return (
             <span
               key={p.id}
               className="max-w-full truncate"
               data-name-step={fit.step}
-              style={{ fontSize: fit.fontSize, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.3 }}
+              style={{ fontSize: NAME_FONT, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.3 }}
             >
               {fit.text}
             </span>
@@ -322,7 +334,7 @@ function NameCell({ name, players, align, tinted, color }: { name: string; playe
    * size) so that one rule serves both branches and a 2v2 cannot read smaller
    * than a 1v1 by accident.
    */
-  const fit = fitName(name, NAME_BASE_SIZE);
+  const fit = fitName(name, CARD_NAME_CAPACITY_EM);
   return (
     <div
       className="flex min-w-0 flex-1 items-center"
@@ -330,7 +342,7 @@ function NameCell({ name, players, align, tinted, color }: { name: string; playe
     >
       <span
         data-name-step={fit.step}
-        style={{ fontSize: fit.fontSize, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        style={{ fontSize: NAME_FONT, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
       >
         {fit.text}
       </span>

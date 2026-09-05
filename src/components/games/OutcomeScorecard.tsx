@@ -4,7 +4,7 @@ import { buildDecidedFromOutcomes, matchState, type DecidedHole, type HoleOutcom
 import { holeWeight, isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { ScorecardChrome, RightGutter, SUB_W, TOTAL_W } from "./StandardGrid";
 import type { SidePlayer } from "./MatchSides";
-import { fitName } from "@/lib/nameLadder";
+import { fitName, SCORECARD_NAME_CAPACITY_EM } from "@/lib/nameLadder";
 
 import type { TeeRow } from "@/lib/teeRows";
 import type { Participant, ScoreUnit } from "./types";
@@ -24,9 +24,10 @@ import type { Participant, ScoreUnit } from "./types";
  * per-hole win-green treatment.
  */
 
-/** This scorecard's step-1 size. Denser grid than the match card, so it starts
- *  lower; the ladder steps down from here exactly as it does elsewhere. */
-const SCORECARD_NAME_SIZE = 15;
+/** The scorecard's name size, keyed to viewport like the sticky column it sits
+ *  in — `clamp(92px, 25vw, 124px)` — so the fit is a ratio rather than a pixel
+ *  comparison. Reaches the old flat 15px at ~430px and above. */
+const SCORECARD_NAME_FONT = "clamp(12px, 3.5vw, 15px)";
 
 const WIN_GREEN = "#22c55e"; // = --color-bt-place-1 base; matches MatchCard's neutral "winning" color
 
@@ -219,13 +220,13 @@ function LeadRow({
           // column is narrower here than on the match card and now shrinks with
           // the viewport, so the step-down matters more, not less.
           players!.map((p) => {
-            const fit = fitName(p.name, SCORECARD_NAME_SIZE);
+            const fit = fitName(p.name, SCORECARD_NAME_CAPACITY_EM);
             return (
               <span
                 key={p.id}
                 className="max-w-full truncate"
                 data-name-step={fit.step}
-                style={{ fontSize: fit.fontSize, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35 }}
+                style={{ fontSize: SCORECARD_NAME_FONT, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35 }}
               >
                 {fit.text}
               </span>
@@ -233,11 +234,11 @@ function LeadRow({
           })
         ) : (
           (() => {
-            const fit = fitName(name, SCORECARD_NAME_SIZE);
+            const fit = fitName(name, SCORECARD_NAME_CAPACITY_EM);
             return (
               <span
                 data-name-step={fit.step}
-                style={{ fontSize: fit.fontSize, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                style={{ fontSize: SCORECARD_NAME_FONT, fontWeight: 700, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
               >
                 {fit.text}
               </span>
