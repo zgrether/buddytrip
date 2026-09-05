@@ -1482,7 +1482,15 @@ export function MatchGameView() {
     () => groups.find((g) => g.matchId === selectedMatchId) ?? groups[0] ?? null,
     [groups, selectedMatchId]
   );
-  const entryParticipants = selectedGroup ? [selectedGroup.a, selectedGroup.b] : [];
+  // The side's PLAYERS ride along with the side, so the scorecard's row label can
+  // render one dot per person instead of the joined "R & B" name. A 1v1 carries
+  // no array and renders as the person it already is.
+  const entryParticipants = selectedGroup
+    ? [
+        { ...selectedGroup.a, players: selectedGroup.aPlayers },
+        { ...selectedGroup.b, players: selectedGroup.bPlayers },
+      ]
+    : [];
 
   // #550: as a PANEL, publish this screen's chrome to the app bar (back/title +
   // owner gear + scorecard) instead of rendering our own header. On a standalone

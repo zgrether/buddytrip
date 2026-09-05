@@ -6,6 +6,7 @@ import { useTeeVisibility } from "@/hooks/useTeeVisibility";
 import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, type RawStrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
 import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
+import { fitName, SCORECARD_LABEL_CAPACITY_EM } from "@/lib/nameLadder";
 import { stablefordPoints, type StablefordRubric } from "@/lib/stableford";
 import { GolfChip } from "./GolfChip";
 import {
@@ -114,13 +115,47 @@ interface StandardGridProps {
  * Note what it was NOT: the column never sized to content, so nothing was
  * overflowing and a content CAP would have done nothing. The fix is the
  * opposite of a ceiling on growth — it is letting the column SHRINK on a narrow
- * viewport. 124 px stays as the ceiling for wide screens, where it was fine.
+ * viewport.
  *
  * `clamp` rather than a media query so it is continuous across every device
  * width, and a floor so two names never end up in a 60 px gutter on a 320 px
  * phone. The NAMES inside it step down independently — see `nameLadder.ts`.
+ *
+ * ── The ceiling is CONTENT-DERIVED, and it came down from 124 ──────────────
+ *
+ * 124 was never reachable by this column's content. Measured in the browser at
+ * the label's shipped type (11px / 600), the widest abbreviated roster name —
+ * `J. Schumacher` — is 70.5px, and the cell's chrome is 34px, so this column
+ * tops out at ~105. The ceiling is 110 rather than 105 because
+ * `OutcomeScorecard`'s lead rows share `NAME_W` and need it: 6.0em at their 15px
+ * wide-viewport size is 90px of text plus 20px of padding.
+ *
+ * Measured, at a 500px viewport: 124 gave 12.53 visible holes, 110 gives 13.00,
+ * and nothing clips at either. **0.47 holes for free.**
+ *
+ * **This does NOT change a 375px phone**, where the active term is `25vw`
+ * (93.75px) and neither the floor nor the ceiling binds. It is a wide-viewport
+ * win only, from 440px up.
+ *
+ * ── What a phone would cost, measured — and why it was not taken ───────────
+ *
+ * Only the `25vw` term moves a 375px phone, at a flat **30px of column per
+ * hole**. The column sits on a cliff: after the label change exactly ONE name of
+ * fifteen clips (`J. Schumacher`, the same limit the match card accepts), and
+ * the second-widest (`J. Shumpert`, 58.9px) has **0.85px of headroom**. So:
+ *
+ *     column    holes    names clipping
+ *     93.75      9.38     1/15     <- shipped
+ *     92         9.43     3/15
+ *     90         9.50     4/15
+ *     88         9.57     4/15
+ *     84         9.70     5/15
+ *
+ * One pixel narrower triples the clipping. Reaching 9.5 holes costs four names
+ * of fifteen for 0.12 of a hole. That is a judgement about a live roster four
+ * days before the trip, so it is NOT taken here unilaterally.
  */
-export const NAME_W_MAX = 124;
+export const NAME_W_MAX = 110;
 export const NAME_W_MIN = 92;
 export const NAME_W = `clamp(${NAME_W_MIN}px, 25vw, ${NAME_W_MAX}px)`;
 export const HOLE_W = 30;
@@ -134,6 +169,20 @@ export const TOTAL_W = 50;
 // transparent RightGutter of this same width so the fade lands on empty space
 // instead of real content — shared constant so the two can't drift apart.
 export const FADE_W = 24;
+
+/**
+ * The people behind a participant, as ONE list whichever shape it is — a 2v2's
+ * two players, or the 1v1 participant as a list of one. Normalising here is what
+ * lets the name cell render with no branch.
+ *
+ * The dot takes the PLAYER's team color when there is one; a 1v1 falls back to
+ * the participant's own identity color, which is the value it always used.
+ */
+function peopleOf(p: Participant): Array<{ id: string; name: string; color: string }> {
+  return p.players?.length
+    ? p.players.map((q) => ({ id: q.id, name: q.name, color: q.teamColor ?? p.color }))
+    : [{ id: p.id, name: p.name, color: p.color }];
+}
 
 /** Everything a `ScorecardChrome` body (the `children` render-prop) needs to
  *  paint cells that align pixel-for-pixel with the header above them. */
@@ -715,10 +764,35 @@ export function StandardGrid({
             return (
               <Fragment key={p.id}>
               <div className="flex" style={{ minHeight: 44, background: rowBg, borderBottom: rubric ? "none" : "1px solid var(--color-bt-subtle-border)" }}>
-                <div className="@container flex flex-col justify-center" style={{ ...nameCell, background: rowBg, padding: "6px 10px" }}>
-                  <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35, overflowWrap: "anywhere" }}>
-                    {p.name}
-                  </span>
+                {/*
+                  * A ROW LABEL, not content. In score entry the names ARE the
+                  * content and earn avatars and full weight; here they identify
+                  * a row of numbers, so they take the least space that still
+                  * identifies it — the TEE ROW's own treatment from a few lines
+                  * up (8px dot, gap-1.5, 11px, weight 600), which is already on
+                  * this screen.
+                  *
+                  * NO BRANCH: the two shapes are normalised into one list at the
+                  * data edge, so a 1v1 is a list of one and renders through the
+                  * identical path. That is also what drops the ampersand — the
+                  * joined label is never rendered here, only the people in it.
+                  */}
+                <div className="flex flex-col justify-center" style={{ ...nameCell, background: rowBg, padding: "4px 10px", gap: 2 }}>
+                  {peopleOf(p).map((q) => {
+                    const fit = fitName(q.name, SCORECARD_LABEL_CAPACITY_EM);
+                    return (
+                      <span key={q.id} className="flex min-w-0 items-center gap-1.5">
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: q.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
+                        <span
+                          className="truncate"
+                          data-name-step={fit.step}
+                          style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text)" }}
+                        >
+                          {fit.text}
+                        </span>
+                      </span>
+                    );
+                  })}
                 </div>
                 {units.map((u, i) => {
                   const v = valOf(p.id, u.label);

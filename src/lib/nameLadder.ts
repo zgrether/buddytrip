@@ -121,9 +121,50 @@ export function estimateEm(text: string): number {
  */
 export const CARD_NAME_CAPACITY_EM = 6.0;
 
-/** The scorecard's column is `clamp(92px, 25vw, 124px)` at a 15px base — ~6.2em
- *  at 375px, less the same margin. */
+/** `OutcomeScorecard`'s lead rows, which share `NAME_W` — `clamp(92px, 25vw,
+ *  110px)` at a `clamp(12px, 3.5vw, 15px)` base. At 375px that is 93.75px less
+ *  20px padding over a 13.1px font, ~5.6em; 6.0 is the wide-viewport figure and
+ *  is why a long pairing meets the ellipsis on a phone. Unchanged here: the cap
+ *  moved from 124 to 110, which costs this surface nothing at 375px, where the
+ *  cap is not the active term. */
 export const SCORECARD_NAME_CAPACITY_EM = 6.0;
+
+/**
+ * The scorecard's row LABEL — a different job from the score-entry row, where
+ * the name is the content. Here it identifies a row of numbers, so it renders at
+ * the tee row's 11px beside an 8px dot.
+ *
+ * Derived from the column, not chosen: the cell is `NAME_W` wide with 20px of
+ * padding, an 8px dot and a 6px gap, leaving `NAME_W - 34` for text. At the
+ * 375px reference viewport `NAME_W` resolves to 93.75px, so that is 59.75px —
+ * 5.43em at 11px — and 5.35 is that with a small margin.
+ *
+ * ── This label carries NO letter-spacing, and that is deliberate ───────────
+ *
+ * It first shipped with the tee row's `letterSpacing: 0.02em`, and two of four
+ * names on screen were clipped. The advance table above sums GLYPH ADVANCES and
+ * has no tracking term, so it under-reported this surface by ~0.02em per
+ * character — measured, `J. Shumpert` rendered 61.4px where the table predicted
+ * 59.1. That is the one direction the estimate must never be wrong in: it reads
+ * narrow, so names the ladder thinks fit get truncated instead.
+ *
+ * The fix was to drop the tracking rather than to widen the constant's margin,
+ * because that removes the mismatch instead of documenting it — the rendered
+ * type now matches what the table can model. It also bought 2.4px per name,
+ * which is what took the clipping from three names to one.
+ *
+ * Measured after, at 11px / weight 600 / no tracking:
+ *
+ *     J. Schumacher   70.5px   CLIPS — the accepted limit, same as the card
+ *     J. Shumpert     58.9px   fits, 0.85px to spare
+ *     M. Facchine     58.6px   fits
+ *     T. Varghese     56.2px   fits
+ *
+ * **Move this and `NAME_W` together.** They are two halves of one measurement,
+ * and changing the column without changing this silently either clips names or
+ * wastes the space it just bought.
+ */
+export const SCORECARD_LABEL_CAPACITY_EM = 5.35;
 
 /** Score entry gives the name most of a full-width row, so almost nothing needs
  *  shortening here. Generous on purpose: abbreviating where there is room is a

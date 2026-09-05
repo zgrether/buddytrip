@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MatchCard } from "./MatchCard";
 import { MatchEntryView, type MatchGroupData } from "./MatchEntryView";
 import { OutcomeScorecard } from "./OutcomeScorecard";
-import { NAME_W_MAX } from "./StandardGrid";
+import { NAME_W_MAX, StandardGrid } from "./StandardGrid";
 import type { ScoreUnit } from "./types";
 
 /**
@@ -310,6 +310,102 @@ describe("a name too wide for its slot is ABBREVIATED, not truncated", () => {
     }
   });
 
+  /**
+   * THE SCORECARD COLUMN IS A LABEL, NOT CONTENT — one line and one dot per
+   * player, whichever shape the participant is.
+   *
+   * The cell takes NO branch: both shapes are normalised into one list, so a
+   * 1v1 is a list of one and renders through the identical path. That is also
+   * what drops the ampersand — the joined side label is never rendered here.
+   */
+  it("scorecard column — one dot and one line PER PLAYER, no joined label", () => {
+    const html = renderToStaticMarkup(
+      <StandardGrid
+        units={units}
+        participants={[
+          {
+            id: "pgA",
+            name: "JD Shumpert & Tyler Larson",
+            // The SIDE's colour is deliberately a value neither player carries.
+            // An earlier fixture gave the side and both players the same colour,
+            // so a build drawing ONE dot in the side's colour rendered
+            // identically and the mutant passed. Distinct per-player colours are
+            // also the real standalone-game shape, where `sidePlayersOf` falls
+            // through to each player's own identity colour.
+            color: "#111111",
+            players: [
+              { id: "p1", name: "JD Shumpert", teamColor: "#3b82f6" },
+              { id: "p2", name: "Tyler Larson", teamColor: "#a855f7" },
+            ],
+          },
+        ]}
+        values={{}}
+      />
+    );
+
+    /** The joined label must not reach this column in ANY form. Unlike the score
+     *  entry row there is no legitimate use of it here — no avatar aria-label,
+     *  no keypad footer — so the whole document is the right scope. */
+    expect(html).not.toContain("&amp;");
+    expect(html).not.toContain("Shumpert &");
+
+    /**
+     * Both people, each on its own line — and both ABBREVIATED, because this
+     * column's capacity (5.35em) is far tighter than score entry's (11em). The
+     * same two names render in full one surface away, which is the point: the
+     * capacity is per surface, and the label's job is identification, not
+     * completeness.
+     */
+    expect(html).toContain(">J. Shumpert<");
+    expect(html).toContain(">T. Larson<");
+    expect(html).not.toContain("JD Shumpert");
+
+    /**
+     * ONE DOT PER PLAYER, IN THAT PLAYER'S OWN COLOUR. Each player's colour
+     * appears exactly once and the SIDE's colour never — which is what separates
+     * "a dot per person" from "one dot for the row", the two builds a
+     * same-colour fixture cannot tell apart.
+     */
+    expect([...html.matchAll(/border-radius:50%;background:#3b82f6/g)]).toHaveLength(1);
+    expect([...html.matchAll(/border-radius:50%;background:#a855f7/g)]).toHaveLength(1);
+    expect(html).not.toContain("background:#111111");
+  });
+
+  /** The same path with no `players`: a 1v1 is a list of one, same treatment. */
+  it("scorecard column — a 1v1 renders one dot and one name through the same path", () => {
+    const html = renderToStaticMarkup(
+      <StandardGrid
+        units={units}
+        participants={[{ id: "u1", name: "Bud Banks", color: "#22c55e" }]}
+        values={{}}
+      />
+    );
+    expect(html).toContain(">Bud Banks<");
+    expect([...html.matchAll(/border-radius:50%;background:#22c55e/g)]).toHaveLength(1);
+  });
+
+  /**
+   * THE COLUMN IS CONTENT-INDEPENDENT, which is the finding behind the whole
+   * change: `width` AND `minWidth` are both `NAME_W`, so shrinking the label
+   * cannot buy a single pixel of hole. Only the clamp moves it.
+   *
+   * The ceiling is asserted because it is the free win — 124 was above anything
+   * this column's content can use, and dropping it to 110 is worth 0.47 visible
+   * holes at a 500px viewport at no legibility cost.
+   */
+  it("sizes the column by the clamp alone, with a content-derived ceiling", () => {
+    const html = renderToStaticMarkup(
+      <StandardGrid
+        units={units}
+        participants={[{ id: "u1", name: "Bud Banks", color: "#22c55e" }]}
+        values={{}}
+      />
+    );
+    expect(NAME_W_MAX).toBe(110);
+    expect(html).toMatch(/width:clamp\(92px, 25vw, 110px\)/);
+    expect(html).not.toMatch(/width:\s*124px|124px\)/);
+  });
+
   it("scorecard", () => {
     const html = renderToStaticMarkup(
       <OutcomeScorecard
@@ -386,8 +482,11 @@ describe("the sticky name column is capped and can shrink", () => {
       />
     );
     expect(html).toContain(`${NAME_W_MAX}px`);
-    expect(html).toMatch(/clamp\(\s*\d+px\s*,\s*25vw\s*,\s*124px\s*\)/);
-    expect(html).not.toMatch(/width:\s*124px/);
+    // Built from the constant, not a literal — this assertion was pinned to a
+    // hardcoded 124 and went red the moment the ceiling moved, which is the
+    // "assertions of the OLD behaviour" sweep arriving as a test failure.
+    expect(html).toMatch(new RegExp(`clamp\\(\\s*\\d+px\\s*,\\s*25vw\\s*,\\s*${NAME_W_MAX}px\\s*\\)`));
+    expect(html).not.toMatch(new RegExp(`width:\\s*${NAME_W_MAX}px`));
   });
 });
 

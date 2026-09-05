@@ -21,6 +21,9 @@ export interface ScoreUnit {
   yardage?: number | null;
 }
 
+// Type-only, so it is erased at compile time and creates no module cycle.
+import type { SidePlayer } from "./MatchSides";
+
 export interface Participant {
   /** participantId used as the key in ScoreValues (a user_id in Slice A). */
   id: string;
@@ -29,6 +32,15 @@ export interface Participant {
   color: string;
   /** Tabler icon id from the user's profile (optional; falls back to initials). */
   avatarIcon?: string | null;
+  /**
+   * The people behind this participant, when it is a SIDE rather than a person
+   * — two for a 2v2, whose `name` is otherwise the joined "R & B" label.
+   *
+   * Absent for a 1v1, where the participant IS the person. A surface that wants
+   * per-player rendering normalises the two into one list rather than branching
+   * (see `StandardGrid`'s name cell), so a 1v1 is simply a list of one.
+   */
+  players?: SidePlayer[];
 }
 
 /** { [participantId]: { [unitLabel]: value } } */
