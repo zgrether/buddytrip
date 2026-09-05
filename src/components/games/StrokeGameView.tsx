@@ -29,6 +29,7 @@ import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack
 import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerTakesAll, type StrokeConfigDraft, type StrokeScoringDraft } from "@/lib/configDraft";
 import { StrokeScoringRow } from "@/components/games/StrokeScoringRow";
 import { scoringOf } from "@/lib/stableford";
+import { teamColorByUser, UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
@@ -388,7 +389,9 @@ export function StrokeGameView() {
       if (players.length) sections.push({ id: t.id, name: t.name, color: t.color, players });
     }
     const unassigned = crewList.filter((c) => !teamOfUser.has(c.id));
-    if (unassigned.length) sections.push({ id: "__unassigned", name: "Crew", color: "var(--color-bt-text-dim)", players: unassigned });
+    // The sentinel comes from the module that EXCLUDES it, so the producer and
+    // the excluder cannot drift onto two spellings of one string.
+    if (unassigned.length) sections.push({ id: UNASSIGNED_TEAM_ID, name: "Crew", color: "var(--color-bt-text-dim)", players: unassigned });
     return sections;
   }, [teamsQ.data, assignQ.data, crew.data]);
 
@@ -399,14 +402,36 @@ export function StrokeGameView() {
   // so a group created in the builder populates Handicaps IMMEDIATELY, with team-colored
   // avatars, no 4-cap, no save round-trip. Strokes seed from the server; the draft overlay
   // (`draftHandicapPlayers`) shows unsaved edits.
+  /**
+   * userId → their competition team's COLOUR — the one resolver every surface on
+   * this page reads. Absent means the player is on no team, which is a real and
+   * common state (a standalone game has no competition at all, and a member can
+   * sit in the `__unassigned` "Crew" bucket of one that does). Every consumer
+   * falls back to the neutral per-player palette there, which is the correct
+   * colour for a non-team game and must not be broken by this.
+   *
+   * Derived from `pickerTeams` (the whole crew grouped by `team_assignments`)
+   * rather than from a slot, because team identity belongs to the PERSON'S
+   * roster: move someone between teams and every avatar on the page re-colours
+   * with no other write. Same rule `MatchGameView`'s `teamColorOf` follows.
+   *
+   * **Deliberately NOT gated on a team count.** Match play gates its equivalent
+   * on `teams.length === 2`, correctly — a match is two-sided, and a match game
+   * cannot occur in a competition with three teams. Stroke has no such
+   * constraint: a points cup supports N teams (BBMI 2024 has three), so gating
+   * this would blank the colours on exactly the competition that needs them.
+   */
+  const teamColorOf = useMemo(() => teamColorByUser(pickerTeams), [pickerTeams]);
   const handicapMeta = useMemo(() => {
     const m = new Map<string, { name: string; color: string | null; avatarIcon: string | null }>();
     for (const t of pickerTeams) {
-      const teamColor = t.id === "__unassigned" ? null : t.color;
-      for (const p of t.players) m.set(p.id, { name: p.name, color: teamColor, avatarIcon: p.avatarIcon ?? null });
+      // The colour comes from `teamColorOf`, not from `t` — the Handicaps roster
+      // and the board must agree about a player's team, and two derivations that
+      // happen to match is how they come not to.
+      for (const p of t.players) m.set(p.id, { name: p.name, color: teamColorOf.get(p.id) ?? null, avatarIcon: p.avatarIcon ?? null });
     }
     return m;
-  }, [pickerTeams]);
+  }, [pickerTeams, teamColorOf]);
   const handicapPlayers: HandicapPlayer[] = useMemo(() => {
     const seen = new Set<string>();
     const out: HandicapPlayer[] = [];
@@ -748,17 +773,30 @@ export function StrokeGameView() {
     return m;
   }, [game]);
   const fieldIds = useMemo(() => surfaceGroups.flatMap((g) => g.userIds), [surfaceGroups]);
+  /**
+   * The field, with a colour each. THE colour source for this whole page: the
+   * leaderboard rows read it, and `groupViews` derives the group tiles' player
+   * dots from it, so both surfaces move together by construction rather than by
+   * two lookups that agree.
+   *
+   * Team colour FIRST. `nameColorOf` supplies `game.participants[].color`, which
+   * is `PLAYER_COLORS[i % 4]` — an index-assigned identity palette that has no
+   * relation to the competition, and is why a three-team cup rendered Frank
+   * amber, Taj blue and Steve teal against teams of red, amber and green. In a
+   * team competition a player's colour is their team's; the palette is the
+   * fallback for a game that has no teams, where a per-player colour is right.
+   */
   const fieldParticipants = useMemo<Participant[]>(
     () => fieldIds.map((id, i) => {
       const meta = nameColorOf.get(id);
       return {
         id,
         name: meta?.name ?? (crew.data ?? []).find((c) => c.user_id === id)?.displayName ?? "Player",
-        color: meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
+        color: teamColorOf.get(id) ?? meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
         avatarIcon: meta?.avatarIcon ?? null,
       };
     }),
-    [fieldIds, nameColorOf, crew.data],
+    [fieldIds, nameColorOf, crew.data, teamColorOf],
   );
 
   // Net per-hole entries (feed to-par) + par-by-hole from the course snapshot. Nets against
