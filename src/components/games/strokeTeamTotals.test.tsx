@@ -193,7 +193,7 @@ describe("the team-totals section", () => {
 
   it("names each team and paints its own colour, from the competition's palette", () => {
     const html = renderToStaticMarkup(
-      <StrokeTeamTotals rows={ROWS} teams={TEAMS} rubric={null} thruByTeam={{ "t-dh": 3, "t-ta": 3, "t-wth": 6 }} />
+      <StrokeTeamTotals rows={ROWS} teams={TEAMS} rubric={null} />
     );
     for (const t of TEAMS) {
       expect(html).toContain(t.name);
@@ -201,23 +201,37 @@ describe("the team-totals section", () => {
     }
   });
 
-  it("shows THRU per team, so two teams on different hole counts are visibly not level", () => {
+  it("shows the total, and NO thru — a team's thru is not a quantity", () => {
     const html = renderToStaticMarkup(
-      <StrokeTeamTotals rows={ROWS} teams={TEAMS} rubric={null} thruByTeam={{ "t-dh": 3, "t-ta": 3, "t-wth": 6 }} />
+      <StrokeTeamTotals rows={ROWS} teams={TEAMS} rubric={null} />
     );
-    // Anchored per team: 3, 6, 14, 18 and 27 all appear in this region, and a
-    // bare number match could not tell a thru from a total.
-    expect(html).toContain('data-testid="stroke-team-thru-t-wth">6<');
+    // The total is anchored per team: 14, 18 and 27 all appear in this region
+    // and a bare number match could not say which cell produced one.
     expect(html).toContain('data-testid="stroke-team-total-t-wth">27<');
-    expect(html).toContain('data-testid="stroke-team-thru-t-dh">3<');
+    expect(html).toContain('data-testid="stroke-team-total-t-dh">14<');
+
+    /**
+     * A single player's THRU is a real number; a team's is a sum over different
+     * people's unrelated progress, which is not a hole count and not anything a
+     * reader can act on. It was here and it was removed — this is the guard
+     * against it coming back, and against the same figure returning under
+     * another name (points-per-hole, a rate, a percentage), which would be a
+     * projection presented as a plain column.
+     *
+     * The heading check is the part that catches a re-add wearing new words:
+     * the section has exactly ONE column heading.
+     */
+    expect(html).not.toContain("stroke-team-thru-");
+    expect(html).not.toContain(">Thru<");
+    expect((html.match(/uppercase tracking-wider/g) ?? []).length).toBe(2); // eyebrow + one column
   });
 
   it("heads the total column STRK under Traditional and PTS under Stableford", () => {
     const strokes = renderToStaticMarkup(
-      <StrokeTeamTotals rows={ROWS} teams={TEAMS} rubric={null} thruByTeam={{}} />
+      <StrokeTeamTotals rows={ROWS} teams={TEAMS} rubric={null} />
     );
     const points = renderToStaticMarkup(
-      <StrokeTeamTotals rows={ROWS} teams={TEAMS} rubric={BBMI} thruByTeam={{}} />
+      <StrokeTeamTotals rows={ROWS} teams={TEAMS} rubric={BBMI} />
     );
     expect(strokes).toContain(">Strk<");
     expect(strokes).not.toContain(">Pts<");
@@ -227,7 +241,7 @@ describe("the team-totals section", () => {
 
   it("says nobody has started rather than showing an empty ranked list", () => {
     const html = renderToStaticMarkup(
-      <StrokeTeamTotals rows={[]} teams={TEAMS} rubric={null} thruByTeam={{}} />
+      <StrokeTeamTotals rows={[]} teams={TEAMS} rubric={null} />
     );
     expect(html).toContain("stroke-team-totals-empty");
     expect(html).toContain("No team has started");
