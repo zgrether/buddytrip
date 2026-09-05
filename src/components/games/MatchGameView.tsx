@@ -53,7 +53,7 @@ import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { parseTime, toTime24 } from "@/lib/time";
-import { buildDecided, buildDecidedFromOutcomes, matchState, strokeHoles, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
+import { buildDecided, buildDecidedFromOutcomes, matchState, matchTrack, strokeHoles, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { gloriousConfig, type GloriousConfig } from "@/lib/gloriousHoles";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
@@ -1674,6 +1674,24 @@ export function MatchGameView() {
           const w = st.leader === "A" ? selectedGroup.a : st.leader === "B" ? selectedGroup.b : null;
           const l = st.leader === "A" ? selectedGroup.b : st.leader === "B" ? selectedGroup.a : null;
           return matchDefeatText(w, l, st.margin, "—");
+        })()}
+        /*
+         * Parity item 4: who won each hole, from the SAME per-hole track the
+         * outcome scorecard reads for its running lead — one fold in
+         * `matchPlay`, two surfaces, so they cannot disagree about one match.
+         *
+         * The translation from match-play's `W`/`L`/`H` into a neutral mark
+         * happens HERE, not in the grid: `StandardGrid` serves stroke, rack and
+         * quick game, and it stays a card that renders marks rather than a card
+         * that knows what a match is.
+         */
+        holeMarks={(() => {
+          const { track } = matchTrack(decidedFor(selectedGroup), scUnits.length, glorious);
+          const markFor = (side: "A" | "B") =>
+            track.map((c) =>
+              c.dead ? "dead" : c.result == null ? null : c.result === "H" ? "halved" : (c.result === "W") === (side === "A") ? "won" : null
+            );
+          return { [selectedGroup.a.id]: markFor("A"), [selectedGroup.b.id]: markFor("B") };
         })()}
         onCellTap={readOnly ? undefined : (label) => {
           setCurrentHole(Number(label) || 1);

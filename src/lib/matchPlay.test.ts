@@ -6,6 +6,7 @@ import {
   matchState,
   matchHasScores,
   outcomeBottomState,
+  matchTrack,
   type HoleResult,
   type DecidedHole,
   type HoleOutcomeRow,
@@ -426,5 +427,77 @@ describe("clearing a hole — a decided match un-decides, and comes back", () =>
     const rows = decidedRows.filter((r) => r.hole !== 17);
     expect(matchState(buildDecidedFromOutcomes(rows), 18))
       .toEqual(matchState(buildDecidedFromOutcomes(rows.filter((r) => r.hole !== 17)), 18));
+  });
+});
+
+/**
+ * MOVED FROM `OutcomeScorecard.test.tsx` with the function it tests, per the
+ * tests-next-to-what-they-test rule. These are the ORIGINAL assertions and the
+ * original values — the only change is the `result` field, which the lift added
+ * so the stroke card can mark who won each hole. The lead figures are untouched,
+ * which is what makes them the pin that the lift changed no behaviour.
+ */
+describe("matchTrack — the per-hole track (was OutcomeScorecard.computeLeadTrack)", () => {
+  const GLOR2: GloriousConfig = { enabled: true, n: 2 }; // last 2 holes (17,18) worth 2×
+
+  it("the lead hands off between sides as momentum shifts", () => {
+    const outcomes: HoleOutcomeRow[] = [
+      { hole: 1, result: "side_a" }, // A +1 → 1
+      { hole: 2, result: "side_b" }, // A -1 → 0 (AS)
+      { hole: 3, result: "side_a" }, // A +1 → 1
+    ];
+    const { track } = matchTrack(
+      outcomes.map((o) => ({ hole: o.hole, result: o.result === "side_a" ? "W" : o.result === "side_b" ? "L" : "H" }) as DecidedHole),
+      18,
+      NO_GLORIOUS
+    );
+    expect(track.slice(0, 3)).toEqual([
+      { hole: 1, result: "W", lead: 1, dead: false, glorious: false },
+      { hole: 2, result: "L", lead: 0, dead: false, glorious: false },
+      { hole: 3, result: "W", lead: 1, dead: false, glorious: false },
+    ]);
+  });
+
+  it("a halved hole CARRIES FORWARD the unchanged lead — not blank", () => {
+    const decided: DecidedHole[] = [{ hole: 1, result: "W" }, { hole: 2, result: "H" }];
+    const { track } = matchTrack(decided, 18, NO_GLORIOUS);
+    expect(track[1]).toMatchObject({ hole: 2, result: "H", lead: 1 }); // still 1, carried from hole 1
+  });
+
+  it("a Glorious win jumps the lead by 2, not 1 — visible in the number", () => {
+    const decided: DecidedHole[] = [
+      ...Array.from({ length: 16 }, (_, i) => ({ hole: i + 1, result: "H" as const })),
+      { hole: 17, result: "W" },
+    ];
+    const { track } = matchTrack(decided, 18, GLOR2);
+    expect(track[16]).toMatchObject({ hole: 17, lead: 2, glorious: true }); // +2, not +1
+  });
+
+  /**
+   * THE THREE STATES, and this is the pair that must not collapse: an unplayed
+   * hole on a LIVE match is not the same fact as a hole nobody will ever play.
+   */
+  it("an unplayed (not-yet-entered) hole is neither a lead nor dead — simply blank", () => {
+    const decided: DecidedHole[] = [{ hole: 1, result: "W" }];
+    const { track } = matchTrack(decided, 18, NO_GLORIOUS);
+    expect(track[5]).toEqual({ hole: 6, result: null, lead: null, dead: false, glorious: false });
+  });
+
+  it("closeout DIMS the never-played remainder — dead, not just unplayed", () => {
+    // 3-hole round, A wins holes 1-2 → 2 up thru 2, 1 to play, swing 1 < 2 →
+    // closed early (2&1). Hole 3 is dead (never played), not merely blank.
+    const decided: DecidedHole[] = [{ hole: 1, result: "W" }, { hole: 2, result: "W" }];
+    const { track, st } = matchTrack(decided, 3, NO_GLORIOUS);
+    expect(st).toMatchObject({ closed: true, margin: "2&1" });
+    expect(track[2]).toEqual({ hole: 3, result: null, lead: null, dead: true, glorious: false });
+  });
+
+  /** The per-hole RESULT is the half the stroke card reads, and it is the same
+   *  W/L/H the card's segment strip already draws — one fold, two readers. */
+  it("carries the per-hole result alongside the running lead", () => {
+    const decided: DecidedHole[] = [{ hole: 1, result: "W" }, { hole: 2, result: "H" }, { hole: 3, result: "L" }];
+    const { track } = matchTrack(decided, 18, NO_GLORIOUS);
+    expect(track.slice(0, 3).map((c) => c.result)).toEqual(["W", "H", "L"]);
+    expect(track.slice(0, 3).map((c) => c.lead)).toEqual([1, 1, 0]);
   });
 });

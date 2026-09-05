@@ -1,7 +1,7 @@
 "use client";
 
-import { buildDecidedFromOutcomes, matchState, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
-import { holeWeight, isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
+import { buildDecidedFromOutcomes, matchTrack, type DecidedHole, type HoleOutcomeRow, type MatchTrackCell } from "@/lib/matchPlay";
+import { holeWeight, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { ScorecardChrome, RightGutter, ScorecardLabelCell, scorecardPeople, SUB_W, TOTAL_W } from "./StandardGrid";
 import { matchDefeatText } from "./MatchResultBanner";
 import type { SidePlayer } from "./MatchSides";
@@ -26,45 +26,18 @@ import type { Participant, ScoreUnit } from "./types";
 
 const WIN_GREEN = "#22c55e"; // = --color-bt-place-1 base; matches MatchCard's neutral "winning" color
 
-interface LeadCell {
-  hole: number;
-  /** Signed running lead as of this hole (+A, −B), or null when not yet played. */
-  lead: number | null;
-  /** Past the freeze boundary of a decided match — never played. */
-  dead: boolean;
-  glorious: boolean;
-}
-
-/** Pure — the per-hole running lead track + the final match state. Exported for
- *  unit testing apart from render. */
-export function computeLeadTrack(
-  decided: DecidedHole[],
-  holeCount: number,
-  glorious: GloriousConfig
-): { track: LeadCell[]; st: ReturnType<typeof matchState> } {
-  const st = matchState(decided, holeCount, glorious);
-  const byHole = new Map(decided.map((d) => [d.hole, d.result]));
-  let diff = 0;
-  const track: LeadCell[] = [];
-  for (let h = 1; h <= holeCount; h++) {
-    const glor = isGloriousHole(h, glorious);
-    if (st.closed && h > st.thru) {
-      track.push({ hole: h, lead: null, dead: true, glorious: glor });
-      continue;
-    }
-    const result = byHole.get(h);
-    if (result == null) {
-      track.push({ hole: h, lead: null, dead: false, glorious: glor }); // not yet played
-      continue;
-    }
-    const w = holeWeight(h, glorious);
-    if (result === "W") diff += w;
-    else if (result === "L") diff -= w;
-    // "H" (halved) carries the lead forward unchanged — still shown, not blank.
-    track.push({ hole: h, lead: diff, dead: false, glorious: glor });
-  }
-  return { track, st };
-}
+/**
+ * `computeLeadTrack` LIVED HERE and is now `matchPlay.matchTrack`.
+ *
+ * It was a pure per-hole fold sitting in a component file, which meant the one
+ * other surface that needed the same walk — the stroke scorecard, marking who
+ * won each hole — could not reach it without importing a scorecard. The lift
+ * emits both halves from one loop: this card reads `lead`, the stroke card reads
+ * `result`, and neither re-derives.
+ *
+ * Nothing this card renders changed; its tests moved with the function and pin
+ * the same values.
+ */
 
 /**
  * Signed swing (±weighted W/L; halves are 0) over holes [from,to] (1-indexed,
@@ -144,7 +117,7 @@ export function OutcomeScorecard({
   gameId,
 }: OutcomeScorecardProps) {
   const decided = buildDecidedFromOutcomes(outcomes);
-  const { track, st } = computeLeadTrack(decided, units.length, glorious);
+  const { track, st } = matchTrack(decided, units.length, glorious);
   const lc = leftColor || WIN_GREEN;
   const rc = rightColor || WIN_GREEN;
   const winner = st.leader === "A" ? a : st.leader === "B" ? b : null;
@@ -195,7 +168,7 @@ function LeadRow({
   name: string;
   players?: SidePlayer[];
   units: ScoreUnit[];
-  track: LeadCell[];
+  track: MatchTrackCell[];
   side: "A" | "B";
   color: string;
   nameCell: React.CSSProperties;

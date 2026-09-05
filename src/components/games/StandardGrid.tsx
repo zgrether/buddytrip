@@ -108,7 +108,41 @@ interface StandardGridProps {
    * while the match is still live.
    */
   resultLine?: string | null;
+  /**
+   * Per-participant, per-unit outcome marks — one extra row under that
+   * participant's scores, aligned to the same columns.
+   *
+   * MATCH PLAY ONLY, and opt-in the same way `resultLine` is: every other caller
+   * omits it, so a format with no per-hole winner cannot grow a row claiming
+   * one. The array is indexed by UNIT POSITION, and `null` means the mark is not
+   * known for that hole — see `HoleMark` for why absence has two meanings and
+   * only one of them is null.
+   *
+   * Deliberately NOT `MatchTrackCell[]`: this grid serves stroke, rack and quick
+   * game, and handing it match-play's own type would put a match concept in the
+   * one component that must not have one. The caller does the translation.
+   */
+  holeMarks?: Record<string, Array<HoleMark | null>>;
 }
+
+/**
+ * What a per-hole mark says. Four renderings, and the distinctions are the
+ * point:
+ *
+ *   "won"    — this participant took the hole. The mark.
+ *   "halved" — nobody took it. A RESULT, and it must not read as no-data.
+ *   "dead"   — the match closed before this hole; it will never be played.
+ *   null     — not played YET, on a live hole. Blank.
+ *
+ * The last two are the `empty is not unknown` pair: identical absence in the
+ * data, opposite facts to a reader. A hole this participant LOST is also blank
+ * on their own row — that is deliberate rather than a fifth state, and it is
+ * legible because the partner's row directly below marks the win and the STROKE
+ * row directly above shows the hole was played at all. A lost hole and an
+ * unplayed one are never ambiguous on the assembled card, only within one row
+ * read alone.
+ */
+export type HoleMark = "won" | "halved" | "dead";
 
 /**
  * The sticky name column's width — RESPONSIVE, with a ceiling and a floor.
@@ -717,6 +751,7 @@ export function StandardGrid({
   gameId,
   rubric = null,
   resultLine,
+  holeMarks,
 }: StandardGridProps) {
   const hasPar = units.length > 0 && units.every((u) => u.par != null);
 
@@ -821,6 +856,7 @@ export function StandardGrid({
           <>
           {participants.map((p, i) => {
             const isLeader = leaderIds.has(p.id);
+            const marks = holeMarks?.[p.id];
             const rowBg = i % 2 === 0 ? "var(--color-bt-card)" : "var(--color-bt-base)";
             // The per-hole-outcome 2v2 row format (`OutcomeScorecard`): NO avatar
             // disk, the name free to take the full column, and `minHeight` rather
@@ -964,6 +1000,56 @@ export function StandardGrid({
                     leader={isLeader}
                     testId={`scorecard-points-total-${p.id}`}
                   />
+                  {showNet && <BlankSub wide />}
+                  <RightGutter />
+                </div>
+              )}
+              {/*
+                * PARITY ITEM 4 — who won each hole, on the card that shows the
+                * strokes it was decided by.
+                *
+                * The match card's segment strip has always drawn this, computed
+                * from these very numbers. The scorecard beneath it said nothing,
+                * so a reader could see a 4 and a 5 in a column and still have to
+                * work out who that gave the hole to.
+                *
+                * ONE ROW PER SIDE, under that side's strokes — read down a
+                * column and the score and the outcome sit together. The colour
+                * is the side's own, matching the strip's `wonL`/`wonR`.
+                *
+                * Out / In / Total are BLANK. A count of holes won is not a
+                * subtotal of anything the format recognises, and the final cell
+                * would be the match result, which the caption below already
+                * states — the same reasoning that emptied the outcome card's
+                * subtotals, reaching the same answer for the same reason.
+                */}
+              {marks && (
+                <div
+                  className="flex"
+                  style={{ minHeight: 22, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+                  data-testid={`scorecard-marks-row-${p.id}`}
+                >
+                  <div className="flex items-center" style={{ ...nameCell, background: rowBg, padding: "0 10px" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-bt-text-dim)" }}>
+                      Holes
+                    </span>
+                  </div>
+                  {units.map((u, ui) => (
+                    <div
+                      key={u.label}
+                      className="flex items-center justify-center"
+                      style={{ ...cellBase, minHeight: 22, ...divider(u.label), ...(isGloriousCol(ui) ? gloriousWash : {}) }}
+                      data-testid={`scorecard-mark-${p.id}-${u.label}`}
+                    >
+                      <HoleMarkCell mark={marks[ui] ?? null} color={p.color} />
+                    </div>
+                  ))}
+                  {/* Blank BY DECISION, not by omission — testid'd so the
+                      emptiness is assertable and a later "these look unfinished"
+                      impulse has to argue with the reasoning above. */}
+                  {hasSections && <BlankSub testId={`scorecard-marks-out-${p.id}`} />}
+                  {hasSections && <BlankSub testId={`scorecard-marks-in-${p.id}`} />}
+                  <BlankSub wide testId={`scorecard-marks-total-${p.id}`} />
                   {showNet && <BlankSub wide />}
                   <RightGutter />
                 </div>
@@ -1137,9 +1223,10 @@ function PtsSub({ value, wide, bold, leader, testId }: { value: number | null; w
   return <SubCell value={value} wide={wide} bold={bold} leader={leader} testId={testId} />;
 }
 
-function BlankSub({ wide }: { wide?: boolean }) {
+function BlankSub({ wide, testId }: { wide?: boolean; testId?: string }) {
   return (
     <div
+      data-testid={testId}
       style={{
         width: wide ? TOTAL_W : SUB_W,
         minWidth: wide ? TOTAL_W : SUB_W,
@@ -1172,4 +1259,29 @@ function ParSub({ value, wide }: { value: number; wide?: boolean }) {
       <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>{value}</span>
     </div>
   );
+}
+
+/**
+ * One hole's mark on a side's row. The four renderings are the four states —
+ * see `HoleMark`.
+ *
+ * The vocabulary is the match card's segment strip, not a new one: a won hole
+ * takes the SIDE's own colour (the strip's `wonL`/`wonR`), a halved hole the
+ * neutral dim (`halfC`), and a dead hole the same faint dot the outcome card
+ * already uses past close-out. A second visual language for the same four facts,
+ * one surface apart, is the defect this whole pass exists to remove.
+ */
+function HoleMarkCell({ mark, color }: { mark: HoleMark | null; color: string }) {
+  // Not played yet. Blank is the honest rendering — and it is why "dead" is a
+  // separate state rather than sharing this one.
+  if (mark == null) return null;
+  if (mark === "dead") return <span style={{ color: "var(--color-bt-text-dim)", opacity: 0.4, fontSize: 11 }}>·</span>;
+  if (mark === "halved")
+    return (
+      <span
+        aria-label="Halved"
+        style={{ width: 10, height: 3, borderRadius: 2, background: "var(--color-bt-text-dim)", opacity: 0.8 }}
+      />
+    );
+  return <span aria-label="Won" style={{ width: 10, height: 6, borderRadius: 2, background: color }} />;
 }
