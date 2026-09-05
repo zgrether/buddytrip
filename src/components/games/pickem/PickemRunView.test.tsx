@@ -238,7 +238,7 @@ describe("what hangs on an unmarked game", () => {
     expect(html).not.toContain("still to mark");
     expect(html).not.toContain("hang on them");
     expect(html).toContain("Mark the winner of the game");
-    expect(html).toContain("mark it as void");
+    expect(html).toContain("mark it as cancelled");
   });
 
   it("keeps the instructions away from a member", () => {

@@ -260,8 +260,12 @@ export function PickemRunView({
               color: "var(--color-bt-text-dim)",
             }}
           >
+            {/* "cancelled", matching the button it names. This said "void"
+                after the label had moved — the instruction and the control
+                disagreeing about what the reader is looking for, which is the
+                refusal rule's failure mode in an ordinary sentence. */}
             Mark the winner of the game, or if it resulted in a push. If a game
-            needs to be removed from the scoring, mark it as void.
+            needs to be removed from the scoring, mark it as cancelled.
           </span>
         )}
       </div>

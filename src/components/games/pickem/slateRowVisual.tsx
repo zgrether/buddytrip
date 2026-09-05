@@ -136,17 +136,45 @@ export function sideEmphasisStyle(emphasis: SideEmphasis): CSSProperties {
     case "lost":
       return { color: "var(--color-bt-text-dim)", fontWeight: 500 };
     case "level":
+      // FULL colour, loser's weight. The absence of contrast is the signal —
+      // dimming both here would make a push read as two losers, and it must
+      // NOT collapse into `lost`. (It briefly did, while the strike was being
+      // split out; the guard in `resultTreatment.test.tsx` caught it.)
       return { color: "var(--color-bt-text)", fontWeight: 500 };
     case "struck":
-      return {
-        color: "var(--color-bt-text-dim)",
-        fontWeight: 500,
-        textDecoration: "line-through",
-        textDecorationColor: "var(--color-bt-text-dim)",
-      };
+      return { color: "var(--color-bt-text-dim)", fontWeight: 500 };
     default:
       return { color: "var(--color-bt-text)", fontWeight: 500 };
   }
+}
+
+/**
+ * The strike, applied to the TEAM NAME ALONE.
+ *
+ * ── `text-decoration` CANNOT BE TURNED OFF BY A DESCENDANT ────────────────
+ *
+ * This was first written as one style on the whole line, with
+ * `textDecoration: "none"` on the "at" span to keep the connective clear. That
+ * does nothing: a decoration drawn by an ancestor is propagated to its in-flow
+ * descendants and there is no value a child can set to remove it. So the line
+ * went through "at" as well, and the row read as damaged markup rather than as
+ * a cancelled stake.
+ *
+ * Worse, the TEST passed. It asserted the `text-decoration:none` declaration
+ * was present — which it was, and which CSS ignored. An assertion about a
+ * declaration that has no effect is the "instrument cannot produce a red"
+ * family with the instrument pointed at the right element and the wrong
+ * property. Caught by looking at it in a browser, which is the only thing that
+ * could have.
+ *
+ * The fix is structural rather than another declaration: the decoration is
+ * applied to a span wrapping ONLY the team name, so the connective is never
+ * inside the decorated box in the first place.
+ */
+export function sideDecoration(emphasis: SideEmphasis): CSSProperties | undefined {
+  return emphasis === "struck"
+    ? { textDecoration: "line-through", textDecorationColor: "var(--color-bt-text-dim)" }
+    : undefined;
 }
 
 /**
@@ -325,29 +353,35 @@ export function MatchupLine({
         <span
           className="block truncate"
           data-testid="pickem-matchup-away"
-          style={{ ...name, ...sideEmphasisStyle(awayEmphasis), paddingRight: clearance }}
+          style={{
+            ...name,
+            ...sideEmphasisStyle(awayEmphasis),
+            paddingRight: clearance,
+          }}
         >
-          {game.awayTeam}
+          <span data-testid="pickem-matchup-away-name" style={sideDecoration(awayEmphasis)}>
+            {game.awayTeam}
+          </span>
         </span>
         <span className="flex min-w-0 items-baseline gap-x-1.5">
           <span
             className="min-w-0 truncate"
             data-testid="pickem-matchup-home"
-            style={{ ...name, ...sideEmphasisStyle(homeEmphasis), paddingRight: clearance }}
+            style={{
+              ...name,
+              ...sideEmphasisStyle(homeEmphasis),
+              paddingRight: clearance,
+            }}
           >
-            {/* "at" is the CONNECTIVE and never takes the side's emphasis —
-                striking it through or tealing it would make the preposition
-                look like part of the claim about the team. */}
-            <span
-              style={{
-                color: "var(--color-bt-text-dim)",
-                fontWeight: 400,
-                textDecoration: "none",
-              }}
-            >
-              at{" "}
+            {/* "at" is the CONNECTIVE and never carries the side's emphasis.
+                It sits OUTSIDE the decorated span rather than trying to opt
+                out of one — a descendant cannot remove an ancestor's
+                `text-decoration`, so structure is the only thing that works
+                here. See `sideDecoration`. */}
+            <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>at{" "}</span>
+            <span data-testid="pickem-matchup-home-name" style={sideDecoration(homeEmphasis)}>
+              {game.homeTeam}
             </span>
-            {game.homeTeam}
           </span>
           {/* WITH the home team, because the line is the home team's — the one
               badge whose position is meaningful rather than tidy. */}

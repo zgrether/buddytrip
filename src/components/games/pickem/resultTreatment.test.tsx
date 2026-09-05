@@ -29,6 +29,12 @@ import type { SlateResult } from "@/lib/pickemScoring";
  *  Anchored to the LINE, not the document: `MatchupLine` prints the home team
  *  on a second line and the status below that, so a `toContain` over the whole
  *  render would happily match a declaration belonging to a different node. */
+function tagFor(markup: string, testId: string): string {
+  const at = markup.indexOf(`data-testid="${testId}"`);
+  if (at === -1) return "";
+  return markup.slice(markup.lastIndexOf("<", at), markup.indexOf(">", at) + 1);
+}
+
 function lineStyle(markup: string, side: "away" | "home"): string {
   const at = markup.indexOf(`data-testid="pickem-matchup-${side}"`);
   if (at === -1) return "";
@@ -67,8 +73,32 @@ describe("a cancelled contest is struck through", () => {
      * played one. This is the only test that fails.
      */
     const html = renderResult("cancelled");
-    expect(lineStyle(html, "away")).toContain("text-decoration:line-through");
-    expect(lineStyle(html, "home")).toContain("text-decoration:line-through");
+    expect(tagFor(html, "pickem-matchup-away-name")).toContain("text-decoration:line-through");
+    expect(tagFor(html, "pickem-matchup-home-name")).toContain("text-decoration:line-through");
+  });
+
+  it("strikes the NAME and not the connective — structurally, not by opting out", () => {
+    /**
+     * THE MUTATION, and this one shipped before a browser caught it: put the
+     * decoration on the whole LINE and give the "at" span
+     * `text-decoration: none`.
+     *
+     * That build looks right in the markup and is wrong on screen, because a
+     * descendant CANNOT remove an ancestor's `text-decoration` — the property
+     * propagates and there is no value that turns it off. The line went
+     * straight through "at Michigan Wolverines".
+     *
+     * And the first version of the test above PASSED against it: it asserted
+     * the `text-decoration:none` declaration was present, which it was, and
+     * which CSS ignored. An assertion about a declaration with no effect.
+     *
+     * So this asserts the STRUCTURE the fix relies on — the strike is on the
+     * name's own span and the line that contains "at" does not carry one.
+     */
+    const html = renderResult("cancelled");
+    expect(lineStyle(html, "home")).not.toContain("line-through");
+    expect(lineStyle(html, "away")).not.toContain("line-through");
+    expect(tagFor(html, "pickem-matchup-home-name")).toContain("line-through");
   });
 
   it("strikes NOTHING on a contest that was played", () => {
@@ -84,16 +114,6 @@ describe("a cancelled contest is struck through", () => {
     }
   });
 
-  it("leaves the connective 'at' unstruck", () => {
-    /**
-     * "at" is not part of the claim about either team, and striking a
-     * preposition reads as damage to the markup rather than as a voided stake.
-     * It carries an explicit `text-decoration:none` because it INHERITS
-     * otherwise — the property descends, so absence of a rule is not absence
-     * of the line.
-     */
-    expect(renderResult("cancelled")).toContain("text-decoration:none");
-  });
 });
 
 describe("a push has no contrast; a final always has exactly one bold name", () => {
