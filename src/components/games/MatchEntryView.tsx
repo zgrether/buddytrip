@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { MatchResultBanner, matchDefeatText } from "@/components/games/MatchResultBanner";
 import { ChevronLeft, Table2, Settings } from "lucide-react";
-import { buildDecided, matchState, strokeHoles } from "@/lib/matchPlay";
+import { buildDecided, matchState, strokeHoles, type DecidedHole } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { MatchCard } from "./MatchCard";
@@ -437,6 +437,7 @@ export function MatchEntryView({
                 group={g}
                 player={m.a}
                 players={m.aPlayers}
+                tint={m.leftColor ?? "var(--color-bt-accent)"}
                 isA
                 label={label}
                 hole={hole}
@@ -455,6 +456,7 @@ export function MatchEntryView({
                 group={g}
                 player={m.b}
                 players={m.bPlayers}
+                tint={m.rightColor ?? "var(--color-bt-accent)"}
                 isA={false}
                 label={label}
                 hole={hole}
@@ -526,6 +528,7 @@ function PlayerRow({
   group,
   player,
   players,
+  tint,
   isA,
   label,
   hole,
@@ -541,7 +544,14 @@ function PlayerRow({
   saveState,
   onRetry,
 }: {
-  group: { st: ReturnType<typeof matchState>; strokeHolesA: Set<number>; strokeHolesB: Set<number> };
+  group: {
+    st: ReturnType<typeof matchState>;
+    strokeHolesA: Set<number>;
+    strokeHolesB: Set<number>;
+    /** Per-hole W/L/H, already derived for the card's strip — the source for the
+     *  hole-winner highlight below. */
+    decided: DecidedHole[];
+  };
   /**
    * The SIDE, which is the scoring unit — one input per side, so this row stays
    * one row for a 2v2. Its `name` is the JOINED "R & B" label built by
@@ -555,6 +565,10 @@ function PlayerRow({
    */
   players?: SidePlayer[];
   isA: boolean;
+  /** The side.s team colour — the tint `OutcomeChoiceRow` uses for a selected
+   *  choice. Undefined on a standalone (non-team) game, which falls back to the
+   *  accent exactly as the reference does. */
+  tint: string;
   label: string;
   hole: number;
   active: boolean;
@@ -576,6 +590,22 @@ function PlayerRow({
   // Same predicate the match card and the scorecard already branch on, so the
   // three surfaces agree on what "a side with two people in it" means.
   const stacked = !!(players && players.length > 1);
+  /**
+   * PARITY ITEM 5 — did THIS side win the hole on screen?
+   *
+   * Outcome entry tells you who won the hole: you tap a side and it lights up in
+   * the team colour. Score entry derives exactly the same fact from the strokes
+   * you just typed — `decided` already holds it, and the card's strip above is
+   * already drawing it — and said nothing.
+   *
+   * The HOLE, not the match. The reference highlights the recorded outcome for
+   * the hole you are standing on, not the overall leader, so this matches on the
+   * same unit. A halved hole lights neither side, which is honest: score entry
+   * has no "Halved" row to select, and colouring both would invent agreement
+   * where the format has a third state.
+   */
+  const holeResult = group.decided.find((d) => d.hole === hole)?.result;
+  const wonHole = isA ? holeResult === "W" : holeResult === "L";
   const v = valueFor(player.id, label);
   const stroked = (isA ? group.strokeHolesA : group.strokeHolesB).has(hole);
 
@@ -622,9 +652,31 @@ function PlayerRow({
         padding: "10px 14px 10px 11px",
         cursor: dead ? "default" : "pointer",
         opacity: dead ? 0.55 : 1,
-        background: active ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
+        /**
+         * The hole-winner tint, REUSED from `OutcomeChoiceRow` — the same
+         * `color-mix(in srgb, <tint> 14%, transparent)` its selected choice uses,
+         * so the two entry paths say "this side won the hole" in one visual
+         * language.
+         *
+         * The reference's `1.5px solid <tint>` border is NOT reused, and that is
+         * the one thing that could not be: these rows sit inside a rounded,
+         * bordered container and separate from each other with `borderTop`, so a
+         * full ring per row would double the container's edge and box every row
+         * individually. The tint goes in the border slot this row already has —
+         * the 3px left rule — which is the same colour saying the same thing in
+         * the idiom the surface already speaks.
+         *
+         * ACTIVE still owns the left rule when both apply: it is transient focus
+         * ("you are editing this cell") and must not be masked by a result that
+         * will still be there after the focus moves.
+         */
+        background: wonHole
+          ? `color-mix(in srgb, ${tint} 14%, transparent)`
+          : active
+            ? "var(--color-bt-accent-faint)"
+            : "var(--color-bt-card)",
         borderTop: last ? "1px solid var(--color-bt-subtle-border)" : undefined,
-        borderLeft: `3px solid ${active ? "var(--color-bt-accent)" : "transparent"}`,
+        borderLeft: `3px solid ${active ? "var(--color-bt-accent)" : wonHole ? tint : "transparent"}`,
       }}
     >
       {/* A 2v2's avatars are PER PLAYER and live inside the name block, one

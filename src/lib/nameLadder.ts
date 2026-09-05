@@ -121,13 +121,16 @@ export function estimateEm(text: string): number {
  */
 export const CARD_NAME_CAPACITY_EM = 6.0;
 
-/** `OutcomeScorecard`'s lead rows, which share `NAME_W` — `clamp(92px, 25vw,
- *  110px)` at a `clamp(12px, 3.5vw, 15px)` base. At 375px that is 93.75px less
- *  20px padding over a 13.1px font, ~5.6em; 6.0 is the wide-viewport figure and
- *  is why a long pairing meets the ellipsis on a phone. Unchanged here: the cap
- *  moved from 124 to 110, which costs this surface nothing at 375px, where the
- *  cap is not the active term. */
-export const SCORECARD_NAME_CAPACITY_EM = 6.0;
+/**
+ * RETIRED — `OutcomeScorecard`'s lead rows had their own 15px/700 name cell with
+ * its own capacity, and now render through the SAME `ScorecardLabelCell` the
+ * stroke card uses, at `SCORECARD_LABEL_CAPACITY_EM`. Two surfaces, two answers
+ * for the same names, was the defect; one cell is the fix, and a second capacity
+ * constant is exactly how it would grow back.
+ *
+ * Deleted rather than left exported: an unused capacity is an invitation to
+ * re-introduce the second treatment it was sized for.
+ */
 
 /**
  * The scorecard's row LABEL — a different job from the score-entry row, where
