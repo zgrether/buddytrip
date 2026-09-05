@@ -3,6 +3,7 @@
 import { buildDecidedFromOutcomes, matchState, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { holeWeight, isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { ScorecardChrome, RightGutter, SUB_W, TOTAL_W } from "./StandardGrid";
+import { matchDefeatText } from "./MatchResultBanner";
 import type { SidePlayer } from "./MatchSides";
 import { fitName, SCORECARD_NAME_CAPACITY_EM } from "@/lib/nameLadder";
 
@@ -173,7 +174,10 @@ export function OutcomeScorecard({
 
       {st.over && (
         <p className="text-center" style={{ padding: "12px 10px 2px", fontSize: 13, fontWeight: 800, color: "var(--color-bt-place-1-text)" }} data-testid="outcome-closeout">
-          {winner && loser ? `${winner.name} def. ${loser.name} — ${st.margin}` : `Match halved — ${st.margin}`}
+          {/* The third caller of golf's one sentence (#1302 shared it between
+              the two entry views). The em dash is this surface's own — a
+              caption under a grid, not a band — so it is passed, not inherited. */}
+          {matchDefeatText(winner, loser, st.margin, "—")}
         </p>
       )}
     </div>
