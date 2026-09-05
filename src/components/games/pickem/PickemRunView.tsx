@@ -99,7 +99,9 @@ export interface RunSlateGame extends ScoredSlateGame {
  * now carried by the NAMES (see `resultEmphasis`), which leaves this line free
  * to say only what KIND of outcome it was.
  */
-const RESULT_LABEL: Record<SlateResult, string> = {
+/** Exported so the PICKS SHEET can name a settled game with the same word the
+ *  runner used. Two surfaces describing one row must not word it differently. */
+export const RESULT_LABEL: Record<SlateResult, string> = {
   away: "Final",
   home: "Final",
   push: "Pushed",
