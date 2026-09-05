@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MatchResultBanner, matchDefeatText } from "@/components/games/MatchResultBanner";
 import { ChevronLeft, Table2, Check, Settings } from "lucide-react";
 import { buildDecidedFromOutcomes, matchState, outcomeBottomState, type HoleOutcomeResult } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
@@ -263,22 +264,7 @@ export function MatchOutcomeEntryView({
           hideFormat
           pointValue={m.pointValue}
         />
-        {st.over && (
-          <div
-            className="flex items-center justify-between"
-            style={{
-              marginTop: 6,
-              padding: "7px 12px",
-              borderRadius: 10,
-              background: "var(--color-bt-place-1-bg)",
-              border: "1px solid rgba(34,197,94,0.25)",
-            }}
-          >
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-place-1-text)" }}>
-              {winner && loser ? `${winner.name} def. ${loser.name} · ${st.margin}` : `Match halved · ${st.margin}`}
-            </span>
-          </div>
-        )}
+        {st.over && <MatchResultBanner text={matchDefeatText(winner, loser, st.margin)} />}
       </div>
 
       {/* Hole navigation — header parity with stroke/rack (Wave 2): tightened
