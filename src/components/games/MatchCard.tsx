@@ -145,6 +145,20 @@ interface MatchCardProps {
    * segment loop for the reasoning.
    */
   decidedStake?: Record<number, "void" | "none">;
+  /**
+   * A per-side line UNDER that side's name, and a flag that dims the name.
+   *
+   * Generic on purpose. Pick'em uses them to say a player submitted no sheet —
+   * a notice that used to sit outside this card as a sibling, where it escaped
+   * its container on a phone and overlapped the next card. A `noPicks` boolean
+   * would have put a format-specific state in the one component both formats
+   * read; a NODE plus "this side is not scoring" is equally true of a
+   * withdrawal or a DQ, and teaches this card nothing about sheets.
+   */
+  aNote?: React.ReactNode;
+  bNote?: React.ReactNode;
+  aMuted?: boolean;
+  bMuted?: boolean;
 }
 
 export function MatchCard({
@@ -165,6 +179,10 @@ export function MatchCard({
   onScorecard,
   isWeightedUnit,
   decidedStake,
+  aNote,
+  bNote,
+  aMuted,
+  bMuted,
 }: MatchCardProps) {
   const st = matchState(results, holeCount, glorious);
   /* Golf answers "is this unit weighted?" from its trailing window; a caller
@@ -272,13 +290,13 @@ export function MatchCard({
           the strip instead of clipping (item 3); a 1v1 keeps the 50px single-name row. */}
       <div className="flex" style={{ minHeight: 50, alignItems: "stretch" }}>
         <Margin active={aLeads} square={square} text={aLeads ? leadText : "AS"} color={lc} closed={st.closed} />
-        <NameCell name={a.name} players={aPlayers} align="right" tinted={aLeads} color={lc} />
+        <NameCell name={a.name} players={aPlayers} align="right" tinted={aLeads} color={lc} note={aNote} muted={aMuted} />
         <div style={{ width: 3, background: wonL }} />
         <div className="flex items-center justify-center" style={{ width: CENTRE_W, flexShrink: 0, background: "var(--color-bt-card-raised)", fontSize: 19, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {centerNum}
         </div>
         <div style={{ width: 3, background: wonR }} />
-        <NameCell name={b.name} players={bPlayers} align="left" tinted={bLeads} color={rc} />
+        <NameCell name={b.name} players={bPlayers} align="left" tinted={bLeads} color={rc} note={bNote} muted={bMuted} />
         <Margin active={bLeads} square={square} text={bLeads ? leadText : "AS"} color={rc} closed={st.closed} />
       </div>
 
@@ -413,10 +431,30 @@ function Margin({ active, square, text, color, closed }: { active: boolean; squa
   );
 }
 
-/** Name column — leans inward (left col right-justified, right col left-justified);
- *  leading side gets a faint tint of its emphasis color. Uniform 600 weight. */
-function NameCell({ name, players, align, tinted, color }: { name: string; players?: SidePlayer[]; align: "left" | "right"; tinted: boolean; color: string }) {
+/**
+ * Name column — leans inward (left col right-justified, right col left-justified);
+ * leading side gets a faint tint of its emphasis color. Uniform 600 weight.
+ *
+ * ── `note` and `muted` are GENERIC, and deliberately so ────────────────────
+ *
+ * They exist because pick'em needs to say a side submitted no sheet, and that
+ * notice used to sit OUTSIDE the card as a sibling — where it escaped its
+ * container on a phone and overlapped the next card.
+ *
+ * The comment that put it there was right about the cost: "a missing SHEET is a
+ * pick'em concept with no golf analogue, and pushing it into the shared card
+ * would put a format-specific state in the one place both formats read." So
+ * what comes in is not a `noPicks` boolean — it is a NODE under the name and a
+ * flag that dims it. This card learns "this side has something to say about
+ * itself, and is not scoring", which is true of a withdrawal or a DQ as much as
+ * of an absent sheet, and it learns nothing about pick'em.
+ *
+ * `muted` matters as much as the note: a side scoring nothing should read that
+ * way before a badge says so. The badge confirms; the weight tells you first.
+ */
+function NameCell({ name, players, align, tinted, color, note, muted }: { name: string; players?: SidePlayer[]; align: "left" | "right"; tinted: boolean; color: string; note?: React.ReactNode; muted?: boolean }) {
   const bg = tinted ? `${color}29` : "transparent";
+  const nameColor = muted ? "var(--color-bt-text-dim)" : "var(--color-bt-text)";
   // 2v2 → two stacked NAMES, NO avatar disks (item 6). Avatars on the scoreboard
   // were a mistake; the 1v1's avatar-free single line is the reference — this just
   // wraps it to two lines for the two players. Leans inward like the 1v1; the
@@ -437,12 +475,13 @@ function NameCell({ name, players, align, tinted, color }: { name: string; playe
               key={p.id}
               className="max-w-full truncate"
               data-name-step={fit.step}
-              style={{ fontSize: NAME_FONT, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, lineHeight: 1.3 }}
+              style={{ fontSize: NAME_FONT, fontWeight: 600, color: nameColor, textAlign: align, lineHeight: 1.3 }}
             >
               {fit.text}
             </span>
           );
         })}
+        {note}
       </div>
     );
   }
@@ -459,15 +498,20 @@ function NameCell({ name, players, align, tinted, color }: { name: string; playe
   const fit = fitName(name, CARD_NAME_CAPACITY_EM);
   return (
     <div
-      className="flex min-w-0 flex-1 items-center"
-      style={{ justifyContent: align === "right" ? "flex-end" : "flex-start", padding: `0 ${NAME_PAD_X}`, background: bg }}
+      // `flex-col` + `justify-center` rather than `items-center`: with a note
+      // the cell stacks name-over-note, and without one a single centred child
+      // renders identically to the row it replaces.
+      className="flex min-w-0 flex-1 flex-col justify-center"
+      style={{ alignItems: align === "right" ? "flex-end" : "flex-start", padding: `0 ${NAME_PAD_X}`, background: bg }}
     >
       <span
+        className="max-w-full"
         data-name-step={fit.step}
-        style={{ fontSize: NAME_FONT, fontWeight: 600, color: "var(--color-bt-text)", textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        style={{ fontSize: NAME_FONT, fontWeight: 600, color: nameColor, textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
       >
         {fit.text}
       </span>
+      {note}
     </div>
   );
 }
