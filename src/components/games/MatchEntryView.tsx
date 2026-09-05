@@ -221,8 +221,13 @@ export function MatchEntryView({
   // Gate on the cells that must be scored THIS hole (interactive, non-dead ones).
   const holeGate = unconfirmedOnHole(saveStatus, interactiveHere.map((p) => p.id), label);
   const gameGate = unconfirmedCount(saveStatus);
+  // "— retry above" is GONE. It pointed at two different controls already
+  // (`UnsavedScoresBanner`'s Retry-all at the top, the per-cell badge on the
+  // row), and the failing cell's own Retry now sits in the keypad directly
+  // beneath this line. A direction is worse than a button, and worse still when
+  // it has three possible referents.
   const advanceReason = holeGate.errored > 0
-    ? `${holeGate.errored} score${holeGate.errored > 1 ? "s" : ""} didn’t save — retry above`
+    ? `${holeGate.errored} score${holeGate.errored > 1 ? "s" : ""} didn’t save`
     : holeGate.saving > 0
       ? "Saving scores…"
       : undefined;
@@ -516,6 +521,18 @@ export function MatchEntryView({
           onCommit={commit}
           onClear={clear}
           onConfirm={confirmAdvance}
+          /* THIS cell's failure, in the caption's own line — the error outranks
+             knowing whose score you are typing, and the Retry comes with it
+             rather than being pointed at. See `StrokeKeypad`'s note on why
+             "retry above" could not survive the move. */
+          error={
+            saveStatus[scoreCellKey(activeParticipant.id, label)] === "error"
+              ? {
+                  text: `${activeParticipant.name}’s score didn’t save`,
+                  onRetry: onRetryCell ? () => onRetryCell(activeParticipant.id, label) : undefined,
+                }
+              : undefined
+          }
         />
       ) : canFinish ? (
         <BottomCTA
