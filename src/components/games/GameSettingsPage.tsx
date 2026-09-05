@@ -103,6 +103,7 @@ export function GameSettingsPage({
   totalPointsRow,
   courseRow,
   scoringTypeRow,
+  boardRollUpRow,
   standaloneRows,
   management,
   settingsRows,
@@ -157,6 +158,12 @@ export function GameSettingsPage({
    *  against its PAR, so the two are the same tier of decision. Omitted by every
    *  other format, whose scoring type is not a setting. */
   scoringTypeRow?: ReactNode;
+  /** GAME MANAGEMENT, 4th — stroke's BOARD roll-up (individual scores / team
+   *  totals). Directly under the scoring type because a reader choosing how a
+   *  hole scores is one thought away from choosing who the board ranks, but a
+   *  SEPARATE row because they are independent axes: either scoring type can be
+   *  read either way. Omitted by every other format. */
+  boardRollUpRow?: ReactNode;
   /** Rows shown only on a STANDALONE game (match's read-only Players echo). In a
    *  competition the rosters live on the competition face, so this is redundant
    *  noise there and the row is hidden entirely. */
@@ -251,6 +258,7 @@ export function GameSettingsPage({
             {competitionId && totalPointsRow}
             {courseRow}
             {scoringTypeRow}
+            {boardRollUpRow}
             {FORMAT_SURFACE[surface].gameState && (
               <GameManagementPanel
                 mode={management.scoringEnabled ? "scoring" : "setup"}

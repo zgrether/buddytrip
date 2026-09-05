@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Hash, ListOrdered, Users } from "lucide-react";
+import { Hash, ListOrdered } from "lucide-react";
+import { FormatCards as SharedFormatCards } from "@/components/games/FormatCards";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { SegmentedToggle } from "@/components/games/SegmentedToggle";
 import { Stepper } from "@/components/games/Stepper";
@@ -298,89 +299,34 @@ function PointsSubtitle({
 }
 
 /**
- * The two scoring formats, as cards.
- *
- * A card each rather than a segmented control or a radio list, because the
- * choice is not a value on an axis — the two produce different SCREENS, and the
- * sentence under each is what a runner is actually choosing between. That
- * sentence is also why the group needs no heading.
+ * Pick'em's two scoring formats. The control itself is shared with stroke's
+ * individual / team-totals choice — see `FormatCards`, which is this component's
+ * markup unchanged, so the rendered output and the `pickem-format-*` test
+ * anchors are exactly what they were.
  */
 function FormatCards({
   value,
   disabled,
   onChange,
-  }: {
+}: {
   value: PickemSettingsDraft["rollUp"];
   disabled: boolean;
   onChange: (next: PickemSettingsDraft["rollUp"]) => void;
 }) {
-  const cards = [
-    {
-      key: "individual_matches" as const,
-      title: "Individual matches",
-      body: "Head to head matches across teams.",
-    },
-    {
-      key: "team_totals" as const,
-      title: "Team totals",
-      body: "One score submitted for the entire team",
-    },
-  ];
-
   return (
-    <div className="grid gap-2" style={{ gridTemplateColumns: "1fr 1fr" }} data-testid="pickem-format-cards">
-      {cards.map((c) => {
-        const selected = value === c.key;
-        return (
-          <button
-            key={c.key}
-            type="button"
-            disabled={disabled}
-            onClick={() => onChange(c.key)}
-            data-testid={`pickem-format-${c.key}`}
-            data-selected={selected ? "true" : "false"}
-            className="flex flex-col gap-1 text-left disabled:opacity-50"
-            style={{
-              borderRadius: 12,
-              padding: "11px 11px 12px",
-              background: selected ? "var(--color-bt-accent-faint)" : "var(--color-bt-card)",
-              border: `1px solid ${selected ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
-            }}
-          >
-            <span className="flex items-center gap-1.5">
-              <Users
-                size={15}
-                style={{
-                  color: selected ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
-                  flexShrink: 0,
-                }}
-              />
-              {selected && (
-                <span
-                  className="ml-auto"
-                  style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-accent)" }}
-                >
-                  ✓
-                </span>
-              )}
-            </span>
-            <span
-              style={{
-                fontSize: 13.5,
-                fontWeight: 600,
-                color: selected ? "var(--color-bt-accent)" : "var(--color-bt-text)",
-              }}
-            >
-              {c.title}
-            </span>
-            <span
-              style={{ fontSize: 11.5, lineHeight: 1.4, color: "var(--color-bt-text-dim)" }}
-            >
-              {c.body}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <SharedFormatCards
+      testIdPrefix="pickem-format"
+      value={value}
+      disabled={disabled}
+      onChange={onChange}
+      cards={[
+        {
+          key: "individual_matches",
+          title: "Individual matches",
+          body: "Head to head matches across teams.",
+        },
+        { key: "team_totals", title: "Team totals", body: "One score submitted for the entire team" },
+      ]}
+    />
   );
 }
