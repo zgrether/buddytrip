@@ -59,7 +59,8 @@ describe("computeStrokeLeaderboard (surface — to-par, holes-played-relative)",
         { participant_id: "a", unit_label: "2", value: 4 }, // E  → a: +1 thru 2
         { participant_id: "b", unit_label: "1", value: 3 }, // −1 → b: −1 thru 1
       ],
-      par
+      par,
+      null
     );
     expect(lb.map((r) => r.entityId)).toEqual(["b", "a"]); // b (−1) leads a (+1)
     expect(lb.find((r) => r.entityId === "a")).toMatchObject({ totalStrokes: 9, holesPlayed: 2, toPar: 1, position: 2 });
@@ -76,7 +77,8 @@ describe("computeStrokeLeaderboard (surface — to-par, holes-played-relative)",
         { participant_id: "ontime2", unit_label: "1", value: 4 }, // E
         { participant_id: "ontime2", unit_label: "2", value: 4 }, // E → E thru 2
       ],
-      par
+      par,
+      null
     );
     // The started E player leads; the started +1 player next; the thru-0 late arrival LAST,
     // even though its nominal to-par (0) ties the E player — not-started never outranks started.
@@ -94,7 +96,8 @@ describe("computeStrokeLeaderboard (surface — to-par, holes-played-relative)",
         { participant_id: "deep", unit_label: "2", value: 4 }, // E thru 2
         { participant_id: "shallow", unit_label: "1", value: 4 }, // E thru 1
       ],
-      par
+      par,
+      null
     );
     // Both at E → share position 1; the deeper round (thru 2) lists first.
     expect(lb.map((r) => r.entityId)).toEqual(["deep", "shallow"]);

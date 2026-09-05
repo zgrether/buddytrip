@@ -86,7 +86,8 @@ describe("TRADITIONAL is unchanged — the constraint the timing rests on", () =
     const rows = computeStrokeLeaderboard(
       ["a", "b"],
       [...gross("a", 5, 5, 5), ...gross("b", 3, 3, 3)].map((e) => ({ ...e, value: e.value as number })),
-      PAR4
+      PAR4,
+      null
     );
     expect(rows.map((r) => [r.entityId, r.toPar, r.position])).toEqual([
       ["b", -3, 1],
@@ -178,7 +179,7 @@ describe("STABLEFORD ranks the HIGHEST total first", () => {
 
     // The same two cards WITHOUT a rubric rank the other way round — which is
     // what makes the case above evidence rather than a coincidence.
-    const traditional = computeStrokeLeaderboard(["steady", "spiky"], netted, PAR4);
+    const traditional = computeStrokeLeaderboard(["steady", "spiky"], netted, PAR4, null);
     expect(traditional.map((r) => r.entityId)).toEqual(["steady", "spiky"]);
   });
 
