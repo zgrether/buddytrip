@@ -4,6 +4,7 @@ import { Avatar } from "@/components/Avatar";
 import { fmtToPar } from "@/lib/rackNStack";
 import { ordinalShort } from "@/components/competition/CompetitionGamesPanel";
 import type { StrokeLeaderboardRow } from "@/lib/strokePlay";
+import type { StablefordRubric } from "@/lib/stableford";
 import type { Participant } from "@/components/games/types";
 
 /**
@@ -13,16 +14,44 @@ import type { Participant } from "@/components/games/types";
  * (the late arrival shows "thru 0 · —" at the bottom, never mis-ranked to the top —
  * acceptance-scenario gate D). Presentation-only: rows + participant lookup via props, no
  * tRPC/DB. Reuses the shared `Avatar`; to-par via the shared `fmtToPar`.
+ *
+ * ── Under Stableford, a fourth column, and it is the ranked one ─────────────
+ *
+ * PTS is added to the RIGHT and takes the emphasis; TO PAR stays but steps down
+ * to the ordinary weight STRK carries. Both are kept deliberately: to-par still
+ * describes the round that was played, and a player reads their card in strokes
+ * whatever the game pays out in. Dropping it would remove a true fact to make
+ * room for a new one.
+ *
+ * The board does NOT sort. `rows` arrive in the engine's order and are rendered
+ * in it, so "the ranked column" is a statement about EMPHASIS here and about
+ * `computeStrokeLeaderboard` for the actual ordering. That split is why the
+ * likely half-fix — add the column, keep ranking by strokes — is possible at
+ * all, and why the guard for it lives at the engine's signature rather than in
+ * this file.
  */
 export function StrokeLeaderboard({
   rows,
   participants,
+  rubric,
 }: {
   rows: StrokeLeaderboardRow[];
   participants: Participant[];
+  /**
+   * The game's rubric under Stableford, `null` under Traditional — the SAME
+   * value handed to `computeStrokeLeaderboard`, never a second derivation of
+   * it. A separate `showPoints` boolean would let the column and the ordering
+   * disagree about which game this is, which is the whole defect one level down.
+   *
+   * Required rather than optional for the same reason it is required there: an
+   * omission meaning "Traditional" is how a Stableford surface silently renders
+   * as a stroke-play one.
+   */
+  rubric: StablefordRubric | null;
 }) {
   const pById = new Map(participants.map((p) => [p.id, p]));
   const anyStarted = rows.some((r) => r.started);
+  const showPoints = rubric != null;
 
   return (
     <div style={{ padding: "12px 12px 4px" }} data-testid="stroke-leaderboard">
@@ -35,6 +64,15 @@ export function StrokeLeaderboard({
             <span className="w-10 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Thru</span>
             <span className="w-10 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Strk</span>
             <span className="w-12 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>To par</span>
+            {showPoints && (
+              <span
+                className="w-11 text-right text-[10px] font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-bt-text-dim)" }}
+                data-testid="stroke-lb-col-pts"
+              >
+                Pts
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -81,11 +119,35 @@ export function StrokeLeaderboard({
                   {r.started ? r.totalStrokes : "—"}
                 </span>
                 <span
-                  className="w-12 text-right text-sm font-bold tabular-nums"
-                  style={{ color: r.started ? (r.toPar < 0 ? "var(--color-bt-accent)" : "var(--color-bt-text)") : "var(--color-bt-text-dim)" }}
+                  className={
+                    showPoints
+                      ? "w-12 text-right text-[13px] tabular-nums"
+                      : "w-12 text-right text-sm font-bold tabular-nums"
+                  }
+                  style={{
+                    // Under Stableford PTS is the ranked column, so to-par steps
+                    // down to STRK's weight and gives up the accent — two bold
+                    // numbers on one row is two answers to "who is winning".
+                    color: showPoints
+                      ? "var(--color-bt-text-dim)"
+                      : r.started
+                        ? r.toPar < 0
+                          ? "var(--color-bt-accent)"
+                          : "var(--color-bt-text)"
+                        : "var(--color-bt-text-dim)",
+                  }}
                 >
                   {r.started ? fmtToPar(r.toPar) : "—"}
                 </span>
+                {showPoints && (
+                  <span
+                    className="w-11 text-right text-sm font-bold tabular-nums"
+                    style={{ color: r.started ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
+                    data-testid={`stroke-lb-pts-${r.entityId}`}
+                  >
+                    {r.started ? r.points : "—"}
+                  </span>
+                )}
               </div>
             );
           })}

@@ -221,14 +221,29 @@ export function computeStrokeLeaderboard(
   entries: { participant_id: string; unit_label: string; value: number }[],
   parByHole: Record<string, number>,
   /**
-   * STABLEFORD only: the game's rubric. Passing it switches the board's ranking
-   * measure from to-par (lowest) to points (highest) — one argument, because a
-   * rubric and a scoring type cannot meaningfully disagree here and two
-   * arguments would let them.
+   * The game's rubric under Stableford; `null` under Traditional. It switches
+   * the board's ranking measure from to-par (lowest) to points (highest) — one
+   * argument, because a rubric and a scoring type cannot meaningfully disagree
+   * here and two arguments would let them.
    *
-   * Omit for Traditional, which keeps every line of the previous behaviour.
+   * **REQUIRED, and that requirement IS the fix.** It was optional, and an
+   * omission silently meant Traditional — so the game surface board
+   * (`StrokeGameView`) called this with three arguments and ranked every
+   * Stableford game by to-par for the whole life of the feature.
+   *
+   * Nothing caught it, and the near-miss is the instructive part:
+   * `strokePlayDirection.test.ts` already holds the exact fixture that
+   * separates the two orderings (steady bogeys vs. two pars and a blow-up) and
+   * it passes — because it exercises THIS function, and nothing rendered the
+   * view to check what the view passes. The test and the bug never intersected.
+   *
+   * A default is what made the omission expressible. Now every caller must say
+   * which game it is, `null` included, so a caller that forgets is a `tsc`
+   * error instead of a board that quietly ranks the wrong way. Same move
+   * `rankingDirection` above makes for the direction, one level out. Passing
+   * `null` is byte-identical to the old omission.
    */
-  rubric?: StablefordRubric | null
+  rubric: StablefordRubric | null
 ): StrokeLeaderboardRow[] {
   const agg = new Map<string, { strokes: number; holes: number; par: number; points: number }>();
   for (const id of participantIds) agg.set(id, { strokes: 0, holes: 0, par: 0, points: 0 });

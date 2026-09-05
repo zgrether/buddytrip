@@ -776,9 +776,19 @@ export function StrokeGameView() {
     }
     return out;
   }, [fieldIds, values, entryPips]);
+  // The board's rubric — `null` on a Traditional game, the game's own rubric on
+  // a Stableford one. THE SERVER's, deliberately, and for the same reason
+  // `cardRubric` below reads the server: the board reports how these scores were
+  // actually scored, and a staged, unsaved rubric change would re-rank a field
+  // on points the game has not been scored on.
+  //
+  // Hoisted here rather than derived beside its consumer because
+  // `leaderboardRows` is computed above the early returns (rules of hooks), and
+  // this is the argument it was missing.
+  const boardRubric = useMemo(() => scoringOf(gameQ.data?.config).rubric, [gameQ.data?.config]);
   const leaderboardRows = useMemo(
-    () => computeStrokeLeaderboard(fieldIds, netLeaderboardEntries, parByHole),
-    [fieldIds, netLeaderboardEntries, parByHole],
+    () => computeStrokeLeaderboard(fieldIds, netLeaderboardEntries, parByHole, boardRubric),
+    [fieldIds, netLeaderboardEntries, parByHole, boardRubric],
   );
 
   // Game-level finalize gate (just like rack): every player of the LIVE whole field
@@ -1189,7 +1199,11 @@ export function StrokeGameView() {
     // on. Same reasoning the Danger zone uses for reading the server flag.
     // (In practice the two cannot differ once scores exist — SCORING_TYPE_LOCKED
     // — but the card should be right for the reason, not by luck.)
-    const cardRubric = scoringOf(gameQ.data?.config).rubric;
+    //
+    // It is `boardRubric` itself and not a second `scoringOf` call: the card and
+    // the board must agree about which game this is, and two derivations of one
+    // value that happen to match is how they come not to.
+    const cardRubric = boardRubric;
     const scorecardGrid = (
       <StandardGrid
         units={scUnits}
@@ -1285,7 +1299,7 @@ export function StrokeGameView() {
             pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
           />
         </div>
-        <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} />
+        <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} rubric={boardRubric} />
         <FoursomeEntry
           groups={groupViews}
           onEnter={(id) => {
