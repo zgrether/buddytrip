@@ -92,15 +92,53 @@ export function holeWeight(hole: number, cfg: GloriousConfig): 1 | 2 {
 }
 
 /**
+ * What one UNIT of a match is worth — the generalisation that lets a non-golf
+ * format drive the match-play engine.
+ *
+ * ── Why this exists, and what it removed ──────────────────────────────────
+ *
+ * `matchState` used to weight its units by calling `holeWeight(hole, cfg)`
+ * directly, which baked three of GOLF's assumptions into the shared engine:
+ *
+ *   1. the return type is the literal `1 | 2` — there is no third weight;
+ *   2. the SELECTOR is positional (`hole > 18 − n`, a trailing window);
+ *   3. `ROUND_HOLES` is a hardcoded 18, so on a shorter unit count the
+ *      weighting is silently INERT rather than wrong.
+ *
+ * All three are the same shape: golf's mechanic hardcoded into the engine
+ * rather than passed into it. Pick'em is match play with games for holes and a
+ * per-game multiplier for glorious — its weights are 1..4 (`MULTIPLIER_MAX`,
+ * and the DB allows any positive numeric), chosen per game rather than by
+ * position, over a slate that is not 18 long. Every one of the three blocked
+ * it, and a function replaces all three at once.
+ *
+ * Golf is unchanged: `toUnitWeight` turns a `GloriousConfig` into one of these,
+ * so every existing caller keeps passing exactly what it passed before.
+ */
+export type UnitWeight = (unit: number) => number;
+
+/** Either form the engine accepts — golf's config, or an arbitrary per-unit
+ *  weight. A function and an object, so the discrimination is `typeof`. */
+export type Weighting = GloriousConfig | UnitWeight;
+
+/** Normalise to a weight function. The ONE place the two forms meet. */
+export function toUnitWeight(weighting: Weighting): UnitWeight {
+  return typeof weighting === "function"
+    ? weighting
+    : (unit: number) => holeWeight(unit, weighting);
+}
+
+/**
  * Weighted swing still on the table = Σ weight over the UNPLAYED holes. Takes the
  * actual unplayed-hole SET (not a scalar count) so a mid-round gap — match play
  * allows partial / out-of-order entry — is counted with each unplayed hole's real
  * weight, not "holes 1..k done, the rest remaining". This is the value close-out and
  * dormie compare against (§4): `matchClosed = holesUp > remainingSwing`.
  */
-export function remainingSwing(unplayedHoles: Iterable<number>, cfg: GloriousConfig): number {
+export function remainingSwing(unplayedHoles: Iterable<number>, weighting: Weighting): number {
+  const weightOf = toUnitWeight(weighting);
   let sum = 0;
-  for (const h of unplayedHoles) sum += holeWeight(h, cfg);
+  for (const h of unplayedHoles) sum += weightOf(h);
   return sum;
 }
 

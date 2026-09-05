@@ -95,3 +95,123 @@ describe("MatchCard — Glorious Finishing Holes segment marker (gate c: sub-18 
     expect(html).not.toContain("match-history-glorious-");
   });
 });
+
+/**
+ * The card drives a NON-GOLF format — the `weightOf` seam's visual half.
+ *
+ * `MatchCard` is now the only match card in the app: pick'em's head-to-head
+ * renders it rather than a lookalike, so every change to this presentation
+ * reaches both formats. These pin the two props that made that possible and
+ * the states golf itself can never produce.
+ */
+describe("MatchCard — a per-unit weight selector, for formats with no trailing window", () => {
+  it("marks the units the CALLER names, not a trailing window", () => {
+    /**
+     * THE MUTATION: keep calling `isGloriousHole` and ignore `isWeightedUnit`.
+     *
+     * That build marks a trailing window — or, on a 16-unit card, marks nothing
+     * at all, because `holeWeight` measures against a hardcoded 18 and no unit
+     * clears `18 − n`. Both are silent: the card renders, the maths is right,
+     * and the one thing the wash exists to say is missing.
+     *
+     * Units 3 and 12 of 16 is a shape golf cannot express.
+     */
+    const html = renderToStaticMarkup(
+      <MatchCard
+        a={a}
+        b={b}
+        results={noResults}
+        holeCount={16}
+        isWeightedUnit={(u) => u === 3 || u === 12}
+      />
+    );
+    expect(html).toContain('match-history-glorious-3"');
+    expect(html).toContain('match-history-glorious-12"');
+    expect(html).not.toContain('match-history-glorious-16"');
+    // ...and it is the SAME amber, not a second one invented for the new caller.
+    expect(html).toContain("var(--color-bt-glorious-faint)");
+  });
+
+  it("leaves golf's positional window alone when the prop is absent", () => {
+    /**
+     * The backward-compatibility half. A build that made the predicate
+     * mandatory, or defaulted it to "never", would silently un-mark every golf
+     * card — and every assertion above would still pass.
+     */
+    const html = renderToStaticMarkup(
+      <MatchCard a={a} b={b} results={noResults} glorious={g(3)} holeCount={18} />
+    );
+    expect(html).toContain('match-history-glorious-16"');
+    expect(html).toContain('match-history-glorious-18"');
+    expect(html).not.toContain('match-history-glorious-15"');
+  });
+});
+
+describe("MatchCard — three shapes for a unit that moved nobody", () => {
+  const decided: DecidedHole[] = [
+    { hole: 1, result: "H" },
+    { hole: 2, result: "H" },
+    { hole: 3, result: "H" },
+  ];
+
+  const render = () =>
+    renderToStaticMarkup(
+      <MatchCard
+        a={a}
+        b={b}
+        results={decided}
+        holeCount={3}
+        decidedStake={{ 2: "void", 3: "none" }}
+      />
+    );
+
+  it("draws a contested halve, a void and a no-stake DIFFERENTLY", () => {
+    /**
+     * THE MUTATION, and it is the tempting one: render all three as the halve.
+     * Every value is identical — all three are `result: "H"` and score zero —
+     * so nothing but the paint separates them, and grey for all three claims a
+     * contest that did not happen on two of them.
+     *
+     * Unit 1 is the genuine halve and must stay unmarked; the other two must
+     * carry their own testids AND differ from each other.
+     */
+    const html = render();
+    expect(html).not.toContain('match-history-void-1"');
+    expect(html).not.toContain('match-history-nostake-1"');
+    expect(html).toContain('match-history-void-2"');
+    expect(html).toContain('match-history-nostake-3"');
+  });
+
+  it("gives the void an EDGE and the no-stake none — they must not match", () => {
+    /**
+     * The two absences say different things: a void had something here and its
+     * stake was struck, so the outline is what is left of it; a no-stake never
+     * had one. A build that used one treatment for both passes the test above.
+     *
+     * Asserted per-element rather than over the document, since both live in
+     * the same bar and a document-wide search cannot tell them apart.
+     */
+    const html = render();
+    const tag = (testId: string) => {
+      const at = html.indexOf(`data-testid="${testId}"`);
+      return html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
+    };
+    const voided = tag("match-history-void-2");
+    const nostake = tag("match-history-nostake-3");
+
+    expect(voided).toContain("border");
+    expect(voided).toContain("background:transparent");
+    expect(nostake).not.toContain("border:");
+    expect(voided).not.toBe(nostake);
+  });
+
+  it("renders none of this for golf, which has no stakeless unit", () => {
+    // Omitting the prop must leave the bar exactly as it was — a hole is always
+    // played and always contested.
+    const html = renderToStaticMarkup(
+      <MatchCard a={a} b={b} results={decided} holeCount={3} />
+    );
+    expect(html).not.toContain("match-history-void-");
+    expect(html).not.toContain("match-history-nostake-");
+  });
+});

@@ -127,6 +127,24 @@ interface MatchCardProps {
    *  stake; the board has always shown the game total and this surface showed
    *  nothing. Omit (or 0) for a standalone match with no competition points. */
   pointValue?: number;
+  /**
+   * Which units are WEIGHTED, when that cannot be answered positionally.
+   *
+   * Golf answers it from `glorious` (a trailing window) and passes nothing
+   * here. Pick'em's multiplier belongs to a game wherever it sits on the slate,
+   * so it passes a predicate. Same amber treatment either way — this decides
+   * WHICH segments get it, never what it looks like.
+   */
+  isWeightedUnit?: (unit: number) => boolean;
+  /**
+   * Units that carry NO STAKE, and why — 1-based, sparse.
+   *
+   * Golf has no such unit: a hole is always played and always contested, so
+   * this is omitted and every segment is won/lost/halved. Pick'em has two
+   * kinds and they must not look like each other or like a halve — see the
+   * segment loop for the reasoning.
+   */
+  decidedStake?: Record<number, "void" | "none">;
 }
 
 export function MatchCard({
@@ -145,8 +163,14 @@ export function MatchCard({
   hideFormat,
   pointValue,
   onScorecard,
+  isWeightedUnit,
+  decidedStake,
 }: MatchCardProps) {
   const st = matchState(results, holeCount, glorious);
+  /* Golf answers "is this unit weighted?" from its trailing window; a caller
+     that weights per unit passes its own predicate. One default, so the loop
+     below never branches on which format it is drawing. */
+  const weightedUnit = isWeightedUnit ?? ((unit: number) => isGloriousHole(unit, glorious));
   const teams = !!(leftColor && rightColor);
   const lc = leftColor || WIN_GREEN; // left emphasis color
   const rc = rightColor || WIN_GREEN; // right emphasis color
@@ -270,7 +294,54 @@ export function MatchCard({
           } else if (st.closed) {
             op = 0.25; // dead — past close-out
           }
-          const bar = <div style={{ height: 4, borderRadius: 2, background: bg, opacity: op }} />;
+
+          /**
+           * ── THREE SHAPES, NOT FIVE ────────────────────────────────────────
+           *
+           * The bar answers ONE question: did this unit move the match. Golf
+           * has two answers (someone gained / it was halved) because a hole is
+           * always played and always contested. A pick'em slate has a third —
+           * there was no stake here — and it arrives two different ways:
+           *
+           *   grey fill   played, contested, nobody moved. Both right, both
+           *               wrong, or a push. This IS golf's halve.
+           *   outlined    the game was CANCELLED. Something was here and its
+           *               stake was struck, so the segment keeps its edge and
+           *               loses its fill — the outline is the ghost of it.
+           *   empty       NOBODY PICKED it. Nothing was ever placed, so there
+           *               is no edge either.
+           *
+           * Grey would be wrong for both: it claims a contest that did not
+           * happen. That is the empty-is-not-unknown split, in a 4px block —
+           * and the reason the two absences must not look like each other is
+           * the same reason, one level down.
+           *
+           * NOT a colour. A team colour is user-chosen and could be any hue, so
+           * spending red on "cancelled" risks colliding with a red team's own
+           * won segments. Fill-versus-outline-versus-nothing survives any
+           * palette.
+           */
+          const stake = decidedStake?.[i + 1];
+          const bar =
+            stake === "none" ? (
+              <div
+                data-testid={`match-history-nostake-${i + 1}`}
+                style={{ height: 4, borderRadius: 2, background: "var(--color-bt-card-raised)", opacity: 0.35 }}
+              />
+            ) : stake === "void" ? (
+              <div
+                data-testid={`match-history-void-${i + 1}`}
+                style={{
+                  height: 4,
+                  borderRadius: 2,
+                  background: "transparent",
+                  border: `1px solid ${halfC}`,
+                  opacity: 0.75,
+                }}
+              />
+            ) : (
+              <div style={{ height: 4, borderRadius: 2, background: bg, opacity: op }} />
+            );
           /**
            * Glorious marker — a SECOND AXIS, not a colour swap. The segment
            * already spends blue/red/grey on who won the hole (`bg` above), so
@@ -286,8 +357,21 @@ export function MatchCard({
            * fully underneath and hidden by it — worth stating because on the
            * scorecard the wash sits under a transparent-background number
            * cell where that question doesn't arise.
+           *
+           * ── THE SELECTOR IS PER-UNIT, THE TREATMENT IS BINARY ────────────
+           *
+           * `weighted` replaces the direct `isGloriousHole` call, because that
+           * predicate is POSITIONAL — `hole > 18 − n`, a trailing window — and
+           * a pick'em multiplier belongs to a game wherever it sits on the
+           * slate. Same visual, different selector; golf still supplies its
+           * window through `weightedUnit` below.
+           *
+           * The wash does NOT carry intensity, though pick'em multipliers run
+           * to 4×. Four ambers in an 18×4px segment is a distinction nobody
+           * can read — decorative by construction — and the multiplier CHIP
+           * already prints the number. Marked-or-not here, how-much there.
            */
-          if (!isGloriousHole(i + 1, glorious)) {
+          if (!weightedUnit(i + 1)) {
             return (
               <div key={i} style={{ flex: 1 }}>
                 {bar}
