@@ -2,7 +2,7 @@
 
 import { buildDecidedFromOutcomes, matchTrack, type DecidedHole, type HoleOutcomeRow, type MatchTrackCell } from "@/lib/matchPlay";
 import { holeWeight, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
-import { ScorecardChrome, RightGutter, ScorecardLabelCell, scorecardPeople, SUB_W, TOTAL_W } from "./StandardGrid";
+import { ScorecardChrome, RightGutter, ScorecardLabelCell, scorecardPeople, LeadPill, SUB_W, TOTAL_W } from "./StandardGrid";
 import { matchDefeatText } from "./MatchResultBanner";
 import type { SidePlayer } from "./MatchSides";
 
@@ -285,24 +285,3 @@ function LeadSubCell({ side, wide }: { side: "A" | "B"; wide?: boolean }) {
 
 /** Team-tinted lead pill — same visual grammar as the board's ProjectionPill
  *  (16%-alpha team fill, value in plain team color). */
-function LeadPill({ value, color }: { value: number; color: string }) {
-  return (
-    <span
-      className="inline-flex items-center justify-center"
-      data-testid="outcome-lead-pill"
-      style={{
-        minWidth: 30,
-        height: 26,
-        padding: "0 7px",
-        borderRadius: 7,
-        fontSize: 13,
-        fontWeight: 800,
-        background: `color-mix(in srgb, ${color} 16%, transparent)`,
-        color,
-      }}
-    >
-      {value}
-      <span style={{ fontSize: 8, marginLeft: 2 }}>▲</span>
-    </span>
-  );
-}

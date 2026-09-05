@@ -1687,10 +1687,29 @@ export function MatchGameView() {
          */
         holeMarks={(() => {
           const { track } = matchTrack(decidedFor(selectedGroup), scUnits.length, glorious);
+          /**
+           * THE RUNNING MARGIN, in the outcome card's own chip — and this
+           * REVERSES the win-marker this row shipped with. Both instructions
+           * came from the device: mark the holes a side won, then reuse the
+           * chip. They are different values, and the chip is the one that
+           * survives — your number climbing IS how you see you took the hole,
+           * the strokes directly above already say who won it outright, and the
+           * two scorecards stop saying a related thing in two vocabularies.
+           *
+           * Recorded so nobody re-derives the rectangle from the older note.
+           *
+           * The convention is the outcome card's, unchanged: the pill shows in
+           * the LEADER's row only, `AS` in B's row when level, `·` past the
+           * close-out, blank when a hole is not yet played.
+           */
           const markFor = (side: "A" | "B") =>
-            track.map((c) =>
-              c.dead ? "dead" : c.result == null ? null : c.result === "H" ? "halved" : (c.result === "W") === (side === "A") ? "won" : null
-            );
+            track.map((c) => {
+              if (c.dead) return "dead" as const;
+              if (c.lead == null) return null;
+              if (c.lead === 0) return side === "B" ? ("level" as const) : null;
+              const leads = c.lead > 0 ? "A" : "B";
+              return leads === side ? { lead: Math.abs(c.lead) } : null;
+            });
           return { [selectedGroup.a.id]: markFor("A"), [selectedGroup.b.id]: markFor("B") };
         })()}
         onCellTap={readOnly ? undefined : (label) => {

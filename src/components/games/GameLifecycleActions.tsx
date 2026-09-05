@@ -139,13 +139,29 @@ export function GameLifecycleActions({
    * correct arm's own note. Both are irrelevant in the panel variant, which is
    * one control in a row that already spaces itself.
    */
-  const box = (testId: string, pt: boolean, children: React.ReactNode) =>
+  /**
+   * The wrapper each arm sits in.
+   *
+   * THE TOP GAP IS UNCONDITIONAL NOW, and the comment it replaces said why it
+   * was not: "the gap the two post-finalize arms need and the first one gets
+   * for free from the surface above it". The finalize arm therefore had none —
+   * and on three surfaces the gap was not there to inherit, so "Save results"
+   * sat flush against the last card. Reported from a device on the outcome
+   * match view, Stableford and the pick'em runner.
+   *
+   * A control that depends on what happens to be above it is a per-surface
+   * question forever. The gap belongs to the control.
+   *
+   * Still irrelevant in the panel variant, which is one control in a row that
+   * already spaces itself.
+   */
+  const box = (testId: string, children: React.ReactNode) =>
     panel ? (
       <div className="shrink-0" data-testid={testId}>
         {children}
       </div>
     ) : (
-      <div className={pt ? "px-4 pt-4" : "px-4"} style={CTA_BOX} data-testid={testId}>
+      <div className="px-4 pt-4" style={CTA_BOX} data-testid={testId}>
         {children}
       </div>
     );
@@ -166,7 +182,6 @@ export function GameLifecycleActions({
   if (state.canFinalize) {
     return box(
       "game-finalize",
-      false,
       <button
         onClick={onFinalize}
         disabled={finalizePending}
@@ -204,7 +219,6 @@ export function GameLifecycleActions({
       // (Not in the panel variant, where the row does its own spacing.)
       box(
         "game-correct",
-        true,
         <button
           onClick={onCorrect}
           disabled={correctPending}
@@ -231,7 +245,6 @@ export function GameLifecycleActions({
       // (Not in the panel variant, where the row does its own spacing.)
       box(
         "game-relock",
-        true,
         <button
           onClick={onFinalize}
           disabled={finalizePending}
