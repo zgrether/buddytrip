@@ -38,6 +38,13 @@ const STROKE_PATH = [
   "server/lib/strokePlay.ts",
   "components/games/StrokeLeaderboard.tsx",
   "components/games/StandardGrid.tsx",
+  // Added after this guard MISSED a real one: StrokeGameView passed
+  // `direction="low_wins"` to the grid for months and the sweep never looked at
+  // it, because the list named the component that DECLARED the prop and not the
+  // one that PASSED it. The failure surface is every file that can name a
+  // direction, not the file the type lives in.
+  "components/games/StrokeGameView.tsx",
+  "components/games/ScoreEntryView.tsx",
 ];
 
 /**

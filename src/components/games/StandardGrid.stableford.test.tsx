@@ -1,0 +1,249 @@
+import { describe, it, expect } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { StandardGrid } from "./StandardGrid";
+import { STABLEFORD_PRESETS } from "@/lib/stableford";
+import type { ScoreUnit, Participant, ScoreValues } from "./types";
+
+/**
+ * The scorecard as a POINTS card.
+ *
+ * ── The wrong builds these exist to fail ───────────────────────────────────
+ *
+ *   · THE RUBRIC IS IGNORED — the card keeps summing strokes while the board
+ *     and the banked result score points. Two surfaces disagreeing about one
+ *     game, with nothing on screen to reconcile them.
+ *   · POINTS REPLACE THE GROSS in the cell. The card would stop being able to
+ *     answer "did I write down a 6 here?", which is the one question a
+ *     spot-correction surface exists for — and `onCellTap` jumps to that hole's
+ *     entry, so the number you are correcting has to be visible.
+ *   · THE TOTAL SUMS THE WRONG THING — cells show points and Out/In/Total show
+ *     strokes, so the column visibly does not add up.
+ *   · TRADITIONAL CHANGED. Omitting the rubric must leave every previous
+ *     behaviour exactly as it was.
+ *
+ * Assertions anchor to `data-testid`, never to a bare number: these totals are
+ * small integers and the card is full of them, so a substring match over the
+ * rendered region would pass against a cell that rendered nothing (CLAUDE.md's
+ * substring corollary — the `">16<"` instance is this component).
+ */
+
+const BBMI = STABLEFORD_PRESETS.bbmi_2024.rubric;
+
+/** Nine par-4 holes, front only, so Out and Total are both exercised. */
+const UNITS: ScoreUnit[] = Array.from({ length: 9 }, (_, i) => ({
+  label: String(i + 1),
+  section: "front",
+  par: 4,
+  strokeIndex: i + 1,
+}));
+
+const P: Participant[] = [
+  { id: "p1", name: "Steady" },
+  { id: "p2", name: "Spiky" },
+] as Participant[];
+
+/**
+ * steady — nine bogeys        → 45 strokes, 9 × 2 = 18 points
+ * spiky  — eight pars, one 14 → 46 strokes, 8 × 4 + 0 = 32 points
+ *
+ * They DISAGREE: spiky shoots more strokes and scores more points, because the
+ * blow-up stops costing at the floor. A fixture where the better card also has
+ * the better points cannot tell a rubric-ignoring build from a correct one.
+ */
+const VALUES: ScoreValues = {
+  p1: Object.fromEntries(UNITS.map((u) => [u.label, 5])),
+  p2: Object.fromEntries(UNITS.map((u, i) => [u.label, i === 8 ? 14 : 4])),
+};
+
+const render = (rubric: typeof BBMI | null) =>
+  renderToStaticMarkup(
+    <StandardGrid units={UNITS} participants={P} values={VALUES} rubric={rubric} />
+  );
+
+/**
+ * The first number rendered inside the element carrying `data-testid`.
+ *
+ * `SubCell` nests its value in a `<span>`, so reading the text immediately after
+ * the opening tag returns "" — which is what the first version of this helper
+ * did, failing the Stableford AND Traditional cases identically. That symmetry
+ * is what identified it as the harness rather than the feature.
+ */
+function cell(html: string, testId: string): string | null {
+  const i = html.indexOf(`data-testid="${testId}"`);
+  if (i === -1) return null;
+  const open = html.indexOf(">", i);
+  const inner = html.slice(open + 1, open + 400).replace(/<[^>]*>/g, " ");
+  const first = inner.split(" ").find((t) => t.trim() !== "");
+  return first?.trim() ?? null;
+}
+
+/**
+ * All text inside the element carrying `data-testid`, tags stripped — scoped to
+ * that element so an assertion cannot be satisfied by a number elsewhere on the
+ * card (inline styles are full of them).
+ */
+function inner(html: string, testId: string): string {
+  const i = html.indexOf(`data-testid="${testId}"`);
+  if (i === -1) return "";
+  const open = html.indexOf(">", i);
+  let depth = 1;
+  let j = open + 1;
+  while (j < html.length && depth > 0) {
+    const next = html.indexOf("<", j);
+    if (next === -1) break;
+    if (html.startsWith("</", next)) depth--;
+    else if (!html.startsWith("<!", next)) depth++;
+    j = html.indexOf(">", next) + 1;
+  }
+  return html.slice(open + 1, j).replace(/<[^>]*>/g, " ");
+}
+
+/** Does the cell carrying `testId` wear the leader treatment? */
+function isLeader(html: string, testId: string): boolean {
+  const i = html.indexOf(`data-testid="${testId}"`);
+  if (i === -1) return false;
+  // The element's OWN opening tag only — `SubCell`'s `leader` prop paints
+  // `--color-bt-place-1-text` there. Scanning a window around it would pick up
+  // a neighbouring row's mark, which is the substring trap this file's header
+  // is about.
+  const tagEnd = html.indexOf(">", i);
+  return html.slice(i, tagEnd).includes("--color-bt-place-1-text");
+}
+
+describe("the fixture makes strokes and points disagree", () => {
+  it("spiky shoots MORE strokes and scores MORE points", () => {
+    const strokes = (pid: "p1" | "p2") =>
+      UNITS.reduce((a, u) => a + (VALUES[pid][u.label] as number), 0);
+    expect(strokes("p1")).toBe(45);
+    expect(strokes("p2")).toBe(46);
+    // 9 bogeys @2 vs 8 pars @4 + a blow-up at the floor
+    expect(9 * 2).toBe(18);
+    expect(8 * 4 + 0).toBe(32);
+  });
+});
+
+describe("STABLEFORD — the card scores points", () => {
+  const html = render(BBMI);
+
+  it("gives each player a POINTS ROW of their own", () => {
+    // The shape: the official score keeps its row, and what it scored gets a
+    // second one beneath. Two facts, two rows — not two numbers in a 30px cell.
+    expect(html).toContain('data-testid="scorecard-points-row-p1"');
+    expect(html).toContain('data-testid="scorecard-points-row-p2"');
+  });
+
+  it("puts each points row directly under ITS OWN player", () => {
+    // Document order, because "the row exists" is satisfied by a build that
+    // renders both points rows at the bottom — which would attribute p1's
+    // points to p2 on screen while every other assertion here passed.
+    const p1Score = html.indexOf('data-testid="scorecard-total-p1"');
+    const p1Points = html.indexOf('data-testid="scorecard-points-row-p1"');
+    const p2Score = html.indexOf('data-testid="scorecard-total-p2"');
+    const p2Points = html.indexOf('data-testid="scorecard-points-row-p2"');
+    expect(p1Score).toBeLessThan(p1Points);
+    expect(p1Points).toBeLessThan(p2Score);
+    expect(p2Score).toBeLessThan(p2Points);
+  });
+
+  it("the STROKES row still totals strokes", () => {
+    // The official score stays the official score. A build that replaced this
+    // with points would leave the card unable to show what anyone shot.
+    expect(cell(html, "scorecard-total-p1")).toBe("45");
+    expect(cell(html, "scorecard-total-p2")).toBe("46");
+  });
+
+  it("the POINTS row totals points", () => {
+    // THE RUBRIC-IGNORED CASE. A build that never applies the rubric has no
+    // such row at all, and this is the assertion that says so.
+    expect(cell(html, "scorecard-points-total-p1")).toBe("18");
+    expect(cell(html, "scorecard-points-total-p2")).toBe("32");
+  });
+
+  it("keeps the GROSS in the score cell — the row is additive, not a swap", () => {
+    // Tapping a cell jumps to that hole's entry, so the stroke being corrected
+    // must still be on screen.
+    //
+    // Scoped to the CELL, not the page. An earlier version asserted
+    // `html.toContain("14")` and passed against a build rendering no gross at
+    // all — "14" occurs in inline styles elsewhere in the card. That is this
+    // file's own header coming true one screen below where it is written.
+    expect(inner(html, "score-cell-p2-9")).toContain("14");
+  });
+
+  it("prints each hole's points on the points row", () => {
+    // A bogey pays 2 and the blow-up pays the floor, 0 — both from the rubric,
+    // not from the stroke.
+    expect(cell(html, "scorecard-pts-p1-1")).toBe("2");
+    expect(cell(html, "scorecard-pts-p2-1")).toBe("4");
+    expect(cell(html, "scorecard-pts-p2-9")).toBe("0");
+  });
+
+  it("marks the POINTS leader, which is the stroke LOSER here", () => {
+    // The whole direction question, on this surface. `spiky` has the worse card
+    // and the better points; a low-wins build marks `steady`.
+    //
+    // The mark belongs on the POINTS total, since points are what the game is
+    // won on — and NOT on the strokes total, which would crown the low scorer
+    // on the same screen.
+    expect(isLeader(html, "scorecard-points-total-p2"), "spiky (32 pts) leads").toBe(true);
+    expect(isLeader(html, "scorecard-points-total-p1"), "steady (18 pts) does not").toBe(false);
+    expect(isLeader(html, "scorecard-total-p1"), "the STROKES total must not mark a leader").toBe(false);
+  });
+});
+
+describe("TRADITIONAL is unchanged when no rubric is passed", () => {
+  const html = render(null);
+
+  it("Total sums STROKES", () => {
+    expect(cell(html, "scorecard-total-p1")).toBe("45");
+    expect(cell(html, "scorecard-total-p2")).toBe("46");
+  });
+
+  it("renders no points row at all", () => {
+    // Not merely "shows strokes" — the points markup must be ABSENT, or a
+    // Traditional card gains a column of zeros.
+    expect(html).not.toContain("scorecard-pts-");
+  });
+});
+
+describe("an UNPLAYED stretch is not a zero-scoring one", () => {
+  /**
+   * EMPTY IS NOT UNKNOWN. Under Stableford 0 points is a REAL score — it is what
+   * the floor pays — so a back nine nobody has played and a back nine where
+   * every hole blew up would print the same `0` and lead a reader to opposite
+   * conclusions. The strokes row gets away with summing to zero because nobody
+   * shoots 0 strokes; this row cannot.
+   */
+  const UNITS18: ScoreUnit[] = Array.from({ length: 18 }, (_, i) => ({
+    label: String(i + 1),
+    section: i < 9 ? "front" : "back",
+    par: 4,
+    strokeIndex: i + 1,
+  }));
+  // Front nine bogeyed, back nine untouched.
+  const FRONT_ONLY: ScoreValues = {
+    p1: Object.fromEntries(UNITS18.slice(0, 9).map((u) => [u.label, 5])),
+  };
+  // Front nine bogeyed, back nine played and blown up — every hole past the floor.
+  const BLOWN_UP: ScoreValues = {
+    p1: Object.fromEntries(UNITS18.map((u, i) => [u.label, i < 9 ? 5 : 14])),
+  };
+  const one = [{ id: "p1", name: "Steady" }] as Participant[];
+  const html = (v: ScoreValues) =>
+    renderToStaticMarkup(<StandardGrid units={UNITS18} participants={one} values={v} rubric={BBMI} />);
+
+  it("an unplayed back nine renders no points subtotal", () => {
+    expect(cell(html(FRONT_ONLY), "scorecard-points-in-p1")).toBeNull();
+  });
+
+  it("a back nine that scored zero DOES render 0 — the two must differ", () => {
+    // The case that makes the one above meaningful. A build rendering "—" for
+    // both, or "0" for both, passes one of these and fails the other.
+    expect(cell(html(BLOWN_UP), "scorecard-points-in-p1")).toBe("0");
+  });
+
+  it("the played front nine still totals normally in both", () => {
+    expect(cell(html(FRONT_ONLY), "scorecard-points-out-p1")).toBe("18");
+    expect(cell(html(BLOWN_UP), "scorecard-points-out-p1")).toBe("18");
+  });
+});

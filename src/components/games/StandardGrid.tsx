@@ -1,18 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { ChevronDown, Flag, Check } from "lucide-react";
 import { useTeeVisibility } from "@/hooks/useTeeVisibility";
-import { computeStrokePlayStandings, netStrokeEntries, type RawStrokeEntry } from "@/lib/strokePlay";
+import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, type RawStrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
 import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
+import { stablefordPoints, type StablefordRubric } from "@/lib/stableford";
 import { GolfChip } from "./GolfChip";
 import {
   scoreCellKey,
   type ScoreUnit,
   type Participant,
   type ScoreValues,
-  type ScoreDirection,
   type SaveStatusMap,
 } from "./types";
 
@@ -42,7 +42,18 @@ interface StandardGridProps {
   units: ScoreUnit[];
   participants: Participant[];
   values: ScoreValues;
-  direction: ScoreDirection;
+  /**
+   * STABLEFORD only: the game’s rubric. Its presence switches this card from a
+   * STROKE card to a POINTS card — each cell gains the hole’s points beneath the
+   * gross, and Out / In / Total sum POINTS rather than strokes, which is the only
+   * subtotal that means anything under Stableford.
+   *
+   * Replaces a `direction: ScoreDirection` prop that every caller passed as the
+   * literal "low_wins" and this component never read — five hardcoded directions
+   * for a value nothing consumed. One argument, because a rubric and a scoring
+   * type cannot meaningfully disagree here and two arguments would let them.
+   */
+  rubric?: StablefordRubric | null;
   onCellTap?: (unitLabel: string) => void;
   orientation?: "participants-rows" | "participants-cols";
   /**
@@ -588,6 +599,7 @@ export function StandardGrid({
   teeRows = [],
   glorious = NO_GLORIOUS,
   gameId,
+  rubric = null,
 }: StandardGridProps) {
   const hasPar = units.length > 0 && units.every((u) => u.par != null);
 
@@ -618,6 +630,38 @@ export function StandardGrid({
       if (v != null) rawEntries.push({ participant_id: p.id, unit_label: u.label, value: v });
     }
   const entries = netStrokeEntries(rawEntries, pips ?? {});
+
+  // ── STABLEFORD: points per hole ────────────────────────────────
+  // Derived from the NET entry and the hole’s par through the shared
+  // `stablefordPoints`, so this card, the surface leaderboard and the persisted
+  // result all read the same rubric (CLAUDE.md #8). A hole with no par is
+  // skipped rather than scored against par 0 — the same skip the engine makes,
+  // and for the same reason: a missing par is a configuration gap, not a
+  // quintuple bogey.
+  const netByHole = netStrokeEntriesByHole(rawEntries, pips ?? {});
+  const ptsByCell = new Map<string, number>();
+  if (rubric) {
+    const parOf = new Map(units.map((u) => [u.label, u.par]));
+    for (const e of netByHole) {
+      const par = parOf.get(e.unit_label);
+      if (par == null) continue;
+      ptsByCell.set(scoreCellKey(e.participant_id, e.unit_label), stablefordPoints(e.value - par, rubric));
+    }
+  }
+  const ptsOf = (pid: string, l: string) => ptsByCell.get(scoreCellKey(pid, l));
+  const ptsSumOf = (pid: string, list: ScoreUnit[]) =>
+    list.reduce((a, u) => a + (ptsOf(pid, u.label) ?? 0), 0);
+  /**
+   * The points subtotal, or NULL when nothing in this stretch has been played.
+   *
+   * EMPTY IS NOT UNKNOWN, and under Stableford the collision is worse than it is
+   * for strokes: 0 points is a REAL score — it is what the floor pays — so an
+   * unplayed back nine and a back nine where every hole blew up render the same
+   * number. Nobody shoots 0 STROKES, which is why the strokes row can get away
+   * with summing to zero and this row cannot.
+   */
+  const ptsSubtotal = (pid: string, list: ScoreUnit[]): number | null =>
+    list.some((u) => ptsOf(pid, u.label) != null) ? ptsSumOf(pid, list) : null;
   const netTotals = new Map<string, number>();
   for (const e of entries)
     netTotals.set(e.participant_id, (netTotals.get(e.participant_id) ?? 0) + (e.value ?? 0));
@@ -626,14 +670,28 @@ export function StandardGrid({
     units.filter((u) => valOf(pid, u.label) != null).reduce((a, u) => a + (u.par ?? 0), 0);
   // Only when a stroke is actually in play — with no handicaps net ≡ gross and a
   // second identical column is noise.
-  const showNet = participants.some((p) => (pips?.[p.id]?.size ?? 0) > 0);
+  // Suppressed under Stableford: the points already have the handicap in them
+  // (they are computed from the NET differential), so a net STROKES column beside
+  // a points Total invites reading one as the other.
+  const showNet = !rubric && participants.some((p) => (pips?.[p.id]?.size ?? 0) > 0);
 
   // Leader (low NET total among participants who have any score). Gross and net
   // agree when nobody has strokes, so this is unchanged for a scratch game.
   const scoredIds = participants
     .filter((p) => Object.keys(values[p.id] ?? {}).length > 0)
     .map((p) => p.id);
-  const standings = computeStrokePlayStandings(scoredIds, entries);
+  // Under Stableford the standings rank POINTS and HIGHEST wins — the scoring
+  // TYPE goes in and the direction is derived (`rankingDirection`), so this card
+  // cannot mark a leader the board disagrees with.
+  const standings = rubric
+    ? computeStrokePlayStandings(
+        scoredIds,
+        netByHole
+          .filter((e) => ptsOf(e.participant_id, e.unit_label) != null)
+          .map((e) => ({ participant_id: e.participant_id, value: ptsOf(e.participant_id, e.unit_label)! })),
+        { scoring: "stableford" }
+      )
+    : computeStrokePlayStandings(scoredIds, entries);
   // ALL position-1 entities, so tied co-leaders each get the leader treatment.
   const leaderIds = new Set(
     scoredIds.length ? standings.filter((s) => s.position === 1).map((s) => s.entityId) : []
@@ -655,7 +713,8 @@ export function StandardGrid({
             // surface whose job is telling players apart. Taller rows are the
             // accepted trade there and here.
             return (
-              <div key={p.id} className="flex" style={{ minHeight: 44, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+              <Fragment key={p.id}>
+              <div className="flex" style={{ minHeight: 44, background: rowBg, borderBottom: rubric ? "none" : "1px solid var(--color-bt-subtle-border)" }}>
                 <div className="@container flex flex-col justify-center" style={{ ...nameCell, background: rowBg, padding: "6px 10px" }}>
                   <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35, overflowWrap: "anywhere" }}>
                     {p.name}
@@ -699,6 +758,9 @@ export function StandardGrid({
                     </button>
                   );
                 })}
+                {/* Out / In / Total are STROKES on this row. Under Stableford the
+                    points get their OWN row beneath rather than replacing these —
+                    the official score stays the official score. */}
                 {hasSections && <SubCell value={sumOf(p.id, front)} vsPar={hasPar ? vsParOf(p.id, front) : undefined} />}
                 {hasSections && <SubCell value={sumOf(p.id, back)} vsPar={hasPar ? vsParOf(p.id, back) : undefined} />}
                 {/* Total is GROSS — what you shot. The leader marker rides NET
@@ -709,7 +771,7 @@ export function StandardGrid({
                   vsPar={hasPar ? vsParOf(p.id, units) : undefined}
                   wide
                   bold
-                  leader={!showNet && isLeader}
+                  leader={!rubric && !showNet && isLeader}
                   testId={`scorecard-total-${p.id}`}
                 />
                 {showNet && (
@@ -724,6 +786,63 @@ export function StandardGrid({
                 )}
                 <RightGutter />
               </div>
+              {/* ── The STABLEFORD row ──────────────────────────────────────
+                  What a player SHOT and what it SCORED are two different facts,
+                  so they get two rows rather than two numbers crammed into one
+                  30px cell. The card stays a stroke card you can spot-correct
+                  against — tapping a cell still jumps to that hole's entry — and
+                  the points read as a derived line beneath, which is what they
+                  are. It is also how the 2024 card separated Score from Pts, in
+                  the axis a phone has room for.
+
+                  The pair is bound visually by dropping the score row's bottom
+                  border (above) so the two read as one block rather than as two
+                  players. */}
+              {rubric && (
+                <div
+                  className="flex"
+                  style={{ minHeight: 30, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+                  data-testid={`scorecard-points-row-${p.id}`}
+                >
+                  <div className="flex flex-col justify-center" style={{ ...nameCell, background: rowBg, padding: "0 10px" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-bt-text-dim)" }}>
+                      Points
+                    </span>
+                  </div>
+                  {units.map((u, ui) => (
+                    <div
+                      key={u.label}
+                      className="relative flex items-center justify-center"
+                      style={{
+                        ...cellBase,
+                        minHeight: 30,
+                        ...divider(u.label),
+                        ...(isGloriousCol(ui) ? gloriousWash : {}),
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "var(--color-bt-text-dim)",
+                      }}
+                      data-testid={`scorecard-pts-${p.id}-${u.label}`}
+                    >
+                      {ptsOf(p.id, u.label) ?? ""}
+                    </div>
+                  ))}
+                  {hasSections && <PtsSub value={ptsSubtotal(p.id, front)} testId={`scorecard-points-out-${p.id}`} />}
+                  {hasSections && <PtsSub value={ptsSubtotal(p.id, back)} testId={`scorecard-points-in-${p.id}`} />}
+                  {/* The leader marker lives HERE under Stableford, not on the
+                      strokes Total — points are what the game is won on. */}
+                  <PtsSub
+                    value={ptsSubtotal(p.id, units)}
+                    wide
+                    bold
+                    leader={isLeader}
+                    testId={`scorecard-points-total-${p.id}`}
+                  />
+                  {showNet && <BlankSub wide />}
+                  <RightGutter />
+                </div>
+              )}
+              </Fragment>
             );
           })}
           </>
@@ -864,6 +983,13 @@ function VsPar({ diff }: { diff: number }) {
 
 /** Blank subtotal cell — keeps the Out/In/Total/Net tint columns continuous on a
  *  structure row that has no meaningful value there (an index sum, a net par). */
+/** A points subtotal. `null` renders the same em-dash an unplayed hole does —
+ *  “not played” and “scored nothing” must not look alike (see `ptsSubtotal`). */
+function PtsSub({ value, wide, bold, leader, testId }: { value: number | null; wide?: boolean; bold?: boolean; leader?: boolean; testId?: string }) {
+  if (value == null) return <BlankSub wide={wide} />;
+  return <SubCell value={value} wide={wide} bold={bold} leader={leader} testId={testId} />;
+}
+
 function BlankSub({ wide }: { wide?: boolean }) {
   return (
     <div

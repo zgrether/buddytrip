@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { ChevronLeft, Table2, Settings } from "lucide-react";
-import { computeStrokePlayStandings, netStrokeEntries, type RawStrokeEntry } from "@/lib/strokePlay";
+import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, stablefordEntries, type RawStrokeEntry } from "@/lib/strokePlay";
+import type { StablefordRubric } from "@/lib/stableford";
 import { Avatar } from "@/components/Avatar";
 import { StrokeKeypad } from "./StrokeKeypad";
 import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
@@ -18,7 +19,6 @@ import {
   type ScoreUnit,
   type Participant,
   type ScoreValues,
-  type ScoreDirection,
   type SaveStatusMap,
 } from "./types";
 
@@ -39,7 +39,6 @@ interface ScoreEntryViewProps {
   units: ScoreUnit[];
   participants: Participant[];
   values: ScoreValues;
-  direction: ScoreDirection;
   onChange: (participantId: string, unitLabel: string, value: number) => void;
   onClear?: (participantId: string, unitLabel: string) => void;
   currentHole?: number; // 1-based index into units; defaults to 1
@@ -66,6 +65,14 @@ interface ScoreEntryViewProps {
    *  a different player than the standings do. Omit for formats with no handicap
    *  (stroke play / Quick Game) → net ≡ gross and nothing changes. Net = gross −
    *  1 on a stroked hole. */
+  /**
+   * STABLEFORD only: the game’s rubric. With it the running total becomes a
+   * POINTS total and “Leading” means the HIGHEST — without it this strip crowns
+   * the low scorer while the scorecard, the board and the banked result all
+   * score points. Two surfaces disagreeing about one game, which is the shape
+   * this whole feature keeps having to guard against.
+   */
+  rubric?: StablefordRubric | null;
   pips?: Record<string, Set<string>>;
   /** #550: hide the view's own header — as a panel the app bar carries
    *  back/title (+ the config gear). The scorecard affordance relocates to the
@@ -104,6 +111,7 @@ export function ScoreEntryView({
   refusals,
   onRetryCell,
   pips,
+  rubric = null,
   banner,
   hideHeader = false,
   finishSubtext = "Saves results · shows final standings",
@@ -164,7 +172,17 @@ export function ScoreEntryView({
   const scoredIds = participants
     .filter((p) => Object.keys(values[p.id] ?? {}).length > 0)
     .map((p) => p.id);
-  const standings = computeStrokePlayStandings(scoredIds, entries);
+  // Under Stableford the strip ranks POINTS, highest first — same rubric, same
+  // shared functions the scorecard and the persisted result use, so the three
+  // cannot disagree about who is leading.
+  const parByHole = Object.fromEntries(units.map((u) => [u.label, u.par ?? 0]));
+  const standings = rubric
+    ? computeStrokePlayStandings(
+        scoredIds,
+        stablefordEntries(netStrokeEntriesByHole(rawEntries, pips ?? {}), parByHole, rubric),
+        { scoring: "stableford" }
+      )
+    : computeStrokePlayStandings(scoredIds, entries);
   const standingById = new Map(standings.map((s) => [s.entityId, s]));
   const totalOf = (pid: string) => standingById.get(pid)?.rawScore ?? 0;
   const isLeading = (pid: string) =>
@@ -371,7 +389,7 @@ export function ScoreEntryView({
                     ) : (
                       <>
                         <span style={{ fontWeight: 400, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
-                          {total} {anyStrokes ? "net" : "total"}
+                          {total} {rubric ? "pts" : anyStrokes ? "net" : "total"}
                         </span>
                         {par != null && v != null && golfWord(v, par) ? (
                           <span style={{ fontWeight: 600, color: GOLF_STYLE[golfResult(v, par)!].fg }}>

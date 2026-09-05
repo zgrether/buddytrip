@@ -44,7 +44,6 @@ const render = (pips?: Record<string, Set<string>>) =>
       participants={participants}
       values={values}
       pips={pips}
-      direction="low_wins"
       currentHole={1}
       onChange={() => {}}
     />
@@ -82,7 +81,6 @@ describe("ScoreEntryView — running total + Leading score NET", () => {
         participants={participants}
         values={values}
         pips={{ zach: new Set(["2", "10"]) }}
-        direction="low_wins"
         currentHole={2}
         onChange={() => {}}
       />
@@ -117,7 +115,6 @@ describe("ScoreEntryView — 'No scores yet' keys on having a score, not a 0 tot
         // would have mislabelled as "No scores yet".
         values={{ zach: { "2": 1 } }}
         pips={{ zach: new Set(["2"]) }}
-        direction="low_wins"
         currentHole={1}
         onChange={() => {}}
       />

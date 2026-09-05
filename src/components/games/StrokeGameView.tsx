@@ -28,6 +28,7 @@ import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerTakesAll, type StrokeConfigDraft, type StrokeScoringDraft } from "@/lib/configDraft";
 import { StrokeScoringRow } from "@/components/games/StrokeScoringRow";
+import { scoringOf } from "@/lib/stableford";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
@@ -1182,6 +1183,13 @@ export function StrokeGameView() {
     // The read-only scorecard grid — scoped to the group being scored (entry), else the
     // whole field (final). onCellTap (jump to a hole) is scorer-only.
     const gridParticipants = entryGroupId ? entryParticipants : fieldParticipants;
+    // The SERVER’s rubric, deliberately — not `configDraft.scoring`. The card
+    // shows what these scores were actually scored by; a staged, unsaved rubric
+    // change would repaint every cell with points the game has not been scored
+    // on. Same reasoning the Danger zone uses for reading the server flag.
+    // (In practice the two cannot differ once scores exist — SCORING_TYPE_LOCKED
+    // — but the card should be right for the reason, not by luck.)
+    const cardRubric = scoringOf(gameQ.data?.config).rubric;
     const scorecardGrid = (
       <StandardGrid
         units={scUnits}
@@ -1190,8 +1198,8 @@ export function StrokeGameView() {
         gameId={game.id}
         participants={gridParticipants}
         values={values}
-        direction="low_wins"
         pips={entryPips}
+        rubric={cardRubric}
         saveStatus={saveStatus}
         onCellTap={canScoreStroke ? (label) => {
           setCurrentHole(Number(label) || 1);
@@ -1221,12 +1229,12 @@ export function StrokeGameView() {
           ) : (
             <>
               <ScoreEntryView
+                rubric={cardRubric}
                 hideHeader={inPanel}
                 gameName={entryGroup.name}
                 units={scUnits}
                 participants={entryParticipants}
                 values={values}
-                direction="low_wins"
                 currentHole={currentHole}
                 onHoleChange={setCurrentHole}
                 onChange={onChange}

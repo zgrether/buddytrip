@@ -903,7 +903,6 @@ export function RackGameView() {
         gameId={gid}
         participants={ps}
         values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
-        direction="low_wins"
         pips={groupPips}
         onCellTap={readOnly ? undefined : (label) => { setCurrentHole(Number(label) || 1); back(); }}
       />
@@ -928,7 +927,6 @@ export function RackGameView() {
             units={scUnits}
             participants={ps}
             values={Object.fromEntries(ps.map((p) => [p.id, mergedFor(p.id)]))}
-            direction="low_wins"
             currentHole={currentHole}
             onHoleChange={setCurrentHole}
             onChange={onChange}
