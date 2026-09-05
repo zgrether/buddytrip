@@ -94,6 +94,25 @@ describe("OutcomeScorecard — render (react-dom/server)", () => {
     expect(html).toContain("2&amp;1"); // React-escaped "2&1"
   });
 
+  /**
+   * THE REFERENCE MUST NOT MOVE. This surface is what the stroke scorecard is
+   * being matched to, and its result sentence was just repointed at the shared
+   * `matchDefeatText` (#1302 shared it between the two ENTRY views; this is the
+   * third caller).
+   *
+   * The separator is the thing at risk: the entry banners use a middle dot and
+   * this caption uses an EM DASH — a per-surface choice that predates the
+   * extraction, not drift between copies. Asserting the dash exactly is what
+   * fails a build that "unified" the punctuation on the way through, which is
+   * the tempting and wrong move.
+   */
+  it("keeps its em dash after the sentence was shared, not the entry banners' middle dot", () => {
+    const outcomes: HoleOutcomeRow[] = [{ hole: 1, result: "side_a" }, { hole: 2, result: "side_a" }];
+    const html = renderToStaticMarkup(<OutcomeScorecard units={units} a={a} b={b} outcomes={outcomes} />);
+    expect(html).toContain("Brad def. Johnny D — 2&amp;1");
+    expect(html).not.toContain("Brad def. Johnny D · 2&amp;1");
+  });
+
   it("no outcomes yet → no pills, no closeout, no AS", () => {
     const html = renderToStaticMarkup(<OutcomeScorecard units={units} a={a} b={b} outcomes={[]} />);
     expect(html).not.toContain("outcome-lead-pill");

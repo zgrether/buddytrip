@@ -100,6 +100,13 @@ interface StandardGridProps {
    * inside `gloriousConfig`/`isGloriousHole` makes that redundant but explicit.
    */
   glorious?: GloriousConfig;
+  /**
+   * The finished-match sentence (`matchDefeatText`), rendered as a caption under
+   * the grid. MATCH PLAY ONLY — every other caller omits it, which is what keeps
+   * a format-agnostic grid from having to know what a match is. Null/undefined
+   * while the match is still live.
+   */
+  resultLine?: string | null;
 }
 
 /**
@@ -649,6 +656,7 @@ export function StandardGrid({
   glorious = NO_GLORIOUS,
   gameId,
   rubric = null,
+  resultLine,
 }: StandardGridProps) {
   const hasPar = units.length > 0 && units.every((u) => u.par != null);
 
@@ -922,6 +930,27 @@ export function StandardGrid({
           </>
         )}
       </ScorecardChrome>
+      {/*
+        * The finished-match result line — PARITY with `OutcomeScorecard`, which
+        * has said who won since it was built while this card, showing the very
+        * strokes the result is computed from, said nothing.
+        *
+        * OPT-IN BY CONSTRUCTION. This grid has seven callers — stroke, rack,
+        * quick game, two preview sheets — and none of them has a match. Rather
+        * than teach a format-agnostic grid to derive match state (a second
+        * `matchState` call behind a format check, in the one component that must
+        * not know about formats), the caller passes the finished sentence or
+        * passes nothing. A caller with no match cannot accidentally acquire one.
+        */}
+      {resultLine && (
+        <p
+          className="text-center"
+          style={{ padding: "12px 10px 2px", fontSize: 13, fontWeight: 800, color: "var(--color-bt-place-1-text)" }}
+          data-testid="scorecard-result-line"
+        >
+          {resultLine}
+        </p>
+      )}
       {/* Legend is pinned below the scroller — it does NOT scroll with the
           grid and doesn't apply to lead rows, so it's a sibling of the shared
           chrome rather than rendered inside it. */}

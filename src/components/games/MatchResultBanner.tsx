@@ -75,13 +75,30 @@ export function MatchResultBanner({
  *
  * A halved match names no winner — "Match halved · AS" — which is why this is a
  * function over an optional pair rather than a template with a winner in it.
+ *
+ * ── Four callers now, and the separator is why it is a parameter ───────────
+ *
+ * The two entry views render this inside the green BAND above. Two scorecards
+ * render the same sentence as a centred caption under the grid — no band, no
+ * border, weight 800 — and they use an EM DASH.
+ *
+ * That is not drift between copies of one treatment. A grep for `def.` finds
+ * four sites and reads like four copies of a banner; side by side, two share
+ * the band and four share the words, and the scorecards' dash is a deliberate
+ * per-surface choice that predates this extraction. Unifying the punctuation
+ * while extracting would have been a silent restyle of a surface nobody asked
+ * to change, so the sentence is shared and the punctuation is passed in.
+ *
+ * If the two should agree, that is a taste call to take deliberately: change
+ * the default and drop the argument at the two call sites that pass it.
  */
 export function matchDefeatText(
   winner: { name: string } | null | undefined,
   loser: { name: string } | null | undefined,
-  margin: string | null
+  margin: string | null,
+  separator = "·"
 ): string {
   return winner && loser
-    ? `${winner.name} def. ${loser.name} · ${margin}`
-    : `Match halved · ${margin}`;
+    ? `${winner.name} def. ${loser.name} ${separator} ${margin}`
+    : `Match halved ${separator} ${margin}`;
 }

@@ -20,6 +20,7 @@ import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MatchOutcomeEntryView } from "@/components/games/MatchOutcomeEntryView";
+import { matchDefeatText } from "@/components/games/MatchResultBanner";
 import { OutcomeScorecard } from "@/components/games/OutcomeScorecard";
 import { MemberNotReady } from "@/components/games/MemberNotReady";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
@@ -1664,6 +1665,16 @@ export function MatchGameView() {
         pips={entryPips}
         saveStatus={saveStatus}
         glorious={glorious}
+        /* Parity item 2: the stroke scorecard now says who won, the way the
+           outcome scorecard always has. Derived from the SAME matchState the
+           card's margin comes from, so the two cannot disagree about one match. */
+        resultLine={(() => {
+          const st = matchState(decidedFor(selectedGroup), scUnits.length, glorious);
+          if (!st.over) return null;
+          const w = st.leader === "A" ? selectedGroup.a : st.leader === "B" ? selectedGroup.b : null;
+          const l = st.leader === "A" ? selectedGroup.b : st.leader === "B" ? selectedGroup.a : null;
+          return matchDefeatText(w, l, st.margin, "—");
+        })()}
         onCellTap={readOnly ? undefined : (label) => {
           setCurrentHole(Number(label) || 1);
           matchBack();
