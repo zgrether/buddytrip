@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { PickemMatchCard, h2hNote } from "./PickemMatchCard";
 import { PickemHeadToHead } from "./PickemHeadToHead";
+import { PickemMatchPlayCard } from "./PickemMatchPlayCard";
 import { PickemTeamRollUp } from "./PickemTeamRollUp";
 import { PickemUnassignedNote } from "./PickemUnassignedNote";
 import { buildBoardRows, matchStanding, type BoardRow } from "@/lib/pickemBoard";
@@ -220,9 +221,52 @@ export function PickemBoard({
 
       {rollUp === "individual_matches" ? (
         <>
-          {matches.map((m) => {
+          {matches.map((m, i) => {
             const rows = matchRows.get(m.id);
             if (!rows || !m.sideAId || !m.sideBId) return null;
+
+            /**
+             * ── TWO PRESENTATIONS, AND THE SCORING PICKS ONE ────────────────
+             *
+             * This is a property of the game, not a preference.
+             *
+             * CONFIDENCE OFF — every game is worth one before its multiplier,
+             * so the units are commensurable and a SEGMENT bar is honest: each
+             * mark is one game, and the row shows the shape of the match. This
+             * case IS match play (game for hole, both-right-or-both-wrong for
+             * halved, multiplier for glorious), so it renders the SHARED
+             * `MatchCard` driven through the `weightOf` seam — not a second
+             * card that resembles it. Every future change to match play's
+             * presentation lands here too, which is the point.
+             *
+             * CONFIDENCE ON — a single game can swing up to 32, and a segment
+             * bar draws every unit the same width. A 1-point game and a
+             * 32-point game would be the same mark, so the bar would be
+             * actively misleading about WHERE the match was won. The continuous
+             * line bar is used instead: it measures the lead rather than
+             * claiming the units are equal.
+             */
+            if (!useConfidence) {
+              return (
+                <PickemMatchPlayCard
+                  key={m.id}
+                  matchNumber={i + 1}
+                  aName={nameOf(m.sideAId)}
+                  bName={nameOf(m.sideBId)}
+                  slate={slate}
+                  rows={rows}
+                  aColor={avatarFor(m.sideAId).teamColor}
+                  bColor={avatarFor(m.sideBId).teamColor}
+                  picked={{
+                    a: (sheets[m.sideAId] ?? []).length > 0,
+                    b: (sheets[m.sideBId] ?? []).length > 0,
+                  }}
+                  mine={meId != null && (m.sideAId === meId || m.sideBId === meId)}
+                  onOpen={() => setOpenMatch(m.id)}
+                />
+              );
+            }
+
             return (
               <PickemMatchCard
                 key={m.id}

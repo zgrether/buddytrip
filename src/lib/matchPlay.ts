@@ -11,7 +11,9 @@
  * remaining swing (`remainingSwing`) for close-out/dormie — see `gloriousHoles.ts`.
  * With no glorious config every weight is 1 and this is exactly standard match play.
  */
-import { holeWeight, remainingSwing, NO_GLORIOUS, type GloriousConfig } from "./gloriousHoles";
+/* `holeWeight` is no longer imported here: the engine takes a weight FUNCTION
+   and `toUnitWeight` is the one place golf's config becomes one. */
+import { remainingSwing, toUnitWeight, NO_GLORIOUS, type Weighting } from "./gloriousHoles";
 
 export type HoleResult = "W" | "L" | "H"; // A vs B on NET; decided holes only, play order
 
@@ -214,30 +216,50 @@ function unplayedHoles(holeCount: number, played: Set<number>): number[] {
  * anything after (a "Play it out" hole) is ignored, so a closed 3&2 can't
  * recompute to nonsense when the trailing player wins 17 & 18.
  *
- * WEIGHTED for Glorious Finishing Holes: each hole's win/loss counts for
- * `holeWeight(hole, cfg)` (2× on the last N holes), and close-out/dormie compare the
- * lead to the WEIGHTED `remainingSwing` over the unplayed holes — NOT raw holes left
- * (§4). So a 4-up lead with 3 glorious holes (swing 6) stays live; 7-up is closed.
- * With `NO_GLORIOUS` every weight is 1 and this is byte-for-byte standard match play.
+ * WEIGHTED per UNIT: each unit's win/loss counts for `weightOf(unit)`, and
+ * close-out/dormie compare the lead to the WEIGHTED swing over the unplayed units —
+ * NOT raw units left (§4). So a 4-up lead with 3 glorious holes (swing 6) stays live;
+ * 7-up is closed. With `NO_GLORIOUS` every weight is 1 and this is byte-for-byte
+ * standard match play.
+ *
+ * ── THE WEIGHT IS PASSED IN, NOT LOOKED UP ────────────────────────────────
+ *
+ * `weighting` takes golf's `GloriousConfig` (as it always has — every existing
+ * caller is untouched) OR a bare `UnitWeight` function. That second form is what
+ * makes this engine format-agnostic, and it removed three of golf's assumptions
+ * from it in one change: `holeWeight` returns the literal `1 | 2`, selects
+ * POSITIONALLY (`hole > 18 − n`, a trailing window), and measures against a
+ * hardcoded 18 — so on a shorter unit count it is silently inert.
+ *
+ * All three blocked pick'em, whose weights are 1..4, chosen PER GAME rather than
+ * by position, over a slate that is not 18 long. A pick'em match with confidence
+ * off IS match play — game for hole, both-right-or-both-wrong for halved,
+ * multiplier for glorious — and this is the line that lets it say so with the
+ * same engine rather than a second one that resembles it.
  */
-export function matchState(decided: DecidedHole[], holeCount = HOLES, cfg: GloriousConfig = NO_GLORIOUS): MatchState {
+export function matchState(
+  decided: DecidedHole[],
+  holeCount = HOLES,
+  weighting: Weighting = NO_GLORIOUS
+): MatchState {
+  const weightOf = toUnitWeight(weighting);
   const played = new Set<number>();
   let diff = 0;
   let count = 0;
   for (const { hole, result } of decided) {
     count++;
     played.add(hole);
-    const w = holeWeight(hole, cfg);
+    const w = weightOf(hole);
     if (result === "W") diff += w;
     else if (result === "L") diff -= w;
-    const holesLeftRaw = holeCount - count; // raw holes still to play (margin Y)
-    const swingLeft = remainingSwing(unplayedHoles(holeCount, played), cfg); // weighted (§4)
+    const holesLeftRaw = holeCount - count; // raw units still to play (margin Y)
+    const swingLeft = remainingSwing(unplayedHoles(holeCount, played), weightOf); // weighted (§4)
     const up = Math.abs(diff);
     if (holesLeftRaw > 0 && up > swingLeft) return finalize(count, diff, holesLeftRaw, swingLeft, true, true);
     if (holesLeftRaw === 0) break;
   }
   const holesLeftRaw = holeCount - count;
-  const swingLeft = remainingSwing(unplayedHoles(holeCount, played), cfg);
+  const swingLeft = remainingSwing(unplayedHoles(holeCount, played), weightOf);
   return finalize(count, diff, holesLeftRaw, swingLeft, holesLeftRaw === 0, false);
 }
 
