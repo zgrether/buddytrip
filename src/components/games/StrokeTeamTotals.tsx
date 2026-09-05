@@ -17,25 +17,46 @@ import { ordinalShort } from "@/components/competition/CompetitionGamesPanel";
  * phone, collapsing this section later is a smaller change than unpicking a
  * nesting.
  *
- * ── THRU is not decoration ──────────────────────────────────────────────────
+ * ── NO THRU COLUMN, and the reason is that it was not a quantity ────────────
  *
- * A team's total is only comparable against another team's when both have
- * played the same holes, and mid-round they have not. The individual board
- * solves this by ranking on to-par over SCORED holes, so a player thru 9 and a
- * player thru 18 read fairly; a team TOTAL cannot do that, because it is the
- * banked figure the competition scores and summing to-par would be a second,
- * different number wearing the same name.
+ * This section briefly carried one, to show that two teams mid-round are not a
+ * like-for-like comparison. It was removed, and the argument for removing it is
+ * better than the argument that put it there: **a single player's THRU is a
+ * real number, and a team's is not.** One player thru 9 has played nine holes.
+ * A team "thru 27" is three players' unrelated progress added together — a sum
+ * over different people, which is not a hole count, not a position in a round,
+ * and not anything a reader can act on. Naming it THRU borrows the individual
+ * column's meaning for a figure that does not have it.
  *
- * So the incomparability is SHOWN rather than hidden: every row carries how many
- * holes its team has played, and two teams on different counts are visibly not
- * yet a like-for-like comparison. Displaying a rank with no way to see that is
- * how a board states more than it knows.
+ * The individual board keeps its THRU for exactly that reason: there it says
+ * what it appears to say.
+ *
+ * ── The ranking stays, and it is a RUNNING STATUS ───────────────────────────
+ *
+ * Dropping the column does not restore the comparability problem, because the
+ * ranking was never claiming the totals are comparable right now. It is a
+ * running status that CONVERGES as the round completes — wrong-ish early, exact
+ * at the end, in the ordinary way a live leaderboard is. That is a familiar
+ * contract a reader already holds, and it needed a caveat column less than it
+ * needed to not be dressed up as more.
+ *
+ * ── Where this gets displayed properly ──────────────────────────────────────
+ *
+ * A live PROJECTION — points for the day as they currently stand — which is
+ * what match play already has via `liveProjection.ts` folded into the
+ * competition board's pill. Stroke has no such arm yet (#1120), and when it
+ * gains one, that is the surface that answers "where does this actually stand"
+ * honestly, because a projection says it is a projection.
+ *
+ * **Deliberately NOT points-per-hole here.** A rate normalises the mid-round
+ * gap and would make the totals look comparable, but it is a projection wearing
+ * a fact's clothes — presented as a plain column with no statement of what it
+ * assumes. The projection work does it correctly or it does not get done.
  */
 export function StrokeTeamTotals({
   rows,
   teams,
   rubric,
-  thruByTeam,
 }: {
   /** From `computeStrokeTeamStandings` — the same function the finalize banks. */
   rows: StrokeTeamStanding[];
@@ -48,13 +69,6 @@ export function StrokeTeamTotals({
    * STROKES and fewer is. The ordering already arrived correct in `rows`.
    */
   rubric: StablefordRubric | null;
-  /**
-   * teamId -> holes played across its counted players. A SEPARATE prop rather
-   * than a field on the standing, because `computeStrokeTeamStandings` is the
-   * function the finalize banks and it has no business growing a display count.
-   * The view sums it off the individual board rows, which already carry it.
-   */
-  thruByTeam: Record<string, number>;
 }) {
   const byId = new Map(teams.map((t) => [t.id, t]));
 
@@ -68,12 +82,9 @@ export function StrokeTeamTotals({
           Team totals
         </span>
         {rows.length > 0 && (
-          <div className="flex items-center gap-4">
-            <span className="w-10 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Thru</span>
-            <span className="w-12 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-              {rubric ? "Pts" : "Strk"}
-            </span>
-          </div>
+          <span className="w-12 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+            {rubric ? "Pts" : "Strk"}
+          </span>
         )}
       </div>
 
@@ -115,13 +126,6 @@ export function StrokeTeamTotals({
                 />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                   {t?.name ?? "Team"}
-                </span>
-                <span
-                  className="w-10 text-right text-[13px] tabular-nums"
-                  style={{ color: "var(--color-bt-text-dim)" }}
-                  data-testid={`stroke-team-thru-${r.teamId}`}
-                >
-                  {thruByTeam[r.teamId] ?? 0}
                 </span>
                 <span
                   className="w-12 text-right text-sm font-bold tabular-nums"
