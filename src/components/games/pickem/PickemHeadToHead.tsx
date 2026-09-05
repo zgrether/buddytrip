@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
+import { PickemBackHeader } from "./PickemBackHeader";
 import { Avatar } from "@/components/Avatar";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
 import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
@@ -149,27 +149,25 @@ export function PickemHeadToHead({
 
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-board-detail">
-      <div className="flex items-center gap-1 px-1">
-        <button
-          type="button"
-          onClick={onBack}
-          data-testid="pickem-board-back"
-          className="-ml-1 flex shrink-0 items-center justify-center"
-          style={{ width: 32, height: 32, color: "var(--color-bt-accent)" }}
-          aria-label="All matches"
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <span className="min-w-0 flex-1 truncate" style={{ fontSize: 17, fontWeight: 700 }}>
-          {aName} vs {bName}
-        </span>
-        <span
-          className="shrink-0"
-          style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-        >
-          Match {matchIndex} of {matchCount}
-        </span>
-      </div>
+      <PickemBackHeader
+        testId="pickem-h2h-header"
+        backTestId="pickem-board-back"
+        backLabel="All matches"
+        onBack={onBack}
+        title={
+          <>
+            {aName} vs {bName}
+          </>
+        }
+        trailing={
+          <span
+            className="shrink-0"
+            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+          >
+            Match {matchIndex} of {matchCount}
+          </span>
+        }
+      />
 
       <div
         className="flex items-center gap-3 rounded-xl px-3 py-3"
