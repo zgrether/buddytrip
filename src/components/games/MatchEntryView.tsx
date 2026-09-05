@@ -9,7 +9,7 @@ import { StrokeKeypad } from "./StrokeKeypad";
 import { MatchCard } from "./MatchCard";
 import type { SidePlayer } from "./MatchSides";
 import { fitName, ENTRY_NAME_CAPACITY_EM } from "@/lib/nameLadder";
-import { HoleProgress, NavArrow, BottomCTA } from "./entryChrome";
+import { NavArrow, BottomCTA } from "./entryChrome";
 import { Avatar } from "@/components/Avatar";
 import { GolfChip } from "./GolfChip";
 import { ScoreSaveBadge } from "./ScoreSaveBadge";
@@ -206,7 +206,6 @@ export function MatchEntryView({
       ? override.pid
       : (interactiveHere.find((p) => valueFor(p.id, label) == null)?.id ?? null);
   const activeParticipant = allParticipants.find((p) => p.id === activePid) ?? null;
-  const isCorrection = activePid != null && valueFor(activePid, label) != null;
 
   // ── Save status (Connectivity Layer 1) ────────────────────────────────
   const errorCount = Object.values(saveStatus).filter((s) => s === "error").length;
@@ -375,17 +374,17 @@ export function MatchEntryView({
       <div className="flex shrink-0 items-center justify-between" style={{ padding: "10px 16px 6px" }}>
         <NavArrow dir="prev" disabled={hole <= 1} onClick={() => goHole(hole - 1)} />
         <div className="flex flex-col items-center" style={{ gap: 8, flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
-            Hole {label}
-          </div>
-          <div className="flex items-center justify-center" style={{ gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
-              {[
-                par != null ? `Par ${par}` : null,
-                unit?.yardage != null ? `${unit.yardage} yds` : null,
-                unit?.strokeIndex != null ? `Hdcp ${unit.strokeIndex}` : null,
-              ].filter(Boolean).join(" · ")}
-            </span>
+          {/*
+            * THE SCORECARD BUTTON SITS BESIDE THE HOLE NUMBER, not on the meta
+            * line below it. It is 28px tall among 13px text, so down there it
+            * set that line's height on its own — the line cost 28px to show
+            * "Par 3 · 152 yds · Hdcp 13". Beside a 28px numeral it costs
+            * nothing, and the row it left collapses to its text.
+            */}
+          <div className="flex items-center justify-center" style={{ gap: 10 }}>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--color-bt-text)" }}>
+              Hole {label}
+            </div>
             {onOpenGrid && (
               <button
                 type="button"
@@ -399,7 +398,27 @@ export function MatchEntryView({
               </button>
             )}
           </div>
-          <HoleProgress count={units.length} currentHole={hole} completed={completedHoleNumbers} />
+          <div className="flex items-center justify-center" style={{ gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
+              {[
+                par != null ? `Par ${par}` : null,
+                unit?.yardage != null ? `${unit.yardage} yds` : null,
+                unit?.strokeIndex != null ? `Hdcp ${unit.strokeIndex}` : null,
+              ].filter(Boolean).join(" · ")}
+            </span>
+          </div>
+          {/*
+            * NO DOT STRIP ON MATCH PLAY. `HoleProgress` is one shared component
+            * with no format branch, so this is the CALL that goes, not the
+            * component — `ScoreEntryView` (stroke) and `CoursePicker` keep
+            * theirs untouched.
+            *
+            * It is a strictly weaker duplicate here: the `MatchCard` segment bar
+            * directly above already shows every hole, whether it has been
+            * played, and who won it — including the missed-hole case the dots
+            * exist for. Stroke play has no segment bar, which is why it keeps
+            * them: there they are the only thing saying which holes are done.
+            */}
         </div>
         <NavArrow dir="next" disabled={hole >= units.length} onClick={() => goHole(hole + 1)} />
       </div>
@@ -475,22 +494,16 @@ export function MatchEntryView({
             </div>
           );
         })}
-        {activePid && isCorrection && (
-          <div
-            className="flex items-center gap-1.5"
-            style={{
-              marginTop: 8,
-              padding: "6px 12px",
-              borderRadius: 8,
-              background: "var(--color-bt-warning-faint)",
-              border: "1px solid var(--color-bt-warning-border)",
-              color: "var(--color-bt-warning)",
-              fontSize: 13,
-            }}
-          >
-            Tap a new number to update
-          </div>
-        )}
+        {/*
+          * "Tap a new number to update" is GONE — the largest single block on a
+          * screen whose keypad was falling below the fold, and it explained the
+          * only thing this screen can do. `STYLE_GUIDE` calls out copy that
+          * explains what people will naturally understand; a keypad under a
+          * selected row is not ambiguous.
+          *
+          * Nothing replaces it: this was the whole affordance, not a hint
+          * attached to one.
+          */}
       </div>
 
       <div className="flex-1" />
