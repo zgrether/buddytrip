@@ -108,6 +108,102 @@ describe("a name too wide for its slot is ABBREVIATED, not truncated", () => {
     expect(html).toContain(SHORT_B);
   });
 
+  /**
+   * A SIDE IS NOT A PERSON, and abbreviating one invents somebody.
+   *
+   * Score entry's row is per SIDE (one input per side), and a 2v2 side's `name`
+   * is the joined "R & B" label. Laddering THAT ran `initialSurname` over two
+   * people: first token's initial + last token, so
+   *
+   *     "JD Shumpert & Tyler Larson"   -> "J. Larson"
+   *     "Matt Facchine & Fake Grether" -> "M. Grether"
+   *
+   * Neither person exists. This shipped in #1288 and was found on a phone, not
+   * by any test here — the surfaces that render per player (the match card, the
+   * scorecard) were correct the whole time, which is what made it survive.
+   *
+   * It is worse than the truncation the ladder exists to prevent: a clipped name
+   * is visibly incomplete, a fabricated one reads as correct.
+   */
+  it("score entry — a 2v2 side abbreviates PER PLAYER, never the joined label", () => {
+    const matches: MatchGroupData[] = [
+      {
+        matchId: "m1",
+        label: "Match 1",
+        a: { id: "pgA", name: "JD Shumpert & Tyler Larson", color: "#22c55e" },
+        b: { id: "pgB", name: "Matt Facchine & Fake Grether", color: "#f97316" },
+        aPlayers: [
+          { id: "p1", name: "JD Shumpert" },
+          { id: "p2", name: "Tyler Larson" },
+        ],
+        bPlayers: [
+          { id: "p3", name: "Matt Facchine" },
+          { id: "p4", name: "Fake Grether" },
+        ],
+        strokesA: 0,
+        strokesB: 0,
+      },
+    ];
+    const html = renderToStaticMarkup(
+      <MatchEntryView
+        gameName="Stress"
+        units={units}
+        matches={matches}
+        values={{}}
+        onChange={() => {}}
+        currentHole={1}
+      />
+    );
+
+    /**
+     * THE FABRICATIONS, BY NAME. Document-wide absence is the right scope here
+     * and is immune to the nested-`MatchCard` problem below: these strings are
+     * wrong ANYWHERE they appear, and nothing legitimate can emit them —
+     * "Tyler Larson" alone abbreviates to "T. Larson", never "J. Larson".
+     */
+    expect(html).not.toContain("J. Larson");
+    expect(html).not.toContain("M. Grether");
+
+    /**
+     * THE MECHANISM, not the outcome: no LADDERED span may contain an
+     * ampersand. `data-name-step` marks a string the ladder has been applied to,
+     * so this says exactly "the ladder never receives a joined side label" —
+     * which is the rule — and it holds whether or not the joined label happened
+     * to fit, where an assertion on the fabricated text only fires once it does
+     * not.
+     *
+     * The joined label ITSELF is fine and deliberately still on the screen: the
+     * avatar's `aria-label` names the side, and the keypad footer says
+     * "JD Shumpert & Tyler Larson — Enter score", which is the correct way to
+     * say WHICH SIDE this score is for. A blanket "the joined label must not
+     * appear" assertion failed on both of those, and it was the assertion that
+     * was wrong, not the markup.
+     */
+    const laddered = [...html.matchAll(/data-name-step="\d"[^>]*>([^<]*)</g)].map((m) => m[1]);
+    expect(laddered.length).toBeGreaterThan(0); // the anchor must be able to match at all
+    expect(laddered.filter((t) => t.includes("&amp;"))).toEqual([]);
+
+    /**
+     * AND THE ROWS MUST ACTUALLY SAY IT — anchored to the ROW, because
+     * `MatchEntryView` renders a `MatchCard` inside itself and that card renders
+     * these same four names correctly from the same arrays. A document-wide
+     * `toContain("JD Shumpert")` passes against a row rendering nothing at all;
+     * this is the fifth substring-corollary instance recorded in CLAUDE.md, and
+     * it is the same component pair that produced it.
+     *
+     * Entry's clamp floor is 15px — the card's is 13px — so the style anchor
+     * alone separates the two.
+     */
+    for (const n of ["JD Shumpert", "Tyler Larson", "Matt Facchine", "Fake Grether"]) {
+      expect(
+        html,
+        `${n} is missing from the score-entry ROW (the nested MatchCard does not count)`
+      ).toMatch(
+        new RegExp(`<span class="block truncate" data-name-step="1" style="font-size:clamp\\(15px[^>]*>${n}<`)
+      );
+    }
+  });
+
   it("scorecard", () => {
     const html = renderToStaticMarkup(
       <OutcomeScorecard

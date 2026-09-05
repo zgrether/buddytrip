@@ -447,6 +447,7 @@ export function MatchEntryView({
               <PlayerRow
                 group={g}
                 player={m.a}
+                players={m.aPlayers}
                 isA
                 label={label}
                 hole={hole}
@@ -463,6 +464,7 @@ export function MatchEntryView({
               <PlayerRow
                 group={g}
                 player={m.b}
+                players={m.bPlayers}
                 isA={false}
                 label={label}
                 hole={hole}
@@ -532,6 +534,7 @@ export function MatchEntryView({
 function PlayerRow({
   group,
   player,
+  players,
   isA,
   label,
   hole,
@@ -547,7 +550,18 @@ function PlayerRow({
   onRetry,
 }: {
   group: { st: ReturnType<typeof matchState>; strokeHolesA: Set<number>; strokeHolesB: Set<number> };
+  /**
+   * The SIDE, which is the scoring unit — one input per side, so this row stays
+   * one row for a 2v2. Its `name` is the JOINED "R & B" label built by
+   * `sideParticipant`, which is a display string and NOT a person's name.
+   */
   player: Participant;
+  /**
+   * The side's players — two for a 2v2, and the only safe input to the ladder.
+   * Absent or single-entry falls back to `player.name`, which is one person's
+   * name in a 1v1.
+   */
+  players?: SidePlayer[];
   isA: boolean;
   label: string;
   hole: number;
@@ -562,6 +576,9 @@ function PlayerRow({
   saveState?: CellSaveState;
   onRetry?: () => void;
 }) {
+  // Same predicate the match card and the scorecard already branch on, so the
+  // three surfaces agree on what "a side with two people in it" means.
+  const stacked = !!(players && players.length > 1);
   const v = valueFor(player.id, label);
   const stroked = (isA ? group.strokeHolesA : group.strokeHolesB).has(hole);
 
@@ -595,7 +612,11 @@ function PlayerRow({
       onClick={dead ? undefined : onTap}
       className="flex w-full items-center gap-3 text-left"
       style={{
-        height: 62,
+        // minHeight, not a fixed height — a 2v2 stacks two names above the score
+        // subtitle and must grow to fit them, exactly as the scorecard's lead
+        // rows and the match card's 2v2 branch already do. A 1v1 is unchanged at
+        // 62, since minHeight and height agree when there is one line.
+        minHeight: 62,
         padding: "0 14px 0 0",
         cursor: dead ? "default" : "pointer",
         opacity: dead ? 0.55 : 1,
@@ -618,19 +639,52 @@ function PlayerRow({
         * the name above it can no longer take two.
         */}
       <div className="min-w-0 flex-1">
-        {(() => {
-          const fit = fitName(player.name, ENTRY_NAME_CAPACITY_EM);
-          return (
-            <span
-              className="block truncate"
-              data-name-step={fit.step}
-              style={{ fontSize: "clamp(15px, 4.5vw, 17px)", fontWeight: 500, color: "var(--color-bt-text)" }}
-            >
-              {fit.text}
-              {isMe && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
-            </span>
-          );
-        })()}
+        {stacked ? (
+          /**
+           * PER PLAYER, and this is the bug that made the rule non-negotiable.
+           *
+           * This row used to ladder `player.name` — which for a 2v2 is the
+           * JOINED side label. `initialSurname` takes the first token's initial
+           * and the LAST token, so "JD Shumpert & Tyler Larson" came out as
+           * "J. Larson" and "Matt Facchine & Fake Grether" as "M. Grether":
+           * one player's initial welded to the other's surname, naming a person
+           * who does not exist, on the surface whose whole job is telling the
+           * two sides apart.
+           *
+           * That is strictly worse than the truncation the ladder exists to
+           * prevent — a clipped name is visibly incomplete, while a fabricated
+           * one reads as correct. The abbreviation is only ever valid applied to
+           * ONE person's name, so the array is the input and the joined label is
+           * never fitted.
+           */
+          players!.map((p) => {
+            const fit = fitName(p.name, ENTRY_NAME_CAPACITY_EM);
+            return (
+              <span
+                key={p.id}
+                className="block truncate"
+                data-name-step={fit.step}
+                style={{ fontSize: "clamp(15px, 4.5vw, 17px)", fontWeight: 500, color: "var(--color-bt-text)", lineHeight: 1.3 }}
+              >
+                {fit.text}
+              </span>
+            );
+          })
+        ) : (
+          (() => {
+            const fit = fitName(player.name, ENTRY_NAME_CAPACITY_EM);
+            return (
+              <span
+                className="block truncate"
+                data-name-step={fit.step}
+                style={{ fontSize: "clamp(15px, 4.5vw, 17px)", fontWeight: 500, color: "var(--color-bt-text)" }}
+              >
+                {fit.text}
+                {isMe && <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}> (you)</span>}
+              </span>
+            );
+          })()
+        )}
         <div style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>{subtitle}</div>
       </div>
       <ScoreSaveBadge state={saveState} onRetry={onRetry} />
