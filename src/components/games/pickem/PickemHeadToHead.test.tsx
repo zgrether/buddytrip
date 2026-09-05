@@ -45,7 +45,7 @@ describe("swingCell — played", () => {
      */
     const cases: [BoardRow["zeroKind"], string][] = [
       ["push", "Push"],
-      ["cancelled", "Void"],
+      ["cancelled", "Cancelled"],
       ["both", "Both"],
       ["neither", "Neither"],
       // The fifth: somebody did not pick it. Not a kind of WRONG — "Neither"

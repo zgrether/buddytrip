@@ -31,14 +31,25 @@ import type { BoardSlateGame } from "./PickemBoard";
  * neither was — and a reader wants to know which, because only one of them is
  * anybody's fault.
  *
- * `Void` here and `Voided` on the row's own result chip — the same word, short
- * where 52px will not hold the longer one. It used to be `Void` against
- * `Cancelled`, on the reasoning that the chip was about the GAME and this about
- * the STAKE; see the chip for why that split no longer holds.
+ * `Cancelled` here AND on the row's own result chip AND on the results-entry
+ * segment — one word, everywhere, for the first time. There have been two
+ * splits before this: `Void` against `Cancelled` (the chip was about the GAME,
+ * this about the STAKE) and then `Void` against `Voided` (the same word, short
+ * where 52px would not hold the longer one).
+ *
+ * Both are gone for reasons that arrived from outside the argument they were
+ * having. The subject split fell when finalize became a second producer of the
+ * value, so the game-subject fact stopped being knowable. The WIDTH split falls
+ * here: the 52px segment that forced an abbreviation is now full-width, so
+ * nothing is short of room. What remains is a word chosen for the crew reading
+ * it rather than for the column it sits in — see `RESULT_LABEL`.
+ *
+ * This cell is the tightest place it appears (a 70px grid column), so it is the
+ * one to check on a device if the word ever grows again.
  */
 const ZERO_SHORT: Record<ZeroKind, string> = {
   push: "Push",
-  cancelled: "Void",
+  cancelled: "Cancelled",
   both: "Both",
   neither: "Neither",
   // NOBODY picked — not "one of them didn't". A wrong pick against an empty
@@ -405,28 +416,31 @@ function ResultChip({
   game: BoardSlateGame;
 }) {
   /**
-   * ── `Voided`, not `Cancelled` — and this REVERSES a twice-settled split ────
+   * ── `Cancelled` — the THIRD answer to this, and the last one ──────────────
    *
-   * The glossary ratified two names for one DB value: `Cancelled` where the GAME
-   * is the subject, `Void` where the STAKE is. That was correct while a runner
-   * pressing Void was the only producer of `cancelled` — they were asserting the
-   * contest did not happen.
+   * The history is worth keeping because each step was right on its own terms
+   * and each was overtaken by something outside the argument.
    *
-   * Finalizing with contests outstanding is a second producer, and those games
-   * were probably PLAYED; the runner just never entered a result. So the
-   * game-subject fact the split depended on — "this did not happen" — is no
-   * longer knowable from the value. Only the stake-subject fact survives, and
-   * one surviving fact does not need two names.
+   * First `Cancelled` here against `Void` on the stake cells, on the glossary's
+   * rule: decide by asking what the label is ABOUT. Then `Voided` everywhere,
+   * because finalize-with-contests-outstanding became a second producer of the
+   * value and those games were probably played — so "the game did not happen"
+   * stopped being knowable and only the stake-subject fact survived.
    *
-   * The premise changed; the decision follows it. CLAUDE.md's glossary row is
-   * updated in the same change and cites this. Display-string tier: the DB value
-   * is untouched.
+   * Now `Cancelled` everywhere, on a ground neither of those weighed: WHO IS
+   * READING IT. `Voided` is the precise word for a stake that is gone and it is
+   * also jargon — the crew on this screen are not database users, and the small
+   * loss of precision costs less than a word half of them have to translate.
+   *
+   * Display-string tier, as every step here has been. `pickem_slate_games
+   * .result` is still `'cancelled'`; no migration. CLAUDE.md's glossary row
+   * moves with this PR.
    */
   const label =
     result === "push"
       ? "Push"
       : result === "cancelled"
-        ? "Voided"
+        ? "Cancelled"
         : `${result === "away" ? game.awayTeam : game.homeTeam} covered`;
   return (
     <span

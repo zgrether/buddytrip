@@ -208,11 +208,63 @@ describe("the segments", () => {
     expect(two).not.toContain('data-testid="t-cancelled"');
   });
 
-  it("splits evenly with two values and reserves the short columns with four", () => {
-    // Push and Void are short fixed words; the teams take what is left. With
-    // only two values there is nothing to reserve for.
-    expect(render()).toContain("1fr 1fr 52px 52px");
-    expect(render({ values: ["away", "home"] as const })).toContain("grid-template-columns:1fr 1fr");
+  it("gives the TEAMS a full-width row and drops the outcomes beneath", () => {
+    /**
+     * This REPLACES "splits evenly with two values and reserves the short
+     * columns with four", which asserted `1fr 1fr 52px 52px`.
+     *
+     * That layout is the reported truncation. At 390px the card's content box
+     * is ~340px, so 104px of fixed columns plus gaps left each team ~115px —
+     * enough for "Toledo", not for "Michigan State Spartans". The teams now
+     * take a row of their own.
+     *
+     * Asserted as the ABSENCE of the fixed columns plus the presence of a
+     * second row, rather than on the grid string alone: a build that kept the
+     * four in one row and merely restyled them would still satisfy a
+     * `toContain("1fr 1fr")`, since the teams' own row uses exactly that.
+     */
+    const four = render();
+    expect(four).not.toContain("52px");
+
+    // The outcomes are in their own `col-span-2` sub-grid — the structural
+    // signature of "second row", which a single flat grid cannot produce.
+    expect(four).toContain("col-span-2");
+
+    // ...and the two teams still split their row evenly.
+    expect(four).toContain("grid-template-columns:1fr 1fr");
+  });
+
+  it("leaves a TWO-value control as one row — the sheet is not the results page", () => {
+    /**
+     * The mutation this exists for: applying the second row unconditionally.
+     * Every assertion above still passes, and the picks sheet — which has no
+     * outcomes to put in a second row — grows an empty one.
+     */
+    const two = render({ values: ["away", "home"] as const });
+    expect(two).toContain("grid-template-columns:1fr 1fr");
+    expect(two).not.toContain("col-span-2");
+  });
+
+  it("makes the outcomes SECONDARY, not equal siblings of the teams", () => {
+    /**
+     * Push and Cancelled are rare; a control whose common case is visually
+     * primary reads faster than four equal buttons. `segmentStyle` already
+     * said this in colour and now the size says it too — one statement, twice,
+     * rather than two.
+     *
+     * Anchored per-BUTTON via testid. A document-wide `toContain("30px")`
+     * would be satisfied by any other 30px in the card, which is the substring
+     * corollary exactly.
+     */
+    const four = render();
+    const tagFor = (v: string) => {
+      const at = four.indexOf(`data-testid="t-${v}"`);
+      return four.slice(four.lastIndexOf("<", at), four.indexOf(">", at) + 1);
+    };
+    expect(tagFor("away")).toContain("height:34px");
+    expect(tagFor("home")).toContain("height:34px");
+    expect(tagFor("push")).toContain("height:30px");
+    expect(tagFor("cancelled")).toContain("height:30px");
   });
 
   it("paints a chosen TEAM in accent and a chosen Push/Void neutrally", () => {

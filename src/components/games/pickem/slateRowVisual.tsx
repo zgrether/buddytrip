@@ -90,6 +90,83 @@ export function pickemRowSurface(opts: {
   };
 }
 
+/**
+ * What one side's NAME is saying, on whichever surface is asking.
+ *
+ * ── A shared vocabulary, so two surfaces cannot invent two teals ───────────
+ *
+ * The picks sheet marks the side you took; the results page marks the side
+ * that won. Those are different facts and they get different treatments — but
+ * both are "emphasise one of these two names", and the way to keep that from
+ * becoming two private style tables is the way `segmentStyle` already did it:
+ * the surface picks a STATE, this file decides what the state looks like.
+ *
+ * ── `level` and `struck` exist because absence is not a state ──────────────
+ *
+ * A push and a void both pay nobody, and it is tempting to render them the
+ * same way as "nothing decided yet". They are not the same: a push HAPPENED
+ * and nobody covered; a void means the stake is gone. And neither is a win, so
+ * neither may borrow the winner's weight.
+ *
+ * `level` is the push: BOTH names at the loser's weight but the winner's
+ * colour. The absence of contrast is the signal, and it cannot be mistaken for
+ * a decided game because a decided game always has exactly one bold name and
+ * one dim one.
+ *
+ * `struck` is the void, and it is the one distinction in this file that lives
+ * ENTIRELY in a style property. Nothing about the value, the text or the
+ * markup separates a voided row from a played one — only `textDecoration`. So
+ * it is the case a value-level guard cannot see (CLAUDE.md's tenth instance),
+ * and its test has to mutate the paint rather than the data.
+ */
+export type SideEmphasis =
+  | "none"
+  | "chosen"
+  | "won"
+  | "lost"
+  | "level"
+  | "struck";
+
+export function sideEmphasisStyle(emphasis: SideEmphasis): CSSProperties {
+  switch (emphasis) {
+    case "chosen":
+      return { color: "var(--color-bt-accent)", fontWeight: 500 };
+    case "won":
+      return { color: "var(--color-bt-text)", fontWeight: 700 };
+    case "lost":
+      return { color: "var(--color-bt-text-dim)", fontWeight: 500 };
+    case "level":
+      return { color: "var(--color-bt-text)", fontWeight: 500 };
+    case "struck":
+      return {
+        color: "var(--color-bt-text-dim)",
+        fontWeight: 500,
+        textDecoration: "line-through",
+        textDecorationColor: "var(--color-bt-text-dim)",
+      };
+    default:
+      return { color: "var(--color-bt-text)", fontWeight: 500 };
+  }
+}
+
+/**
+ * The line that replaces the kickoff once a contest is settled.
+ *
+ * `tone` rather than a colour, for the same reason `SideEmphasis` is a state:
+ * the results page should not be choosing hex values, and the three tones have
+ * to stay distinguishable from each other rather than each being individually
+ * reasonable.
+ */
+export type StatusTone = "final" | "push" | "cancelled";
+
+export function statusToneColor(tone: StatusTone): string {
+  return tone === "final"
+    ? "var(--color-bt-accent)"
+    : tone === "cancelled"
+      ? "var(--color-bt-danger)"
+      : "var(--color-bt-text-dim)";
+}
+
 export interface MatchupLineGame {
   awayTeam: string;
   homeTeam: string;
@@ -215,14 +292,32 @@ const MULTIPLIER_CLEARANCE = 44;
 export function MatchupLine({
   game,
   leading,
+  awayEmphasis = "none",
+  homeEmphasis = "none",
+  status,
 }: {
   game: MatchupLineGame;
   leading?: ReactNode;
+  /** What each NAME is saying on this surface — see `SideEmphasis`. */
+  awayEmphasis?: SideEmphasis;
+  homeEmphasis?: SideEmphasis;
+  /**
+   * Replaces the KICKOFF once a contest is settled, keeping the note.
+   *
+   * "Status replaces the date" literally: the date is spent the moment the
+   * game is over, the runner's note ("Rob and Matt", "Most of the Golf Trip")
+   * is not — so the note survives beside the status rather than being replaced
+   * along with it.
+   */
+  status?: { text: string; tone: StatusTone };
 }) {
-  const meta = [game.kickoff, game.note].filter(Boolean).join(" · ");
+  const meta = status
+    ? game.note || null
+    : [game.kickoff, game.note].filter(Boolean).join(" · ") || null;
   const multiplier = game.multiplier ?? 1;
   const weighted = multiplier > 1;
-  const name = { fontSize: TYPE_SCALE.name, fontWeight: 500, lineHeight: 1.3 } as const;
+  const name = { fontSize: TYPE_SCALE.name, lineHeight: 1.3 } as const;
+  const clearance = weighted ? MULTIPLIER_CLEARANCE : undefined;
   return (
     <div className="relative flex min-w-0 flex-1 items-start gap-2.5">
       {leading}
@@ -230,7 +325,7 @@ export function MatchupLine({
         <span
           className="block truncate"
           data-testid="pickem-matchup-away"
-          style={{ ...name, paddingRight: weighted ? MULTIPLIER_CLEARANCE : undefined }}
+          style={{ ...name, ...sideEmphasisStyle(awayEmphasis), paddingRight: clearance }}
         >
           {game.awayTeam}
         </span>
@@ -238,21 +333,50 @@ export function MatchupLine({
           <span
             className="min-w-0 truncate"
             data-testid="pickem-matchup-home"
-            style={{ ...name, paddingRight: weighted ? MULTIPLIER_CLEARANCE : undefined }}
+            style={{ ...name, ...sideEmphasisStyle(homeEmphasis), paddingRight: clearance }}
           >
-            <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>at </span>
+            {/* "at" is the CONNECTIVE and never takes the side's emphasis —
+                striking it through or tealing it would make the preposition
+                look like part of the claim about the team. */}
+            <span
+              style={{
+                color: "var(--color-bt-text-dim)",
+                fontWeight: 400,
+                textDecoration: "none",
+              }}
+            >
+              at{" "}
+            </span>
             {game.homeTeam}
           </span>
           {/* WITH the home team, because the line is the home team's — the one
               badge whose position is meaningful rather than tidy. */}
           {game.spread && <SpreadBadge spread={game.spread} />}
         </span>
-        {meta && (
-          <span
-            className="mt-0.5 block truncate"
-            style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
-          >
-            {meta}
+        {(status || meta) && (
+          <span className="mt-0.5 flex min-w-0 items-baseline gap-x-1">
+            {status && (
+              <span
+                className="shrink-0"
+                data-testid="pickem-matchup-status"
+                style={{
+                  fontSize: TYPE_SCALE.bodyDense,
+                  fontWeight: 600,
+                  letterSpacing: "0.03em",
+                  color: statusToneColor(status.tone),
+                }}
+              >
+                {status.text}
+              </span>
+            )}
+            {meta && (
+              <span
+                className="min-w-0 truncate"
+                style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+              >
+                {status ? `· ${meta}` : meta}
+              </span>
+            )}
           </span>
         )}
       </span>
