@@ -127,6 +127,18 @@ function NotPickedStamp() {
         color: "var(--color-bt-text-dim)",
         border: "1px dashed var(--color-bt-border)",
         whiteSpace: "nowrap",
+        /**
+         * OPAQUE, because it now OVERLAPS the multiplier chip rather than
+         * pushing it aside — and a transparent stamp over a chip shows both at
+         * once, which is worse than the displacement it replaced.
+         *
+         * `--color-bt-card` is the row's resting background, and this badge only
+         * ever appears on a settled sheet row, which `PickemSheetRow` renders
+         * with neither `quiet` nor `active` — so the surface underneath is
+         * always exactly this colour. If this stamp is ever reused on a row that
+         * is tinted or flat, that assumption is what breaks.
+         */
+        background: "var(--color-bt-card)",
       }}
     >
       NOT PICKED
@@ -318,10 +330,28 @@ export function PickemSheetRow({
        */
       awayEmphasis={pick === "away" ? "chosen" : "none"}
       homeEmphasis={pick === "home" ? "chosen" : "none"}
-      onHeaderTap={() => setOpen((v) => !v)}
+      /**
+       * ── A LOCKED ROW DOES NOT OPEN ────────────────────────────────────────
+       *
+       * The disclosure exists to reveal the two pick buttons. Once picks close
+       * those buttons are `disabled`, so an expandable row opened onto two
+       * dead controls — which is worse than a row that does not move, because
+       * it costs a tap to discover there is nothing there.
+       *
+       * `editable` is the same predicate the segments already read for
+       * `disabled`, so the affordance and the control cannot disagree about
+       * whether this sheet can be edited — the "two booleans that must always
+       * agree" shape (#24) is avoided by there being one.
+       *
+       * The PICK is still readable with the row shut: the chosen side's name
+       * carries the accent, which is what made collapsing-by-default honest in
+       * the first place. So nothing is hidden by refusing to open — only an
+       * empty gesture is removed.
+       */
+      onHeaderTap={editable ? () => setOpen((v) => !v) : undefined}
       headerTestId="pickem-sheet-disclosure"
       headerOpen={open}
-      collapsible={{ open }}
+      collapsible={{ open: editable && open }}
       /**
        * ONE dim, on the row's content, chip included.
        *

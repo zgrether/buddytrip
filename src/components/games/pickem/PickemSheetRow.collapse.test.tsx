@@ -89,6 +89,40 @@ describe("a picks row starts shut", () => {
   });
 });
 
+describe("a locked row does not open", () => {
+  it("has no disclosure at all once picks are closed", () => {
+    /**
+     * THE MUTATION: leave `onHeaderTap` wired regardless of `editable`.
+     *
+     * That build looks fine and IS fine until you tap: the row opens onto two
+     * `disabled` buttons. A gesture that costs a tap to discover there is
+     * nothing behind it is worse than a row that does not move at all, which is
+     * what was reported from the device.
+     *
+     * Asserted as the ABSENCE of the tap target rather than as "the body stays
+     * shut", because a build that kept the button and ignored the click would
+     * pass the second and still show a pressable header.
+     */
+    const locked = render({ editable: false, pick: "home", outcome: "lost" });
+    expect(locked).not.toContain('data-testid="pickem-sheet-disclosure"');
+    expect(locked).not.toContain("aria-expanded");
+
+    // ...and the editable sheet still has one, so this is not passing by the
+    // disclosure having been deleted outright.
+    expect(render()).toContain('data-testid="pickem-sheet-disclosure"');
+  });
+
+  it("still shows the locked pick, so nothing is hidden by refusing to open", () => {
+    /**
+     * The refusal is only honest because the accent on the chosen side's name
+     * survives it. Without this pair, "don't open when locked" would be a way
+     * of hiding the answer on the one sheet that exists to show it.
+     */
+    const locked = render({ editable: false, pick: "home", outcome: "lost" });
+    expect(tag(locked, "pickem-matchup-home")).toContain("--color-bt-accent)");
+  });
+});
+
 describe("a shut row still says what you took", () => {
   it("accents the CHOSEN side's name and leaves the other alone", () => {
     /**

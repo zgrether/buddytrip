@@ -363,14 +363,29 @@ export function MatchupLine({
             {game.awayTeam}
           </span>
         </span>
-        <span className="flex min-w-0 items-baseline gap-x-1.5">
+        {/* ── THE CLEARANCE GOES ON THE LINE, NOT ON THE NAME ────────────────
+            The home line has a SIBLING — the spread badge — so padding the
+            name span pushed the badge instead of reserving space at the line's
+            end. Measured: the gap between the home team and its spread was 6px
+            on an ordinary row and 50px on a weighted one (the 6px flex gap plus
+            the 44px clearance), which is why it looked like a spacing bug on
+            "some rows but not all": the affected rows were exactly the 2x ones.
+
+            On the WRAPPER the inset applies once to the whole line, so the
+            spread stays beside the name it belongs to and the pair together
+            clears the badge. The away line has no sibling, so its padding can
+            stay where it is. */}
+        <span
+          className="flex min-w-0 items-baseline gap-x-1.5"
+          data-testid="pickem-matchup-home-line"
+          style={{ paddingRight: clearance }}
+        >
           <span
             className="min-w-0 truncate"
             data-testid="pickem-matchup-home"
             style={{
               ...name,
               ...sideEmphasisStyle(homeEmphasis),
-              paddingRight: clearance,
             }}
           >
             {/* "at" is the CONNECTIVE and never carries the side's emphasis.
@@ -416,7 +431,14 @@ export function MatchupLine({
       </span>
       {weighted && (
         <span
-          className="absolute"
+          /* `flex`, matching the badge slot in `PickemGameCard`, so the chip's
+             box is content-height rather than line-height-height. As a plain
+             inline span it rendered 5.5px TALLER than the NOT PICKED stamp that
+             now covers it, leaving a sliver of amber below an opaque badge —
+             which reads as a rendering fault. Both slots shrink-wrap, so they
+             agree by construction rather than by two numbers happening to
+             match. */
+          className="absolute flex"
           data-testid="pickem-matchup-multiplier-slot"
           style={{ top: 0, right: 0 }}
         >
