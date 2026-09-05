@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { ChevronDown, Flag, Check } from "lucide-react";
 import { useTeeVisibility } from "@/hooks/useTeeVisibility";
 import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, type RawStrokeEntry } from "@/lib/strokePlay";
@@ -702,7 +702,8 @@ export function StandardGrid({
             // surface whose job is telling players apart. Taller rows are the
             // accepted trade there and here.
             return (
-              <div key={p.id} className="flex" style={{ minHeight: 44, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}>
+              <Fragment key={p.id}>
+              <div className="flex" style={{ minHeight: 44, background: rowBg, borderBottom: rubric ? "none" : "1px solid var(--color-bt-subtle-border)" }}>
                 <div className="@container flex flex-col justify-center" style={{ ...nameCell, background: rowBg, padding: "6px 10px" }}>
                   <span style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)", lineHeight: 1.35, overflowWrap: "anywhere" }}>
                     {p.name}
@@ -713,7 +714,6 @@ export function StandardGrid({
                   const hasPip = pips?.[p.id]?.has(u.label);
                   const colored = v != null && hasPar && u.par != null;
                   const errored = saveStatus?.[scoreCellKey(p.id, u.label)] === "error";
-                  const pts = rubric ? ptsOf(p.id, u.label) : undefined;
                   return (
                     <button
                       key={u.label}
@@ -741,50 +741,26 @@ export function StandardGrid({
                           : {}),
                       }}
                     >
-                      {/* GROSS stays the cell’s subject even under Stableford.
-                          The scorecard is the SPOT-CORRECTION surface — tapping a
-                          cell jumps to that hole’s entry — and a card showing only
-                          points cannot answer “did I write down a 6 here?”, which
-                          is the one question it exists for. Points ride beneath,
-                          dimmed, so the row still adds up to the Total. */}
-                      {rubric ? (
-                        <span className="flex flex-col items-center leading-none">
-                          {colored ? <GolfChip value={v!} par={u.par!} size={22} fontSize={12} /> : (v ?? "—")}
-                          {pts != null && (
-                            <span
-                              style={{ fontSize: 9, fontWeight: 700, color: "var(--color-bt-text-dim)", marginTop: 1 }}
-                              data-testid={`scorecard-pts-${p.id}-${u.label}`}
-                            >
-                              {pts}
-                            </span>
-                          )}
-                        </span>
-                      ) : colored ? (
-                        <GolfChip value={v!} par={u.par!} size={26} fontSize={13} />
-                      ) : (
-                        v ?? "—"
-                      )}
+                      {colored ? <GolfChip value={v!} par={u.par!} size={26} fontSize={13} /> : (v ?? "—")}
                       {hasPip && <StrokePip />}
                       {errored && <UnsavedDot />}
                     </button>
                   );
                 })}
-                {/* Out / In / Total sum POINTS under Stableford — the only
-                    subtotal that means anything there, and what makes the column
-                    of small numbers above add up. No ±par: points have no par
-                    relation, and printing one would invite reading the total as
-                    strokes. */}
-                {hasSections && <SubCell value={rubric ? ptsSumOf(p.id, front) : sumOf(p.id, front)} vsPar={!rubric && hasPar ? vsParOf(p.id, front) : undefined} />}
-                {hasSections && <SubCell value={rubric ? ptsSumOf(p.id, back) : sumOf(p.id, back)} vsPar={!rubric && hasPar ? vsParOf(p.id, back) : undefined} />}
+                {/* Out / In / Total are STROKES on this row. Under Stableford the
+                    points get their OWN row beneath rather than replacing these —
+                    the official score stays the official score. */}
+                {hasSections && <SubCell value={sumOf(p.id, front)} vsPar={hasPar ? vsParOf(p.id, front) : undefined} />}
+                {hasSections && <SubCell value={sumOf(p.id, back)} vsPar={hasPar ? vsParOf(p.id, back) : undefined} />}
                 {/* Total is GROSS — what you shot. The leader marker rides NET
                     when strokes are in play (that's what the standings rank on),
                     and stays on Total when they aren't (net ≡ gross). */}
                 <SubCell
-                  value={rubric ? ptsSumOf(p.id, units) : totalOf(p.id)}
-                  vsPar={!rubric && hasPar ? vsParOf(p.id, units) : undefined}
+                  value={totalOf(p.id)}
+                  vsPar={hasPar ? vsParOf(p.id, units) : undefined}
                   wide
                   bold
-                  leader={(rubric ? true : !showNet) && isLeader}
+                  leader={!rubric && !showNet && isLeader}
                   testId={`scorecard-total-${p.id}`}
                 />
                 {showNet && (
@@ -799,6 +775,63 @@ export function StandardGrid({
                 )}
                 <RightGutter />
               </div>
+              {/* ── The STABLEFORD row ──────────────────────────────────────
+                  What a player SHOT and what it SCORED are two different facts,
+                  so they get two rows rather than two numbers crammed into one
+                  30px cell. The card stays a stroke card you can spot-correct
+                  against — tapping a cell still jumps to that hole's entry — and
+                  the points read as a derived line beneath, which is what they
+                  are. It is also how the 2024 card separated Score from Pts, in
+                  the axis a phone has room for.
+
+                  The pair is bound visually by dropping the score row's bottom
+                  border (above) so the two read as one block rather than as two
+                  players. */}
+              {rubric && (
+                <div
+                  className="flex"
+                  style={{ minHeight: 30, background: rowBg, borderBottom: "1px solid var(--color-bt-subtle-border)" }}
+                  data-testid={`scorecard-points-row-${p.id}`}
+                >
+                  <div className="flex flex-col justify-center" style={{ ...nameCell, background: rowBg, padding: "0 10px" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--color-bt-text-dim)" }}>
+                      Points
+                    </span>
+                  </div>
+                  {units.map((u, ui) => (
+                    <div
+                      key={u.label}
+                      className="relative flex items-center justify-center"
+                      style={{
+                        ...cellBase,
+                        minHeight: 30,
+                        ...divider(u.label),
+                        ...(isGloriousCol(ui) ? gloriousWash : {}),
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "var(--color-bt-text-dim)",
+                      }}
+                      data-testid={`scorecard-pts-${p.id}-${u.label}`}
+                    >
+                      {ptsOf(p.id, u.label) ?? ""}
+                    </div>
+                  ))}
+                  {hasSections && <SubCell value={ptsSumOf(p.id, front)} />}
+                  {hasSections && <SubCell value={ptsSumOf(p.id, back)} />}
+                  {/* The leader marker lives HERE under Stableford, not on the
+                      strokes Total — points are what the game is won on. */}
+                  <SubCell
+                    value={ptsSumOf(p.id, units)}
+                    wide
+                    bold
+                    leader={isLeader}
+                    testId={`scorecard-points-total-${p.id}`}
+                  />
+                  {showNet && <BlankSub wide />}
+                  <RightGutter />
+                </div>
+              )}
+              </Fragment>
             );
           })}
           </>
