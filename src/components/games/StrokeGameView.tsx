@@ -31,6 +31,7 @@ import { StrokeScoringRow } from "@/components/games/StrokeScoringRow";
 import { scoringOf, type ScoringType } from "@/lib/stableford";
 import { teamColorByUser, UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
 import { rollUpOf, type StrokeRollUp } from "@/lib/strokeGameConfig";
+import { bottomNavInset } from "@/lib/bottomNavInset";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
@@ -1406,7 +1407,30 @@ export function StrokeGameView() {
     return (
       <div
         className={inPanel ? "absolute inset-0 overflow-y-auto" : "fixed inset-0 z-50 overflow-y-auto"}
-        style={{ background: "var(--color-bt-base)" }}
+        style={{
+          background: "var(--color-bt-base)",
+          /**
+           * CLEAR THE FIXED BOTTOM NAV.
+           *
+           * Stroke is the ONLY one of the five game views that owns a scroll
+           * container — the other four have zero `overflow-y-auto` between them
+           * and render in-flow into `CompetitionFace`'s wrapper, inheriting its
+           * inset. An absolutely positioned child's containing block is its
+           * ancestor's PADDING BOX, so `inset-0` covers the very padding that
+           * wrapper adds: it pads a box this surface then paints over. That is
+           * why the fix-at-the-source reached four formats and not this one.
+           *
+           * It cannot be left to `GameLifecycleActions`' own inset either. That
+           * component returns `null` whenever no lifecycle arm applies, which is
+           * the ordinary mid-round state — so the clearance would vanish exactly
+           * when the board is longest, and the last group tile would sit under
+           * the tabs. Which is the reported bug.
+           *
+           * #1312 converges this surface with the other four; until then it
+           * insets itself, from the shared expression rather than a fourth copy.
+           */
+          paddingBottom: bottomNavInset(16),
+        }}
         data-testid="stroke-surface"
       >
         {/* Stroke had NO lifecycle banner and no state label — it was the format
