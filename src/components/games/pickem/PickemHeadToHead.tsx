@@ -5,7 +5,7 @@ import { PickemAbsenceNotice, NO_PICKS } from "./PickemAbsenceNotice";
 import { MatchResultBanner } from "@/components/games/MatchResultBanner";
 import { Avatar } from "@/components/Avatar";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
-import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
+import { MatchupLine, MultiplierBadge, pickemRowSurface } from "./slateRowVisual";
 import { matchPill, matchNote, type SidesPicked } from "./PickemMatchCard";
 import { matchStanding, type BoardRow, type ZeroKind } from "@/lib/pickemBoard";
 import type { BoardSlateGame } from "./PickemBoard";
@@ -167,6 +167,18 @@ export function PickemHeadToHead({
   onBack: () => void;
 }) {
   const byId = new Map(slate.map((g) => [g.id, g]));
+  /**
+   * Is this list MIXED? The played-row fade exists to say "these can still
+   * move", which is information only while some rows cannot. On a finished
+   * match every row is played, so fading all of them fades nothing and the
+   * screen just reads uniformly quiet.
+   *
+   * The signal is KEPT where it does work — a live match still recedes its
+   * settled rows — and dropped where it does not. That is narrower than
+   * removing the dim outright, which would have cost the live case the only
+   * cue it has for what is still in play.
+   */
+  const anyUnplayed = rows.some((r) => r.result == null);
   const s = matchStanding(rows);
   const a = avatarFor(aUserId);
   const b = avatarFor(bUserId);
@@ -356,12 +368,12 @@ export function PickemHeadToHead({
                * a settled match should read as a record rather than as a board
                * with nothing highlighted on it.
                */
-              ...pickemRowSurface({ weighted: r.multiplier > 1, quiet: played }),
+              ...pickemRowSurface({ weighted: r.multiplier > 1, quiet: played && anyUnplayed }),
               borderRadius: 11,
               padding: "7px 10px",
             }}
           >
-            <span className="flex items-center gap-2">
+            <span className="flex items-start gap-2">
               <span className="min-w-0 flex-1">
                 <MatchupLine
                   game={{
@@ -370,11 +382,26 @@ export function PickemHeadToHead({
                     spread: g.spread,
                     kickoff: played ? null : (g.kickoff ?? "TBD"),
                     note: null,
-                    multiplier: r.multiplier,
+                    /**
+                     * SUPPRESSED HERE, and rendered at the bottom-left below.
+                     * `MatchupLine` pins the badge to its own top-right, which
+                     * on this row is the busiest corner — it shared it with the
+                     * result chip and now shares it with the score. Every other
+                     * surface keeps the pinned badge; this one opts out and
+                     * places its own.
+                     */
+                    multiplier: 1,
                   }}
                 />
               </span>
-              {played && <ResultChip result={r.result} game={g} />}
+              {/* ── THE SCORE, RIGHT-JUSTIFIED ────────────────────────────────
+                  Absent is ABSENT. A game whose score has not been fetched —
+                  or whose fixture was entered by hand and has no ESPN id at
+                  all — renders exactly as it did before this slot existed: no
+                  zero, no placeholder, no reserved width. An upstream outage
+                  must not change what the row claims about a game, and "0-0"
+                  is a claim. */}
+              <GameScore away={g.awayScore} home={g.homeScore} />
             </span>
 
             <span
@@ -411,6 +438,23 @@ export function PickemHeadToHead({
                 <SidePick pick={r.bPick} game={g} missed={bMissed} />
               </span>
             </span>
+
+            {/* ── THE MULTIPLIER, BOTTOM-LEFT ────────────────────────────────
+                Out of the top-right, which is this row's busiest corner — it
+                shared it with the result chip and would now share it with the
+                score. Down here it sits against the amber stripe that marks
+                the same fact, directly under the confidence chips it modifies.
+
+                Its own line rather than inside the comparison grid above: that
+                grid is unchanged by standing instruction, and a badge tucked
+                into its left column would be touching it. The line renders
+                only on a weighted row, so an ordinary row is exactly as tall
+                as it was. */}
+            {r.multiplier > 1 && (
+              <span className="flex" data-testid="pickem-h2h-multiplier">
+                <MultiplierBadge multiplier={r.multiplier} />
+              </span>
+            )}
           </div>
         );
       })}
@@ -475,6 +519,66 @@ function Side({
   );
 }
 
+/**
+ * The contest's own score, right-justified.
+ *
+ * ── ABSENT IS ABSENT, AND THAT IS THE WHOLE CONTRACT ──────────────────────
+ *
+ * A score arrives from an upstream nobody controls, on a fixture that may have
+ * been typed by hand and carry no id at all. So the common case is NO SCORE,
+ * and it must render as the row rendered before this component existed —
+ * nothing, not a zero, not a dash, not a reserved gap.
+ *
+ * `0` is a legitimate score (a scoreless first quarter), so the check is `!=
+ * null` and never falsy. A build that used `||` would blank a real 0-0 and,
+ * worse, one that treated absent AS 0 would print a scoreless tie on every game
+ * nobody had fetched — the empty-is-not-unknown family, arriving through an
+ * external dependency.
+ *
+ * BOTH sides or neither: half a score is not a score.
+ */
+function GameScore({ away, home }: { away?: number | null; home?: number | null }) {
+  if (away == null || home == null) return null;
+  const line: React.CSSProperties = {
+    fontSize: TYPE_SCALE.name,
+    fontWeight: 700,
+    lineHeight: 1.3,
+    fontVariantNumeric: "tabular-nums",
+    letterSpacing: "-0.01em",
+    color: "var(--color-bt-text)",
+  };
+  return (
+    /**
+     * ── TWO ROWS, NO SEPARATOR ────────────────────────────────────────────
+     *
+     * Stacked rather than "17–24" on one line, because the matchup beside it is
+     * already two lines in the same order — away above home. The top number is
+     * the visitor's and the second is the home side's, and the LAYOUT says so,
+     * so the dash that a single-line pair needs to be readable has nothing left
+     * to do.
+     *
+     * `lineHeight` matches the name lines' so the two numbers land beside the
+     * teams they belong to rather than merely near them.
+     *
+     * This stays OUTSIDE `MatchupLine`. Putting a score on each of its two team
+     * lines was tried and reverted: that component is shared by the sheet, the
+     * results panel and the slate modal, none of which show a score, and the
+     * simpler change that reaches only this surface produces the same picture.
+     */
+    <span
+      className="flex shrink-0 flex-col items-end"
+      data-testid="pickem-game-score"
+    >
+      <span data-testid="pickem-score-away" style={line}>
+        {away}
+      </span>
+      <span data-testid="pickem-score-home" style={line}>
+        {home}
+      </span>
+    </span>
+  );
+}
+
 /** The middle column. Accent-faint whenever somebody's points are involved;
  *  flat when the row is a zero or a non-stake, because those are facts about
  *  nothing having moved. */
@@ -498,58 +602,6 @@ function Swing({ cell }: { cell: SwingCell }) {
   );
 }
 
-/** What happened to the GAME — as distinct from the swing cell, which says what
- *  happened to the MATCH. */
-function ResultChip({
-  result,
-  game,
-}: {
-  result: BoardRow["result"];
-  game: BoardSlateGame;
-}) {
-  /**
-   * ── `Cancelled` — the THIRD answer to this, and the last one ──────────────
-   *
-   * The history is worth keeping because each step was right on its own terms
-   * and each was overtaken by something outside the argument.
-   *
-   * First `Cancelled` here against `Void` on the stake cells, on the glossary's
-   * rule: decide by asking what the label is ABOUT. Then `Voided` everywhere,
-   * because finalize-with-contests-outstanding became a second producer of the
-   * value and those games were probably played — so "the game did not happen"
-   * stopped being knowable and only the stake-subject fact survived.
-   *
-   * Now `Cancelled` everywhere, on a ground neither of those weighed: WHO IS
-   * READING IT. `Voided` is the precise word for a stake that is gone and it is
-   * also jargon — the crew on this screen are not database users, and the small
-   * loss of precision costs less than a word half of them have to translate.
-   *
-   * Display-string tier, as every step here has been. `pickem_slate_games
-   * .result` is still `'cancelled'`; no migration. CLAUDE.md's glossary row
-   * moves with this PR.
-   */
-  const label =
-    result === "push"
-      ? "Push"
-      : result === "cancelled"
-        ? "Cancelled"
-        : `${result === "away" ? game.awayTeam : game.homeTeam} covered`;
-  return (
-    <span
-      className="shrink-0"
-      style={{
-        fontSize: 9.5,
-        fontWeight: 700,
-        borderRadius: 5,
-        padding: "2px 5px",
-        color: "var(--color-bt-text-dim)",
-        background: "var(--color-bt-card-raised)",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
 
 /**
  * What this side took — or that they took nothing.
