@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { type MatchupLineGame } from "./slateRowVisual";
 import { PickemGameCard, PickemSegments, SELECT_HOLD_MS } from "./PickemGameCard";
 import { PickemAbsenceNotice, NOT_PICKED } from "./PickemAbsenceNotice";
+/* The RESULTS PANEL owns these. Importing rather than re-deriving is what keeps
+   the sheet and the runner from wording or painting one row two ways — the same
+   pattern PickemHeadToHead follows for matchPill/matchNote. */
+import { resultEmphasis, resultTone, RESULT_LABEL } from "./PickemRunView";
+import type { SlateResult } from "@/lib/pickemScoring";
 
 /**
  * One game on the picks sheet — the shared card, with two segments on line 3.
@@ -233,6 +238,7 @@ export function PickemSheetRow({
   pick,
   points,
   outcome = null,
+  result = null,
   editable,
   onPick,
 }: {
@@ -255,6 +261,13 @@ export function PickemSheetRow({
    * tapped would read as disabled, and it is not.
    */
   outcome?: PickOutcome | null;
+  /**
+   * The GAME's outcome, as stored — distinct from `outcome`, which is what
+   * became of THIS PICK. `pickOutcome` folds push and cancelled together into
+   * `void` (both pay nobody), so the sheet could not tell them apart and drew a
+   * cancellation as an ordinary settled row.
+   */
+  result?: SlateResult | null;
   editable: boolean;
   /** Null means "clear this game" — the row calls it when the SELECTED side is
    *  tapped again. */
@@ -316,8 +329,42 @@ export function PickemSheetRow({
        * outcome here would put the results page's vocabulary on the sheet,
        * where the question is what you took rather than how it went.
        */
-      awayEmphasis={pick === "away" ? "chosen" : "none"}
-      homeEmphasis={pick === "home" ? "chosen" : "none"}
+      /**
+       * ── A CANCELLED GAME IS STRUCK, EXACTLY AS THE RESULTS PANEL DRAWS IT ──
+       *
+       * The sheet used to say nothing about a cancellation: the row dimmed
+       * (every settled row does), the pick stayed teal, and the chip kept its
+       * number — so a game struck from the scoring read as an ordinary pick you
+       * happened not to score on. The results panel had it right all along;
+       * this is the same treatment, from the SAME functions, so the two
+       * surfaces cannot word or paint one row two ways.
+       *
+       * ONLY cancellation overrides the pick's accent, and the line is where a
+       * fact about the GAME outranks a fact about the SHEET. A push happened
+       * and nobody covered — your pick still stood, so it keeps its colour and
+       * the chip's dim carries the outcome. A cancelled contest was removed;
+       * there is nothing left for a pick to have been.
+       */
+      awayEmphasis={
+        result === "cancelled" ? resultEmphasis(result).away : pick === "away" ? "chosen" : "none"
+      }
+      homeEmphasis={
+        result === "cancelled" ? resultEmphasis(result).home : pick === "home" ? "chosen" : "none"
+      }
+      /**
+       * The status line replaces the kickoff, and ONLY for a cancellation.
+       *
+       * Not for every settled game: the chip already carries "banked / missed /
+       * paid nobody" for those, and a "Final" on all sixteen rows would be a
+       * column of the same word. Cancellation is the one outcome the chip alone
+       * misreports — it shows a stake on a game that scored nothing — so it is
+       * the one that earns a line of its own.
+       */
+      status={
+        result === "cancelled"
+          ? { text: RESULT_LABEL[result], tone: resultTone(result) }
+          : undefined
+      }
       /**
        * ── A LOCKED ROW DOES NOT OPEN ────────────────────────────────────────
        *

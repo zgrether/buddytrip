@@ -160,6 +160,13 @@ interface MatchCardProps {
   aMuted?: boolean;
   bMuted?: boolean;
   /**
+   * How this format talks about PROGRESS and MARGIN — see the note beside
+   * `headerWord`. "golf" is a fixed 18-hole round; "slate" is a list whose
+   * length the reader does not know. ONE prop for both, because they follow
+   * from one fact and splitting them invites half of it being reverted.
+   */
+  dialect?: "golf" | "slate";
+  /**
    * Per-side ceiling on what is still gainable, passed straight to the engine.
    *
    * Golf omits it — both players are on the tee. Pick em supplies it because a
@@ -191,6 +198,7 @@ export function MatchCard({
   bNote,
   aMuted,
   bMuted,
+  dialect = "golf",
   upside,
 }: MatchCardProps) {
   const st = matchState(results, holeCount, glorious, upside);
@@ -208,7 +216,33 @@ export function MatchCard({
   const aLeads = st.leader === "A";
   const bLeads = st.leader === "B";
   const square = st.leader === null;
-  const headerWord = st.over ? "FINAL" : st.dormie ? "DORMIE" : "THRU";
+  /**
+   * ── TWO DELIBERATE DIVERGENCES, ONE REASON, ONE PROP ──────────────────────
+   *
+   * `slate` is not a style preference. Both changes follow from a single fact:
+   * GOLF'S ROUND LENGTH IS FIXED AND KNOWN AND A SLATE'S IS NOT. They are one
+   * prop rather than two booleans precisely so nobody can later "restore
+   * consistency" on half of it — which is the outcome this comment exists to
+   * prevent.
+   *
+   * 1 · PROGRESS COUNTS DOWN, NOT UP. "THRU 5" is a numerator with no
+   *     denominator: against 18 holes every reader supplies the other half
+   *     from memory, and against a slate of unknown length they would have to
+   *     count the pills to learn whether 5 is early or nearly done.
+   *     "LEFT 11" is self-contained and needs no denominator at all.
+   *
+   * 2 · NO CLOSE-OUT NOTATION. "4&3" is match play's own sentence — four up
+   *     with three to play — and it encodes WHY the match ended early: holes
+   *     remained and could not change the result. In pick'em every game
+   *     resolves, so there is no early close-out to describe, and "1&14" reads
+   *     as a score line while being nothing of the kind. The lead alone
+   *     ("1 UP") is the whole truth there.
+   *
+   * The close-out LOGIC is untouched — a pick'em match really can be decided
+   * with games left, and `st.closed` still says so. Only the notation changes.
+   */
+  const slate = dialect === "slate";
+  const headerWord = st.over ? "FINAL" : st.dormie ? "DORMIE" : slate ? "LEFT" : "THRU";
   /**
    * DORMIE IS NOT FINAL, AND THEY NO LONGER SHARE A COLOUR.
    *
@@ -223,10 +257,14 @@ export function MatchCard({
     : st.dormie
       ? "var(--color-bt-warning)"
       : "var(--color-bt-text-dim)";
-  const centerNum = st.over ? "F" : String(st.thru);
+  const centerNum = st.over ? "F" : String(slate ? st.holesLeft : st.thru);
   // Leader margin text: closed margin ("3&2") or won-18 ("2 UP") from matchState,
   // else the live lead while in progress.
-  const leadText = st.over ? (st.margin ?? "") : `${st.up} UP`;
+  const leadText = slate
+    ? `${st.up} UP`
+    : st.over
+      ? (st.margin ?? "")
+      : `${st.up} UP`;
 
   /**
    * THE VIEWER'S OWN MATCH. Same treatment as the rack's group rows
@@ -463,7 +501,20 @@ function Margin({ active, square, text, color, closed }: { active: boolean; squa
  */
 function NameCell({ name, players, align, tinted, color, note, muted }: { name: string; players?: SidePlayer[]; align: "left" | "right"; tinted: boolean; color: string; note?: React.ReactNode; muted?: boolean }) {
   const bg = tinted ? `${color}29` : "transparent";
+  /**
+   * ── THE MUTE CARRIES THE SIGNAL ALONE NOW ─────────────────────────────────
+   *
+   * The note beside it lost its badge chrome (border, chip, small-caps) and is
+   * plain caption text, so "this side is not scoring" rests on the weight of
+   * the NAME rather than on a label. Dim alone was tuned when a bordered badge
+   * was shouting next to it; without that it reads as merely quiet.
+   *
+   * Dim PLUS a fade, so a muted name is unmistakably fainter than any other
+   * name on the card. It does not collide with the leader cue, which is the
+   * background TINT and not the name colour — the two axes stay independent.
+   */
   const nameColor = muted ? "var(--color-bt-text-dim)" : "var(--color-bt-text)";
+  const nameOpacity = muted ? 0.72 : undefined;
   // 2v2 → two stacked NAMES, NO avatar disks (item 6). Avatars on the scoreboard
   // were a mistake; the 1v1's avatar-free single line is the reference — this just
   // wraps it to two lines for the two players. Leans inward like the 1v1; the
@@ -507,20 +558,42 @@ function NameCell({ name, players, align, tinted, color, note, muted }: { name: 
   const fit = fitName(name, CARD_NAME_CAPACITY_EM);
   return (
     <div
-      // `flex-col` + `justify-center` rather than `items-center`: with a note
-      // the cell stacks name-over-note, and without one a single centred child
-      // renders identically to the row it replaces.
-      className="flex min-w-0 flex-1 flex-col justify-center"
+      /**
+       * ── THE NAME IS THE ONLY THING IN THE FLOW, SO THE TWO ALWAYS ALIGN ────
+       *
+       * This was `flex-col justify-center` with the note as a second flow
+       * child, which centred the name-and-note STACK. A side carrying a note
+       * therefore sat its name higher than the opponent's, and the two names in
+       * one row stopped lining up — visible on exactly the rows the note exists
+       * for, which is the worst place for a wobble.
+       *
+       * The note is absolute now, so the cell has one flow child whether or not
+       * a note is present and both cells centre identically. It hangs below the
+       * name inside the 50px cell rather than displacing anything.
+       */
+      className="relative flex min-w-0 flex-1 flex-col justify-center"
       style={{ alignItems: align === "right" ? "flex-end" : "flex-start", padding: `0 ${NAME_PAD_X}`, background: bg }}
     >
       <span
         className="max-w-full"
         data-name-step={fit.step}
-        style={{ fontSize: NAME_FONT, fontWeight: 600, color: nameColor, textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        style={{ fontSize: NAME_FONT, fontWeight: 600, color: nameColor, opacity: nameOpacity, textAlign: align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
       >
         {fit.text}
       </span>
-      {note}
+      {note && (
+        <span
+          className="absolute max-w-full"
+          data-testid="match-name-note"
+          style={{
+            bottom: 3,
+            [align === "right" ? "right" : "left"]: NAME_PAD_X,
+            lineHeight: 1,
+          }}
+        >
+          {note}
+        </span>
+      )}
     </div>
   );
 }

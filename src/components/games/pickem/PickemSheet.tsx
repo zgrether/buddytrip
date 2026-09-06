@@ -908,6 +908,17 @@ export function PickemSheet({
               // index — never a stored confidence beside the order.
               points={points}
               outcome={outcome}
+              /**
+               * The GAME's own result, so the row can draw a CANCELLATION.
+               * `outcome` cannot: `pickOutcome` folds push and cancelled into
+               * one `void`, which is right for the chip (both pay nobody) and
+               * wrong for the names (only one of them voids the contest).
+               *
+               * Gated on `!editable` like `outcome` is — while picks are open
+               * nothing has resolved, and a status line would be describing a
+               * game that has not been played.
+               */
+              result={editable ? null : (g.result ?? null)}
               editable={editable}
               onPick={(side) => editPicks((prev) => setPick(prev, id, side))}
             />
