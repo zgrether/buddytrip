@@ -102,12 +102,20 @@ describe("the winner and the coverer are marked separately", () => {
   });
 
   it("draws the box as a real container, not merely an attribute", () => {
-    // The testid could be set without anything being drawn. The border is what
-    // a reader sees, and it is only a mark if it is coloured on one side and
-    // not the other.
+    /**
+     * The testid could be set without anything being drawn, so this asserts the
+     * BORDER — coloured on one side, transparent on the other.
+     *
+     * Anchored to that property rather than to the colour's literal value. The
+     * weight is a design call that has already moved twice (dim read as chrome,
+     * near-black shouted, and it settled a quarter of the way between), and a
+     * test that fails on a tuning change is a test that trains people to edit
+     * it without reading it. What must not change is that exactly one side is
+     * drawn.
+     */
     const away = tagFor(html, "pickem-matchup-away");
     const home = tagFor(html, "pickem-matchup-home-line");
-    expect(away).toContain("border:1px solid var(--color-bt-text)");
+    expect(away).toMatch(/border:1px solid (?!transparent)/);
     expect(home).toContain("border:1px solid transparent");
   });
 
