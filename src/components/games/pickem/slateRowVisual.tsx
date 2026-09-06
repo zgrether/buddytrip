@@ -341,54 +341,45 @@ export function coverBoxStyle(m: SideMarks): CSSProperties {
      * something: in dark mode a filled line reads as an INPUT, which is the
      * wrong affordance on a screen where nothing here is editable.
      *
-     * ── THE WEIGHT, SETTLED AGAINST THE STRIKE RATHER THAN IN THE ABSTRACT
+     * ── THE WEIGHT, SETTLED ON A FULL PAGE RATHER THAN ON ONE ROW ────────
      *
-     * Two ends were tried and both were wrong. `--color-bt-text-dim` reads as
-     * another border in light mode, where the card outline is already grey —
-     * 3.06 against that outline, which is not enough separation to be a mark.
-     * `--color-bt-text` is near-black on near-white at 17.85 against the card,
-     * louder than the score, the names and the strike: a great deal of
-     * emphasis for a binary fact.
+     * Three values were tried and the first two were wrong in opposite ways.
+     * Near-black on near-white shouts. `--color-bt-text-dim` and a step above
+     * it still made every settled row a frame — and with fifteen of sixteen
+     * settled, that is a page of frames rather than a mark.
      *
-     * A quarter of the way between them. Measured at both themes, against the
-     * card outline it has to beat and the strike it must not out-shout:
+     * THE CONDITION IS WHAT SETTLED IT. Every earlier comparison used one row
+     * or three, and a single boxed row looks fine at almost any brightness. On
+     * the real sixteen-game slate the aggregate is a different question, and
+     * the answer came down two full steps.
      *
-     *            box            vs card outline   vs card bg   strike
-     *   light    rgb(79,93,115)      4.29            6.68        3.74
-     *   dark     rgb(171,184,200)    6.01            8.27        8.95
+     * The target is a RELATION, not a value: the frame must be dimmer than the
+     * team name it wraps. A frame is scenery — it should draw the eye to the
+     * row without competing with what is in it. Measured against the card
+     * chrome it has to clear and the two name colours it must stay under:
      *
-     * In DARK it lands just under the strike. In LIGHT it cannot: the accent
-     * on a white card is only 3.74 to begin with, so matching that ratio would
-     * put the box below the chrome it has to clear.
+     *          box vs bg   vs chrome   plain name   your pick (teal)
+     *   dark     2.39        1.74        15.2           8.95
+     *   light    1.83        1.18        17.85          3.74
      *
-     * ── AND COLOUR IS A WEAK LEVER HERE, WHICH IS THE REAL FINDING ────────
+     * IN LIGHT THIS IS VERY CLOSE TO THE CHROME — 1.18 against the card's own
+     * outline, where dark gets 1.74. The value was chosen on a dark page, which
+     * is where this screen is read; if the light theme needs more, the fix is a
+     * per-theme value rather than a compromise that suits neither. Flagged
+     * rather than quietly split.
      *
-     * Six candidates across this whole range were put side by side and they
-     * were very nearly indistinguishable. Rendered as 14px SWATCHES the same
-     * six are obviously different colours; drawn as a 1px border they collapse
-     * together. So this value is a small improvement and not a fix.
+     * An ALPHA RAMP of `--color-bt-text-dim` rather than a new colour, which is
+     * the right axis here: in dark the card border is already that same slate
+     * hue at 0.18, so this ladder starts at the chrome and walks up from it.
      *
-     * What makes the box loud is not its colour but its SHAPE: a closed
-     * rectangle spanning the full width of a row is a lot of ink whatever it
-     * is drawn in, and the score sits at the far right, so wrapping the name,
-     * the line and the score necessarily spans everything between them.
-     * Anything that genuinely quietens it changes the shape — a bracket, an
-     * edge, or dropping the score out of the wrap — and the shape is spec'd
-     * (name + score + line are what constitute the bet), so it is not a change
-     * to make from inside this function.
-     *
-     * A MIX of the two tokens rather than a new value, so it flips with the
-     * theme on its own and cannot drift from them. `color-mix` is already how
-     * this file tints the multiplier badge.
-     *
-     * Deliberately NEUTRAL. Teal means your pick, amber means a weighted
-     * game; a third hue would be a third thing to learn and would collide
-     * with one of them on some row.
+     * Deliberately NEUTRAL. Teal means your pick, amber means a weighted game;
+     * a third hue would be a third thing to learn and would collide with one of
+     * them on some row.
      */
     border:
       "1px solid " +
       (m.covered
-        ? "color-mix(in srgb, var(--color-bt-text) 25%, var(--color-bt-text-dim))"
+        ? "color-mix(in srgb, var(--color-bt-text-dim) 45%, transparent)"
         : "transparent"),
     borderRadius: 7,
     paddingLeft: 5,
