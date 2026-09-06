@@ -63,9 +63,28 @@ describe("gameTypesForScoringModel — the offered menu", () => {
     expect(offered).not.toContain("gtt_rack_n_stack");
   });
 
-  it("points golf is Stroke-only today (stableford/sabotage/skins unbuilt)", () => {
+  it("points golf is Stroke + Scramble today (sabotage/skins unbuilt)", () => {
+    // Was "Stroke-only". Scramble is the second, and Stableford is NOT a third:
+    // it is a `games.config.scoringType` on a stroke game, not a format — which
+    // is the distinction this list keeps making visible.
     const golfOffered = gameTypesForScoringModel("points").filter((t) => t.isGolf).map(id);
-    expect(golfOffered).toEqual(["gtt_stroke_play"]);
+    expect(golfOffered).toEqual(["gtt_stroke_play", "gtt_scramble"]);
+  });
+
+  it("SCRAMBLE IS NOT OFFERED IN A TEAM-BASED CUP", () => {
+    /**
+     * The distinction that matters most about this type, asserted rather than
+     * assumed. BBMI already has a game called "Day 1 Scramble" and it is a
+     * MATCH-PLAY game whose sides are play_groups — a different thing entirely.
+     * A points-model Scramble appearing in a match-play cup would put two
+     * unrelated formats behind one word in the same menu.
+     *
+     * The negative is paired with its positive so it cannot pass by the type
+     * being absent from the catalog altogether — which is how a filter test goes
+     * quietly vacuous when someone renames an id.
+     */
+    expect(gameTypesForScoringModel("match_play").map(id)).not.toContain("gtt_scramble");
+    expect(gameTypesForScoringModel("points").map(id)).toContain("gtt_scramble");
   });
 
   it("a null scoring-model offers the whole catalog", () => {

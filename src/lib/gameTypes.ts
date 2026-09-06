@@ -167,6 +167,53 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     maxPlayersPerSide: null,
     compatibleScoringModels: ["points"],
   },
+  gtt_scramble: {
+    id: "gtt_scramble",
+    key: "scramble",
+    name: "Scramble",
+    description:
+      "Everyone tees off, the team plays the best ball each shot, and one score per team goes on the card. Lowest total wins.",
+    sortOrder: 3,
+    category: "golf",
+    /**
+     * SCRAMBLE IS STROKE PLAY WITH A DIFFERENT SCORER, and every field here says
+     * so deliberately.
+     *
+     * `resultStrategy` is `stroke_total` — the SAME engine, so `games.finish`
+     * dispatches to the shipped stroke arm with nothing added (CLAUDE.md #8: a
+     * new procedure whose reason to exist is "this format is different" is a
+     * hardcoded format name wearing a procedure's clothes). `scorecardSchema` is
+     * stroke's, unchanged: 18 holes, par, strokes.
+     *
+     * What differs is the PARTICIPANT — the score belongs to a `play_group`
+     * standing for a team rather than to a user — and that is not a property
+     * `resultStrategy` names. `entrySchema` is the only field that records it,
+     * and nothing in the app reads that column (one comment in `StrokeKeypad`
+     * mentions it), so it is honest description rather than behaviour.
+     *
+     * `compatibleScoringModels: ["points"]` is what keeps it out of a team-based
+     * cup's add-game menu, the same predicate stroke uses. A match-play
+     * competition cannot hold it, which is the distinction that matters most
+     * here: BBMI's "Day 1 Scramble" is a MATCH-PLAY game whose NAME is Scramble,
+     * sides being play_groups, and it is a different thing entirely. Nothing
+     * about this type touches it.
+     *
+     * `compatibleModifiers: []` — `glorious_holes` weights a MATCH's holes and
+     * has nothing to say about a stroke total. (`moving_tees` is a real scramble
+     * rule and is NOT here: it was once a checkbox that wrote a key nothing
+     * read, and was removed rather than left hollow. See #1324 — it needs a
+     * design, not a flag.)
+     */
+    entrySchema: "group_holes",
+    resultStrategy: "stroke_total",
+    scorecardSchema: strokeSchema,
+    compatibleModifiers: [],
+    supportsFreeForAll: true,
+    supportsSides: false,
+    requiresSides: false,
+    maxPlayersPerSide: null,
+    compatibleScoringModels: ["points"],
+  },
   gtt_match_play: {
     // Refactor A1 — the unified match-play type (was gtt_match_play_singles +
     // gtt_match_play_doubles). 1v1-vs-2v2 is a per-MATCH property (each match's
