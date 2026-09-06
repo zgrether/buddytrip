@@ -194,7 +194,11 @@ export const pickemRouter = router({
         ctx.supabase
           .from("pickem_slate_games")
           .select(
-            "id, display_order, away_team, home_team, spread, kickoff, note, multiplier, espn_event_id, result"
+            // `away_score, home_score, status` — migration 180. An EXPLICIT
+            // list, so a new column is invisible to the client until it is named
+            // here: that is why #1321's score slot had no back door, and it is
+            // why adding the columns alone would not have been enough.
+            "id, display_order, away_team, home_team, spread, kickoff, note, multiplier, espn_event_id, result, away_score, home_score, status"
           )
           .eq("game_id", input.gameId)
           .order("display_order", { ascending: true }),
@@ -381,6 +385,20 @@ export const pickemRouter = router({
           /** How it finished — away / home / push / cancelled, or null for not
            *  yet played (migration 159). */
           result: (r.result as "away" | "home" | "push" | "cancelled" | null) ?? null,
+          /**
+           * The contest's own score (migration 180). NULL means UNKNOWN and
+           * must stay null all the way to the display — a `?? 0` anywhere on
+           * this path would claim a scoreless tie on every game nobody has
+           * entered, which is most of them for most of a weekend.
+           */
+          awayScore: (r.away_score as number | null) ?? null,
+          homeScore: (r.home_score as number | null) ?? null,
+          /**
+           * scheduled | in_progress | final. Nothing writes it yet — see the
+           * column comment. Threaded now so the read path is complete and a
+           * later writer needs no second change here.
+           */
+          status: (r.status as "scheduled" | "in_progress" | "final" | null) ?? null,
           // `numeric` arrives as a string over PostgREST; the whole app treats a
           // multiplier as a number, so it is coerced ONCE, here, rather than at
           // every call site that would otherwise get `"2"` and concatenate.
