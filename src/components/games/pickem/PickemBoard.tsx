@@ -31,6 +31,15 @@ export interface BoardSlateGame extends ScoredSlateGame {
   homeTeam: string;
   spread: string | null;
   kickoff: string | null;
+  /**
+   * The contest's own score, when one has been fetched.
+   *
+   * OPTIONAL AND USUALLY ABSENT — a fixture typed by hand carries no ESPN id,
+   * and nothing populates these until the scheduled fetch lands. Absent must
+   * render as the row rendered before the field existed; see `GameScore`.
+   */
+  awayScore?: number | null;
+  homeScore?: number | null;
 }
 
 /**

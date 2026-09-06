@@ -245,29 +245,41 @@ describe("row emphasis", () => {
      * The caution this change had to respect. The swing column is why the
      * screen exists, so it must not fade with the surface underneath: it
      * carries its own accent colour and accent-faint fill.
+     *
+     * The fixture now has an UNPLAYED row beside the played one, because the
+     * fade is only applied to a MIXED list — see the test below. A single
+     * played row is a settled match and no longer recedes.
      */
-    const html = render([SLATE[0]], [PLAYED]);
+    const html = render(SLATE, [PLAYED, UNPLAYED]);
     const only = rowFor(html, "Alabama");
     expect(only).toContain(FLAT);
     expect(only).toContain("var(--color-bt-accent)");
     expect(only).toContain("var(--color-bt-accent-faint)");
   });
 
-  it("a match with NOTHING left is all flat, and that is a settled match", () => {
-    // Not a broken board — every row a record, nothing highlighted, because
-    // there is nothing left to look at.
+  it("a SETTLED match does not fade anything — fading everything fades nothing", () => {
+    /**
+     * ── THIS REVERSES "a match with NOTHING left is all flat" ───────────────
+     *
+     * That test asserted the opposite and its reasoning was: "every row a
+     * record, nothing highlighted, because there is nothing left to look at."
+     * The reasoning is about a MATCH; the fade is a per-ROW comparison, and a
+     * comparison every row wins says nothing.
+     *
+     * Seen on a device: a finished head-to-head read as uniformly greyed, which
+     * looks like a disabled screen rather than a settled one. The signal is
+     * kept where it does work — a live match still recedes its settled rows,
+     * asserted above — and dropped where it cannot.
+     */
     const html = render(SLATE, [
       PLAYED,
       row({ slateGameId: "g2", result: "away", aPick: "home", bPick: "away", swing: -2 }),
     ]);
     const rowMarkup = html.split('data-testid="pickem-board-row"').slice(1);
     expect(rowMarkup).toHaveLength(2);
-    // Scoped to the ROWS. A page-wide assertion fails on the header and the
-    // note block, which legitimately sit on the card surface — measuring the
-    // page where the claim is about rows.
     for (const m of rowMarkup) {
-      expect(m).toContain(FLAT);
-      expect(m.slice(0, m.indexOf(">"))).not.toContain(RAISED);
+      expect(m.slice(0, m.indexOf(">"))).toContain(RAISED);
+      expect(m.slice(0, m.indexOf(">"))).not.toContain(FLAT);
     }
   });
 
@@ -579,5 +591,153 @@ describe("a missed pick is faded, name and rank together", () => {
     // name anywhere, rather than one that happens to be off screen.
     expect(tags(html, "pickem-h2h-team")).toHaveLength(1);
     expect(tags(html, "pickem-h2h-team")[0]).not.toContain(FADED);
+  });
+});
+
+/**
+ * The score slot — built ahead of the fetch that fills it, so the row is ready
+ * for a score and correct without one.
+ *
+ * ── The failure this exists to prevent ────────────────────────────────────
+ *
+ * A score arrives from an upstream nobody controls, on fixtures that may have
+ * been typed by hand and carry no id at all. So NO SCORE is the common case,
+ * not the edge one, and a build that renders absent as `0` prints a scoreless
+ * tie on every game nobody fetched. That is the empty-is-not-unknown family
+ * arriving through an external dependency, and it is the one failure an outage
+ * must never be able to cause.
+ */
+describe("a game with no score renders exactly as it did before the slot existed", () => {
+  const slateGame = (over: Record<string, unknown> = {}) => ({
+    id: "g1",
+    awayTeam: "Alabama",
+    homeTeam: "Georgia",
+    spread: null,
+    kickoff: "Sat 3:30p",
+    note: null,
+    multiplier: 1,
+    ...over,
+  });
+
+  const render = (slate: Parameters<typeof PickemHeadToHead>[0]["slate"]) =>
+    renderToStaticMarkup(
+      <PickemHeadToHead
+        slate={slate}
+        rows={[row({ slateGameId: "g1", result: "home", aPick: "home", bPick: "away", swing: 4 })]}
+        aName="Ada"
+        bName="Bo"
+        aUserId="u1"
+        bUserId="u2"
+        avatarFor={() => ({ avatarIcon: null, teamColor: null })}
+        matchIndex={1}
+        matchCount={1}
+        resolved={1}
+        picked={{ a: true, b: true }}
+        useConfidence
+        note="Live"
+        onBack={() => {}}
+      />
+    );
+
+  it("renders NO score element at all when none was fetched", () => {
+    /**
+     * THE MUTATION: `away ?? 0` / `home ?? 0`, or a `—` placeholder.
+     *
+     * Either passes any test that only checks a fetched score renders. This is
+     * the one that fails, and it fails on the case that is true most of the
+     * week.
+     */
+    const html = render([slateGame()]);
+    expect(html).not.toContain("pickem-game-score");
+    expect(html).not.toContain("pickem-score-away");
+  });
+
+  it("renders it when BOTH sides are present", () => {
+    const html = render([slateGame({ awayScore: 24, homeScore: 17 })]);
+    expect(html).toContain('data-testid="pickem-game-score"');
+    expect(html).toContain('>24<');
+    expect(html).toContain('>17<');
+    // TWO ROWS, no separator — the stack is in the same order as the two team
+    // lines beside it, so the dash a single-line pair needs is gone with it.
+    expect(html).not.toContain('24–17');
+  });
+
+  it("treats a real 0 as a SCORE, not as absence", () => {
+    /**
+     * `0` is a legitimate score. A build using `||` or a falsy check blanks a
+     * scoreless game — which is the inverse mistake and just as wrong.
+     */
+    const zero = render([slateGame({ awayScore: 0, homeScore: 0 })]);
+    expect(zero).toContain('data-testid="pickem-score-away"');
+    expect(zero).toContain('data-testid="pickem-score-home"');
+  });
+
+  it("refuses HALF a score — one side is not a score", () => {
+    expect(render([slateGame({ awayScore: 24, homeScore: null })])).not.toContain(
+      "pickem-game-score"
+    );
+  });
+});
+
+describe("the covered badge is gone and the multiplier has moved", () => {
+  const slateGame = (multiplier = 1) => ({
+    id: "g1",
+    awayTeam: "Alabama",
+    homeTeam: "Georgia",
+    spread: null,
+    kickoff: "Sat 3:30p",
+    note: null,
+    multiplier,
+  });
+
+  const render = (multiplier: number) =>
+    renderToStaticMarkup(
+      <PickemHeadToHead
+        slate={[slateGame(multiplier)]}
+        rows={[
+          row({
+            slateGameId: "g1",
+            result: "home",
+            aPick: "home",
+            bPick: "away",
+            swing: 4,
+            multiplier,
+          }),
+        ]}
+        aName="Ada"
+        bName="Bo"
+        aUserId="u1"
+        bUserId="u2"
+        avatarFor={() => ({ avatarIcon: null, teamColor: null })}
+        matchIndex={1}
+        matchCount={1}
+        resolved={1}
+        picked={{ a: true, b: true }}
+        useConfidence
+        note="Live"
+        onBack={() => {}}
+      />
+    );
+
+  it("says nothing in words that the swing cell already says by treatment", () => {
+    // "Georgia covered" competed with the multiplier for the top-right corner
+    // and repeated what `Both`/`Neither` and the arrow already carry.
+    expect(render(1)).not.toContain("covered");
+  });
+
+  it("puts the multiplier in its OWN bottom slot, not the matchup's corner", () => {
+    /**
+     * THE MUTATION: leave it on `MatchupLine`, which pins it top-right. That
+     * build still renders a badge and still passes any "is the multiplier
+     * shown" assertion — the whole change is WHERE.
+     */
+    const weighted = render(2);
+    expect(weighted).toContain('data-testid="pickem-h2h-multiplier"');
+    // ...and the matchup line is not also drawing one.
+    expect(weighted).not.toContain("pickem-matchup-multiplier-slot");
+  });
+
+  it("adds no slot at all on an ordinary game", () => {
+    expect(render(1)).not.toContain("pickem-h2h-multiplier");
   });
 });
