@@ -405,6 +405,71 @@ export function PickemRunView({
  * layer up from the column that enforces it: a scoreless game is a real final
  * and an unentered one is unknown, and they must not collapse.
  */
+/**
+ * ONE PAIR OF BOXES, TWO WRITERS: the person typing, and the server.
+ *
+ * ── The bug this exists to make impossible ───────────────────────────────
+ *
+ * The first version re-seeded both boxes whenever the SERVER pair changed,
+ * with a comment claiming that while somebody is typing the server is
+ * unchanged so it could not fight them. That was false, and the away box is
+ * what made it false: leaving the away box commits, the write lands, the
+ * refetch arrives carrying {17, null} — a server change caused by the typing
+ * itself — and the re-seed then wrote BOTH boxes, blanking the 24 already
+ * sitting in the home box. Reported from a device: the first score sticks and
+ * the second disappears if you are quick.
+ *
+ * The write was never wrong. `commit` sends both numbers out of local state,
+ * so {17, 24} always reached the database. What was wrong is that the answer
+ * to an EARLIER write was allowed to repaint a box holding a LATER edit.
+ *
+ * ── The rule, which is the outbox rule (CLAUDE.md #15) ──────────────────
+ *
+ * The active enterer wins over any remote update. So the boxes stop following
+ * the server from the moment we send, and start again only when the pair we
+ * SENT is the pair that comes back. Anything else arriving in between is an
+ * older answer, and an older answer may not repaint anything.
+ *
+ * That also fixes the out-of-order case for free, which the obvious
+ * per-field fix does not: away's response {17, null} can land AFTER home's
+ * {17, 24}, and it must still not blank the home box.
+ *
+ * ── Why it is a pure function ───────────────────────────────────────────
+ *
+ * The suite is `environment: "node"` — no DOM, so there is no way to type into
+ * a box, blur it, and re-render with new props. A test of the COMPONENT could
+ * only assert the boxes render, which is exactly what stayed green while this
+ * bug shipped. The decision is the thing with failure modes, so it is the
+ * thing that is testable.
+ */
+export function nextScoreSeed(state: {
+  /** What the server currently holds, as a pair. */
+  server: string;
+  /** The pair the boxes were last filled from. */
+  seeded: string;
+  /** The pair we sent and have not yet seen come back. Null when idle. */
+  sent: string | null;
+}): { adopt: boolean; seeded: string; sent: string | null } {
+  const { server, seeded, sent } = state;
+  if (sent !== null) {
+    /**
+     * OUR WRITE CAME BACK. Stop holding — but do not adopt: the boxes already
+     * hold this pair, and if the person has typed on since, adopting would
+     * clobber that instead. Confirmation releases the hold; it never repaints.
+     */
+    if (server === sent) return { adopt: false, seeded: server, sent: null };
+    // Still in flight. Whatever this is, it is older than what we sent.
+    return { adopt: false, seeded, sent };
+  }
+  // Idle, and the server moved under us — a correction from another device.
+  if (server !== seeded) return { adopt: true, seeded: server, sent: null };
+  return { adopt: false, seeded, sent: null };
+}
+
+/** The two boxes as one comparable value. */
+function pairOf(away: string, home: string): string {
+  return away + "|" + home;
+}
 function ScoreEntry({
   game: g,
   busy,
@@ -417,31 +482,39 @@ function ScoreEntry({
   const [away, setAway] = useState(() => textOf(g.awayScore));
   const [home, setHome] = useState(() => textOf(g.homeScore));
 
-  /**
-   * Re-seed when the SERVER value moves — a correction from another device,
-   * or this row's own write coming back.
-   *
-   * DURING RENDER, not in an effect. React documents this as the way to
-   * adjust state when a prop changes, and the effect version is worse than
-   * merely unidiomatic here: it paints the stale value first and corrects it
-   * on a second pass, so a corrected score would visibly flick from the old
-   * number to the new one. It is keyed on the PAIR, so while somebody is
-   * typing — server unchanged — this does nothing and cannot fight them.
-   */
-  const serverPair = textOf(g.awayScore) + "|" + textOf(g.homeScore);
+  const serverPair = pairOf(textOf(g.awayScore), textOf(g.homeScore));
   const [seeded, setSeeded] = useState(serverPair);
-  if (seeded !== serverPair) {
-    setSeeded(serverPair);
+  /** The pair we sent and have not seen come back — see `nextScoreSeed`. */
+  const [sent, setSent] = useState<string | null>(null);
+
+  /**
+   * DURING RENDER, not in an effect. React documents this as the way to
+   * adjust state when a prop changes, and the effect version paints the stale
+   * value first and corrects it on a second pass — a corrected score would
+   * visibly flick from the old number to the new one.
+   */
+  const step = nextScoreSeed({ server: serverPair, seeded, sent });
+  if (step.seeded !== seeded) setSeeded(step.seeded);
+  if (step.sent !== sent) setSent(step.sent);
+  if (step.adopt) {
     setAway(textOf(g.awayScore));
     setHome(textOf(g.homeScore));
   }
 
   const commit = (nextAway: string, nextHome: string) => {
-    const a = valueOf(nextAway);
-    const h = valueOf(nextHome);
-    // No write for a field somebody tabbed through without changing.
-    if (a === (g.awayScore ?? null) && h === (g.homeScore ?? null)) return;
-    onSetScore(g.id, a, h);
+    const pair = pairOf(nextAway, nextHome);
+    /**
+     * Nothing to send: a box was tabbed through unchanged, or this repeats a
+     * write already in flight.
+     *
+     * Compared against what the server WILL hold once our outstanding write
+     * lands, not against what it holds now — while a write is in flight the
+     * props are one step behind, and comparing to them would send the same
+     * pair a second time on every blur.
+     */
+    if (pair === (sent ?? serverPair)) return;
+    setSent(pair);
+    onSetScore(g.id, valueOf(nextAway), valueOf(nextHome));
   };
 
   const field = (
