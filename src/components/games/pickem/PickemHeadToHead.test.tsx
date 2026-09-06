@@ -36,31 +36,39 @@ describe("swingCell — played", () => {
     expect(swingCell(row({ result: "home", swing: -6 }))).toEqual({ dir: "b", text: "6 ▶" });
   });
 
-  it("gives each of the four zeros its own word, never a dash", () => {
+  it("words the three zeros a treatment cannot carry, and only those", () => {
     /**
-     * Five different FACTS that all produce nothing, and only one of them is
-     * anybody's fault. A dash for all of them would tell the reader a voided
-     * game was played, and a shared label would merge a missing sheet with a
-     * pair of wrong picks.
+     * FIVE facts that all produce nothing, split by whether anything else on
+     * the row can say them.
+     *
+     * A push, a cancellation and a contest nobody wagered on are facts about
+     * the GAME. Nothing else on the row states them, so they keep a word, and
+     * a dash for all three would tell a reader a cancelled game was played.
+     *
+     * `both` and `neither` were facts about the PICKS, and the picks now say
+     * it themselves — a wrong pick is struck through (#1327). They render
+     * EMPTY, which is not a dash and not a shared label: it is the column
+     * given back to the chevron, which is what moves the match.
      */
     const cases: [BoardRow["zeroKind"], string][] = [
       ["push", "Push"],
       ["cancelled", "Cancelled"],
-      ["both", "Both"],
-      ["neither", "Neither"],
-      // The fifth: somebody did not pick it. Not a kind of WRONG — "Neither"
-      // says two people missed a contest one of them never wagered on.
+      // Somebody did not pick it. Not a kind of WRONG, and NOT reachable when
+      // only one side is absent — `zeroKindFor` requires that NOBODY wagered,
+      // which is the case two struck names could never have expressed.
       ["unpicked", "No pick"],
+      ["both", ""],
+      ["neither", ""],
     ];
-    const seen = new Set<string>();
     for (const [zeroKind, text] of cases) {
       const cell = swingCell(row({ result: "home", swing: 0, zeroKind }));
       expect(cell, String(zeroKind)).toEqual({ dir: "zero", text });
-      seen.add(cell.text);
     }
-    // Four distinct strings — a map that collapsed two of them would satisfy
-    // every assertion above if they happened to share a value.
-    expect(seen.size).toBe(5);
+    // The three that keep words keep DISTINCT ones — a map collapsing two of
+    // them would satisfy every assertion above if they shared a value.
+    const worded = ["push", "cancelled", "unpicked"] as const;
+    const seen = new Set(worded.map((k) => swingCell(row({ result: "home", swing: 0, zeroKind: k })).text));
+    expect(seen.size).toBe(3);
   });
 });
 

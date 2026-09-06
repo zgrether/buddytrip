@@ -55,13 +55,37 @@ import type { BoardSlateGame } from "./PickemBoard";
  * This cell is the tightest place it appears (a 70px grid column), so it is the
  * one to check on a device if the word ever grows again.
  */
-const ZERO_SHORT: Record<ZeroKind, string> = {
+/**
+ * ── `Both` AND `Neither` ARE GONE (#1327) ───────────────────────────────
+ *
+ * The three words left are facts about the GAME — a push, a cancellation, a
+ * contest nobody wagered on. No treatment can carry those, so they keep a
+ * word.
+ *
+ * `Both` and `Neither` were facts about the PICKS, and the picks now say it
+ * themselves: a wrong pick is struck through. All three cases read without
+ * the label, and the mixed one reads BETTER —
+ *
+ *   both struck      neither covered
+ *   neither struck   both covered
+ *   one struck       they split, and WHICH is immediately visible, which
+ *                    `Neither` could never tell you
+ *
+ * The case that had to be checked first was a game NOBODY picked, where two
+ * struck names would say something different — you cannot strike a pick that
+ * does not exist. It does not reach here: `zeroKindFor` tests `eitherPicked`
+ * BEFORE the hit comparison (`pickemBoard.ts`), so that row returns
+ * `unpicked` and keeps its own words, in this cell and in both side cells.
+ *
+ * What the removal buys is the COLUMN. It is 70px holding the delta chevron,
+ * which is the thing this screen is scanned for because it is the thing that
+ * moves the match.
+ */
+const ZERO_SHORT: Partial<Record<ZeroKind, string>> = {
   push: "Push",
   cancelled: "Cancelled",
-  both: "Both",
-  neither: "Neither",
   // NOBODY picked — not "one of them didn't". A wrong pick against an empty
-  // slot is `neither` now: something was wagered and lost, and reporting the
+  // slot is `neither`: something was wagered and lost, and reporting the
   // quiet half of the row says nothing about the half where that happened.
   // With both slots empty there is no contest to be wrong about, and this is
   // the whole story.
@@ -95,9 +119,15 @@ export function swingCell(row: BoardRow): SwingCell {
   if (row.result != null) {
     if (row.swing > 0) return { dir: "a", text: `◀ ${row.swing}` };
     if (row.swing < 0) return { dir: "b", text: `${Math.abs(row.swing)} ▶` };
-    // Played and level. `zeroKind` is non-null exactly here, but the fallback
-    // is a fact rather than a dash even if that ever stops being true.
-    return { dir: "zero", text: row.zeroKind ? ZERO_SHORT[row.zeroKind] : "Level" };
+    /**
+     * Played and level. EMPTY is now a legitimate answer: `both` and `neither`
+     * have no word (#1327) because the strikes on the two picks say it, and
+     * the space they leave is the column the chevron needs.
+     *
+     * The `Level` fallback stays for a `zeroKind` of null, which cannot happen
+     * here — but it is a fact rather than a dash if that ever stops being true.
+     */
+    return { dir: "zero", text: row.zeroKind ? (ZERO_SHORT[row.zeroKind] ?? "") : "Level" };
   }
 
   if (row.upsideA > 0 && row.upsideB > 0) {

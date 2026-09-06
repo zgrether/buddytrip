@@ -438,16 +438,29 @@ export function PickemSheetRow({
       awayScore={game.awayScore}
       homeScore={game.homeScore}
       /**
-       * The status line replaces the kickoff, and ONLY for a cancellation.
+       * The status line replaces the kickoff, for the two outcomes that PAID
+       * NOBODY — and for no others.
        *
-       * Not for every settled game: the chip already carries "banked / missed /
-       * paid nobody" for those, and a "Final" on all sixteen rows would be a
-       * column of the same word. Cancellation is the one outcome the chip alone
-       * misreports — it shows a stake on a game that scored nothing — so it is
-       * the one that earns a line of its own.
+       * Not for every settled game: a "Final" on all sixteen rows would be a
+       * column of one word, and the chip and the marks already carry which
+       * side won and which one you took. These two earn a line because
+       * nothing else on the row NAMES them.
+       *
+       * ── PUSH JOINS CANCELLED, and it closes the last ambiguity ──────────
+       *
+       * A push draws no box (nobody covered) and leaves the pick unstruck
+       * (the stake stood), which is correct and is also exactly how an
+       * UNENTERED game renders. The two were told apart only by the row's
+       * settled fade and the chip losing its fill — real signals, but no word
+       * anywhere said which had happened.
+       *
+       * The standing objection to a status line is "sixteen rows of the same
+       * word". It does not apply here: a push is rare, so the line appears on
+       * the row where something unusual happened and nowhere else. That is
+       * the opposite of a column of the same word.
        */
       status={
-        result === "cancelled"
+        result === "cancelled" || result === "push"
           ? { text: RESULT_LABEL[result], tone: resultTone(result) }
           : undefined
       }
