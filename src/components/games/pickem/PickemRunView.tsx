@@ -493,7 +493,25 @@ function ScoreEntry({
   );
 
   return (
-    <div className="flex flex-col gap-1.5" data-testid="pickem-run-score">
+    <div className="flex flex-col gap-1" data-testid="pickem-run-score">
+      {/* ── THE CAPTION IS NOT DECORATION ────────────────────────────────
+          Without it the boxes are two empty fields under a team name, and a
+          runner reading the card has to guess what goes in them — seen at the
+          first look, where the pair read as an unlabelled form rather than as
+          a score. "Optional" is the load-bearing word: nothing on this page
+          requires a score, nothing derives from one, and a field that looks
+          mandatory on sixteen rows is sixteen invented obligations. */}
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: "var(--color-bt-text-dim)",
+        }}
+      >
+        Final score · optional
+      </span>
       {field("away", g.awayTeam, away, setAway)}
       {field("home", g.homeTeam, home, setHome)}
     </div>
