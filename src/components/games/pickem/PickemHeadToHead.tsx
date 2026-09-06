@@ -5,8 +5,12 @@ import { PickemAbsenceNotice, NO_PICKS } from "./PickemAbsenceNotice";
 import { MatchResultBanner } from "@/components/games/MatchResultBanner";
 import { Avatar } from "@/components/Avatar";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
-import { MatchupLine, MultiplierBadge, pickemRowSurface } from "./slateRowVisual";
+import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
 import { matchPill, matchNote, type SidesPicked } from "./PickemMatchCard";
+/* The RESULTS PANEL owns the winner treatment, exactly as it owns the label
+   and the tone. Imported rather than re-derived — three surfaces painting one
+   settled game must not be three decisions. */
+import { resultEmphasis } from "./PickemRunView";
 import { matchStanding, type BoardRow, type ZeroKind } from "@/lib/pickemBoard";
 import type { BoardSlateGame } from "./PickemBoard";
 
@@ -373,36 +377,40 @@ export function PickemHeadToHead({
               padding: "7px 10px",
             }}
           >
-            <span className="flex items-start gap-2">
-              <span className="min-w-0 flex-1">
-                <MatchupLine
-                  game={{
-                    awayTeam: g.awayTeam,
-                    homeTeam: g.homeTeam,
-                    spread: g.spread,
-                    kickoff: played ? null : (g.kickoff ?? "TBD"),
-                    note: null,
-                    /**
-                     * SUPPRESSED HERE, and rendered at the bottom-left below.
-                     * `MatchupLine` pins the badge to its own top-right, which
-                     * on this row is the busiest corner — it shared it with the
-                     * result chip and now shares it with the score. Every other
-                     * surface keeps the pinned badge; this one opts out and
-                     * places its own.
-                     */
-                    multiplier: 1,
-                  }}
-                />
-              </span>
-              {/* ── THE SCORE, RIGHT-JUSTIFIED ────────────────────────────────
-                  Absent is ABSENT. A game whose score has not been fetched —
-                  or whose fixture was entered by hand and has no ESPN id at
-                  all — renders exactly as it did before this slot existed: no
-                  zero, no placeholder, no reserved width. An upstream outage
-                  must not change what the row claims about a game, and "0-0"
-                  is a claim. */}
-              <GameScore away={g.awayScore} home={g.homeScore} />
-            </span>
+            <MatchupLine
+              /* ── THE SHARED PLACEMENT, NOT THIS SURFACE'S PRIVATE ONE ──
+                 This screen moved its badge to the bottom-left first
+                 (#1321) by suppressing MatchupLine's and drawing its own.
+                 Now all three viewing surfaces do it, so the placement is a
+                 prop on the shared component and the private copy is gone —
+                 one home, and the slate builder keeps its corner badge by
+                 simply not passing this. */
+              multiplierAt="meta"
+              awayScore={g.awayScore}
+              homeScore={g.homeScore}
+              /* ── THE WINNER, BY WEIGHT ────────────────────────────────
+                 This screen used to say who won only in the SWING column and
+                 in whichever pick chips happened to be bright, so a reader
+                 scanning it had to work the result out from two people's
+                 picks rather than read it off the contest. Now the same bold
+                 name the results page and the sheet use.
+
+                 It does NOT strike a losing pick here. The pick chips carry
+                 that already, by fade — a deliberate choice recorded on
+                 `Conf` below, because a line across two tabular digits at
+                 11px fights the digits. A second missed treatment would be
+                 the same fact drawn twice, in two languages. */
+              awayEmphasis={resultEmphasis(g.result ?? null).away}
+              homeEmphasis={resultEmphasis(g.result ?? null).home}
+              game={{
+                awayTeam: g.awayTeam,
+                homeTeam: g.homeTeam,
+                spread: g.spread,
+                kickoff: played ? null : (g.kickoff ?? "TBD"),
+                note: null,
+                multiplier: r.multiplier,
+              }}
+            />
 
             <span
               className="grid items-center gap-2"
@@ -439,22 +447,6 @@ export function PickemHeadToHead({
               </span>
             </span>
 
-            {/* ── THE MULTIPLIER, BOTTOM-LEFT ────────────────────────────────
-                Out of the top-right, which is this row's busiest corner — it
-                shared it with the result chip and would now share it with the
-                score. Down here it sits against the amber stripe that marks
-                the same fact, directly under the confidence chips it modifies.
-
-                Its own line rather than inside the comparison grid above: that
-                grid is unchanged by standing instruction, and a badge tucked
-                into its left column would be touching it. The line renders
-                only on a weighted row, so an ordinary row is exactly as tall
-                as it was. */}
-            {r.multiplier > 1 && (
-              <span className="flex" data-testid="pickem-h2h-multiplier">
-                <MultiplierBadge multiplier={r.multiplier} />
-              </span>
-            )}
           </div>
         );
       })}
@@ -519,65 +511,6 @@ function Side({
   );
 }
 
-/**
- * The contest's own score, right-justified.
- *
- * ── ABSENT IS ABSENT, AND THAT IS THE WHOLE CONTRACT ──────────────────────
- *
- * A score arrives from an upstream nobody controls, on a fixture that may have
- * been typed by hand and carry no id at all. So the common case is NO SCORE,
- * and it must render as the row rendered before this component existed —
- * nothing, not a zero, not a dash, not a reserved gap.
- *
- * `0` is a legitimate score (a scoreless first quarter), so the check is `!=
- * null` and never falsy. A build that used `||` would blank a real 0-0 and,
- * worse, one that treated absent AS 0 would print a scoreless tie on every game
- * nobody had fetched — the empty-is-not-unknown family, arriving through an
- * external dependency.
- *
- * BOTH sides or neither: half a score is not a score.
- */
-function GameScore({ away, home }: { away?: number | null; home?: number | null }) {
-  if (away == null || home == null) return null;
-  const line: React.CSSProperties = {
-    fontSize: TYPE_SCALE.name,
-    fontWeight: 700,
-    lineHeight: 1.3,
-    fontVariantNumeric: "tabular-nums",
-    letterSpacing: "-0.01em",
-    color: "var(--color-bt-text)",
-  };
-  return (
-    /**
-     * ── TWO ROWS, NO SEPARATOR ────────────────────────────────────────────
-     *
-     * Stacked rather than "17–24" on one line, because the matchup beside it is
-     * already two lines in the same order — away above home. The top number is
-     * the visitor's and the second is the home side's, and the LAYOUT says so,
-     * so the dash that a single-line pair needs to be readable has nothing left
-     * to do.
-     *
-     * `lineHeight` matches the name lines' so the two numbers land beside the
-     * teams they belong to rather than merely near them.
-     *
-     * This stays OUTSIDE `MatchupLine`. Putting a score on each of its two team
-     * lines was tried and reverted: that component is shared by the sheet, the
-     * results panel and the slate modal, none of which show a score, and the
-     * simpler change that reaches only this surface produces the same picture.
-     */
-    <span
-      className="flex shrink-0 flex-col items-end"
-      data-testid="pickem-game-score"
-    >
-      <span data-testid="pickem-score-away" style={line}>
-        {away}
-      </span>
-      <span data-testid="pickem-score-home" style={line}>
-        {home}
-      </span>
-    </span>
-  );
-}
 
 /** The middle column. Accent-faint whenever somebody's points are involved;
  *  flat when the row is a zero or a non-stake, because those are facts about

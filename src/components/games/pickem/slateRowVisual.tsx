@@ -125,7 +125,9 @@ export type SideEmphasis =
   | "won"
   | "lost"
   | "level"
-  | "struck";
+  | "struck"
+  | "banked"
+  | "missed";
 
 export function sideEmphasisStyle(emphasis: SideEmphasis): CSSProperties {
   switch (emphasis) {
@@ -143,6 +145,25 @@ export function sideEmphasisStyle(emphasis: SideEmphasis): CSSProperties {
       return { color: "var(--color-bt-text)", fontWeight: 500 };
     case "struck":
       return { color: "var(--color-bt-text-dim)", fontWeight: 500 };
+    /**
+     * ── THE TWO THAT SAY BOTH THINGS AT ONCE ─────────────────────────────
+     *
+     * Every state above answers ONE question. The picks sheet asks two of a
+     * settled row — who won, and which one did I take — and it cannot drop
+     * either: the winner-by-weight treatment is what all three surfaces now
+     * share, and the accent is the only thing that makes a CLOSED locked row
+     * still say what you picked.
+     *
+     * So these are compositions rather than new ideas. `banked` is `chosen` wearing
+     * `won`'s weight; `missed` is `chosen` at the loser weight, with the strike
+     * from `sideDecoration`. The names are the RANK CHIP's own words — a banked
+     * stake, a missed one — so a chip and the name it belongs to are
+     * described by one vocabulary instead of two that resemble each other.
+     */
+    case "banked":
+      return { color: "var(--color-bt-accent)", fontWeight: 700 };
+    case "missed":
+      return { color: "var(--color-bt-accent)", fontWeight: 500 };
     default:
       return { color: "var(--color-bt-text)", fontWeight: 500 };
   }
@@ -172,9 +193,26 @@ export function sideEmphasisStyle(emphasis: SideEmphasis): CSSProperties {
  * inside the decorated box in the first place.
  */
 export function sideDecoration(emphasis: SideEmphasis): CSSProperties | undefined {
-  return emphasis === "struck"
-    ? { textDecoration: "line-through", textDecorationColor: "var(--color-bt-text-dim)" }
-    : undefined;
+  /**
+   * TWO states carry the line, and together they are ONE statement: a struck
+   * name is a stake that paid nothing.
+   *
+   * `struck` is the whole CONTEST removed, so both names take it. `missed` is
+   * one PICK that lost, so only the side you took does. They never co-occur —
+   * a cancelled game overrides the pick treatment — and the difference reads
+   * without knowing the rule, because one strike means your bet and two mean
+   * the game.
+   *
+   * The line follows its text: dim under `struck`, accent under `missed`, so it
+   * never draws a grey rule across a teal word.
+   */
+  if (emphasis === "struck") {
+    return { textDecoration: "line-through", textDecorationColor: "var(--color-bt-text-dim)" };
+  }
+  if (emphasis === "missed") {
+    return { textDecoration: "line-through", textDecorationColor: "var(--color-bt-accent)" };
+  }
+  return undefined;
 }
 
 /**
@@ -317,12 +355,42 @@ export function SpreadBadge({ spread }: { spread: string }) {
  */
 const MULTIPLIER_CLEARANCE = 44;
 
+/**
+ * One team's score, on that team's own line.
+ *
+ * Right-aligned and `tabular-nums` so a column of them lines up digit for
+ * digit. Two digits is the ordinary case and three the ceiling (a basketball
+ * final), which is why nothing here reserves a fixed width — a 3-digit score
+ * grows the box rather than being clipped, and a slate of football scores does
+ * not pay for the basketball case.
+ */
+function TeamScore({ value, side }: { value: number; side: "away" | "home" }) {
+  return (
+    <span
+      className="shrink-0 pl-2"
+      data-testid={`pickem-score-${side}`}
+      style={{
+        fontSize: TYPE_SCALE.name,
+        fontWeight: 700,
+        fontVariantNumeric: "tabular-nums",
+        letterSpacing: "-0.01em",
+        color: "var(--color-bt-text)",
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
 export function MatchupLine({
   game,
   leading,
   awayEmphasis = "none",
   homeEmphasis = "none",
   status,
+  multiplierAt = "corner",
+  awayScore,
+  homeScore,
 }: {
   game: MatchupLineGame;
   leading?: ReactNode;
@@ -338,6 +406,37 @@ export function MatchupLine({
    * along with it.
    */
   status?: { text: string; tone: StatusTone };
+  /**
+   * WHERE the weighted badge sits.
+   *
+   * `"corner"` is the original: absolute, pinned to this component's own
+   * top-right. `"meta"` puts it inline at the start of the date/note line —
+   * the bottom-left of the block.
+   *
+   * A PROP rather than a change, because the four surfaces that render a
+   * contest are not all converging. The picks sheet, the results row and the
+   * head-to-head move; the SLATE BUILDER is deliberately excluded — it is a
+   * pre-game authoring surface, not a viewing one, and it has no score, no
+   * result and no corner contention. Changing this component outright would
+   * have moved it too, silently, which is the trap: the excluded surface shares
+   * the component with the three that converge.
+   */
+  multiplierAt?: "corner" | "meta";
+  /**
+   * The contest's score, one number per team, right-aligned on that team's own
+   * line — away above home, matching the two lines it annotates.
+   *
+   * BOTH OR NEITHER. Half a score is not a score: a runner mid-entry has typed
+   * one number, and one number beside one team reads as a broken row rather
+   * than as a partial. The DB deliberately admits the half state (migration
+   * 180) so entry can pass through it; this is where it is refused.
+   *
+   * Absent renders NOTHING — no zero, no dash, no reserved width — so a row
+   * whose game has no score is byte-identical to what it was before scores
+   * existed. `!= null`, never falsy: 0-0 is a real score.
+   */
+  awayScore?: number | null;
+  homeScore?: number | null;
 }) {
   const meta = status
     ? game.note || null
@@ -345,13 +444,19 @@ export function MatchupLine({
   const multiplier = game.multiplier ?? 1;
   const weighted = multiplier > 1;
   const name = { fontSize: TYPE_SCALE.name, lineHeight: 1.3 } as const;
-  const clearance = weighted ? MULTIPLIER_CLEARANCE : undefined;
+  const cornerBadge = weighted && multiplierAt === "corner";
+  const multiplierInline = weighted && multiplierAt === "meta";
+  /* The clearance exists to keep a long name out from under the CORNER badge.
+     With the badge on the meta line there is nothing to clear, so the names get
+     those 44px back — which is most of the reason moving it is worth doing. */
+  const clearance = cornerBadge ? MULTIPLIER_CLEARANCE : undefined;
+  const bothScores = awayScore != null && homeScore != null;
   return (
     <div className="relative flex min-w-0 flex-1 items-start gap-2.5">
       {leading}
       <span className="min-w-0 flex-1">
         <span
-          className="block truncate"
+          className="flex min-w-0 items-baseline"
           data-testid="pickem-matchup-away"
           style={{
             ...name,
@@ -359,9 +464,14 @@ export function MatchupLine({
             paddingRight: clearance,
           }}
         >
-          <span data-testid="pickem-matchup-away-name" style={sideDecoration(awayEmphasis)}>
+          <span
+            className="min-w-0 flex-1 truncate"
+            data-testid="pickem-matchup-away-name"
+            style={sideDecoration(awayEmphasis)}
+          >
             {game.awayTeam}
           </span>
+          {bothScores && <TeamScore value={awayScore!} side="away" />}
         </span>
         {/* ── THE CLEARANCE GOES ON THE LINE, NOT ON THE NAME ────────────────
             The home line has a SIBLING — the spread badge — so padding the
@@ -401,9 +511,32 @@ export function MatchupLine({
           {/* WITH the home team, because the line is the home team's — the one
               badge whose position is meaningful rather than tidy. */}
           {game.spread && <SpreadBadge spread={game.spread} />}
+          {bothScores && (
+            <>
+              {/* Pushes the home number to the same right edge as the away
+                  one, so the two read as a column beside the two names rather
+                  than as two trailing values. */}
+              <span className="flex-1" />
+              <TeamScore value={homeScore!} side="home" />
+            </>
+          )}
         </span>
-        {(status || meta) && (
+        {(status || meta || multiplierInline) && (
           <span className="mt-0.5 flex min-w-0 items-baseline gap-x-1">
+            {/* ── THE MULTIPLIER, BOTTOM-LEFT ────────────────────────────────
+                Horizontally in line with the date and the note, which is the
+                bottom-left of the matchup block. It was pinned to the TOP-right
+                — the busiest corner on every one of these surfaces, shared with
+                the result chip, the NOT PICKED stamp, and now the score.
+
+                Down here it sits against the amber stripe that marks the same
+                fact, and it stops competing for a corner three other things
+                want. */}
+            {multiplierInline && (
+              <span className="flex shrink-0" data-testid="pickem-matchup-multiplier-inline">
+                <MultiplierBadge multiplier={multiplier} />
+              </span>
+            )}
             {status && (
               <span
                 className="shrink-0"
@@ -429,7 +562,7 @@ export function MatchupLine({
           </span>
         )}
       </span>
-      {weighted && (
+      {cornerBadge && (
         <span
           /* `flex`, matching the badge slot in `PickemGameCard`, so the chip's
              box is content-height rather than line-height-height. As a plain

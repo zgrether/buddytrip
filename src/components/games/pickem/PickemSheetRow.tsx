@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { type MatchupLineGame } from "./slateRowVisual";
+import { type MatchupLineGame, type SideEmphasis } from "./slateRowVisual";
 import { PickemGameCard, PickemSegments, SELECT_HOLD_MS } from "./PickemGameCard";
 import { PickemAbsenceNotice, NOT_PICKED } from "./PickemAbsenceNotice";
 /* The RESULTS PANEL owns these. Importing rather than re-deriving is what keeps
@@ -57,6 +57,10 @@ export interface SheetRowGame extends MatchupLineGame {
   id: string;
   kickoff: string | null;
   note: string | null;
+  /** The contest score, once it has finished. Both or neither, absent
+   *  renders nothing — the rule lives in `MatchupLine`. */
+  awayScore?: number | null;
+  homeScore?: number | null;
 }
 
 /**
@@ -233,6 +237,57 @@ function RankChip({
   );
 }
 
+/**
+ * WHAT ONE NAME IS SAYING, once a contest has finished.
+ *
+ * ── The bug this fixes: a losing pick kept the accent ─────────────────────
+ *
+ * The sheet painted the side you took teal and left it teal forever. Teal is
+ * this app's YES — the selected segment, the banked rank chip, the live pill —
+ * so a wrong pick on a settled sheet read as a right one, and the only thing
+ * on the row saying otherwise was a small struck number in the chip. That is
+ * not a consistency complaint about three surfaces disagreeing; it is one
+ * surface asserting something false.
+ *
+ * ── Two facts, and neither may be dropped ────────────────────────────────
+ *
+ * A settled row has to say WHO WON (the bold name all three surfaces now
+ * share) and WHICH ONE I TOOK (the accent — the only thing that makes a
+ * CLOSED locked row still readable, which is what made collapsing by default
+ * honest in the first place). So the four combinations are four states rather
+ * than one treatment overriding the other:
+ *
+ *   took the winner     banked   accent, bold
+ *   took the loser      missed   accent, normal, STRUCK
+ *   left the winner     won      plain, bold
+ *   left the loser      lost     dim, normal
+ *
+ * The strike is what carries the correction, and it is the sheet's own
+ * vocabulary rather than a new one: the rank chip has always struck a missed
+ * stake. Now the name and the number agree.
+ *
+ * ── The two outcomes that are not a win ──────────────────────────────────
+ *
+ * CANCELLED overrides everything, both sides struck — a fact about the GAME
+ * outranks a fact about the sheet, and there is nothing left for a pick to
+ * have been. PUSH does not: it happened and nobody covered, so your pick
+ * stood and keeps its colour, while the other name takes `level`. That is the
+ * pre-existing rule, unchanged; only the decided case moved.
+ */
+export function sideEmphasis(
+  side: "away" | "home",
+  pick: "away" | "home" | null,
+  result: SlateResult | null
+): SideEmphasis {
+  const picked = pick === side;
+  if (result == null) return picked ? "chosen" : "none";
+  if (result === "cancelled") return resultEmphasis(result)[side];
+  if (result === "push") return picked ? "chosen" : "level";
+  const won = result === side;
+  if (picked) return won ? "banked" : "missed";
+  return won ? "won" : "lost";
+}
+
 export function PickemSheetRow({
   game,
   pick,
@@ -318,39 +373,24 @@ export function PickemSheetRow({
       testId="pickem-sheet-row"
       game={game}
       /**
-       * ── THE PICK IS READABLE WITH THE ROW SHUT ────────────────────────────
+       * ── FOUR STATES, NOT ONE TREATMENT OVERRIDING ANOTHER ────────────────
        *
-       * This is what makes collapsing by default honest rather than hiding the
-       * answer: the chosen side's NAME takes the accent, so a closed sixteen-row
-       * sheet can be read straight down without opening anything.
-       *
-       * `chosen` on both phases, settled rows included. The row's FATE is the
-       * rank chip's job — filled, struck, outlined — and painting the name by
-       * outcome here would put the results page's vocabulary on the sheet,
-       * where the question is what you took rather than how it went.
+       * This slot used to hold two rules and a note explaining why they did
+       * not conflict: the chosen side is accent on BOTH phases, and only a
+       * cancellation overrides it. The first of those was wrong once the game
+       * had been played — see `sideEmphasis`, which is where the reasoning
+       * lives now, because it is a decision about the sheet's whole settled
+       * state rather than about this call.
        */
+      awayEmphasis={sideEmphasis("away", pick, result)}
+      homeEmphasis={sideEmphasis("home", pick, result)}
       /**
-       * ── A CANCELLED GAME IS STRUCK, EXACTLY AS THE RESULTS PANEL DRAWS IT ──
-       *
-       * The sheet used to say nothing about a cancellation: the row dimmed
-       * (every settled row does), the pick stayed teal, and the chip kept its
-       * number — so a game struck from the scoring read as an ordinary pick you
-       * happened not to score on. The results panel had it right all along;
-       * this is the same treatment, from the SAME functions, so the two
-       * surfaces cannot word or paint one row two ways.
-       *
-       * ONLY cancellation overrides the pick's accent, and the line is where a
-       * fact about the GAME outranks a fact about the SHEET. A push happened
-       * and nobody covered — your pick still stood, so it keeps its colour and
-       * the chip's dim carries the outcome. A cancelled contest was removed;
-       * there is nothing left for a pick to have been.
+       * The score sits on the two name lines, right-aligned, and only once
+       * the game has finished — the caller passes null while picks are open.
+       * Both or neither; absent draws nothing at all.
        */
-      awayEmphasis={
-        result === "cancelled" ? resultEmphasis(result).away : pick === "away" ? "chosen" : "none"
-      }
-      homeEmphasis={
-        result === "cancelled" ? resultEmphasis(result).home : pick === "home" ? "chosen" : "none"
-      }
+      awayScore={game.awayScore}
+      homeScore={game.homeScore}
       /**
        * The status line replaces the kickoff, and ONLY for a cancellation.
        *

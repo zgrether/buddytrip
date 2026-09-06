@@ -61,8 +61,14 @@ describe("the matchup line", () => {
     expect(awayText).toContain("Alabama");
     expect(awayText).not.toContain("Georgia");
 
-    // Each line holds itself to ONE line, so a long name cannot make a third.
-    expect(away).toContain("truncate");
+    // Each NAME holds itself to one line, so a long one cannot make a third.
+    //
+    // Anchored to the name spans rather than to the lines that hold them: the
+    // away line became a flex row when the score joined it, and the truncation
+    // moved onto the name inside it. A line-level assertion passed against the
+    // old build and would now pass against a build that truncated the SCORE
+    // instead of the name, which is the opposite of what is wanted.
+    expect(tag(html, "pickem-matchup-away-name")).toContain("truncate");
     expect(home).toContain("truncate");
   });
 
@@ -393,8 +399,17 @@ describe("the sheet and the results page draw the same contest identically", () 
     multiplier: 2,
   };
 
-  /** The fragment both surfaces must contain, built from the shared component. */
-  const expected = renderToStaticMarkup(<MatchupLine game={SAME} />);
+  /**
+   * The fragment both surfaces must contain, built from the shared component.
+   *
+   * `multiplierAt="meta"` because that is what `PickemGameCard` passes, and this
+   * comparison is only meaningful if the reference is built the way the real
+   * callers build it — a fixture that does not send what the caller sends
+   * measures a path that does not exist. It also makes this the guard for the
+   * convergence itself: a surface that reverted to the pinned corner badge
+   * would stop containing this fragment.
+   */
+  const expected = renderToStaticMarkup(<MatchupLine game={SAME} multiplierAt="meta" />);
 
   const sheet = renderToStaticMarkup(
     <PickemSheetRow

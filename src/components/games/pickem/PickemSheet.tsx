@@ -140,6 +140,16 @@ export interface PickemSheetGame {
    * renders exactly the sheet that existed before.
    */
   result?: SlateResult | null;
+  /**
+   * The contest score (migration 180), for a game that has finished.
+   *
+   * Optional for the same reason `result` is: an editable sheet has no use
+   * for it, and absent renders the sheet that existed before scores did.
+   * BOTH OR NEITHER is enforced downstream, in `MatchupLine` — one number is
+   * not a score, and manual entry passes through that state.
+   */
+  awayScore?: number | null;
+  homeScore?: number | null;
 }
 
 /**
@@ -902,6 +912,12 @@ export function PickemSheet({
                 multiplier: g.multiplier ?? 1,
                 kickoff: g.kickoff ?? null,
                 note: g.note ?? null,
+                /* Gated on `!editable` exactly as `result` is. While picks are
+                   open nothing has been played, and a score printed beside
+                   a team you are still choosing between would be asserting
+                   an outcome the row is there to precede. */
+                awayScore: editable ? null : (g.awayScore ?? null),
+                homeScore: editable ? null : (g.homeScore ?? null),
               }}
               pick={p?.pick ?? null}
               // The chip shows what THIS POSITION is worth, derived from the

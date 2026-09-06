@@ -761,6 +761,61 @@ export const pickemRouter = router({
       return { ok: true };
     }),
 
+  /**
+   * THE CONTEST'S OWN SCORE — two integers, typed by hand (migration 180).
+   *
+   * ── A plain UPDATE, not an RPC, and that is deliberate ─────────────────
+   *
+   * `set_pickem_result` is an RPC because a result has RULES: a completeness
+   * gate, a finalize freeze, a pairing freeze, and a broadcast that moves the
+   * competition board. A score has none of them. Nothing derives from it,
+   * nothing is refused because of it, and no other surface's arithmetic
+   * changes when it lands — so a function whose whole body would be one
+   * UPDATE would be ceremony, and ceremony that implies a rule exists.
+   *
+   * The two things that DO gate it are already here: `requireGameEdit()` and,
+   * underneath it, `pickem_slate_games_write` — Owner / Organizer / delegate,
+   * checked by the database rather than by this procedure. The `game_id`
+   * filter is what ties the row to the game that middleware authorised;
+   * without it a slate game id from another trip would be updated under a
+   * permission granted for this one.
+   *
+   * ── No freeze, on purpose ──────────────────────────────────────────────
+   *
+   * A finalized game still takes a score. The freezes exist to stop a number
+   * moving after it has paid somebody, and this number never pays anybody —
+   * a runner filling in Saturday's finals on Sunday is a normal thing to do
+   * and there is nothing for it to invalidate.
+   *
+   * ── Both numbers, one call ─────────────────────────────────────────────
+   *
+   * Each is independently nullable — the column pair deliberately admits the
+   * half state so entry can pass through it — but they are WRITTEN together,
+   * so a row cannot be left half-filled by a second request that never came.
+   * The display refuses the half state at the read.
+   */
+  setScore: authedProcedure
+    .input(
+      z.object({
+        tripId: z.string(),
+        gameId: z.string(),
+        slateGameId: z.string(),
+        /** Null CLEARS it back to unknown. Never 0 — a scoreless game is a
+         *  real final and must not read as an unentered one. */
+        awayScore: z.number().int().min(0).max(999).nullable(),
+        homeScore: z.number().int().min(0).max(999).nullable(),
+      })
+    )
+    .use(requireGameEdit())
+    .mutation(async ({ ctx, input }) => {
+      const { error } = await ctx.supabase
+        .from("pickem_slate_games")
+        .update({ away_score: input.awayScore, home_score: input.homeScore })
+        .eq("id", input.slateGameId)
+        .eq("game_id", input.gameId);
+      if (error) throw pickemError(error.message);
+      return { ok: true };
+    }),
   setDeadline: authedProcedure
     .input(
       z.object({
