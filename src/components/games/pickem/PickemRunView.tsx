@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { TYPE_SCALE } from "@/lib/typeScale";
 /* `pickemRowSurface` is gone from this file: the entered row used to build its
    own surface and now renders the shared `PickemGameCard`, which owns it. */
 import { type SideEmphasis, type StatusTone } from "./slateRowVisual";
@@ -61,6 +61,16 @@ export interface RunSlateGame extends ScoredSlateGame {
   spread: string | null;
   kickoff: string | null;
   note: string | null;
+  /**
+   * The contest's own final (migration 180) — the one field on this page a
+   * reader TYPES rather than chooses.
+   *
+   * Independently nullable, and half a score is a state the storage layer
+   * deliberately admits so entry can pass through it. The read refuses it:
+   * `MatchupLine` draws nothing unless both are present.
+   */
+  awayScore?: number | null;
+  homeScore?: number | null;
 }
 
 /**
@@ -170,6 +180,7 @@ export function PickemRunView({
   ridingOn,
   matchesPending,
   onSetResult,
+  onSetScore,
 }: {
   slate: RunSlateGame[];
   canEdit: boolean;
@@ -186,10 +197,27 @@ export function PickemRunView({
   /** Distinct matches hanging on anything still unmarked. */
   matchesPending?: number;
   onSetResult: (slateGameId: string, result: SlateResult | null) => void;
+  /**
+   * The contest's own score, typed by hand (migration 180).
+   *
+   * BOTH NUMBERS IN ONE CALL, each independently nullable. The pair is what
+   * a reader needs — one number is not a score — so sending them together
+   * means a row can never be left half-written by a second write that never
+   * happened.
+   *
+   * OPTIONAL, and absent is what makes the fields absent rather than
+   * disabled: a member reading this page is not being shown two empty boxes
+   * they cannot fill.
+   */
+  onSetScore?: (slateGameId: string, awayScore: number | null, homeScore: number | null) => void;
 }) {
   const { resolved, total } = resolvedCount(slate);
+  /**
+   * Still counted, never used to SPLIT the list any more — see the render.
+   * The how-to line is for a runner who has work left, and that is the one
+   * question this number is still asked.
+   */
   const pending = slate.filter((g) => g.result == null);
-  const entered = slate.filter((g) => g.result != null);
   /**
    * Which entered game is open for correction, if any.
    *
@@ -277,45 +305,48 @@ export function PickemRunView({
           there is nothing here to be blocked by, and the amber banner that said
           so was half of a double treatment with the RPC's own refusal. */}
 
-      {/* NO eyebrow over the first group. A card with four unpressed buttons
-          on it is a game needing a result, and the count was the same number
-          the header carries. "Entered" keeps its eyebrow because that group IS
-          a change of subject: it is the same slate, already dealt with, and
-          without a heading the two groups read as one list where the rows
-          inexplicably change shape half way down. */}
-      {pending.length > 0 && (
-        <>
-          {pending.map((g) => (
-            <PendingCard
-              key={g.id}
-              game={g}
-              busy={busyId === g.id}
-              canEdit={canEdit}
-              riding={ridingOn?.get(g.id) ?? 0}
-              matchesPending={matchesPending ?? 0}
-              onSetResult={onSetResult}
-            />
-          ))}
-        </>
-      )}
+      {/* ── ONE LIST, IN START ORDER ──────────────────────────────────────
+          This was two groups under an "Entered · N" eyebrow, and the argument
+          for splitting was that only one of them is work. That cost is real,
+          and it bought something worse: a game MOVED when you marked it. The
+          row you had just tapped jumped out of the position you found it in —
+          the position it holds on every other surface, and the position it
+          holds on the scoreboard the runner is reading from — and landed
+          under a heading further down. Entering sixteen results meant the
+          list reordering itself sixteen times underneath you.
 
-      {entered.length > 0 && (
-        <>
-          <div className="mt-1 px-1" style={EYEBROW}>
-            Entered · {entered.length}
-          </div>
-          {entered.map((g) => (
-            <EnteredRow
-              key={g.id}
-              game={g}
-              busy={busyId === g.id}
-              canEdit={canEdit}
-              open={reopened === g.id}
-              onToggle={() => setReopened((cur) => (cur === g.id ? null : g.id))}
-              onSetResult={onSetResult}
-            />
-          ))}
-        </>
+          Slate order is the one order every surface agrees on, so it is the
+          one this list keeps. The work is still findable without a heading:
+          an unmarked game is the row with four unpressed buttons and no
+          result on its names, which is a louder signal than a word was.
+
+          The COLLAPSE stays. It is what makes a done row recede in place, and
+          it is the correction affordance — dropping the SECTION is not the
+          same decision as dropping the disclosure. */}
+      {slate.map((g) =>
+        g.result == null ? (
+          <PendingCard
+            key={g.id}
+            game={g}
+            busy={busyId === g.id}
+            canEdit={canEdit}
+            riding={ridingOn?.get(g.id) ?? 0}
+            matchesPending={matchesPending ?? 0}
+            onSetResult={onSetResult}
+            onSetScore={onSetScore}
+          />
+        ) : (
+          <EnteredRow
+            key={g.id}
+            game={g}
+            busy={busyId === g.id}
+            canEdit={canEdit}
+            open={reopened === g.id}
+            onToggle={() => setReopened((cur) => (cur === g.id ? null : g.id))}
+            onSetResult={onSetResult}
+            onSetScore={onSetScore}
+          />
+        )
       )}
 
       {/* ── THE FINALIZE IS NOT HERE ANY MORE (r7 §10) ────────────────────
@@ -336,6 +367,173 @@ export function PickemRunView({
   );
 }
 
+/**
+ * THE CONTEST'S OWN SCORE, TYPED BY HAND.
+ *
+ * ── It is display, and it is never read back ─────────────────────────────
+ *
+ * Nothing derives anything from these two numbers. Cover against the spread
+ * stays the runner's call on the segments above, and it must: the spread is
+ * hand-entered too, so deriving one manual input from two others would turn a
+ * judgement into an automatic decision made from data nobody checked. The
+ * column comment on `away_score` says the same thing at the other end of the
+ * stack, deliberately — the rule has to survive somebody reading only one of
+ * the two files.
+ *
+ * So the fields are OPTIONAL, always, in both directions: a game can be
+ * marked with no score, and a score can be typed on a game with no result.
+ * Neither state is incomplete and neither blocks the other.
+ *
+ * ── Why the boxes are labelled with the team names ──────────────────────
+ *
+ * A row of two unlabelled boxes has to be read as a convention — visitor
+ * first — and a runner transposes it exactly once before they stop trusting
+ * the page. The names are already on this card twice (the matchup, the
+ * segments) and this is a third; that repetition is the price of the boxes
+ * being unambiguous, and it is the right way round, because a transposed
+ * score is silent where a crowded card is merely ugly.
+ *
+ * ── Local draft, committed on blur ───────────────────────────────────────
+ *
+ * An input bound straight to the server value cannot hold the states typing
+ * passes through — empty on the way to a number, one digit on the way to two
+ * — and a write per keystroke would send 1 before 17. So the box holds a
+ * string, the commit happens when the field is left, and BOTH numbers go in
+ * one call.
+ *
+ * EMPTY IS NULL AND ZERO IS ZERO, which is this feature's standing rule one
+ * layer up from the column that enforces it: a scoreless game is a real final
+ * and an unentered one is unknown, and they must not collapse.
+ */
+function ScoreEntry({
+  game: g,
+  busy,
+  onSetScore,
+}: {
+  game: RunSlateGame;
+  busy: boolean;
+  onSetScore: (slateGameId: string, awayScore: number | null, homeScore: number | null) => void;
+}) {
+  const [away, setAway] = useState(() => textOf(g.awayScore));
+  const [home, setHome] = useState(() => textOf(g.homeScore));
+
+  /**
+   * Re-seed when the SERVER value moves — a correction from another device,
+   * or this row's own write coming back.
+   *
+   * DURING RENDER, not in an effect. React documents this as the way to
+   * adjust state when a prop changes, and the effect version is worse than
+   * merely unidiomatic here: it paints the stale value first and corrects it
+   * on a second pass, so a corrected score would visibly flick from the old
+   * number to the new one. It is keyed on the PAIR, so while somebody is
+   * typing — server unchanged — this does nothing and cannot fight them.
+   */
+  const serverPair = textOf(g.awayScore) + "|" + textOf(g.homeScore);
+  const [seeded, setSeeded] = useState(serverPair);
+  if (seeded !== serverPair) {
+    setSeeded(serverPair);
+    setAway(textOf(g.awayScore));
+    setHome(textOf(g.homeScore));
+  }
+
+  const commit = (nextAway: string, nextHome: string) => {
+    const a = valueOf(nextAway);
+    const h = valueOf(nextHome);
+    // No write for a field somebody tabbed through without changing.
+    if (a === (g.awayScore ?? null) && h === (g.homeScore ?? null)) return;
+    onSetScore(g.id, a, h);
+  };
+
+  const field = (
+    side: "away" | "home",
+    label: string,
+    value: string,
+    setValue: (v: string) => void
+  ) => (
+    <label className="flex min-w-0 items-center gap-2">
+      <span
+        className="min-w-0 flex-1 truncate"
+        style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+      >
+        {label}
+      </span>
+      <input
+        data-testid={"pickem-run-score-" + side}
+        /* The OS keypad, which is the golf score-entry gesture on a phone.
+           `inputMode` rather than a number input: the spinner arrows are
+           useless at this size, and a number input silently discards a value
+           the browser considers invalid, which would look like a lost score. */
+        inputMode="numeric"
+        autoComplete="off"
+        disabled={busy}
+        value={value}
+        aria-label={label + " score"}
+        onChange={(e) => setValue(digitsOnly(e.target.value))}
+        onBlur={() => commit(side === "away" ? value : away, side === "home" ? value : home)}
+        className="shrink-0 disabled:opacity-40"
+        style={{
+          /* Three digits and no more — two is the ordinary case and the third
+             is a basketball final. Right-aligned so a column of them lines up
+             on the units digit however many there are, which is the golf
+             entry this was asked to echo. */
+          width: 52,
+          height: 32,
+          borderRadius: 9,
+          border: "1px solid var(--color-bt-border)",
+          background: "transparent",
+          color: "var(--color-bt-text)",
+          textAlign: "right",
+          paddingRight: 8,
+          fontSize: TYPE_SCALE.bodyDense,
+          fontWeight: 700,
+          fontVariantNumeric: "tabular-nums",
+        }}
+      />
+    </label>
+  );
+
+  return (
+    <div className="flex flex-col gap-1" data-testid="pickem-run-score">
+      {/* ── THE CAPTION IS NOT DECORATION ────────────────────────────────
+          Without it the boxes are two empty fields under a team name, and a
+          runner reading the card has to guess what goes in them — seen at the
+          first look, where the pair read as an unlabelled form rather than as
+          a score. "Optional" is the load-bearing word: nothing on this page
+          requires a score, nothing derives from one, and a field that looks
+          mandatory on sixteen rows is sixteen invented obligations. */}
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: "var(--color-bt-text-dim)",
+        }}
+      >
+        Final score · optional
+      </span>
+      {field("away", g.awayTeam, away, setAway)}
+      {field("home", g.homeTeam, home, setHome)}
+    </div>
+  );
+}
+
+/** The stored number as the box shows it. Null is EMPTY, never a zero. */
+function textOf(n: number | null | undefined): string {
+  return n == null ? "" : String(n);
+}
+
+/** The box as a stored number. Empty is NULL, never 0 — the same distinction
+ *  the column comment makes, at the other end of the stack. */
+function valueOf(text: string): number | null {
+  return text === "" ? null : Number(text);
+}
+
+/** Digits, capped at three. The keypad still offers a decimal point on some
+ *  platforms, and a paste can carry anything at all. */
+function digitsOnly(raw: string): string {
+  return raw.replace(new RegExp("[^0-9]", "g"), "").slice(0, 3);
+}
 /** A game still to be marked — the runner's actual work. */
 function PendingCard({
   game: g,
@@ -344,6 +542,7 @@ function PendingCard({
   riding,
   matchesPending,
   onSetResult,
+  onSetScore,
 }: {
   game: RunSlateGame;
   busy: boolean;
@@ -352,6 +551,7 @@ function PendingCard({
   /** What the header already said, so this line can decline to repeat it. */
   matchesPending: number;
   onSetResult: (slateGameId: string, result: SlateResult | null) => void;
+  onSetScore?: (slateGameId: string, awayScore: number | null, homeScore: number | null) => void;
 }) {
   /**
    * Said only where it DIFFERS from every other row.
@@ -388,15 +588,23 @@ function PendingCard({
       game={{ ...g, kickoff: g.kickoff ?? "TBD" }}
     >
       {canEdit && (
-        <PickemSegments
-          values={RESULT_VALUES}
-          awayTeam={g.awayTeam}
-          homeTeam={g.homeTeam}
-          selected={(g.result as SlateResult | null) ?? null}
-          busy={busy}
-          onSelect={(value) => onSetResult(g.id, value)}
-          testIdPrefix="pickem-run"
-        />
+        <div className="flex flex-col gap-2.5">
+          <PickemSegments
+            values={RESULT_VALUES}
+            awayTeam={g.awayTeam}
+            homeTeam={g.homeTeam}
+            selected={(g.result as SlateResult | null) ?? null}
+            busy={busy}
+            onSelect={(value) => onSetResult(g.id, value)}
+            testIdPrefix="pickem-run"
+          />
+          {/* UNDER the outcome, because that is the order the work happens
+              in: the runner marks who covered and then, if they feel like
+              it, records what the game finished. Above it, two empty boxes
+              would be the first thing on every unmarked row — which would
+              read as the required step. */}
+          {onSetScore && <ScoreEntry game={g} busy={busy} onSetScore={onSetScore} />}
+        </div>
       )}
 
       {ridingWorthSaying && (
@@ -480,6 +688,7 @@ function EnteredRow({
   open,
   onToggle,
   onSetResult,
+  onSetScore,
 }: {
   game: RunSlateGame;
   busy: boolean;
@@ -487,6 +696,7 @@ function EnteredRow({
   open: boolean;
   onToggle: () => void;
   onSetResult: (slateGameId: string, result: SlateResult | null) => void;
+  onSetScore?: (slateGameId: string, awayScore: number | null, homeScore: number | null) => void;
 }) {
   const result = g.result as SlateResult;
   const emphasis = resultEmphasis(result);
@@ -496,6 +706,15 @@ function EnteredRow({
       game={g}
       awayEmphasis={emphasis.away}
       homeEmphasis={emphasis.home}
+      /* ── THE SCORE, IN EXACTLY ONE PLACE ─────────────────────────────
+         Beside the two names while the row is SHUT, which is how the other
+         two surfaces show it and how this row is read ninety-nine times out
+         of a hundred. Open, the boxes below hold the same number and this
+         goes — a row printing one value twice, once as text and once in the
+         field that edits it, is the composition duplicate CLAUDE.md counts,
+         and it is worse here because the two can disagree mid-edit. */
+      awayScore={open ? null : g.awayScore}
+      homeScore={open ? null : g.homeScore}
       /* The HEADER is the disclosure, not the card — `children` is what the
          tap reveals, so wrapping the whole card would nest the segments inside
          the button that opens them. */
@@ -525,6 +744,10 @@ function EnteredRow({
             onSelect={(value) => onSetResult(g.id, value)}
             testIdPrefix="pickem-run"
           />
+          {/* EDITABLE AFTER MARKING — the same fields, in the same place,
+              reached by the same tap that reopens the outcome. A score
+              arrives late more often than a result does. */}
+          {onSetScore && <ScoreEntry game={g} busy={busy} onSetScore={onSetScore} />}
           <button
             type="button"
             disabled={busy}

@@ -40,38 +40,66 @@ const render = (over: Partial<Parameters<typeof PickemRunView>[0]> = {}) =>
     />
   );
 
-describe("two groups, because only one of them is work", () => {
-  it("splits unmarked from entered, and heads only the second", () => {
+/**
+ * ONE LIST, IN SLATE ORDER — and this REPLACES "two groups, because only one
+ * of them is work", whose premise was sound and whose cost was not.
+ *
+ * The split put the runner's remaining work at the top, which is a real
+ * benefit. What it bought with it: marking a game MOVED it. The row jumped out
+ * of the position it holds on the picks sheet, on the matches tab and on the
+ * scoreboard the runner is reading from, and reappeared under a heading
+ * further down — sixteen times over an afternoon.
+ *
+ * ── The fixture is the whole test ────────────────────────────────────────
+ *
+ * `SLATE` has its one marked game LAST, so grouping and slate order agree on it
+ * and a build doing either passes. The decisive case is a marked game FIRST,
+ * which is the one case that separates the two builds and the one that looks
+ * redundant beside the others. It is the only assertion here that matters.
+ */
+describe("one list, in slate order", () => {
+  /** g1 marked, g2 and g3 not — order and grouping now disagree. */
+  const FIRST_MARKED = [
+    game({ id: "g1", result: "home" }),
+    game({ id: "g2", awayTeam: "Texas", homeTeam: "Oklahoma" }),
+    game({ id: "g3", awayTeam: "LSU", homeTeam: "Ole Miss" }),
+  ];
+
+  it("keeps a marked game where it was, above the games still to mark", () => {
     /**
-     * The first group lost its "Needs a result · 2" eyebrow. A card carrying
-     * four unpressed outcome buttons is self-evidently a game needing a result,
-     * and the count it held was the same number the header shows two lines up.
-     *
-     * "Entered" keeps its eyebrow because that group is a change of SUBJECT —
-     * the same slate, already dealt with — and without it the two groups read
-     * as one list whose rows inexplicably change shape half way down.
-     *
-     * Asserted as an ORDER, which is the part that matters and the part an
-     * eyebrow was only ever a proxy for: the work is above the record.
+     * THE MUTATION: restore the partition. That build renders the same three
+     * rows, the same testids and the same count — only the ORDER differs, so
+     * every assertion but this one survives it.
      */
-    const html = render();
-    expect(html).not.toContain("Needs a result");
-    expect(html).toContain("Entered · 1");
-    expect(html.indexOf('data-testid="pickem-run-row"')).toBeLessThan(
-      html.indexOf("Entered ·")
+    const html = render({ slate: FIRST_MARKED });
+    expect(html.indexOf('data-testid="pickem-run-entered"')).toBeLessThan(
+      html.indexOf('data-testid="pickem-run-row"')
     );
   });
 
-  it("drops a group entirely rather than showing it empty", () => {
-    // An empty group is a heading over nothing, and finishing is the best news
-    // on the screen — it should read as finished, not as a section.
+  it("heads neither group, because there are no groups", () => {
+    const html = render({ slate: FIRST_MARKED });
+    expect(html).not.toContain("Needs a result");
+    expect(html).not.toContain("Entered ·");
+  });
+
+  it("still draws the two shapes — a marked game is not an unmarked one", () => {
+    // The guard against the lazy version of this change: one list is not one
+    // ROW SHAPE. A settled game still collapses and still reopens.
+    const html = render({ slate: FIRST_MARKED });
+    expect(html).toContain('data-testid="pickem-run-entered"');
+    expect(html).toContain('data-testid="pickem-run-row"');
+    expect(html).toContain('data-testid="pickem-run-reopen"');
+  });
+
+  it("renders one shape only when the slate is all one way", () => {
     const allIn = render({ slate: SLATE.map((g) => ({ ...g, result: "home" as const })) });
     expect(allIn).not.toContain('data-testid="pickem-run-row"');
-    expect(allIn).toContain("Entered · 3");
+    expect(allIn).toContain('data-testid="pickem-run-entered"');
 
     const noneIn = render({ slate: SLATE.map((g) => ({ ...g, result: null })) });
     expect(noneIn).toContain('data-testid="pickem-run-row"');
-    expect(noneIn).not.toContain("Entered ·");
+    expect(noneIn).not.toContain('data-testid="pickem-run-entered"');
   });
 });
 
@@ -133,7 +161,10 @@ describe("the four-segment control", () => {
     // ...but the games are still there, so this is not passing by rendering
     // nothing.
     expect(html).toContain("Oklahoma");
-    expect(html).toContain("Entered · 1");
+    expect(html).toContain("Ole Miss");
+    // ...and no score boxes either: `onSetScore` is absent for a member, which
+    // is what makes the fields absent rather than disabled.
+    expect(html).not.toContain('data-testid="pickem-run-score-away"');
   });
 });
 
@@ -323,9 +354,12 @@ describe("a voided contest", () => {
   const voided = (i: number) =>
     SLATE.map((g, n) => ({ ...g, result: n === i ? ("cancelled" as const) : g.result }));
 
-  it("sits in ENTERED and reads Cancelled", () => {
+  it("reads Cancelled, on a settled row in its own place", () => {
+    // Was "sits in ENTERED": there is no ENTERED section any more, so what is
+    // left to assert is that the write moves the row into the SETTLED SHAPE —
+    // which is the fact the old name was using the section as a proxy for.
     const html = render({ slate: voided(0) });
-    expect(html).toContain("Entered");
+    expect(html).toContain('data-testid="pickem-run-entered"');
     expect(html).toContain("Cancelled");
   });
 

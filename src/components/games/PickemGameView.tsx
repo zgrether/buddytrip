@@ -442,6 +442,24 @@ export function PickemGameView() {
     onError: (e) => setSaveError(e.message),
   });
 
+  /**
+   * The score, which is DISPLAY and nothing else.
+   *
+   * No board invalidation, unlike `setResult` below: no total anywhere moves
+   * when a score lands, so re-pulling the leaderboard would be a request that
+   * can only learn nothing. The one refetch is this game's own.
+   *
+   * No per-row busy flag either. `busyResultId` exists because a result write
+   * must not be issued twice for one row; a score commits on blur, one field
+   * at a time, and disabling the box the moment you leave it would fight the
+   * person moving to the second one.
+   */
+  const setScore = trpc.pickem.setScore.useMutation({
+    onSuccess: async () => {
+      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
+    },
+    onError: (e) => showToast(e.message, "error"),
+  });
   const setDeadline = trpc.pickem.setDeadline.useMutation({
     onSuccess: async () => {
       await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
@@ -1768,6 +1786,21 @@ export function PickemGameView() {
                   setBusyResultId(slateGameId);
                   setResult.mutate({ tripId: tripId!, gameId, slateGameId, result });
                 }}
+                /* ABSENT rather than disabled for a member — the same rule
+                   the segments follow one prop up. Two empty boxes nobody
+                   can fill are a control that lies about what is on offer. */
+                onSetScore={
+                  resultsEditable
+                    ? (slateGameId, awayScore, homeScore) =>
+                        setScore.mutate({
+                          tripId: tripId!,
+                          gameId,
+                          slateGameId,
+                          awayScore,
+                          homeScore,
+                        })
+                    : undefined
+                }
               />
               {noMatchesDrawn && <PickemMatchesRequired />}
             </div>

@@ -117,6 +117,8 @@ export function PickemGameCard({
   awayEmphasis,
   homeEmphasis,
   status,
+  awayScore,
+  homeScore,
   onHeaderTap,
   headerTestId,
   headerOpen,
@@ -134,6 +136,17 @@ export function PickemGameCard({
   awayEmphasis?: SideEmphasis;
   homeEmphasis?: SideEmphasis;
   status?: { text: string; tone: StatusTone };
+  /**
+   * The contest score, one number per team, on that team's own line.
+   *
+   * BOTH OR NEITHER, and absent renders nothing at all — the rule lives in
+   * `MatchupLine` and this card only forwards. Passed by the surfaces that
+   * READ a score; the results page passes it only while its row is shut,
+   * because open it is showing the boxes you type into and the same number
+   * twice on one row is the composition bug CLAUDE.md counts.
+   */
+  awayScore?: number | null;
+  homeScore?: number | null;
   /** Makes the header row a disclosure button — see `header`. Absent leaves it
    *  a plain row, which is what every surface but the entered results list
    *  wants. */
@@ -216,6 +229,17 @@ export function PickemGameCard({
               awayEmphasis={awayEmphasis}
               homeEmphasis={homeEmphasis}
               status={status}
+              awayScore={awayScore}
+              homeScore={homeScore}
+              /* ── BOTTOM-LEFT, AND FIXED HERE RATHER THAN PASSED IN ─────
+                 This card is the VIEWING card: the picks sheet and the two
+                 results rows, and nothing else renders it. The fourth
+                 surface — the slate builder — calls `MatchupLine` directly and
+                 is deliberately excluded from this convergence, so it keeps
+                 the pinned corner badge by simply not coming through here.
+                 A prop would be a choice this card's three callers have no
+                 reason to make differently. */
+              multiplierAt="meta"
             />
           </div>
         ),

@@ -648,17 +648,32 @@ describe("a game with no score renders exactly as it did before the slot existed
      * week.
      */
     const html = render([slateGame()]);
-    expect(html).not.toContain("pickem-game-score");
     expect(html).not.toContain("pickem-score-away");
+    expect(html).not.toContain("pickem-score-home");
   });
 
   it("renders it when BOTH sides are present", () => {
     const html = render([slateGame({ awayScore: 24, homeScore: 17 })]);
-    expect(html).toContain('data-testid="pickem-game-score"');
-    expect(html).toContain('>24<');
+    /**
+     * ON THE TEAM LINES NOW, not in a stack beside them.
+     *
+     * The score used to be its own two-row block to the right of the matchup.
+     * It is now one number per team, on that team's own line — so the
+     * assertion is that each number sits INSIDE the line it annotates, which
+     * a build that kept the separate block would fail while still rendering
+     * both numbers.
+     */
+    const awayLine = html.slice(
+      html.indexOf('data-testid="pickem-matchup-away"'),
+      html.indexOf('data-testid="pickem-matchup-home-line"')
+    );
+    expect(awayLine).toContain('data-testid="pickem-score-away"');
+    expect(awayLine).toContain('>24<');
+    expect(awayLine).not.toContain('>17<');
+    expect(html).toContain('data-testid="pickem-score-home"');
     expect(html).toContain('>17<');
-    // TWO ROWS, no separator — the stack is in the same order as the two team
-    // lines beside it, so the dash a single-line pair needs is gone with it.
+    // No separator — the two lines are the ordering, so the dash a single-line
+    // pair needs is gone with it.
     expect(html).not.toContain('24–17');
   });
 
@@ -673,9 +688,9 @@ describe("a game with no score renders exactly as it did before the slot existed
   });
 
   it("refuses HALF a score — one side is not a score", () => {
-    expect(render([slateGame({ awayScore: 24, homeScore: null })])).not.toContain(
-      "pickem-game-score"
-    );
+    const half = render([slateGame({ awayScore: 24, homeScore: null })]);
+    expect(half).not.toContain("pickem-score-away");
+    expect(half).not.toContain("pickem-score-home");
   });
 });
 
@@ -732,12 +747,27 @@ describe("the covered badge is gone and the multiplier has moved", () => {
      * shown" assertion — the whole change is WHERE.
      */
     const weighted = render(2);
-    expect(weighted).toContain('data-testid="pickem-h2h-multiplier"');
-    // ...and the matchup line is not also drawing one.
+    /**
+     * THE TESTID MOVED, and the move is the point rather than a rename.
+     *
+     * This screen got the bottom-left badge first, by suppressing
+     * `MatchupLine`'s and drawing a private one of its own
+     * (`pickem-h2h-multiplier`). All three viewing surfaces do it now, so the
+     * placement is the shared component's and the private copy is gone — one
+     * home for it, and this asserts the badge is the SHARED inline one.
+     *
+     * THE MUTATION is unchanged: leave it pinned top-right. That build still
+     * renders a badge and still passes any is-the-multiplier-shown assertion.
+     */
+    expect(weighted).toContain('data-testid="pickem-matchup-multiplier-inline"');
+    // ...and the matchup line is not ALSO drawing one in its corner.
     expect(weighted).not.toContain("pickem-matchup-multiplier-slot");
+    // The private copy is gone rather than merely hidden.
+    expect(weighted).not.toContain("pickem-h2h-multiplier");
   });
 
   it("adds no slot at all on an ordinary game", () => {
-    expect(render(1)).not.toContain("pickem-h2h-multiplier");
+    expect(render(1)).not.toContain("pickem-matchup-multiplier-inline");
+    expect(render(1)).not.toContain("pickem-matchup-multiplier-slot");
   });
 });

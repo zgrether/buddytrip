@@ -180,19 +180,24 @@ an optional kickoff, an optional note and an optional multiplier.
 - A correct pick scores its confidence rank (or 1 with confidence off), times
   the game's multiplier.
 - A wrong pick scores nothing.
-- **A push and a VOID both score zero for everyone, and are different facts.**
+- **A push and a CANCELLATION both score zero for everyone, and are different
+  facts.**
   One happened and nobody covered; the other was struck from the scoring. One DB
   value (`pickem_slate_games.result = 'cancelled'`) and one display word,
-  **Void / Voided** — see that row in `CLAUDE.md`'s glossary for why it stopped
-  being two.
-- **A void has TWO producers**, which is why it is no longer described as "never
-  happened": a runner marking a contest void, and FINALIZING with contests
-  outstanding. The second writes `cancelled` for every unresolved game at
+  **Cancelled** — see that row in `CLAUDE.md`'s glossary for why it stopped
+  being two, and why the word chosen is the one a non-technical crew would
+  say rather than the one a form would. (This paragraph said **Void /
+  Voided** until now: the rename landed in the code and the glossary and not
+  here, which is the drift the note at the top of this file exists about.)
+- **A cancellation has TWO producers**, which is why it is no longer described
+  as "never happened": a runner marking a contest cancelled, and FINALIZING
+  with contests outstanding. The second writes `cancelled` for every unresolved game at
   finalize — written, never derived, because "had no result when this was
   finalized" is not something the data remembers. Those games were very likely
   played; nobody entered a result.
 - **It is reversible.** Correct a result reopens the game, the runner enters the
-  real outcome over the void, and re-finalizing recomputes the award. That is
+  real outcome over the cancellation, and re-finalizing recomputes the award.
+  That is
   what makes finalizing early a decision rather than a loss.
 - Both are **resolved**: they stop counting as remaining, which is what lets a
   clinch come forward correctly.
@@ -221,16 +226,46 @@ decided because nobody entered.
 ## 6. Results
 
 The runner marks each contest as it finishes: **away**, **home**, **push** or
-**void**. Any order — nothing waits on the row above it, and
+**cancelled**. Any order — nothing waits on the row above it, and
 `set_pickem_result` never reads `display_order`.
 
 - An entered game **reopens in place** for correction. Clearing first would pass
   through a state where the game reads unplayed and every total on every surface
   moves, for a mistake being fixed in the same breath.
+- **One list, in slate order.** Marked and unmarked games sit together in the
+  order the slate has everywhere else. There was an `Entered · N` section and
+  it is gone: it meant marking a game MOVED it out of the position the runner
+  found it in — the position it holds on the picks sheet, on the matches tab
+  and on the scoreboard they are reading from — sixteen times over an
+  afternoon. A marked game still collapses in place; that is the correction
+  affordance and it is a different decision from the section.
 - Results are visible to everyone as they land. There is no embargo; watching it
   resolve is the point.
 - **The first result freezes the scoring settings** (migration 157) and refuses
   a reopen (migration 165).
+
+### The score (migration 180)
+
+Two optional integers per contest, `away_score` / `home_score`, typed by hand
+on the results row beside the outcome.
+
+- **It is never interpreted.** Nothing derives a result, a cover or a total
+  from it. The spread is hand-entered too, so a cover derived from a score
+  would be an automatic decision made from two inputs nobody checked — which
+  is why the column comment says it and this does too, in the two places a
+  reader might arrive from.
+- **Optional in both directions.** A game can be marked with no score, and a
+  score can be typed on a game with no result. Neither is incomplete.
+- **Empty is not zero.** NULL means unknown; `0` is a scoreless final. The
+  fields commit empty as NULL and the display refuses to draw anything unless
+  BOTH numbers are present — half a score is not a score. The storage layer
+  deliberately admits the half state so entry can pass through it.
+- **Editable after marking**, through the same tap that reopens the outcome. A
+  score arrives late more often than a result does.
+- `pickem_slate_games.status` (`scheduled` / `in_progress` / `final`) exists
+  alongside them and **nothing writes it yet**. It is a column ahead of its
+  writer, for a future scheduled fetch's cost gate — `kickoff` is free text
+  (#1137), so nothing else in this schema can say a game has ended.
 
 ---
 

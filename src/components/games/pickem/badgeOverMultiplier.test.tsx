@@ -101,17 +101,31 @@ describe("NOT PICKED over the multiplier", () => {
     expect(tag(withBadge, "pickem-row-not-picked")).toContain("background:var(--color-bt-card)");
   });
 
-  it("leaves the multiplier's own slot pinned in both cases", () => {
+  it("has no corner chip left to collide with — the multiplier moved out", () => {
     /**
-     * The chip's position must not depend on whether the stamp is there. Its
-     * slot carries `right:0` either way — the stamp cannot move it because it
-     * is no longer in the same flow.
+     * ── THE COLLISION IS GONE AT ITS CAUSE, WHICH CHANGES THIS ASSERTION ──
+     *
+     * This used to read "leaves the multiplier's own slot pinned in both
+     * cases", checking that the chip's `right:0` survived the stamp arriving
+     * beside it. That is now unassertable, and not because the fix regressed:
+     * the sheet's multiplier is no longer in that corner at all. It sits
+     * inline at the start of the date line — bottom-left of the matchup block
+     * — so the stamp has the corner to itself and there is nothing there to
+     * be pushed.
+     *
+     * The two assertions above still carry the original defect: the stamp is
+     * absolute and outside the matchup's flow, which is what stopped it
+     * taking width. That mechanism is what would matter again if anything
+     * else were ever pinned there.
+     *
+     * THE MUTATION for this one: put the badge back in the corner on this
+     * card. It renders fine, it looks reasonable, and it re-creates the
+     * overlap the rest of this file exists about.
      */
     const noBadge = render({ pick: "away", outcome: "won" });
     for (const [label, markup] of [["with stamp", withBadge], ["without", noBadge]] as const) {
-      const slot = tag(markup, "pickem-matchup-multiplier-slot");
-      expect(slot, label).toContain("right:0");
-      expect(slot, label).toContain("absolute");
+      expect(markup, label).not.toContain("pickem-matchup-multiplier-slot");
+      expect(markup, label).toContain('data-testid="pickem-matchup-multiplier-inline"');
     }
   });
 
