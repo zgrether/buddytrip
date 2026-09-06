@@ -454,11 +454,29 @@ export function PickemGameView() {
    * at a time, and disabling the box the moment you leave it would fight the
    * person moving to the second one.
    */
+  /**
+   * The score — OPTIMISTIC, with the refetch as the ROLLBACK (#1).
+   *
+   * NO SUCCESS INVALIDATE. It used to re-pull the whole of `pickem.get` — the
+   * slate, every sheet, the matches and the picks — to learn two integers that
+   * nothing derives from. Reported from a device as a delay entering scores,
+   * and it was also half of what made the race in `nextScoreSeed` reachable:
+   * the longer the round trip, the wider the window in which the answer to an
+   * earlier write lands on a box somebody is still typing in.
+   *
+   * A score is display-only — no total moves, no board changes, nothing is
+   * refused because of it — so there is no server-computed consequence to go
+   * back for. The patch happens at the CALL SITE below, which is where this
+   * codebase does optimism: `src/components/games/` has no `onMutate` in it and
+   * this is not the change that introduces one.
+   */
   const setScore = trpc.pickem.setScore.useMutation({
-    onSuccess: async () => {
-      await utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
+    onError: (e) => {
+      showToast(e.message, "error");
+      // Re-pull server truth rather than restore a snapshot — the house
+      // rollback, and the one that cannot itself be stale.
+      utils.pickem.get.invalidate({ tripId: tripId!, gameId: gameId! });
     },
-    onError: (e) => showToast(e.message, "error"),
   });
   const setDeadline = trpc.pickem.setDeadline.useMutation({
     onSuccess: async () => {
@@ -1791,14 +1809,31 @@ export function PickemGameView() {
                    can fill are a control that lies about what is on offer. */
                 onSetScore={
                   resultsEditable
-                    ? (slateGameId, awayScore, homeScore) =>
+                    ? (slateGameId, awayScore, homeScore) => {
+                        // The patch, before the send — the row reads as entered
+                        // immediately and the round trip stops being felt.
+                        utils.pickem.get.setData(
+                          { tripId: tripId!, gameId },
+                          (prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  slate: prev.slate.map((sg) =>
+                                    sg.id === slateGameId
+                                      ? { ...sg, awayScore, homeScore }
+                                      : sg
+                                  ),
+                                }
+                              : prev
+                        );
                         setScore.mutate({
                           tripId: tripId!,
                           gameId,
                           slateGameId,
                           awayScore,
                           homeScore,
-                        })
+                        });
+                      }
                     : undefined
                 }
               />
