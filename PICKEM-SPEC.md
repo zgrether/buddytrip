@@ -244,6 +244,54 @@ The runner marks each contest as it finishes: **away**, **home**, **push** or
 - **The first result freezes the scoring settings** (migration 157) and refuses
   a reopen (migration 165).
 
+### How a settled row reads — four marks, one rule
+
+Two facts live on every settled row and they are **not the same fact**:
+
+| | comes from | shown by |
+|---|---|---|
+| who **won the game** | the scores | weight |
+| who **covered** | the runner's call against a hand-entered line | a box |
+
+They diverge, and that divergence is what a spread is for — a team can win by
+three against −7.5 and lose the pick'em entirely. Before this round ONE mark
+(weight) was driven by `result`, so it answered *who covered* while reading as
+*who won*; once the "covered" badges were removed nothing on a row said which
+side the runner had marked at all.
+
+- **Weight** — winner of the game bold, loser grey and **normal weight**. Never
+  dimmed-and-bold. With no score there is no winner, so nothing is bold: an
+  absent score must not fabricate a result.
+- **The score inherits its own name's colour and weight**, from the same call,
+  so the two halves of a line cannot disagree about who won.
+- **A box** wraps the covering side's name, score and line together — the three
+  things that constitute the bet. A container rather than a colour, because
+  weight and teal are both spoken for. **No box on a push or a cancellation.**
+- **Teal is your pick, and the PICKS page only.** It overrides the winner
+  colour, because on your own sheet the question is *what did I pick* before
+  *who won*. A pick that lost the bet is struck through; a pick on a push is
+  not, because the stake stood.
+
+**One derivation — `sideMarks` in `src/components/games/pickem/slateRowVisual.tsx`
+— and every surface calls it.** The Picks exception is a PARAMETER (`pick`), so
+Matches and Results simply have no pick to pass and cannot reach the teal case.
+This replaced `resultEmphasis`, which lived on the results page, was imported by
+the head-to-head and was re-wrapped privately by the sheet: three call sites,
+two functions, one concept.
+
+**The line shows on both rows**, mirrored from the one number the runner types
+(the builder's field is labelled *Spread Home*, so the number is the home
+team's). Without it a box around the away row would wrap a team with nothing
+where its line should be. **A spread of `0` shows on neither side** — a pick'em
+with no line is a straight winner call. The slate BUILDER is excluded and still
+shows the single badge.
+
+**The rank chip depends on whether ranks vary.** With confidence ON it shows the
+STAKE, struck through when missed — a struck 16 says you spent your best rank
+and got nothing, which a 0 cannot. With confidence OFF every stake is 1, so it
+shows what was **earned** and drops the line; miss and push are then told apart
+by the box and the strike on the names rather than by the chip.
+
 ### The score (migration 180)
 
 Two optional integers per contest, `away_score` / `home_score`, typed by hand

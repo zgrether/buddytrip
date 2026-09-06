@@ -4,7 +4,7 @@ import { useState } from "react";
 import { TYPE_SCALE } from "@/lib/typeScale";
 /* `pickemRowSurface` is gone from this file: the entered row used to build its
    own surface and now renders the shared `PickemGameCard`, which owns it. */
-import { type SideEmphasis, type StatusTone } from "./slateRowVisual";
+import { sideMarks, type StatusTone } from "./slateRowVisual";
 import { PickemGameCard, PickemSegments, segmentStyle } from "./PickemGameCard";
 
 /**
@@ -119,6 +119,23 @@ export const RESULT_LABEL: Record<SlateResult, string> = {
 };
 
 /**
+ * ── `resultEmphasis` IS GONE, AND ITS RETIREMENT IS THE ROUND ────────────
+ *
+ * It lived here, was imported by the head-to-head, and was then wrapped in a
+ * private function by the picks sheet — three call sites, two functions, one
+ * concept, with the RESULTS page owning a vocabulary the other two borrowed.
+ * That is the drift this round names. The one derivation is now `sideMarks`
+ * in `slateRowVisual`, beside the styles it feeds.
+ *
+ * It was also answering the WRONG QUESTION. It derived weight from `result`
+ * — who COVERED — while the treatment read as who WON THE GAME, and after
+ * the covered badges were removed nothing on a row said which side the
+ * runner had marked. Weight now comes from the scores and the box comes from
+ * `result`, which is why they can finally disagree on screen the way they
+ * disagree in fact.
+ */
+
+/**
  * Which name is saying what, once a contest is settled.
  *
  * ── The status line names the KIND; the names carry the RESULT ─────────────
@@ -144,17 +161,7 @@ export const RESULT_LABEL: Record<SlateResult, string> = {
  * is `textDecoration`. No value, no text and no attribute differs. That is why
  * its guard mutates the style rather than the data.
  */
-export function resultEmphasis(result: SlateResult | null): {
-  away: SideEmphasis;
-  home: SideEmphasis;
-} {
-  if (result == null) return { away: "none", home: "none" };
-  if (result === "push") return { away: "level", home: "level" };
-  if (result === "cancelled") return { away: "struck", home: "struck" };
-  return result === "away"
-    ? { away: "won", home: "lost" }
-    : { away: "lost", home: "won" };
-}
+
 
 /** The status line's tone — `SlateResult` narrowed to the three things a
  *  reader needs to tell apart. */
@@ -659,6 +666,13 @@ function PendingCard({
          "TBD" survives the move: a game with no time is a fact worth stating on
          a page about what has and has not happened. */
       game={{ ...g, kickoff: g.kickoff ?? "TBD" }}
+      /* An unmarked game can still carry a SCORE — the two are independent,
+         and a runner often types the final before deciding who covered. So
+         the winner's weight appears here first, with no box behind it yet,
+         which is exactly what "the game is over, the call is not made"
+         should look like. */
+      awayMarks={sideMarks("away", { result: null, awayScore: g.awayScore, homeScore: g.homeScore })}
+      homeMarks={sideMarks("home", { result: null, awayScore: g.awayScore, homeScore: g.homeScore })}
     >
       {canEdit && (
         <div className="flex flex-col gap-2.5">
@@ -772,13 +786,15 @@ function EnteredRow({
   onSetScore?: (slateGameId: string, awayScore: number | null, homeScore: number | null) => void;
 }) {
   const result = g.result as SlateResult;
-  const emphasis = resultEmphasis(result);
+  /* NO `pick` — this surface is not about anybody's sheet, so the teal case
+     cannot reach it and there is nothing here to get wrong. */
+  const ctx = { result, awayScore: g.awayScore, homeScore: g.homeScore };
   return (
     <PickemGameCard
       testId="pickem-run-entered"
       game={g}
-      awayEmphasis={emphasis.away}
-      homeEmphasis={emphasis.home}
+      awayMarks={sideMarks("away", ctx)}
+      homeMarks={sideMarks("home", ctx)}
       /* ── THE SCORE, IN EXACTLY ONE PLACE ─────────────────────────────
          Beside the two names while the row is SHUT, which is how the other
          two surfaces show it and how this row is read ninety-nine times out

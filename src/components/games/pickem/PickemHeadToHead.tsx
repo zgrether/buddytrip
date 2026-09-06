@@ -5,13 +5,15 @@ import { PickemAbsenceNotice, NO_PICKS } from "./PickemAbsenceNotice";
 import { MatchResultBanner } from "@/components/games/MatchResultBanner";
 import { Avatar } from "@/components/Avatar";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
-import { MatchupLine, pickemRowSurface } from "./slateRowVisual";
+import { MatchupLine, NO_MARKS, pickemRowSurface, sideDecoration, sideMarks } from "./slateRowVisual";
 import { matchPill, matchNote, type SidesPicked } from "./PickemMatchCard";
-/* The RESULTS PANEL owns the winner treatment, exactly as it owns the label
-   and the tone. Imported rather than re-derived — three surfaces painting one
-   settled game must not be three decisions. */
-import { resultEmphasis } from "./PickemRunView";
+/* The WORDS for a settled contest — the results panel owns those, and three
+   surfaces naming one outcome must not name it three ways. (The TREATMENT is
+   `sideMarks`, which lives with the styles it feeds.) */
+import { RESULT_LABEL, resultTone } from "./PickemRunView";
+
 import { matchStanding, type BoardRow, type ZeroKind } from "@/lib/pickemBoard";
+import { paysOut, type SlateResult } from "@/lib/pickemScoring";
 import type { BoardSlateGame } from "./PickemBoard";
 
 /**
@@ -53,13 +55,37 @@ import type { BoardSlateGame } from "./PickemBoard";
  * This cell is the tightest place it appears (a 70px grid column), so it is the
  * one to check on a device if the word ever grows again.
  */
-const ZERO_SHORT: Record<ZeroKind, string> = {
+/**
+ * ── `Both` AND `Neither` ARE GONE (#1327) ───────────────────────────────
+ *
+ * The three words left are facts about the GAME — a push, a cancellation, a
+ * contest nobody wagered on. No treatment can carry those, so they keep a
+ * word.
+ *
+ * `Both` and `Neither` were facts about the PICKS, and the picks now say it
+ * themselves: a wrong pick is struck through. All three cases read without
+ * the label, and the mixed one reads BETTER —
+ *
+ *   both struck      neither covered
+ *   neither struck   both covered
+ *   one struck       they split, and WHICH is immediately visible, which
+ *                    `Neither` could never tell you
+ *
+ * The case that had to be checked first was a game NOBODY picked, where two
+ * struck names would say something different — you cannot strike a pick that
+ * does not exist. It does not reach here: `zeroKindFor` tests `eitherPicked`
+ * BEFORE the hit comparison (`pickemBoard.ts`), so that row returns
+ * `unpicked` and keeps its own words, in this cell and in both side cells.
+ *
+ * What the removal buys is the COLUMN. It is 70px holding the delta chevron,
+ * which is the thing this screen is scanned for because it is the thing that
+ * moves the match.
+ */
+const ZERO_SHORT: Partial<Record<ZeroKind, string>> = {
   push: "Push",
   cancelled: "Cancelled",
-  both: "Both",
-  neither: "Neither",
   // NOBODY picked — not "one of them didn't". A wrong pick against an empty
-  // slot is `neither` now: something was wagered and lost, and reporting the
+  // slot is `neither`: something was wagered and lost, and reporting the
   // quiet half of the row says nothing about the half where that happened.
   // With both slots empty there is no contest to be wrong about, and this is
   // the whole story.
@@ -93,9 +119,15 @@ export function swingCell(row: BoardRow): SwingCell {
   if (row.result != null) {
     if (row.swing > 0) return { dir: "a", text: `◀ ${row.swing}` };
     if (row.swing < 0) return { dir: "b", text: `${Math.abs(row.swing)} ▶` };
-    // Played and level. `zeroKind` is non-null exactly here, but the fallback
-    // is a fact rather than a dash even if that ever stops being true.
-    return { dir: "zero", text: row.zeroKind ? ZERO_SHORT[row.zeroKind] : "Level" };
+    /**
+     * Played and level. EMPTY is now a legitimate answer: `both` and `neither`
+     * have no word (#1327) because the strikes on the two picks say it, and
+     * the space they leave is the column the chevron needs.
+     *
+     * The `Level` fallback stays for a `zeroKind` of null, which cannot happen
+     * here — but it is a fact rather than a dash if that ever stops being true.
+     */
+    return { dir: "zero", text: row.zeroKind ? (ZERO_SHORT[row.zeroKind] ?? "") : "Level" };
   }
 
   if (row.upsideA > 0 && row.upsideB > 0) {
@@ -340,8 +372,28 @@ export function PickemHeadToHead({
          * own treatment ("No pick", italic) and fading that too would say
          * somebody lost something they never staked.
          */
+        /**
+         * ── TWO QUESTIONS THAT LOOK LIKE ONE, AND A PUSH SEPARATES THEM ──
+         *
+         * `missed` is "this rank scored nothing", which is what the CONF chip
+         * needs: a stake was spent and returned nothing, and that is as true
+         * of a push as of a wrong pick.
+         *
+         * `lost` is "this pick was WRONG", which is what the strike needs. A
+         * push is not wrong — the contest happened, nobody covered, and the
+         * stake stood. Striking it would tell a reader they had picked badly
+         * on a game where nobody could.
+         *
+         * Found by looking: the first build passed `missed` to both, and a
+         * pushed row came out with BOTH players' picks crossed through.
+         * `paysOut` is the same predicate the shared `sideMarks` uses for the
+         * strike on the Picks page, so the two surfaces cannot disagree about
+         * what a lost pick is.
+         */
         const aMissed = played && r.aPick != null && !(r.aPoints > 0);
         const bMissed = played && r.bPick != null && !(r.bPoints > 0);
+        const aLost = paysOut(r.result) && r.aPick != null && r.aPick !== r.result;
+        const bLost = paysOut(r.result) && r.bPick != null && r.bPick !== r.result;
         return (
           <div
             key={r.slateGameId}
@@ -386,22 +438,66 @@ export function PickemHeadToHead({
                  one home, and the slate builder keeps its corner badge by
                  simply not passing this. */
               multiplierAt="meta"
+              mirrorSpread
               awayScore={g.awayScore}
               homeScore={g.homeScore}
-              /* ── THE WINNER, BY WEIGHT ────────────────────────────────
-                 This screen used to say who won only in the SWING column and
-                 in whichever pick chips happened to be bright, so a reader
-                 scanning it had to work the result out from two people's
-                 picks rather than read it off the contest. Now the same bold
-                 name the results page and the sheet use.
+              /* ── TWO FACTS, TWO MARKS ─────────────────────────────────
+                 The bold name is who won the GAME and the box is who
+                 COVERED, and on this screen more than any other they need
+                 to be separable: the swing column below is about who
+                 covered, so a reader comparing the two halves of a row must
+                 be able to see that Miami won 45-6 AND that Stanford
+                 covered. One mark could not say both.
 
-                 It does NOT strike a losing pick here. The pick chips carry
-                 that already, by fade — a deliberate choice recorded on
-                 `Conf` below, because a line across two tabular digits at
-                 11px fights the digits. A second missed treatment would be
-                 the same fact drawn twice, in two languages. */
-              awayEmphasis={resultEmphasis(g.result ?? null).away}
-              homeEmphasis={resultEmphasis(g.result ?? null).home}
+                 No `pick` — teal is the Picks page's, and this screen shows
+                 two OTHER people's picks in the row below rather than the
+                 reader's own. */
+              awayMarks={sideMarks("away", {
+                result: g.result ?? null,
+                awayScore: g.awayScore,
+                homeScore: g.homeScore,
+              })}
+              homeMarks={sideMarks("home", {
+                result: g.result ?? null,
+                awayScore: g.awayScore,
+                homeScore: g.homeScore,
+              })}
+              /**
+               * ── THE META LINE HAD NOTHING ON IT ONCE A GAME WAS PLAYED ───
+               *
+               * A played row nulls its kickoff (the time is spent) and this
+               * screen passes no note, so the bottom line of the block held
+               * the multiplier badge and nothing else — a chip floating
+               * alone against empty space, on the one surface where the
+               * badge is not at the bottom of the card.
+               *
+               * The other two surfaces already fill that line: Results shows
+               * the outcome there in place of the kickoff, from these same
+               * two functions. This screen simply was not asking for it.
+               *
+               * ── AND THIS IS WHY THE BADGE DID NOT MOVE ───────────────────
+               *
+               * The round asked for the multiplier to drop a row on Matches,
+               * to sit where it sits on Picks and Results. Zach withdrew it
+               * on seeing the cause: the badge was not one row high, the row
+               * it was on was EMPTY. Moving it would have pushed it into the
+               * picks row, where two truncating team names and a swing cell
+               * are already competing for the width — trading a cosmetic
+               * misalignment for a real squeeze on long names.
+               *
+               * Filling the line fixes the thing the misalignment was a
+               * symptom of, and leaves the badge where every surface has it:
+               * at the start of the line that carries the date or the
+               * outcome.
+               */
+              status={
+                played
+                  ? {
+                      text: RESULT_LABEL[r.result as SlateResult],
+                      tone: resultTone(r.result as SlateResult),
+                    }
+                  : undefined
+              }
               game={{
                 awayTeam: g.awayTeam,
                 homeTeam: g.homeTeam,
@@ -420,7 +516,7 @@ export function PickemHeadToHead({
                 className="flex min-w-0 items-center justify-end gap-1.5 truncate"
                 style={{ fontSize: TYPE_SCALE.caption }}
               >
-                <SidePick pick={r.aPick} game={g} missed={aMissed} />
+                <SidePick pick={r.aPick} game={g} lost={aLost} />
                 <Conf
                   value={r.aConfidence}
                   hit={r.aPoints > 0}
@@ -443,7 +539,7 @@ export function PickemHeadToHead({
                   picked={r.bPick != null}
                   ranksMatter={useConfidence}
                 />
-                <SidePick pick={r.bPick} game={g} missed={bMissed} />
+                <SidePick pick={r.bPick} game={g} lost={bLost} />
               </span>
             </span>
 
@@ -563,11 +659,12 @@ function Swing({ cell }: { cell: SwingCell }) {
 function SidePick({
   pick,
   game,
-  missed,
+  lost,
 }: {
   pick: BoardRow["aPick"];
   game: BoardSlateGame;
-  missed: boolean;
+  /** The pick was WRONG — not merely unrewarded. A push is neither. */
+  lost: boolean;
 }) {
   if (pick == null) {
     return (
@@ -581,7 +678,28 @@ function SidePick({
     );
   }
   return (
-    <span className="truncate" data-testid="pickem-h2h-team" style={{ opacity: missed ? 0.45 : 1 }}>
+    <span
+      className="truncate"
+      data-testid="pickem-h2h-team"
+      /**
+       * STRUCK, where it used to be faded.
+       *
+       * The bottom half of this row says what two people picked and said
+       * nothing about whether they were right; the top half now carries a
+       * box around whoever covered. Without a mark down here a reader has
+       * to match each name against the box themselves, on every row.
+       *
+       * The same strike the Picks page uses for the same fact, so a reader
+       * who has learned it on their own sheet reads it here without being
+       * told. It REPLACES the fade rather than joining it — two marks for
+       * one fact is what the round is unpicking, not adding to.
+       *
+       * This does NOT contradict the note on `Conf` below, which drops the
+       * strike deliberately. That is about two tabular DIGITS at 11px,
+       * where a line fights the glyphs it crosses. A team name is neither.
+       */
+      style={sideDecoration({ ...NO_MARKS, struck: lost })}
+    >
       {pick === "away" ? game.awayTeam : game.homeTeam}
     </span>
   );

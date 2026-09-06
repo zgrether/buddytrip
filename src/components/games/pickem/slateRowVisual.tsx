@@ -2,6 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { TYPE_SCALE } from "@/lib/typeScale";
+import type { SlateResult } from "@/lib/pickemScoring";
 
 /**
  * The visual language of one contest, shared by the slate modal and the sheet.
@@ -91,82 +92,171 @@ export function pickemRowSurface(opts: {
 }
 
 /**
- * What one side's NAME is saying, on whichever surface is asking.
+ * ══ THE FOUR MARKS ON A SETTLED ROW, AND THE ONE RULE THAT PLACES THEM ══
  *
- * ── A shared vocabulary, so two surfaces cannot invent two teals ───────────
+ * ── The problem this replaces, which was partly self-inflicted ───────────
  *
- * The picks sheet marks the side you took; the results page marks the side
- * that won. Those are different facts and they get different treatments — but
- * both are "emphasise one of these two names", and the way to keep that from
- * becoming two private style tables is the way `segmentStyle` already did it:
- * the surface picks a STATE, this file decides what the state looks like.
+ * A row carries TWO facts and they are not the same fact:
  *
- * ── `level` and `struck` exist because absence is not a state ──────────────
+ *   who WON THE GAME      from the scores
+ *   who COVERED           the runner's call, against a hand-entered line
  *
- * A push and a void both pay nobody, and it is tempting to render them the
- * same way as "nothing decided yet". They are not the same: a push HAPPENED
- * and nobody covered; a void means the stake is gone. And neither is a win, so
- * neither may borrow the winner's weight.
+ * They diverge, and that divergence is the entire reason a spread exists — a
+ * team can win by three against -7.5 and lose the pick'em. The vocabulary
+ * this replaces had ONE mark (weight) driven by `result`, so it was answering
+ * "who covered" while reading as "who won", and after the covered badges were
+ * removed nothing on the row said which side the runner had marked. A row
+ * could show Miami bold at 45-6 with Stanford having covered, and say nothing.
  *
- * `level` is the push: BOTH names at the loser's weight but the winner's
- * colour. The absence of contrast is the signal, and it cannot be mistaken for
- * a decided game because a decided game always has exactly one bold name and
- * one dim one.
+ * ── Four marks, structurally different, so none can be read as another ──
  *
- * `struck` is the void, and it is the one distinction in this file that lives
- * ENTIRELY in a style property. Nothing about the value, the text or the
- * markup separates a voided row from a played one — only `textDecoration`. So
- * it is the case a value-level guard cannot see (CLAUDE.md's tenth instance),
- * and its test has to mutate the paint rather than the data.
+ *   WEIGHT      who won the GAME — winner bold white, loser grey and NORMAL
+ *               weight. Never dimmed-but-bold: that is two marks fighting.
+ *   THE SCORE   inherits its own name's colour and weight exactly, so the two
+ *               halves of a line cannot disagree about who won.
+ *   A BOX       who COVERED. A container rather than an emphasis, wrapping the
+ *               name, the score and the line together — the three things that
+ *               constitute the bet — so it cannot be mistaken for weight or
+ *               colour, which are already spoken for.
+ *   TEAL        YOUR PICK, and the PICKS PAGE ONLY. See the rule below.
+ *
+ * ══ THE RULE, WRITTEN DOWN BECAUSE THREE SURFACES DRIFTED APART ═════════
+ *
+ * **Weight carries who won the game, everywhere. Teal carries your pick, and
+ * only the Picks page has one — where it OVERRIDES the winner colour, because
+ * on your own sheet the question is what did I pick before who won.**
+ *
+ * That is one rule with one exception, and the exception is a SURFACE rather
+ * than a behaviour: Matches and Results have no pick to speak of, so they pass
+ * none and get the plain reading. Every surface calls `sideMarks` — there is no
+ * second derivation to keep in step, which is what went wrong before: the
+ * results page owned the vocabulary, the head-to-head imported it, and the
+ * sheet wrapped it in a private function of its own. Three call sites, two
+ * functions, one concept.
+ *
+ * ── Why marks and not a state name ──────────────────────────────────────
+ *
+ * This was a flat union — `won` / `lost` / `level` / `chosen` / `banked` / `missed`
+ * — and a flat union is exactly what forced the drift. The marks are
+ * INDEPENDENT: colour, weight, a line through the text and a box around it
+ * are set by four different questions, so naming their combinations needs one
+ * member per combination and somebody eventually adds the ninth. Answer the
+ * four questions separately and the combinations take care of themselves.
  */
-export type SideEmphasis =
-  | "none"
-  | "chosen"
-  | "won"
-  | "lost"
-  | "level"
-  | "struck"
-  | "banked"
-  | "missed";
+export interface SideMarks {
+  /** This side WON the contest, on the scoreboard. Bold, full colour. */
+  wonGame: boolean;
+  /**
+   * The other side won. NOT merely "did not win" — a game with no score
+   * entered has no winner and no loser, and dimming a name on that row would
+   * claim a result nobody recorded. Empty is not unknown, at the one place
+   * where the two are a single missing keystroke apart.
+   */
+  lostGame: boolean;
+  /** This side COVERED — the runner's call. Draws the box. */
+  covered: boolean;
+  /** The side this reader took. Picks page only; teal. */
+  chosen: boolean;
+  /** A line through the name: the contest was cancelled, or your pick lost. */
+  struck: boolean;
+}
 
-export function sideEmphasisStyle(emphasis: SideEmphasis): CSSProperties {
-  switch (emphasis) {
-    case "chosen":
-      return { color: "var(--color-bt-accent)", fontWeight: 500 };
-    case "won":
-      return { color: "var(--color-bt-text)", fontWeight: 700 };
-    case "lost":
-      return { color: "var(--color-bt-text-dim)", fontWeight: 500 };
-    case "level":
-      // FULL colour, loser's weight. The absence of contrast is the signal —
-      // dimming both here would make a push read as two losers, and it must
-      // NOT collapse into `lost`. (It briefly did, while the strike was being
-      // split out; the guard in `resultTreatment.test.tsx` caught it.)
-      return { color: "var(--color-bt-text)", fontWeight: 500 };
-    case "struck":
-      return { color: "var(--color-bt-text-dim)", fontWeight: 500 };
-    /**
-     * ── THE TWO THAT SAY BOTH THINGS AT ONCE ─────────────────────────────
-     *
-     * Every state above answers ONE question. The picks sheet asks two of a
-     * settled row — who won, and which one did I take — and it cannot drop
-     * either: the winner-by-weight treatment is what all three surfaces now
-     * share, and the accent is the only thing that makes a CLOSED locked row
-     * still say what you picked.
-     *
-     * So these are compositions rather than new ideas. `banked` is `chosen` wearing
-     * `won`'s weight; `missed` is `chosen` at the loser weight, with the strike
-     * from `sideDecoration`. The names are the RANK CHIP's own words — a banked
-     * stake, a missed one — so a chip and the name it belongs to are
-     * described by one vocabulary instead of two that resemble each other.
-     */
-    case "banked":
-      return { color: "var(--color-bt-accent)", fontWeight: 700 };
-    case "missed":
-      return { color: "var(--color-bt-accent)", fontWeight: 500 };
-    default:
-      return { color: "var(--color-bt-text)", fontWeight: 500 };
+/** No marks at all — the slate builder's rows, and the default everywhere. */
+export const NO_MARKS: SideMarks = {
+  wonGame: false,
+  lostGame: false,
+  covered: false,
+  chosen: false,
+  struck: false,
+};
+
+/**
+ * Who won the contest, from the scores and nothing else.
+ *
+ * NULL is the common answer and it means UNKNOWABLE, never a draw. Three ways
+ * to get it, and all three must render as no winner rather than as a loser:
+ * neither score entered (most of a weekend), HALF a score entered (the state
+ * manual entry passes through on its way to a pair), and a genuine tie.
+ */
+export function gameWinner(
+  awayScore?: number | null,
+  homeScore?: number | null
+): "away" | "home" | null {
+  if (awayScore == null || homeScore == null) return null;
+  if (awayScore === homeScore) return null;
+  return awayScore > homeScore ? "away" : "home";
+}
+
+/**
+ * THE ONE DERIVATION. Every surface that draws a contest calls this.
+ *
+ * `pick` is what makes Picks different, and it is a PARAMETER rather than a
+ * branch: Matches and Results simply have no pick to pass, so the teal case
+ * cannot reach them and there is nothing for them to get wrong.
+ */
+export function sideMarks(
+  side: "away" | "home",
+  ctx: {
+    /** The runner's call about who covered. Null until the game is marked. */
+    result: SlateResult | null;
+    awayScore?: number | null;
+    homeScore?: number | null;
+    /** PICKS PAGE ONLY — the side this reader took. */
+    pick?: "away" | "home" | null;
   }
+): SideMarks {
+  const { result, awayScore, homeScore, pick = null } = ctx;
+  /**
+   * A cancelled contest was struck from the scoring, so nothing about it is
+   * worth ranking: no winner, no loser, no cover. The strike is the whole
+   * statement and the other marks would be competing with it.
+   */
+  const cancelled = result === "cancelled";
+  const winner = cancelled ? null : gameWinner(awayScore, homeScore);
+  const chosen = pick === side;
+  /**
+   * A push pays nobody, so NEITHER side covered and there is no box. It does
+   * not touch the weight: the game still had a winner on the scoreboard, and
+   * saying so is the one thing a push row can still tell you.
+   */
+  const decided = result === "away" || result === "home";
+  return {
+    wonGame: winner === side,
+    lostGame: winner != null && winner !== side,
+    covered: decided && result === side,
+    chosen,
+    /**
+     * ONE strike means your bet, TWO mean the game — legible without knowing
+     * the rule. A pick on a PUSH is not struck: the contest happened, nobody
+     * covered, and your stake stood rather than lost.
+     */
+    struck: cancelled || (chosen && decided && result !== side),
+  };
+}
+
+/**
+ * The name's colour and weight — and the SCORE's, which is the same call.
+ *
+ * Returning one object for both is what makes rule 2 structural rather than
+ * remembered: there is no second place to set a score's weight, so the two
+ * halves of a line cannot disagree about who won. Its test asserts them EQUAL
+ * rather than asserting two literals, because two literals pass a build where
+ * both are wrong in the same way.
+ */
+export function sideNameStyle(m: SideMarks): CSSProperties {
+  return {
+    // Teal overrides the winner colour — the Picks-only rule, and the only
+    // place in this function where a surface differs from another.
+    color: m.chosen
+      ? "var(--color-bt-accent)"
+      : m.lostGame
+        ? "var(--color-bt-text-dim)"
+        : "var(--color-bt-text)",
+    // Weight answers ONE question and never borrows: a loser is normal weight,
+    // not dimmed-but-bold. With no score there is no winner, so nothing is
+    // bold — which is correct, and is what a row says before anyone types one.
+    fontWeight: m.wonGame ? 700 : 500,
+  };
 }
 
 /**
@@ -191,29 +281,126 @@ export function sideEmphasisStyle(emphasis: SideEmphasis): CSSProperties {
  * The fix is structural rather than another declaration: the decoration is
  * applied to a span wrapping ONLY the team name, so the connective is never
  * inside the decorated box in the first place.
+ *
+ * The line follows its text — accent through a pick you took, dim through a
+ * cancelled contest — so it never draws a grey rule across a teal word.
  */
-export function sideDecoration(emphasis: SideEmphasis): CSSProperties | undefined {
-  /**
-   * TWO states carry the line, and together they are ONE statement: a struck
-   * name is a stake that paid nothing.
-   *
-   * `struck` is the whole CONTEST removed, so both names take it. `missed` is
-   * one PICK that lost, so only the side you took does. They never co-occur —
-   * a cancelled game overrides the pick treatment — and the difference reads
-   * without knowing the rule, because one strike means your bet and two mean
-   * the game.
-   *
-   * The line follows its text: dim under `struck`, accent under `missed`, so it
-   * never draws a grey rule across a teal word.
-   */
-  if (emphasis === "struck") {
-    return { textDecoration: "line-through", textDecorationColor: "var(--color-bt-text-dim)" };
-  }
-  if (emphasis === "missed") {
-    return { textDecoration: "line-through", textDecorationColor: "var(--color-bt-accent)" };
-  }
-  return undefined;
+export function sideDecoration(m: SideMarks): CSSProperties | undefined {
+  if (!m.struck) return undefined;
+  return {
+    textDecoration: "line-through",
+    textDecorationColor: m.chosen ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+  };
 }
+
+/**
+ * THE BOX — who covered.
+ *
+ * ── It is drawn on EVERY line, transparent where nobody covered ──────────
+ *
+ * A border that appears only on the covering line would add its own width and
+ * padding to that line alone, so the two team names would sit at different
+ * left edges and at different heights depending on which one the runner
+ * marked. The row would jog when a result landed. Reserving the border on
+ * both and colouring only one costs nothing and cannot move anything.
+ *
+ * ── Why a container and not another colour ───────────────────────────────
+ *
+ * Weight is spoken for (who won the game) and teal is spoken for (your pick).
+ * A third colour would be a third thing to learn and would compete with both;
+ * a rectangle is a different KIND of mark, so it composes with them instead —
+ * a boxed grey name and a boxed bold name are both immediately readable, and
+ * they say different things.
+ *
+ * It wraps the name, the score AND the line together because those three are
+ * what constitute the bet. Boxing the name alone would mark a team; boxing all
+ * three marks a wager.
+ */
+export function coverBoxStyle(m: SideMarks): CSSProperties {
+  return {
+    /**
+     * ── A FILL, NOT ONLY A HAIRLINE, AND THAT IS ARITHMETIC ─────────────
+     *
+     * A settled row fades to 0.38 and the box is inside that fade, so its
+     * border composites against the card. MEASURED in the browser: a 1px
+     * `--color-bt-text-dim` border came out at rgb(196,202,211), against a
+     * card whose OWN border is rgb(200,208,218) at full strength. The mark
+     * for the single most important fact on the row was the same grey as
+     * the decorative outline around it.
+     *
+     * And it cannot be tuned away: at 0.38 over white, even pure black
+     * composites to rgb(158,158,158). A hairline inside this fade has a
+     * hard floor, and that floor is barely darker than the chrome.
+     *
+     * A fill does not have that problem, because the eye integrates AREA
+     * where it cannot integrate a line. So the box is a tinted panel with a
+     * full-strength `--color-bt-text` edge — and the edge is what carries it
+     * on the head-to-head, whose rows are not faded at all.
+     *
+     * It is deliberately NEUTRAL. Teal means your pick and amber means a
+     * weighted game; a third hue would be a third thing to learn and would
+     * collide with one of them on some row.
+     */
+    border: "1px solid " + (m.covered ? "var(--color-bt-text)" : "transparent"),
+    background: m.covered ? "var(--color-bt-dim-faint)" : undefined,
+    borderRadius: 7,
+    paddingLeft: 5,
+    paddingRight: 5,
+  };
+}
+
+/**
+ * BOTH SIDES OF THE LINE, from the one number the runner types.
+ *
+ * ── Why the other side needs one at all ─────────────────────────────────
+ *
+ * The box wraps the name, the score and the line. With the number on the
+ * favourite only, a box around the other row wraps a team with nothing where
+ * its line should be and reads as incomplete rather than as a marked side. So
+ * the mirror is not decoration; it is what makes the box boxable on either
+ * side, and it is how every sportsbook prints it.
+ *
+ * ── Whose number is it ──────────────────────────────────────────────────
+ *
+ * The HOME team's. Stated in three places in this codebase and consistent
+ * across all of them: the builder's field is labelled "Spread Home" with a
+ * matching `aria-label` (`PickemSlateModal`), that field's own comment says the
+ * label exists so a runner does not have to remember which side the number is
+ * for, and the badge has always rendered beside the home name.
+ *
+ * ── Parsing is safe here, and that is measured rather than assumed ──────
+ *
+ * The column is free TEXT, so this could have met anything. Production holds
+ * 29 slate games, 15 with a spread, and ALL 15 parse as a signed number —
+ * zero unparseable. The fallback below is therefore defensive rather than
+ * load-bearing: an unparseable value is shown as typed, on the side the form
+ * names, and no mirror is invented from something that was not a number.
+ *
+ * ── Zero shows on NEITHER side ──────────────────────────────────────────
+ *
+ * Two production rows carry "0". A pick'em with no line is a straight winner
+ * call, and printing "0" and "-0" on the two rows would be two badges saying
+ * nothing twice. The box still works: a name and a score are enough to wrap.
+ */
+export function spreadPair(spread: string | null | undefined): {
+  away: string | null;
+  home: string | null;
+} {
+  const raw = (spread ?? "").trim();
+  if (raw === "") return { away: null, home: null };
+  const n = Number(raw);
+  // `Number("")` is 0, which is why the empty check comes first.
+  if (!Number.isFinite(n)) return { away: null, home: raw };
+  if (n === 0) return { away: null, home: null };
+  return { away: signed(-n), home: signed(n) };
+}
+
+/** A line always carries its sign — an unsigned number on one row beside a
+ *  signed one on the other reads as a different kind of value. */
+function signed(n: number): string {
+  return n > 0 ? "+" + n : String(n);
+}
+
 
 /**
  * The line that replaces the kickoff once a contest is settled.
@@ -364,17 +551,30 @@ const MULTIPLIER_CLEARANCE = 44;
  * grows the box rather than being clipped, and a slate of football scores does
  * not pay for the basketball case.
  */
-function TeamScore({ value, side }: { value: number; side: "away" | "home" }) {
+function TeamScore({
+  value,
+  side,
+  marks,
+}: {
+  value: number;
+  side: "away" | "home";
+  marks: SideMarks;
+}) {
   return (
     <span
       className="shrink-0 pl-2"
       data-testid={`pickem-score-${side}`}
       style={{
         fontSize: TYPE_SCALE.name,
-        fontWeight: 700,
         fontVariantNumeric: "tabular-nums",
         letterSpacing: "-0.01em",
-        color: "var(--color-bt-text)",
+        /* THE SAME CALL THE NAME MAKES, not a matching pair of literals.
+           A number sitting beside a name must not be able to disagree with
+           it about who won, and the only way to guarantee that is for there
+           to be one place the answer comes from. It carries no strike: the
+           line is about the STAKE, and a score is a fact about the contest
+           — striking it would say the game did not happen. */
+        ...sideNameStyle(marks),
       }}
     >
       {value}
@@ -385,8 +585,9 @@ function TeamScore({ value, side }: { value: number; side: "away" | "home" }) {
 export function MatchupLine({
   game,
   leading,
-  awayEmphasis = "none",
-  homeEmphasis = "none",
+  awayMarks = NO_MARKS,
+  homeMarks = NO_MARKS,
+  mirrorSpread = false,
   status,
   multiplierAt = "corner",
   awayScore,
@@ -394,9 +595,29 @@ export function MatchupLine({
 }: {
   game: MatchupLineGame;
   leading?: ReactNode;
-  /** What each NAME is saying on this surface — see `SideEmphasis`. */
-  awayEmphasis?: SideEmphasis;
-  homeEmphasis?: SideEmphasis;
+  /**
+   * What each side's name, score and line are saying — see `sideMarks`, which
+   * is the ONE derivation every surface calls. Absent means a row with nothing
+   * to say about a result: the slate builder's, and every unplayed contest.
+   */
+  awayMarks?: SideMarks;
+  homeMarks?: SideMarks;
+  /**
+   * Show the line on BOTH rows — see `spreadPair`.
+   *
+   * OFF by default, and the default is what keeps the SLATE BUILDER out of
+   * this round. That surface renders `MatchupLine` directly and is
+   * deliberately excluded; an unconditional mirror would have changed it
+   * without its file being touched, which is exactly the trap the multiplier
+   * move fell into last round — the excluded surface shares this component
+   * with the three that converge.
+   *
+   * Worth knowing that the argument does not run only one way: the builder is
+   * where the number is TYPED, so it is the one place a reversed line could
+   * be caught at the moment somebody makes the mistake rather than a week
+   * later. That is a call for Zach, not a default to assume.
+   */
+  mirrorSpread?: boolean;
   /**
    * Replaces the KICKOFF once a contest is settled, keeping the note.
    *
@@ -451,27 +672,60 @@ export function MatchupLine({
      those 44px back — which is most of the reason moving it is worth doing. */
   const clearance = cornerBadge ? MULTIPLIER_CLEARANCE : undefined;
   const bothScores = awayScore != null && homeScore != null;
+  /* BOTH sides of the line, so the box has something to wrap on either row.
+     See `spreadPair` — including why a spread of 0 shows on neither, and
+     `mirrorSpread` for why the builder still gets the single badge. */
+  const line = mirrorSpread
+    ? spreadPair(game.spread)
+    : { away: null, home: game.spread?.trim() || null };
   return (
     <div className="relative flex min-w-0 flex-1 items-start gap-2.5">
       {leading}
       <span className="min-w-0 flex-1">
+        {/* ── THE AWAY LINE, INSIDE ITS BOX ───────────────────────────────
+            The box is on the LINE, so it wraps the name, the line and the
+            score together — the three things that constitute the bet. It is
+            drawn transparent when this side did not cover, so the two rows
+            keep the same left edge and the same height whichever one the
+            runner marks. */}
+        {/* ── THE TWO LINES ARE THE SAME SHAPE, WHICH THEY HAD TO BECOME ──
+            The away name used to be `flex-1`, which was right while it was
+            the only thing on its line: it took the slack and truncated into
+            it. Give that line a badge and a score and `flex-1` puts the
+            slack BETWEEN the name and the badge, so the away line's number
+            floated off to the right while the home line's sat against its
+            name. One matchup, two alignments.
+
+            So the away line now carries the home line's structure exactly —
+            name, badge, an explicit spacer, score — and the two agree by
+            construction rather than by two sets of classes happening to
+            match. The name truncates without `flex-1` (the home name always
+            has). */}
         <span
-          className="flex min-w-0 items-baseline"
+          className="flex min-w-0 items-baseline gap-x-1.5"
           data-testid="pickem-matchup-away"
+          data-covered={awayMarks.covered ? "true" : "false"}
           style={{
             ...name,
-            ...sideEmphasisStyle(awayEmphasis),
-            paddingRight: clearance,
+            ...sideNameStyle(awayMarks),
+            ...coverBoxStyle(awayMarks),
+            marginRight: clearance,
           }}
         >
           <span
-            className="min-w-0 flex-1 truncate"
+            className="min-w-0 truncate"
             data-testid="pickem-matchup-away-name"
-            style={sideDecoration(awayEmphasis)}
+            style={sideDecoration(awayMarks)}
           >
             {game.awayTeam}
           </span>
-          {bothScores && <TeamScore value={awayScore!} side="away" />}
+          {line.away && <SpreadBadge spread={line.away} />}
+          {bothScores && (
+            <>
+              <span className="flex-1" />
+              <TeamScore value={awayScore!} side="away" marks={awayMarks} />
+            </>
+          )}
         </span>
         {/* ── THE CLEARANCE GOES ON THE LINE, NOT ON THE NAME ────────────────
             The home line has a SIBLING — the spread badge — so padding the
@@ -488,14 +742,19 @@ export function MatchupLine({
         <span
           className="flex min-w-0 items-baseline gap-x-1.5"
           data-testid="pickem-matchup-home-line"
-          style={{ paddingRight: clearance }}
+          data-covered={homeMarks.covered ? "true" : "false"}
+          style={{
+            ...sideNameStyle(homeMarks),
+            ...coverBoxStyle(homeMarks),
+            marginRight: clearance,
+          }}
         >
           <span
             className="min-w-0 truncate"
             data-testid="pickem-matchup-home"
             style={{
               ...name,
-              ...sideEmphasisStyle(homeEmphasis),
+              ...sideNameStyle(homeMarks),
             }}
           >
             {/* "at" is the CONNECTIVE and never carries the side's emphasis.
@@ -504,20 +763,21 @@ export function MatchupLine({
                 `text-decoration`, so structure is the only thing that works
                 here. See `sideDecoration`. */}
             <span style={{ color: "var(--color-bt-text-dim)", fontWeight: 400 }}>at{" "}</span>
-            <span data-testid="pickem-matchup-home-name" style={sideDecoration(homeEmphasis)}>
+            <span data-testid="pickem-matchup-home-name" style={sideDecoration(homeMarks)}>
               {game.homeTeam}
             </span>
           </span>
-          {/* WITH the home team, because the line is the home team's — the one
-              badge whose position is meaningful rather than tidy. */}
-          {game.spread && <SpreadBadge spread={game.spread} />}
+          {/* WITH the home team, because the number the runner types IS the
+              home team's line (the builder's field is labelled "Spread Home").
+              The away row now carries its mirror — see `spreadPair`. */}
+          {line.home && <SpreadBadge spread={line.home} />}
           {bothScores && (
             <>
               {/* Pushes the home number to the same right edge as the away
                   one, so the two read as a column beside the two names rather
                   than as two trailing values. */}
               <span className="flex-1" />
-              <TeamScore value={homeScore!} side="home" />
+              <TeamScore value={homeScore!} side="home" marks={homeMarks} />
             </>
           )}
         </span>

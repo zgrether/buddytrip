@@ -183,19 +183,43 @@ describe("the picks sheet draws a CANCELLED game the way the results panel does"
     expect(html).not.toContain("6:10p");
   });
 
-  it("leaves a PUSH alone — struck names would claim the game was removed", () => {
+  it("leaves a PUSH's NAMES alone — a strike would claim the game was removed", () => {
     /**
      * The pair, and the reason only cancellation overrides the pick's accent: a
-     * push HAPPENED and nobody covered, so the pick still stood and the chip's
-     * dim carries the outcome. A build that struck every `void` outcome passes
-     * both tests above.
+     * push HAPPENED and nobody covered, so the pick still stood. A build that
+     * struck every `void` outcome passes both tests above.
+     *
+     * ── IT DOES NOW GET A STATUS LINE, and that is the opposite change ──────
+     *
+     * This asserted no status at all, on the reasoning that a status is for
+     * cancellation alone. That left a push rendering exactly like an UNENTERED
+     * game — no box, pick unstruck, both correct — with nothing naming which
+     * had happened. The word closes that, and the sixteen-rows objection does
+     * not apply to an outcome this rare.
+     *
+     * The kickoff is REPLACED by it, as on every other statused row: a settled
+     * game's date is spent.
      */
     const html = render({ result: "push" });
     expect(tag(html, "pickem-matchup-away-name")).not.toContain("line-through");
     expect(tag(html, "pickem-matchup-home-name")).not.toContain("line-through");
-    expect(html).not.toContain("pickem-matchup-status");
-    // ...and the kickoff survives, because nothing replaced it.
-    expect(html).toContain("6:10p");
+    expect(html).toContain("pickem-matchup-status");
+    expect(html).toContain("Pushed");
+    expect(html).not.toContain("6:10p");
+  });
+
+  it("says a PUSH in a word that an unentered game does not have", () => {
+    /**
+     * THE MUTATION: drop `push` from the status condition, which is the build
+     * this replaces. Both rows then render no box, no strike and a kickoff,
+     * and are told apart only by the settled fade and the chip losing its
+     * fill — real signals, but nothing that NAMES what happened.
+     */
+    const pushed = render({ result: "push" });
+    const unentered = render({ result: null, outcome: null });
+    expect(pushed).toContain("Pushed");
+    expect(unentered).not.toContain("Pushed");
+    expect(unentered).not.toContain("pickem-matchup-status");
   });
 
   it("keeps the picked side's accent on every OTHER settled outcome", () => {
