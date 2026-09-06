@@ -65,20 +65,37 @@ export async function computeStrokePlayResults(
     requireQualified?: boolean;
   } = {}
 ): Promise<StrokeStanding[]> {
-  const { data: participants } = await supabase
-    .from("game_participants")
-    .select("user_id, handicap_strokes")
-    .eq("game_id", gameId);
+  const { data: game } = await supabase
+    .from("games")
+    .select("scorecard_schema, competition_id, config, game_type_id")
+    .eq("id", gameId)
+    .single();
+
+  /**
+   * WHO THE SCORERS ARE — the one thing scramble changes about this function.
+   *
+   * Scramble is stroke play whose participant is the TEAM's play_group, so the
+   * field is the groups and the entries are the `play_group` ones. Every other
+   * format takes the arm it has always taken, byte for byte: same query, same
+   * filter, same shape. This is a branch, not a rewrite, and stroke's behaviour
+   * is unchanged.
+   *
+   * `handicap_strokes` is read from whichever table holds the unit, so a group
+   * handicap would flow through the identical `strokedByPlayer` machinery if one
+   * were ever set. Nothing sets one today (see the note in `StrokeGameView`), so
+   * a scramble game nets to gross — which is the honest "no team handicap"
+   * answer rather than an invented formula.
+   */
+  const isScramble = (game?.game_type_id as string | null) === "gtt_scramble";
+
+  const { data: participants } = isScramble
+    ? await supabase.from("play_groups").select("id, handicap_strokes").eq("game_id", gameId)
+    : await supabase.from("game_participants").select("user_id, handicap_strokes").eq("game_id", gameId);
   const { data: entries } = await supabase
     .from("score_entries")
     .select("participant_id, unit_label, value")
     .eq("game_id", gameId)
-    .eq("participant_type", "user");
-  const { data: game } = await supabase
-    .from("games")
-    .select("scorecard_schema, competition_id, config")
-    .eq("id", gameId)
-    .single();
+    .eq("participant_type", isScramble ? "play_group" : "user");
 
   /**
    * THE SCORING TYPE, read from `games.config` (migration 179).
@@ -94,10 +111,21 @@ export async function computeStrokePlayResults(
   // no course is applied). Each player's stroked holes drive the gross→net.
   const units = unitsFromSchema(game?.scorecard_schema);
   const strokeIndex = strokeIndexOf(units);
+  /**
+   * THE FIELD, normalised to `{ id, handicapStrokes }` so everything below reads
+   * one field name. A scramble unit is a `play_groups.id`, every other format's
+   * is a `game_participants.user_id` — the difference belongs at the query, not
+   * threaded through the four places that consume it.
+   */
+  const field = ((participants ?? []) as Array<Record<string, unknown>>).map((p) => ({
+    id: (isScramble ? p.id : p.user_id) as string,
+    handicapStrokes: (p.handicap_strokes as number | null) ?? 0,
+  }));
+
   const strokedByPlayer: Record<string, Set<string>> = {};
-  for (const p of participants ?? []) {
-    strokedByPlayer[p.user_id as string] = new Set(
-      [...strokeHoles((p.handicap_strokes as number) ?? 0, strokeIndex)].map(String)
+  for (const p of field) {
+    strokedByPlayer[p.id] = new Set(
+      [...strokeHoles(p.handicapStrokes, strokeIndex)].map(String)
     );
   }
 
@@ -132,7 +160,7 @@ export async function computeStrokePlayResults(
       : netStrokeEntries((entries ?? []) as RawStrokeEntry[], strokedByPlayer);
 
   const standings = computeStrokePlayStandings(
-    (participants ?? []).map((p) => p.user_id as string),
+    field.map((p) => p.id),
     scored,
     { requiredUnits, scoring }
   );
@@ -162,7 +190,31 @@ export async function computeStrokePlayResults(
       .from("team_assignments")
       .select("user_id, team_id")
       .eq("competition_id", game.competition_id as string);
-    for (const a of assigns ?? []) teamOf[a.user_id as string] = a.team_id as string;
+    const teamOfUser = new Map((assigns ?? []).map((a) => [a.user_id as string, a.team_id as string]));
+    if (isScramble) {
+      /**
+       * SCRAMBLE keys its standings to a play_group, so the map this function
+       * needs is GROUP -> team, not user -> team. Derived through the members'
+       * roster — the same rule `MatchGameView.teamOfSide` follows, and for the
+       * same reason: team identity belongs to the PERSON, so moving somebody
+       * re-attributes their group with no second write.
+       *
+       * Two rounds, unavoidably: a group's id is not knowable from
+       * `team_assignments` alone (CLAUDE.md #27 — a side is not a person).
+       */
+      const { data: members } = await supabase
+        .from("game_participants")
+        .select("user_id, play_group_id")
+        .eq("game_id", gameId);
+      for (const m of members ?? []) {
+        const groupId = m.play_group_id as string | null;
+        if (!groupId || teamOf[groupId]) continue; // first member with a team decides it
+        const teamId = teamOfUser.get(m.user_id as string);
+        if (teamId) teamOf[groupId] = teamId;
+      }
+    } else {
+      for (const [userId, teamId] of teamOfUser) teamOf[userId] = teamId;
+    }
   }
   // Same scoring type as the player standings — a team total is the sum of its
   // players' scores, so under Stableford MORE wins here too. Passing it is what
@@ -184,10 +236,14 @@ export async function computeStrokePlayResults(
     gameId,
     scope: { kind: "all" },
     rows: [
+      // A scramble standing IS a group, so it is banked as one. Writing these as
+      // `user` rows would put play_group ids in a column every reader treats as a
+      // person — the `entity_type` CHECK admits all three precisely so this can
+      // say what it means.
       ...standings.map((s) => ({
         id: crypto.randomUUID(),
         entity_id: s.entityId,
-        entity_type: "user" as const,
+        entity_type: (isScramble ? "play_group" : "user") as "user" | "play_group",
         raw_score: s.rawScore,
         position: s.position,
         competition_points_earned: null,

@@ -7,6 +7,7 @@ import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
+import { isScrambleFormat } from "@/lib/gameRoutes";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
@@ -283,6 +284,16 @@ export function StrokeGameView() {
     for (const [uid, n] of strokesOf) m[uid] = new Set([...strokeHoles(n, scIndex)].map(String));
     return m;
   }, [strokesOf, scIndex]);
+  /**
+   * SCRAMBLE — stroke play whose SCORER IS THE TEAM. Declared here rather than
+   * beside the field it switches, because `useScoreSaver` below needs it to tag
+   * the write, and hooks may not be reordered.
+   *
+   * Read off the game row this view already fetches, never a prop: a prop would
+   * be a second source of "which format is this" that has to agree with
+   * `game_type_id`.
+   */
+  const isScramble = isScrambleFormat((gameQ.data as GameRow | undefined)?.game_type_id ?? null);
   // The id the saver writes to: the resumed game, else the one created here.
   const activeGameId = urlGameId ?? createdGame?.id;
   // Phase 2B.1: a configured game must be Enabled before its score screen opens.
@@ -647,7 +658,11 @@ export function StrokeGameView() {
   // retry-with-backoff, per-cell save status, kept-and-flagged (never rolled
   // back) on failure. Owns `values` + `saveStatus` for this game.
   const { values, saveStatus, refusals, onChange, onClear, retryCell, reconcile, clearAll: clearScores } =
-    useScoreSaver(tripId, activeGameId);
+    // SCRAMBLE writes `play_group` entries — the participant is the team's group,
+    // which migration 181 taught `can_score_unit` to admit for this format. A
+    // CONSTANT, not a resolver: every unit in a scramble game is a group, unlike
+    // a mixed match-play game where 1v1 and 2v2 rows coexist.
+    useScoreSaver(tripId, activeGameId, isScramble ? "play_group" : "user");
   // Finishing retries (idempotent — recomputes from the same scores); a failure
   // stays put and is surfaced by the global mutationCache.onError, which covers
   // server rejections as well as connectivity failures. That claim was untrue
@@ -800,7 +815,56 @@ export function StrokeGameView() {
     (game?.participants ?? []).forEach((p) => m.set(p.id, { name: p.name, color: p.color, avatarIcon: p.avatarIcon ?? null }));
     return m;
   }, [game]);
-  const fieldIds = useMemo(() => surfaceGroups.flatMap((g) => g.userIds), [surfaceGroups]);
+  /**
+   * ── SCRAMBLE: THE FIELD IS THE GROUPS ──────────────────────────────────────
+   *
+   * The one switch this whole format needs, and it is genuinely one. Scramble
+   * is stroke play whose scorer is the TEAM, so the field is the play_groups
+   * rather than the people in them — and everything downstream of `fieldIds` is
+   * already participant-agnostic. `computeStrokeLeaderboard`, `stablefordEntries`
+   * and `computeStrokePlayStandings` treat `participant_id` as an opaque string;
+   * there is no `user`, `team` or `play_group` anywhere in their logic. That is
+   * why this is an input and not a second view.
+   *
+   * Two consequences worth stating, because they are the point rather than side
+   * effects:
+   *
+   *  · The individual section does not get HIDDEN on a scramble board — it is
+   *    never produced. There are no player scores to aggregate, so there is
+   *    nothing to suppress and nothing one CSS change away from returning.
+   *  · The leaderboard rows ARE the teams, so the team-totals roll-up (which
+   *    aggregates player standings) has nothing to do here and is not offered.
+   *
+   * Read from the game row this view already fetches, never from a prop: a prop
+   * would be a second source of "which format is this" that has to agree with
+   * `game_type_id`, which is the drift `isScrambleFormat` exists to avoid.
+   */
+  const fieldIds = useMemo(
+    () => (isScramble ? surfaceGroups.map((g) => g.id) : surfaceGroups.flatMap((g) => g.userIds)),
+    [isScramble, surfaceGroups],
+  );
+  /** A scramble group's team — derived from its members' roster, the same way a
+   *  2v2 side's team is (`MatchGameView.teamOfSide`): team identity belongs to
+   *  the PERSON, so moving someone re-attributes their group with no other write. */
+  const teamOfGroup = useMemo(() => {
+    const m = new Map<string, { name: string; color: string }>();
+    if (!isScramble) return m;
+    const teamById = new Map(
+      ((teamsQ.data ?? []) as { id: string; name: string; color: string }[]).map((t) => [t.id, t])
+    );
+    const teamOfUser = new Map(
+      ((assignQ.data ?? []) as { user_id: string; team_id: string }[]).map((a) => [a.user_id, a.team_id])
+    );
+    for (const g of surfaceGroups) {
+      // First member with a team decides it. A group whose members are all
+      // unassigned has no team and falls back to its own display name below —
+      // absent, not "Team" with a grey dot, which would read as a real team.
+      const teamId = g.userIds.map((u) => teamOfUser.get(u)).find(Boolean);
+      const t = teamId ? teamById.get(teamId) : undefined;
+      if (t) m.set(g.id, { name: t.name, color: t.color });
+    }
+    return m;
+  }, [isScramble, surfaceGroups, teamsQ.data, assignQ.data]);
   /**
    * The field, with a colour each. THE colour source for this whole page: the
    * leaderboard rows read it, and `groupViews` derives the group tiles' player
@@ -826,6 +890,18 @@ export function StrokeGameView() {
    */
   const fieldParticipants = useMemo<Participant[]>(
     () => fieldIds.map((id, i) => {
+      // SCRAMBLE: the participant is a group standing for a team, so its name
+      // and colour are the TEAM's. No avatar — a team is not a person, and
+      // borrowing one member's icon would say it was.
+      if (isScramble) {
+        const t = teamOfGroup.get(id);
+        return {
+          id,
+          name: t?.name ?? surfaceGroups.find((g) => g.id === id)?.name ?? "Team",
+          color: t?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
+          avatarIcon: null,
+        };
+      }
       const meta = nameColorOf.get(id);
       return {
         id,
@@ -834,7 +910,7 @@ export function StrokeGameView() {
         avatarIcon: avatarIconOf.get(id) ?? meta?.avatarIcon ?? null,
       };
     }),
-    [fieldIds, nameColorOf, crew.data, teamColorOf, avatarIconOf],
+    [fieldIds, nameColorOf, crew.data, teamColorOf, avatarIconOf, isScramble, teamOfGroup, surfaceGroups],
   );
 
   // Net per-hole entries (feed to-par) + par-by-hole from the course snapshot. Nets against
@@ -1297,9 +1373,14 @@ export function StrokeGameView() {
 
   // The group currently being scored (entryGroupId), and its participants.
   const entryGroup = surfaceGroups.find((g) => g.id === entryGroupId);
-  const entryParticipants: Participant[] = (entryGroup?.userIds ?? [])
-    .map((id) => fieldParticipants.find((p) => p.id === id))
-    .filter((p): p is Participant => !!p);
+  // SCRAMBLE: the group IS the participant, so its entry screen has exactly ONE
+  // row — the team. Every other format lists the group's people, because there
+  // the person is the unit.
+  const entryParticipants: Participant[] = isScramble
+    ? fieldParticipants.filter((p) => p.id === entryGroupId)
+    : (entryGroup?.userIds ?? [])
+        .map((id) => fieldParticipants.find((p) => p.id === id))
+        .filter((p): p is Participant => !!p);
 
   // The first hole a group hasn't fully scored — where its entry opens (mirrors rack's
   // currentHoleForGroup, scoped to the tapped group instead of the whole round).
@@ -1307,7 +1388,8 @@ export function StrokeGameView() {
     const g = surfaceGroups.find((x) => x.id === gid);
     if (!g) return 1;
     for (let h = 1; h <= scUnits.length; h++) {
-      if (g.userIds.some((uid) => values[uid]?.[String(h)] == null)) return h;
+      const keys = isScramble ? [g.id] : g.userIds;
+      if (keys.some((k) => values[k]?.[String(h)] == null)) return h;
     }
     return scUnits.length;
   };
@@ -1446,7 +1528,10 @@ export function StrokeGameView() {
             pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
           />
         </div>
-        {boardRollUp === "team_totals" && (
+        {/* Not on a scramble board: its rows ARE the teams, so a team roll-up
+            above them would print the same standings twice. The roll-up exists to
+            aggregate PLAYER scores, and a scramble game has none. */}
+        {!isScramble && boardRollUp === "team_totals" && (
           <StrokeTeamTotals
             rows={teamTotalRows}
             teams={(teamsQ.data ?? []) as { id: string; name: string; color: string }[]}
