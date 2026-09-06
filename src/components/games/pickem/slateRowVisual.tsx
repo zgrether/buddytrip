@@ -319,30 +319,77 @@ export function sideDecoration(m: SideMarks): CSSProperties | undefined {
 export function coverBoxStyle(m: SideMarks): CSSProperties {
   return {
     /**
-     * ── A FILL, NOT ONLY A HAIRLINE, AND THAT IS ARITHMETIC ─────────────
+     * ── AN OUTLINE, AND THE FILL IS GONE WITH THE FADE THAT FORCED IT ────
      *
-     * A settled row fades to 0.38 and the box is inside that fade, so its
-     * border composites against the card. MEASURED in the browser: a 1px
-     * `--color-bt-text-dim` border came out at rgb(196,202,211), against a
-     * card whose OWN border is rgb(200,208,218) at full strength. The mark
-     * for the single most important fact on the row was the same grey as
-     * the decorative outline around it.
+     * This was a tinted panel, and the tint was never the design — it was a
+     * workaround for the settled fade. Inside a 0.38 subtree a 1px
+     * `--color-bt-text-dim` border composited to rgb(196,202,211) against a
+     * card whose own border is rgb(200,208,218): the mark for the most
+     * important fact on the row, the same grey as the chrome around it. And
+     * it could not be tuned out, because at 0.38 over the light card even
+     * pure black reaches only rgb(158,158,158) — a hard floor. A fill has no
+     * such floor, because the eye integrates AREA where it cannot integrate
+     * a line, so a fill is what the constraint left.
      *
-     * And it cannot be tuned away: at 0.38 over white, even pure black
-     * composites to rgb(158,158,158). A hairline inside this fade has a
-     * hard floor, and that floor is barely darker than the chrome.
+     * The fade is gone (see `PickemSheetRow`), and re-measuring outside it
+     * the border is simply the colour it says it is — no compositing at all:
      *
-     * A fill does not have that problem, because the eye integrates AREA
-     * where it cannot integrate a line. So the box is a tinted panel with a
-     * full-strength `--color-bt-text` edge — and the edge is what carries it
-     * on the head-to-head, whose rows are not faded at all.
+     *   light   box rgb(15,23,42)     card border rgb(200,208,218)
+     *   dark    box rgb(241,245,249)  card border rgb(45,54,72)
      *
-     * It is deliberately NEUTRAL. Teal means your pick and amber means a
-     * weighted game; a third hue would be a third thing to learn and would
-     * collide with one of them on some row.
+     * Unmistakable in both, so the panel has nothing left to do. It also cost
+     * something: in dark mode a filled line reads as an INPUT, which is the
+     * wrong affordance on a screen where nothing here is editable.
+     *
+     * ── THE WEIGHT, SETTLED AGAINST THE STRIKE RATHER THAN IN THE ABSTRACT
+     *
+     * Two ends were tried and both were wrong. `--color-bt-text-dim` reads as
+     * another border in light mode, where the card outline is already grey —
+     * 3.06 against that outline, which is not enough separation to be a mark.
+     * `--color-bt-text` is near-black on near-white at 17.85 against the card,
+     * louder than the score, the names and the strike: a great deal of
+     * emphasis for a binary fact.
+     *
+     * A quarter of the way between them. Measured at both themes, against the
+     * card outline it has to beat and the strike it must not out-shout:
+     *
+     *            box            vs card outline   vs card bg   strike
+     *   light    rgb(79,93,115)      4.29            6.68        3.74
+     *   dark     rgb(171,184,200)    6.01            8.27        8.95
+     *
+     * In DARK it lands just under the strike. In LIGHT it cannot: the accent
+     * on a white card is only 3.74 to begin with, so matching that ratio would
+     * put the box below the chrome it has to clear.
+     *
+     * ── AND COLOUR IS A WEAK LEVER HERE, WHICH IS THE REAL FINDING ────────
+     *
+     * Six candidates across this whole range were put side by side and they
+     * were very nearly indistinguishable. Rendered as 14px SWATCHES the same
+     * six are obviously different colours; drawn as a 1px border they collapse
+     * together. So this value is a small improvement and not a fix.
+     *
+     * What makes the box loud is not its colour but its SHAPE: a closed
+     * rectangle spanning the full width of a row is a lot of ink whatever it
+     * is drawn in, and the score sits at the far right, so wrapping the name,
+     * the line and the score necessarily spans everything between them.
+     * Anything that genuinely quietens it changes the shape — a bracket, an
+     * edge, or dropping the score out of the wrap — and the shape is spec'd
+     * (name + score + line are what constitute the bet), so it is not a change
+     * to make from inside this function.
+     *
+     * A MIX of the two tokens rather than a new value, so it flips with the
+     * theme on its own and cannot drift from them. `color-mix` is already how
+     * this file tints the multiplier badge.
+     *
+     * Deliberately NEUTRAL. Teal means your pick, amber means a weighted
+     * game; a third hue would be a third thing to learn and would collide
+     * with one of them on some row.
      */
-    border: "1px solid " + (m.covered ? "var(--color-bt-text)" : "transparent"),
-    background: m.covered ? "var(--color-bt-dim-faint)" : undefined,
+    border:
+      "1px solid " +
+      (m.covered
+        ? "color-mix(in srgb, var(--color-bt-text) 25%, var(--color-bt-text-dim))"
+        : "transparent"),
     borderRadius: 7,
     paddingLeft: 5,
     paddingRight: 5,

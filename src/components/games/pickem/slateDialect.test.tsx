@@ -208,6 +208,20 @@ describe("the picks sheet draws a CANCELLED game the way the results panel does"
     expect(html).not.toContain("6:10p");
   });
 
+  it("replaces the kickoff with the outcome on EVERY settled row", () => {
+    /**
+     * THE MUTATION: status for cancellations and pushes only, which is what
+     * this file asserted until now. A decided game then keeps a kickoff that
+     * has already happened, and the sheet and the results page describe one
+     * contest two ways — the sheet saying when to look at a game that is over.
+     */
+    for (const result of ["away", "home", "push", "cancelled"] as const) {
+      const html = render({ result });
+      expect(html, result).toContain("pickem-matchup-status");
+      expect(html, result + " kickoff").not.toContain("6:10p");
+    }
+  });
+
   it("says a PUSH in a word that an unentered game does not have", () => {
     /**
      * THE MUTATION: drop `push` from the status condition, which is the build
