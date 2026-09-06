@@ -1,208 +1,304 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MatchupLine, sideEmphasisStyle } from "./slateRowVisual";
-import { resultEmphasis, resultTone } from "./PickemRunView";
+import {
+  MatchupLine,
+  gameWinner,
+  sideMarks,
+  sideNameStyle,
+  spreadPair,
+} from "./slateRowVisual";
+import { resultTone } from "./PickemRunView";
 import type { SlateResult } from "@/lib/pickemScoring";
 
 /**
- * Three outcomes, three appearances — readable without reading the status word.
+ * TWO FACTS ON ONE ROW, AND THEY ARE ALLOWED TO DISAGREE.
  *
- * ── Why this file exists separately from the run view's own tests ─────────
+ * ── What this file used to assert, and why it could not stay ─────────────
  *
- * Those assert what the SCREEN renders. These assert the two distinctions the
- * whole treatment rests on, and both are the kind that a value-level test
- * cannot see:
+ * It guarded "a pushed row differs from a final one ONLY in whether the two
+ * names share a weight", with weight derived from `result`. That made weight
+ * answer WHO COVERED while reading as WHO WON — and once the covered badges
+ * were removed, nothing on a row said which side the runner had marked. A row
+ * could show Miami bold at 45-6 with Stanford having covered, and say nothing.
  *
- *   - a cancelled matchup differs from a played one ONLY in `textDecoration`
- *   - a pushed row differs from a final one ONLY in whether the two names
- *     share a weight
+ * Weight now comes from the SCORES and the box comes from `result`, so the two
+ * facts have two marks and can differ on screen the way they differ in life.
+ * The old file's other subject — that a distinction living in a style property
+ * needs a test that mutates the PAINT (CLAUDE.md's tenth instance) — is
+ * unchanged and is why every case below states the mutation it fails against.
  *
- * Neither has a value, a key or a string to break. CLAUDE.md's tenth instance
- * is exactly this shape — a distinction carried by a style property, invisible
- * to the configHash column guard, to exhaustive `Record` maps, and to mutation
- * testing that changes values — and it says the guard has to mutate the PAINT.
- * So each test below states the mutation it fails against.
+ * ── The fixture is the point ─────────────────────────────────────────────
+ *
+ * `SPLIT` is a game where the winner did NOT cover: the home side is laid
+ * -24.5 and wins by 20, so it wins the game and loses the bet. It is the only
+ * shape that separates a correct build from the natural wrong one, and it is
+ * the case a spread exists to create. Production currently holds ZERO of them
+ * (checked: 5 scored games, all covered by the winner), so until one happens
+ * on a Sunday this fixture is the only thing exercising it.
  */
 
-/** One line's own style attribute, found by testid.
- *
- *  Anchored to the LINE, not the document: `MatchupLine` prints the home team
- *  on a second line and the status below that, so a `toContain` over the whole
- *  render would happily match a declaration belonging to a different node. */
 function tagFor(markup: string, testId: string): string {
   const at = markup.indexOf(`data-testid="${testId}"`);
   if (at === -1) return "";
   return markup.slice(markup.lastIndexOf("<", at), markup.indexOf(">", at) + 1);
 }
 
-function lineStyle(markup: string, side: "away" | "home"): string {
-  const at = markup.indexOf(`data-testid="pickem-matchup-${side}"`);
-  if (at === -1) return "";
-  return markup.slice(markup.lastIndexOf("<", at), markup.indexOf(">", at) + 1);
-}
-
 const GAME = {
-  awayTeam: "Ball State Cardinals",
-  homeTeam: "Ohio State Buckeyes",
-  spread: "-50.5",
+  awayTeam: "Marshall Thundering Herd",
+  homeTeam: "Penn State Nittany Lions",
+  spread: "-24.5",
   kickoff: "Sat Sep 5, 12:30p",
   note: null,
   multiplier: 1,
 };
 
-const renderResult = (result: SlateResult | null) => {
-  const e = resultEmphasis(result);
-  return renderToStaticMarkup(
+/** Home wins 30-10 and is laid -24.5, so HOME won the game and AWAY covered. */
+const SPLIT = { result: "away" as const, awayScore: 10, homeScore: 30 };
+
+const render = (
+  ctx: { result: SlateResult | null; awayScore?: number | null; homeScore?: number | null }
+) =>
+  renderToStaticMarkup(
     <MatchupLine
       game={GAME}
-      awayEmphasis={e.away}
-      homeEmphasis={e.home}
-      status={result ? { text: "x", tone: resultTone(result) } : undefined}
+      awayMarks={sideMarks("away", ctx)}
+      homeMarks={sideMarks("home", ctx)}
+      awayScore={ctx.awayScore}
+      homeScore={ctx.homeScore}
+      status={ctx.result ? { text: "x", tone: resultTone(ctx.result) } : undefined}
+      /* SENT BECAUSE THE REAL CALLERS SEND IT. The three viewing surfaces opt
+         into the mirrored line; only the excluded slate builder does not, and a
+         fixture that omitted it would be measuring the builder's row while
+         claiming to test theirs. */
+      mirrorSpread
     />
   );
-};
+
+describe("the winner and the coverer are marked separately", () => {
+  const html = render(SPLIT);
+
+  it("BOLDS the side that won the game", () => {
+    /**
+     * THE MUTATION: derive weight from `result` again, which is the build this
+     * replaces and the one a reader reaches for. It bolds the AWAY side here,
+     * and it passes every case where the winner also covered — which is every
+     * scored game in production so far.
+     */
+    expect(tagFor(html, "pickem-matchup-home")).toContain("font-weight:700");
+    expect(tagFor(html, "pickem-matchup-away")).not.toContain("font-weight:700");
+  });
+
+  it("BOXES the side that covered — the other one", () => {
+    /**
+     * THE MUTATION, and the spec names it: box the bold side. It is the natural
+     * implementation, it agrees with a correct build on every game where the
+     * winner covered, and it is wrong on exactly the games a spread exists for.
+     *
+     * Asserted on the SAME row as the bold above, so a build cannot satisfy one
+     * by sacrificing the other.
+     */
+    expect(tagFor(html, "pickem-matchup-away")).toContain('data-covered="true"');
+    expect(tagFor(html, "pickem-matchup-home-line")).toContain('data-covered="false"');
+  });
+
+  it("draws the box as a real container, not merely an attribute", () => {
+    // The testid could be set without anything being drawn. The border is what
+    // a reader sees, and it is only a mark if it is coloured on one side and
+    // not the other.
+    const away = tagFor(html, "pickem-matchup-away");
+    const home = tagFor(html, "pickem-matchup-home-line");
+    expect(away).toContain("border:1px solid var(--color-bt-text)");
+    expect(home).toContain("border:1px solid transparent");
+  });
+
+  it("reserves the box's width on BOTH lines, so a result cannot jog the row", () => {
+    // A border that appeared only on the covering line would inset that line by
+    // its own width and padding, and the two team names would sit at different
+    // left edges. Both carry it; only one is coloured.
+    expect(tagFor(html, "pickem-matchup-home-line")).toContain("padding-left:5px");
+  });
+});
+
+describe("the score says exactly what its name says", () => {
+  it("gives a score the same weight as the name it sits beside, both sides", () => {
+    /**
+     * ASSERTED AS EQUALITY, not against two literals — two literals pass a
+     * build where both are wrong in the same way, which is the whole failure
+     * mode of a pair that must agree.
+     *
+     * THE MUTATION: give `TeamScore` a fixed weight again. The winner's half of
+     * the row keeps saying 700 and the loser's score goes bold beside a normal
+     * name, which is the disagreement this rule exists to make impossible.
+     */
+    const html = render(SPLIT);
+    const weight = (tag: string) => /font-weight:(\d+)/.exec(tag)?.[1];
+    expect(weight(tagFor(html, "pickem-score-home"))).toBe(
+      weight(tagFor(html, "pickem-matchup-home"))
+    );
+    expect(weight(tagFor(html, "pickem-score-away"))).toBe(
+      weight(tagFor(html, "pickem-matchup-away"))
+    );
+    // ...and the pair is not trivially equal by both being absent.
+    expect(weight(tagFor(html, "pickem-score-home"))).toBe("700");
+  });
+});
+
+describe("a push", () => {
+  it("draws no box on either side, because nobody covered", () => {
+    const html = render({ result: "push", awayScore: 24, homeScore: 17 });
+    expect(html).not.toContain('data-covered="true"');
+  });
+
+  it("still bolds whoever won the GAME, which is the one thing it can say", () => {
+    // A push is a fact about the bet, not about the scoreboard. Blanking the
+    // weight would throw away the only thing such a row still knows.
+    const html = render({ result: "push", awayScore: 24, homeScore: 17 });
+    expect(tagFor(html, "pickem-matchup-away")).toContain("font-weight:700");
+  });
+});
+
+describe("no score is not a draw, and not a loss", () => {
+  it("bolds NEITHER side when the game has no score", () => {
+    /**
+     * The state most of a slate is in for most of a weekend: marked, unscored.
+     * A build that fell back to `result` for the weight would bold the covering
+     * side here and claim a scoreboard nobody entered.
+     */
+    const html = render({ result: "home", awayScore: null, homeScore: null });
+    expect(tagFor(html, "pickem-matchup-away")).not.toContain("font-weight:700");
+    expect(tagFor(html, "pickem-matchup-home")).not.toContain("font-weight:700");
+    // ...and the box still lands, because who covered is known independently.
+    expect(tagFor(html, "pickem-matchup-home-line")).toContain('data-covered="true"');
+  });
+
+  it("dims NEITHER side either — unknown is not losing", () => {
+    const html = render({ result: "home", awayScore: null, homeScore: null });
+    expect(tagFor(html, "pickem-matchup-away")).not.toContain("--color-bt-text-dim");
+  });
+
+  it("treats HALF a score as no score", () => {
+    // The state manual entry passes through on its way to a pair.
+    expect(gameWinner(21, null)).toBeNull();
+    expect(gameWinner(null, 21)).toBeNull();
+  });
+
+  it("treats a TIE as no winner rather than as two winners", () => {
+    expect(gameWinner(17, 17)).toBeNull();
+    const html = render({ result: "home", awayScore: 17, homeScore: 17 });
+    expect(html).not.toContain("font-weight:700");
+  });
+});
 
 describe("a cancelled contest is struck through", () => {
+  const html = render({ result: "cancelled", awayScore: 10, homeScore: 30 });
+
   it("puts line-through on BOTH team names", () => {
     /**
-     * THE MUTATION: drop `textDecoration` from `sideEmphasisStyle("struck")`.
-     *
-     * Every other assertion in this file still passes against that build —
-     * the colours are right, the weights are right, the status still reads
-     * "Cancelled" in red — and a cancelled matchup renders identically to a
-     * played one. This is the only test that fails.
+     * THE MUTATION: drop `textDecoration` from `sideDecoration`. Every other
+     * assertion here still passes against that build — the colours are right,
+     * the status still reads in red — and a cancelled matchup renders exactly
+     * like a played one.
      */
-    const html = renderResult("cancelled");
     expect(tagFor(html, "pickem-matchup-away-name")).toContain("text-decoration:line-through");
     expect(tagFor(html, "pickem-matchup-home-name")).toContain("text-decoration:line-through");
   });
 
   it("strikes the NAME and not the connective — structurally, not by opting out", () => {
-    /**
-     * THE MUTATION, and this one shipped before a browser caught it: put the
-     * decoration on the whole LINE and give the "at" span
-     * `text-decoration: none`.
-     *
-     * That build looks right in the markup and is wrong on screen, because a
-     * descendant CANNOT remove an ancestor's `text-decoration` — the property
-     * propagates and there is no value that turns it off. The line went
-     * straight through "at Michigan Wolverines".
-     *
-     * And the first version of the test above PASSED against it: it asserted
-     * the `text-decoration:none` declaration was present, which it was, and
-     * which CSS ignored. An assertion about a declaration with no effect.
-     *
-     * So this asserts the STRUCTURE the fix relies on — the strike is on the
-     * name's own span and the line that contains "at" does not carry one.
-     */
-    const html = renderResult("cancelled");
-    expect(lineStyle(html, "home")).not.toContain("line-through");
-    expect(lineStyle(html, "away")).not.toContain("line-through");
-    expect(tagFor(html, "pickem-matchup-home-name")).toContain("line-through");
+    // `text-decoration` propagates and CANNOT be removed by a descendant, so
+    // the only fix is for "at" to sit outside the decorated span. A build that
+    // struck the whole line would put the line through "at" as well.
+    expect(tagFor(html, "pickem-matchup-home")).not.toContain("text-decoration:line-through");
+  });
+
+  it("ranks nothing on a cancelled contest — no winner, no loser, no box", () => {
+    // The contest was struck from the scoring, so the scoreboard is not worth
+    // ranking and nobody covered. The strike is the whole statement.
+    expect(html).not.toContain("font-weight:700");
+    expect(html).not.toContain('data-covered="true"');
   });
 
   it("strikes NOTHING on a contest that was played", () => {
-    /**
-     * The other half, and the one that catches a build that strikes
-     * everything: `line-through` has to be absent where it does not belong,
-     * or its presence says nothing.
-     */
-    for (const result of ["away", "home", "push", null] as const) {
-      const html = renderResult(result);
-      expect(lineStyle(html, "away"), String(result)).not.toContain("line-through");
-      expect(lineStyle(html, "home"), String(result)).not.toContain("line-through");
-    }
+    expect(render(SPLIT)).not.toContain("line-through");
   });
-
 });
 
-describe("a push has no contrast; a final always has exactly one bold name", () => {
-  it("gives a pushed row's two names the SAME weight", () => {
-    /**
-     * THE MUTATION, and the spec names it as the tempting one: dim the loser
-     * AND dim on push — i.e. make `level` return the same thing as `lost`.
-     *
-     * That build passes every colour assertion and every status assertion. It
-     * destroys the distinction the design rests on: the absence of contrast is
-     * what says "nobody covered", and it can only mean that if a decided game
-     * never produces it.
-     */
-    const push = renderResult("push");
-    const away = lineStyle(push, "away");
-    const home = lineStyle(push, "home");
-    expect(away).toContain("font-weight:500");
-    expect(home).toContain("font-weight:500");
-    // Same COLOUR too — a push is not a pair of losers.
-    expect(away).toContain("--color-bt-text)");
-    expect(home).toContain("--color-bt-text)");
+describe("the line is shown on both sides, or on neither", () => {
+  it("mirrors the home number onto the away row", () => {
+    // The box wraps name, score AND line. With the number on one side only, a
+    // box around the other row wraps a team with nothing where its line should
+    // be and reads as incomplete.
+    expect(spreadPair("-24.5")).toEqual({ away: "+24.5", home: "-24.5" });
+    expect(spreadPair("3.5")).toEqual({ away: "-3.5", home: "+3.5" });
+    expect(spreadPair("-10")).toEqual({ away: "+10", home: "-10" });
   });
 
-  it("gives a final row's two names DIFFERENT weights, whichever side won", () => {
-    /**
-     * Both directions, because a build that hardcoded "away wins" would pass
-     * on one of them. The pair `(700, 500)` must appear in the winning side's
-     * order, not merely appear.
-     */
-    const awayWon = renderResult("away");
-    expect(lineStyle(awayWon, "away")).toContain("font-weight:700");
-    expect(lineStyle(awayWon, "home")).toContain("font-weight:500");
-
-    const homeWon = renderResult("home");
-    expect(lineStyle(homeWon, "away")).toContain("font-weight:500");
-    expect(lineStyle(homeWon, "home")).toContain("font-weight:700");
+  it("shows a spread of 0 on NEITHER side", () => {
+    // Two production rows carry "0". A pick'em with no line is a straight
+    // winner call, and "0" beside "-0" is two badges saying nothing twice.
+    expect(spreadPair("0")).toEqual({ away: null, home: null });
+    expect(spreadPair("-0")).toEqual({ away: null, home: null });
+    expect(spreadPair("0.0")).toEqual({ away: null, home: null });
   });
 
-  it("never lets a push and a final look the same", () => {
+  it("shows nothing at all when no line was entered", () => {
+    expect(spreadPair(null)).toEqual({ away: null, home: null });
+    expect(spreadPair("")).toEqual({ away: null, home: null });
+    expect(spreadPair("   ")).toEqual({ away: null, home: null });
+  });
+
+  it("does not invent a mirror for something that is not a number", () => {
     /**
-     * The invariant stated directly rather than inferred from the two tests
-     * above: a decided game has exactly ONE bold name and a push has none, so
-     * counting them separates the two without knowing anything else.
+     * The column is free TEXT. Production holds zero unparseable values (15 of
+     * 15 parse), so this is defensive — but the failure it prevents is the bad
+     * kind: a confidently wrong number on the away row of a betting screen.
      */
-    const bold = (markup: string) =>
-      (["away", "home"] as const).filter((s) => lineStyle(markup, s).includes("font-weight:700"))
-        .length;
-    expect(bold(renderResult("away"))).toBe(1);
-    expect(bold(renderResult("home"))).toBe(1);
-    expect(bold(renderResult("push"))).toBe(0);
-    expect(bold(renderResult("cancelled"))).toBe(0);
-    expect(bold(renderResult(null))).toBe(0);
+    expect(spreadPair("PK")).toEqual({ away: null, home: "PK" });
+    expect(spreadPair("Toledo -3")).toEqual({ away: null, home: "Toledo -3" });
+  });
+
+  it("renders both badges on the row", () => {
+    const html = render(SPLIT);
+    expect(html).toContain("+24.5");
+    expect(html).toContain("-24.5");
+  });
+});
+
+describe("teal is the Picks page's, and only the Picks page has a pick", () => {
+  it("paints the side you took, overriding the winner colour", () => {
+    // The home side WON the game here and would otherwise be plain text; the
+    // reader took it, so teal wins the colour. The weight still says who won.
+    const m = sideMarks("home", { ...SPLIT, pick: "home" });
+    expect(sideNameStyle(m).color).toBe("var(--color-bt-accent)");
+    expect(sideNameStyle(m).fontWeight).toBe(700);
+  });
+
+  it("cannot reach a surface that passes no pick", () => {
+    /**
+     * The exception is a SURFACE, not a behaviour — which is what stops it
+     * drifting back into three private rules. Matches and Results pass no pick,
+     * so there is no teal case for them to get wrong.
+     */
+    expect(sideMarks("home", SPLIT).chosen).toBe(false);
+    expect(sideNameStyle(sideMarks("home", SPLIT)).color).toBe("var(--color-bt-text)");
+  });
+
+  it("strikes a pick that LOST the bet, and not one that merely lost the game", () => {
+    // The home side lost the BET here while winning the game. The strike is
+    // about the stake, so it follows the cover and not the scoreboard.
+    expect(sideMarks("home", { ...SPLIT, pick: "home" }).struck).toBe(true);
+    expect(sideMarks("away", { ...SPLIT, pick: "away" }).struck).toBe(false);
+  });
+
+  it("does NOT strike a pick on a push — the stake stood", () => {
+    expect(
+      sideMarks("away", { result: "push", awayScore: 24, homeScore: 17, pick: "away" }).struck
+    ).toBe(false);
   });
 });
 
 describe("the three status tones are three different colours", () => {
   it("keeps final, push and cancelled distinguishable", () => {
-    /**
-     * A map that collapsed two of these would satisfy any test asserting each
-     * one individually — the `swingCell` zeros test in this feature already
-     * uses a Set for exactly that reason.
-     */
-    const tones = (["away", "home", "push", "cancelled"] as const).map(resultTone);
+    const tones = (["away", "push", "cancelled"] as const).map((r) => resultTone(r));
     expect(new Set(tones).size).toBe(3);
-    expect(new Set([...tones.map((t) => t)].map(String))).toContain("final");
-
-    const colours = new Set(["final", "push", "cancelled"].map((t) =>
-      JSON.stringify(sideEmphasisStyle(t === "cancelled" ? "struck" : t === "push" ? "level" : "won"))
-    ));
-    expect(colours.size).toBe(3);
-  });
-
-  it("marks a settled row's status and drops the kickoff, keeping the note", () => {
-    /**
-     * "Status replaces the DATE" — literally. The date is spent once the game
-     * is over; the runner's note ("Rob and Matt") is not, and replacing both
-     * would lose information the row is the only place to see.
-     */
-    const withNote = renderToStaticMarkup(
-      <MatchupLine
-        game={{ ...GAME, note: "Rob and Matt" }}
-        status={{ text: "Cancelled", tone: "cancelled" }}
-      />
-    );
-    expect(withNote).toContain("Cancelled");
-    expect(withNote).toContain("Rob and Matt");
-    expect(withNote).not.toContain("12:30p");
-
-    // ...and with no status the kickoff is still there.
-    expect(renderToStaticMarkup(<MatchupLine game={GAME} />)).toContain("12:30p");
   });
 });

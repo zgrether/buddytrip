@@ -85,9 +85,18 @@ describe("the matchup line", () => {
      * "Lebanon Valley Flying Dutchmen".
      */
     expect(tag(html, "pickem-matchup-multiplier-slot")).toContain("right:0");
-    expect(tag(html, "pickem-matchup-away")).toContain("padding-right:44px");
+    /**
+     * A MARGIN, where this used to assert padding.
+     *
+     * The line now carries the cover box, and the box is drawn with the
+     * line's own border and padding. Clearance held as PADDING would sit
+     * INSIDE that border, so the rectangle would stretch 44px to the right of
+     * the score and run underneath the multiplier chip. Held as a margin it
+     * stays outside, and the box ends where the content does.
+     */
+    expect(tag(html, "pickem-matchup-away")).toContain("margin-right:44px");
     // The HOME clearance is on the LINE, not the name — see the next test.
-    expect(tag(html, "pickem-matchup-home-line")).toContain("padding-right:44px");
+    expect(tag(html, "pickem-matchup-home-line")).toContain("margin-right:44px");
   });
 
   it("clears the badge without pushing the SPREAD away from its team", () => {
@@ -106,8 +115,8 @@ describe("the matchup line", () => {
      * Every other assertion in this file passes against that build. The
      * placement is the whole difference.
      */
-    expect(tag(html, "pickem-matchup-home")).not.toContain("padding-right");
-    expect(tag(html, "pickem-matchup-home-line")).toContain("padding-right:44px");
+    expect(tag(html, "pickem-matchup-home")).not.toContain("margin-right");
+    expect(tag(html, "pickem-matchup-home-line")).toContain("margin-right:44px");
   });
 
   it("does not pay for clearance on a game that has no multiplier", () => {
@@ -118,8 +127,8 @@ describe("the matchup line", () => {
      */
     const plain = renderToStaticMarkup(<MatchupLine game={{ ...GAME, multiplier: 1 }} />);
     expect(plain).not.toContain("pickem-matchup-multiplier-slot");
-    expect(tag(plain, "pickem-matchup-away")).not.toContain("padding-right");
-    expect(tag(plain, "pickem-matchup-home-line")).not.toContain("padding-right");
+    expect(tag(plain, "pickem-matchup-away")).not.toContain("margin-right");
+    expect(tag(plain, "pickem-matchup-home-line")).not.toContain("margin-right");
   });
 
   it("keeps the spread WITH the home team", () => {
@@ -409,7 +418,9 @@ describe("the sheet and the results page draw the same contest identically", () 
    * convergence itself: a surface that reverted to the pinned corner badge
    * would stop containing this fragment.
    */
-  const expected = renderToStaticMarkup(<MatchupLine game={SAME} multiplierAt="meta" />);
+  const expected = renderToStaticMarkup(
+    <MatchupLine game={SAME} multiplierAt="meta" mirrorSpread />
+  );
 
   const sheet = renderToStaticMarkup(
     <PickemSheetRow

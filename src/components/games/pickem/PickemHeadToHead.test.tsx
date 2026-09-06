@@ -351,9 +351,22 @@ describe("the confidence chip", () => {
   const OPEN = row({ slateGameId: "g1", aPick: "away", aConfidence: 5, bConfidence: 2, upsideA: 5 });
 
   it("does NOT strike a missed rank — the number has to stay readable", () => {
+    /**
+     * ANCHORED TO THE CHIP, where it used to search the whole document.
+     *
+     * `not.toContain("line-through")` over the render was true when nothing
+     * on this screen was ever struck, and it silently became a claim about
+     * the ROW the moment the losing pick's NAME started carrying a strike —
+     * which is a different element, a different fact, and correct. The
+     * substring corollary from the other direction: a negative assertion
+     * scoped to the document fails on anything that legitimately joins it.
+     *
+     * The claim was always about the chip: a line across two tabular digits
+     * at 11px fights the glyphs. So it is asserted on the chip.
+     */
     const html = render1(MISSED);
     expect(html).toContain('data-testid="pickem-conf-missed"');
-    expect(html).not.toContain("line-through");
+    expect(chip(html, "missed")).not.toContain("line-through");
     // The rank itself survives. Dimming must not become hiding.
     expect(html).toContain(">5<");
   });
@@ -495,7 +508,25 @@ describe("a pick with no rank", () => {
  * the mistake this file has now made three times, and once it was the chip on
  * the very row under test.
  */
-describe("a missed pick is faded, name and rank together", () => {
+/**
+ * ── THE NAME IS STRUCK NOW; THE RANK IS STILL FADED ─────────────────────
+ *
+ * This block asserted that BOTH were faded, by the same amount, as one
+ * statement. Half of that is superseded and half of it stands, and the split
+ * is the interesting part.
+ *
+ * The rank keeps its fade for the reason recorded on `Conf`: a line across
+ * two tabular digits at 11px fights the glyphs it crosses. A team NAME is
+ * neither small nor numeric, and it now takes the same strike the Picks page
+ * uses for the same fact — because the top half of the row gained a box
+ * around whoever covered, and without a mark down here a reader had to match
+ * each name against that box themselves on every row.
+ *
+ * So the two marks are no longer one statement drawn twice; they are two
+ * marks on two different kinds of thing, and this block asserts each where
+ * it lives.
+ */
+describe("a wrong pick is struck, and its rank is faded", () => {
   const slateGame = {
     id: "g1", awayTeam: "Alabama", homeTeam: "Georgia",
     spread: null, kickoff: "Sat 3:30p", note: null, multiplier: 1,
@@ -520,6 +551,7 @@ describe("a missed pick is faded, name and rank together", () => {
       .map((part) => part.slice(0, part.indexOf(">")));
 
   const FADED = "opacity:0.45";
+  const STRUCK = "line-through";
 
   // A took Georgia and it came in; B took Alabama and it did not.
   const DECIDED = row({
@@ -529,27 +561,62 @@ describe("a missed pick is faded, name and rank together", () => {
     swing: 9,
   });
 
-  it("fades the LOSING team name and leaves the winning one alone", () => {
+  it("STRIKES the losing team name and leaves the winning one alone", () => {
     const html = render3(DECIDED);
     const names = tags(html, "pickem-h2h-team");
     expect(names).toHaveLength(2);
     // A is the left column, so A's name comes first in the markup.
-    expect(names[0], "the winning pick must not be faded").not.toContain(FADED);
-    expect(names[1], "the losing pick must be faded").toContain(FADED);
+    expect(names[0], "the winning pick must not be struck").not.toContain(STRUCK);
+    expect(names[1], "the losing pick must be struck").toContain(STRUCK);
   });
 
-  it("fades the name and the rank by the SAME amount, on the same side", () => {
+  it("does NOT strike a pick on a push — the stake stood", () => {
+    /**
+     * THE MUTATION, and it is the build that shipped from the first pass of
+     * this round: pass the CONF chip's `missed` to the name as well. That
+     * predicate is "this rank scored nothing", which is true of a push — so
+     * a pushed row came out with both players' picks crossed through, telling
+     * two people they had picked badly on a game nobody could win.
+     *
+     * Found by looking at it, not by a test. The two questions differ on
+     * exactly one outcome, which is why one predicate served for so long.
+     */
+    const pushed = row({
+      slateGameId: "g1",
+      result: "push",
+      aPick: "home",
+      aConfidence: 9,
+      aPoints: 0,
+      bPick: "away",
+      bConfidence: 9,
+      bPoints: 0,
+      swing: 0,
+      zeroKind: "push",
+    });
+    const names = tags(render3(pushed), "pickem-h2h-team");
+    expect(names).toHaveLength(2);
+    for (const n of names) expect(n).not.toContain(STRUCK);
+  });
+
+  it("fades the RANK on the same side the name is struck", () => {
     /**
      * They are one statement — took Alabama, at 9, got nothing — and the point
      * of §13 is that half of it was at full strength. Asserting the pair
      * together is what a per-element check of either one alone cannot say.
+     *
+     * The two marks now DIFFER in kind (a strike on the name, a fade on the
+     * rank) and that is deliberate — see the note above this block. What has
+     * to hold is that they land on the SAME SIDE: a build that struck one
+     * player's name and faded the other's rank would pass two separate
+     * per-element tests and be nonsense on screen.
      */
     const html = render3(DECIDED);
-    expect(tags(html, "pickem-h2h-team")[1]).toContain(FADED);
+    expect(tags(html, "pickem-h2h-team")[1]).toContain(STRUCK);
     expect(tags(html, "pickem-conf-missed")[0]).toContain(FADED);
-    // ...and the banked chip on the other side is untouched, which is what a
-    // page-wide search for the same string would have been reading all along.
+    // ...and the other side is untouched on BOTH marks, which is what a
+    // page-wide search for either string would have been reading all along.
     expect(tags(html, "pickem-conf-banked")[0]).not.toContain(FADED);
+    expect(tags(html, "pickem-h2h-team")[0]).not.toContain(STRUCK);
   });
 
   it("does not fade anything while the game is UNPLAYED", () => {
@@ -735,9 +802,18 @@ describe("the covered badge is gone and the multiplier has moved", () => {
     );
 
   it("says nothing in words that the swing cell already says by treatment", () => {
-    // "Georgia covered" competed with the multiplier for the top-right corner
-    // and repeated what `Both`/`Neither` and the arrow already carry.
-    expect(render(1)).not.toContain("covered");
+    /**
+     * ASSERTED AGAINST THE TEXT, not the markup. "Georgia covered" competed
+     * with the multiplier for the top-right corner and repeated what the
+     * swing cell already carries — and the claim is that no WORDS say it.
+     *
+     * Over the markup that claim now fails for the wrong reason: the cover
+     * box marks its side with `data-covered`, so the string is present in an
+     * attribute while no reader sees it. Stripping the tags asserts what the
+     * test always meant.
+     */
+    const text = render(1).replace(/<[^>]*>/g, " ");
+    expect(text).not.toContain("covered");
   });
 
   it("puts the multiplier in its OWN bottom slot, not the matchup's corner", () => {

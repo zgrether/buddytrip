@@ -6,7 +6,7 @@ import {
   MatchupLine,
   pickemRowSurface,
   type MatchupLineGame,
-  type SideEmphasis,
+  type SideMarks,
   type StatusTone,
 } from "./slateRowVisual";
 
@@ -114,8 +114,8 @@ export function PickemGameCard({
   game,
   leading,
   badge,
-  awayEmphasis,
-  homeEmphasis,
+  awayMarks,
+  homeMarks,
   status,
   awayScore,
   homeScore,
@@ -132,9 +132,10 @@ export function PickemGameCard({
 }: {
   game: MatchupLineGame;
   /** Passed straight through to `MatchupLine` — the card holds no opinion
-   *  about what a name is saying, only about where it sits. */
-  awayEmphasis?: SideEmphasis;
-  homeEmphasis?: SideEmphasis;
+   *  about what a name is saying, only about where it sits. Derived by the
+   *  one shared `sideMarks`, never by a caller's own reading of a result. */
+  awayMarks?: SideMarks;
+  homeMarks?: SideMarks;
   status?: { text: string; tone: StatusTone };
   /**
    * The contest score, one number per team, on that team's own line.
@@ -226,8 +227,8 @@ export function PickemGameCard({
             <MatchupLine
               game={game}
               leading={leading}
-              awayEmphasis={awayEmphasis}
-              homeEmphasis={homeEmphasis}
+              awayMarks={awayMarks}
+              homeMarks={homeMarks}
               status={status}
               awayScore={awayScore}
               homeScore={homeScore}
@@ -240,6 +241,10 @@ export function PickemGameCard({
                  A prop would be a choice this card's three callers have no
                  reason to make differently. */
               multiplierAt="meta"
+              /* Both sides of the line, for the same reason the badge is fixed
+                 here: this is the VIEWING card and its three callers all read a
+                 settled contest. The builder does not come through here. */
+              mirrorSpread
             />
           </div>
         ),

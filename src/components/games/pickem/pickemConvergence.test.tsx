@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PickemSheetRow, sideEmphasis } from "./PickemSheetRow";
+import { PickemSheetRow } from "./PickemSheetRow";
 import { PickemRunView } from "./PickemRunView";
 import { PickemHeadToHead } from "./PickemHeadToHead";
-import { sideEmphasisStyle, sideDecoration } from "./slateRowVisual";
+import { sideMarks, sideNameStyle, sideDecoration } from "./slateRowVisual";
 import type { BoardRow } from "@/lib/pickemBoard";
 
 /**
@@ -155,19 +155,25 @@ describe("the multiplier is in one place, and it is the same place", () => {
 });
 
 describe("the winner is bold on all three, and the loser is not", () => {
+  /** Home wins 30-10 while laid -24.5: HOME won the game, AWAY covered. */
+  const SPLIT = { result: "home" as const, awayScore: 10, homeScore: 30 };
+
   it("weights the winning name above the losing one, on every surface", () => {
     /**
-     * ONE BOLD NAME, EXACTLY ONE. A decided contest can never render two, which
-     * is what keeps a push — both names at the loser's weight — from being
-     * mistaken for a decided game.
+     * ONE BOLD NAME, EXACTLY ONE, and it is the side that won the GAME —
+     * which this round separated from the side that covered.
      *
-     * THE MUTATION: drop `resultEmphasis` from any one surface. That build
-     * renders both names at 500 and reads as a game nobody won.
+     * THE MUTATION: derive weight from `result` on any one surface. Here the
+     * two agree (home won and home covered), so this case alone cannot catch
+     * it — `resultTreatment.test.tsx` holds the split case. What this one
+     * holds is that all THREE surfaces answer it the same way, which no
+     * per-surface test can say.
      */
+    const scored = { ...GAME, ...SPLIT };
     const all = [
-      ["picks", picks({ game: GAME, result: "home", outcome: "won", pick: "home", editable: false })],
-      ["results", results({ slate: [{ ...GAME, result: "home" }] })],
-      ["matches", matches({ result: "home" }, { result: "home" })],
+      ["picks", picks({ game: scored, result: "home", outcome: "won", pick: "home", editable: false })],
+      ["results", results({ slate: [scored] })],
+      ["matches", matches(SPLIT, { result: "home" })],
     ] as const;
     for (const [name, html] of all) {
       /**
@@ -238,35 +244,54 @@ describe("a losing pick is STRUCK, because teal alone said the opposite", () => 
      * saying which side you had, which is the thing that made collapsing by
      * default honest in the first place.
      */
-    expect(sideEmphasisStyle("missed").color).toBe("var(--color-bt-accent)");
-    expect(sideEmphasisStyle("banked").color).toBe("var(--color-bt-accent)");
-    expect(sideEmphasisStyle("banked").fontWeight).toBe(700);
+    const took = (result: "away" | "home") =>
+      sideNameStyle(sideMarks("away", { result, awayScore: 30, homeScore: 10, pick: "away" }));
+    expect(took("away").color).toBe("var(--color-bt-accent)");
+    expect(took("home").color).toBe("var(--color-bt-accent)");
+    // ...and the weight still answers its own question, not this one.
+    expect(took("home").fontWeight).toBe(700);
   });
 
-  it("maps the four combinations, and no two of them collide", () => {
+  it("maps the four combinations, and no two of them render alike", () => {
     /**
-     * The decision table itself, because the four differ in ways the rendered
-     * markup makes tedious to separate — and because the mutation that matters
-     * is a merge: `missed` collapsing back into `chosen` is the original bug.
+     * The decision table, over the ONE derivation all three surfaces call.
+     * The mutation that matters is a MERGE — dropping the strike so a lost
+     * pick renders as a won one is the original bug — so the last assertion
+     * is that the four settled shapes are four distinct paint jobs.
      */
-    expect(sideEmphasis("away", "away", "away")).toBe("banked");
-    expect(sideEmphasis("away", "away", "home")).toBe("missed");
-    expect(sideEmphasis("away", "home", "away")).toBe("won");
-    expect(sideEmphasis("away", "home", "home")).toBe("lost");
+    const m = (side: "away" | "home", pick: "away" | "home" | null, result: "away" | "home") =>
+      sideMarks(side, { result, pick, awayScore: 30, homeScore: 10 });
 
-    // Unplayed is the pre-existing behaviour and must not have moved.
-    expect(sideEmphasis("away", "away", null)).toBe("chosen");
-    expect(sideEmphasis("home", "away", null)).toBe("none");
+    // Away won the game 30-10 throughout, so weight is constant and the
+    // varying marks are the ones this table is about.
+    expect(m("away", "away", "away")).toMatchObject({ chosen: true, covered: true, struck: false });
+    expect(m("away", "away", "home")).toMatchObject({ chosen: true, covered: false, struck: true });
+    expect(m("away", "home", "away")).toMatchObject({ chosen: false, covered: true, struck: false });
+    expect(m("away", "home", "home")).toMatchObject({ chosen: false, covered: false, struck: false });
 
-    // A push happened and nobody covered: your pick STOOD, so it keeps its
-    // colour. Only a cancellation outranks the sheet's own fact.
-    expect(sideEmphasis("away", "away", "push")).toBe("chosen");
-    expect(sideEmphasis("home", "away", "push")).toBe("level");
-    expect(sideEmphasis("away", "away", "cancelled")).toBe("struck");
+    // Unplayed: nothing is decided, so only the pick has anything to say.
+    const open = sideMarks("away", { result: null, pick: "away" });
+    expect(open).toMatchObject({ chosen: true, covered: false, struck: false, wonGame: false });
 
-    const four = ["banked", "missed", "won", "lost"] as const;
-    const seen = four.map((e) => JSON.stringify({ ...sideEmphasisStyle(e), ...sideDecoration(e) }));
-    expect(new Set(seen).size, "two settled states render identically").toBe(4);
+    // A push happened and nobody covered: your pick STOOD, so no strike and
+    // no box. Only a cancellation strikes a name you did not take.
+    expect(sideMarks("away", { result: "push", pick: "away" })).toMatchObject({
+      chosen: true,
+      covered: false,
+      struck: false,
+    });
+    expect(sideMarks("home", { result: "cancelled", pick: "away" }).struck).toBe(true);
+
+    const four = [
+      m("away", "away", "away"),
+      m("away", "away", "home"),
+      m("away", "home", "away"),
+      m("away", "home", "home"),
+    ];
+    const painted = four.map((x) =>
+      JSON.stringify({ ...sideNameStyle(x), ...sideDecoration(x), boxed: x.covered })
+    );
+    expect(new Set(painted).size, "two settled states render identically").toBe(4);
   });
 });
 
@@ -347,5 +372,70 @@ describe("the score fields are absent for a reader who cannot write one", () => 
     // and the DOM lowercases it, so pinning either spelling would be pinning
     // the renderer rather than the attribute.
     expect(results({ onSetScore: () => {} }).toLowerCase()).toContain('inputmode="numeric"');
+  });
+});
+
+describe("the two marks compose on the row a spread exists for", () => {
+  /**
+   * THE CASE THE ROUND IS ABOUT, asserted on the PICKS surface because that is
+   * where all four marks can appear at once.
+   *
+   * Home is laid -24.5 and wins 30-10: home WON THE GAME and AWAY COVERED. The
+   * reader took home — so they watched their team win and lost the pick'em.
+   */
+  const SPLIT = { ...GAME, spread: "-24.5", awayScore: 10, homeScore: 30 };
+  const html = picks({
+    game: SPLIT,
+    result: "away",
+    outcome: "lost",
+    pick: "home",
+    editable: false,
+  });
+
+  it("boxes the coverer while bolding the winner — different sides, one row", () => {
+    /**
+     * THE MUTATION the spec names: box the bold side. It is the natural
+     * implementation, it agrees with a correct build on every game where the
+     * winner covered, and it is wrong on exactly the games a spread exists for.
+     */
+    expect(tag(html, "pickem-matchup-away"), "away is boxed").toContain('data-covered="true"');
+    expect(tag(html, "pickem-matchup-home-line"), "home is not").toContain('data-covered="false"');
+    expect(tag(html, "pickem-matchup-home"), "home is bold").toContain("font-weight:700");
+    expect(tag(html, "pickem-matchup-away"), "away is not").not.toContain("font-weight:700");
+  });
+
+  it("strikes the losing pick WHILE the other side carries the box", () => {
+    /**
+     * THE MUTATION: drop the strike because the box already marks the winner.
+     * That build loses "what did I pick", which is the information a shut
+     * locked row depends on — and the box does not carry it, because the box
+     * is about the runner's call and not about this reader's sheet.
+     *
+     * Both halves asserted on ONE render, so a build cannot satisfy either by
+     * sacrificing the other.
+     */
+    expect(tag(html, "pickem-matchup-home-name")).toContain("line-through");
+    expect(tag(html, "pickem-matchup-away")).toContain('data-covered="true"');
+    // ...and the struck name keeps its teal, so the row still says what was
+    // taken rather than only that it failed.
+    expect(tag(html, "pickem-matchup-home")).toContain("var(--color-bt-accent)");
+  });
+});
+
+describe("a push draws no box, on any surface", () => {
+  it("leaves both sides unboxed wherever a contest is drawn", () => {
+    // Nobody covered, so there is nothing to wrap. The scoreboard still has a
+    // winner and still says so — the two marks are independent.
+    const PUSHED = { ...GAME, awayScore: 24, homeScore: 17 };
+    const all = [
+      ["picks", picks({ game: PUSHED, result: "push", outcome: "void", pick: "away", editable: false })],
+      ["results", results({ slate: [{ ...PUSHED, result: "push" }] })],
+      ["matches", matches({ result: "push", awayScore: 24, homeScore: 17 }, { result: "push" })],
+    ] as const;
+    for (const [name, markup] of all) {
+      expect(markup, name).not.toContain('data-covered="true"');
+      // ...and not by rendering no rows at all.
+      expect(markup, name + " rendered").toContain('data-covered="false"');
+    }
   });
 });

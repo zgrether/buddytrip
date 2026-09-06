@@ -935,6 +935,9 @@ export function PickemSheet({
                * game that has not been played.
                */
               result={editable ? null : (g.result ?? null)}
+              /* With confidence off the chip shows what was EARNED rather
+                 than a crossed-out 1 — see `chipValue`. */
+              ranksMatter={settings.useConfidence}
               editable={editable}
               onPick={(side) => editPicks((prev) => setPick(prev, id, side))}
             />

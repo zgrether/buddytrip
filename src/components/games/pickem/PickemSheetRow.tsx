@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { type MatchupLineGame, type SideEmphasis } from "./slateRowVisual";
+import { sideMarks, type MatchupLineGame } from "./slateRowVisual";
 import { PickemGameCard, PickemSegments, SELECT_HOLD_MS } from "./PickemGameCard";
 import { PickemAbsenceNotice, NOT_PICKED } from "./PickemAbsenceNotice";
-/* The RESULTS PANEL owns these. Importing rather than re-deriving is what keeps
-   the sheet and the runner from wording or painting one row two ways — the same
-   pattern PickemHeadToHead follows for matchPill/matchNote. */
-import { resultEmphasis, resultTone, RESULT_LABEL } from "./PickemRunView";
+/* The RESULTS PANEL owns the WORDS — the label and the tone. It no longer owns
+   the treatment: that is `sideMarks`, in `slateRowVisual` beside the styles it
+   feeds, called by all three surfaces. */
+import { resultTone, RESULT_LABEL } from "./PickemRunView";
 import type { SlateResult } from "@/lib/pickemScoring";
 
 /**
@@ -166,6 +166,22 @@ function NotPickedStamp() {
  * The strike-through is the one that carries meaning without colour: a number
  * crossed out is a number that did not count, in any theme and at any size.
  *
+ * ── ALL OF WHICH IS AN ARGUMENT ABOUT CONFIDENCE, AND ONLY CONFIDENCE ────
+ *
+ * Everything above is true when the ranks vary. With confidence OFF every
+ * stake is 1 (times the multiplier), so the column reads 1, 1, 1, 2, 1 — the
+ * stake is the same fact repeated sixteen times, and the strike is doing all
+ * the work while the number does none. A crossed-out 1 is a laborious way to
+ * write 0.
+ *
+ * So with confidence off the chip shows what you EARNED and drops the line.
+ * The objection the paragraph above raises — earned prints 0 for both a miss
+ * and a push, one number for opposite facts — is real and is answered
+ * elsewhere on the row rather than here: a miss has the cover box on the
+ * OTHER side and a struck team name, a push has no box on either side and an
+ * unstruck one. Both were introduced this round, which is what makes the
+ * change safe now and would not have made it safe before.
+ *
  * ── AND IT STAYS HERE, WHERE THE HEAD-TO-HEAD DROPPED IT ───────────────────
  *
  * `PickemHeadToHead`'s confidence chip now DIMS a missed rank instead of
@@ -183,17 +199,44 @@ function NotPickedStamp() {
  * Unifying them costs this chip its meaning — if that is ever attempted, the
  * thing to change first is whether this row dims itself at all.
  */
+/**
+ * WHAT THE CHIP SHOWS, AND WHETHER IT IS CROSSED OUT.
+ *
+ * Split out because it is two decisions that must agree — a number and a line
+ * through it — and because the confidence-off case is only correct if both
+ * move together. Pure, so the table can be asserted directly.
+ */
+export function chipValue(opts: {
+  /** What this position was worth, multiplier included. */
+  stake: number;
+  outcome: PickOutcome | null;
+  /** Confidence ON. When ranks vary the stake is the interesting number; when
+   *  they do not, it is the same number on every row. */
+  ranksMatter: boolean;
+}): { value: number; struck: boolean } {
+  // Undecided: the stake is all there is to say, and a 0 here would claim a
+  // result. (Unreachable with confidence off, where an unplayed row has no
+  // chip at all — stated rather than left to the caller.)
+  if (opts.outcome == null) return { value: opts.stake, struck: false };
+  if (opts.ranksMatter) {
+    return { value: opts.stake, struck: opts.outcome === "lost" };
+  }
+  return { value: opts.outcome === "won" ? opts.stake : 0, struck: false };
+}
+
 function RankChip({
   points,
   picked,
   outcome,
+  ranksMatter,
 }: {
   points: number;
   picked: boolean;
   outcome: PickOutcome | null;
+  ranksMatter: boolean;
 }) {
   const banked = outcome === "won";
-  const missed = outcome === "lost";
+  const { value, struck } = chipValue({ stake: points, outcome, ranksMatter });
   return (
     <span
       data-testid="pickem-row-rank"
@@ -229,10 +272,10 @@ function RankChip({
             : picked
               ? "var(--color-bt-accent)"
               : "var(--color-bt-text-dim)",
-        textDecoration: missed ? "line-through" : undefined,
+        textDecoration: struck ? "line-through" : undefined,
       }}
     >
-      {points}
+      {value}
     </span>
   );
 }
@@ -274,19 +317,6 @@ function RankChip({
  * stood and keeps its colour, while the other name takes `level`. That is the
  * pre-existing rule, unchanged; only the decided case moved.
  */
-export function sideEmphasis(
-  side: "away" | "home",
-  pick: "away" | "home" | null,
-  result: SlateResult | null
-): SideEmphasis {
-  const picked = pick === side;
-  if (result == null) return picked ? "chosen" : "none";
-  if (result === "cancelled") return resultEmphasis(result)[side];
-  if (result === "push") return picked ? "chosen" : "level";
-  const won = result === side;
-  if (picked) return won ? "banked" : "missed";
-  return won ? "won" : "lost";
-}
 
 export function PickemSheetRow({
   game,
@@ -294,6 +324,7 @@ export function PickemSheetRow({
   points,
   outcome = null,
   result = null,
+  ranksMatter = true,
   editable,
   onPick,
 }: {
@@ -323,6 +354,16 @@ export function PickemSheetRow({
    * cancellation as an ordinary settled row.
    */
   result?: SlateResult | null;
+  /**
+   * Confidence is ON, so the chip's number varies by position and is worth
+   * reading. Off, it is 1 on every row and the chip shows what was EARNED
+   * instead — see `chipValue`.
+   *
+   * Defaults TRUE, which is the shape the chip has always had: a caller that
+   * has not been updated keeps the stake-and-strike behaviour rather than
+   * silently starting to print zeroes.
+   */
+  ranksMatter?: boolean;
   editable: boolean;
   /** Null means "clear this game" — the row calls it when the SELECTED side is
    *  tapped again. */
@@ -368,6 +409,11 @@ export function PickemSheetRow({
     }
   };
 
+  /* The ONE place this surface differs from the other two: it passes a
+     `pick`, so teal reaches the side you took. Matches and Results pass none
+     and cannot reach that case. */
+  const scores = { awayScore: game.awayScore, homeScore: game.homeScore };
+
   return (
     <PickemGameCard
       testId="pickem-sheet-row"
@@ -382,8 +428,8 @@ export function PickemSheetRow({
        * lives now, because it is a decision about the sheet's whole settled
        * state rather than about this call.
        */
-      awayEmphasis={sideEmphasis("away", pick, result)}
-      homeEmphasis={sideEmphasis("home", pick, result)}
+      awayMarks={sideMarks("away", { result, pick, ...scores })}
+      homeMarks={sideMarks("home", { result, pick, ...scores })}
       /**
        * The score sits on the two name lines, right-aligned, and only once
        * the game has finished — the caller passes null while picks are open.
@@ -447,7 +493,12 @@ export function PickemSheetRow({
       settled={outcome != null}
       leading={
         points != null ? (
-          <RankChip points={points} picked={pick !== null} outcome={outcome} />
+          <RankChip
+            points={points}
+            picked={pick !== null}
+            outcome={outcome}
+            ranksMatter={ranksMatter}
+          />
         ) : undefined
       }
       badge={outcome === "unpicked" ? <NotPickedStamp /> : undefined}
