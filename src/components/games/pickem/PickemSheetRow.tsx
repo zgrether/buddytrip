@@ -438,29 +438,32 @@ export function PickemSheetRow({
       awayScore={game.awayScore}
       homeScore={game.homeScore}
       /**
-       * The status line replaces the kickoff, for the two outcomes that PAID
-       * NOBODY — and for no others.
+       * THE STATUS REPLACES THE KICKOFF ON EVERY SETTLED ROW, as it does on
+       * the results page — the same slot, the same two functions, the same
+       * words.
        *
-       * Not for every settled game: a "Final" on all sixteen rows would be a
-       * column of one word, and the chip and the marks already carry which
-       * side won and which one you took. These two earn a line because
-       * nothing else on the row NAMES them.
+       * ── This reverses the argument twice, and the premise moved both times
        *
-       * ── PUSH JOINS CANCELLED, and it closes the last ambiguity ──────────
+       * It was cancellations only, on the reasoning that a "Final" repeated
+       * down sixteen rows is a column of one word carrying nothing, while the
+       * chip and the names already say who won and what you took. Then PUSH
+       * joined it, because a push and an unentered game rendered alike — no
+       * box, pick unstruck, both correct — with no word saying which.
        *
-       * A push draws no box (nobody covered) and leaves the pick unstruck
-       * (the stake stood), which is correct and is also exactly how an
-       * UNENTERED game renders. The two were told apart only by the row's
-       * settled fade and the chip losing its fill — real signals, but no word
-       * anywhere said which had happened.
+       * What settles it is neither of those: a played game's DATE IS SPENT.
+       * The kickoff answers "when should I look", and once the game is over
+       * that question is gone while the slot it occupies is not. Results has
+       * always replaced it; the sheet kept a stale time on the majority of
+       * its rows and a status on the rare ones, so the two tabs disagreed
+       * about the same contest — which is the whole thing this round is for.
        *
-       * The standing objection to a status line is "sixteen rows of the same
-       * word". It does not apply here: a push is rare, so the line appears on
-       * the row where something unusual happened and nowhere else. That is
-       * the opposite of a column of the same word.
+       * The column-of-one-word objection was about REDUNDANCY, and it was
+       * measuring against a row that said little. It now says a great deal —
+       * score, both lines, the winner by weight, the cover box — and against
+       * that a small dim word is orientation rather than noise.
        */
       status={
-        result === "cancelled" || result === "push"
+        result != null
           ? { text: RESULT_LABEL[result], tone: resultTone(result) }
           : undefined
       }
@@ -487,23 +490,38 @@ export function PickemSheetRow({
       headerOpen={open}
       collapsible={{ open: editable && open }}
       /**
-       * ONE dim, on the row's content, chip included.
+       * ── FADE WHAT HAS NO CONTENT, NOT WHAT IS FINISHED ───────────────────
        *
-       * An early version faded everything BESIDE the chip and left the chip at
-       * full strength, on the reasoning that the stake is the reason to look at
-       * a played row. On screen that made the chip a third kind of bright
-       * number — beside the live rows' accent chips and the unplayed rows'
-       * outlined ones — so a finished slate had three brightnesses competing
-       * and the settled rows read as the loudest thing on it.
+       * This was `outcome != null` — every settled row at 0.38, on the reading
+       * that a dealt-with row should recede. That was written when a settled
+       * row had little left to say: the names, a status word, and a chip whose
+       * three fates are carried by SHAPE and survive a fade.
        *
-       * The chip does not need brightness to stay legible: its three fates are
-       * carried by SHAPE — a filled disc, a strike-through, a plain outline —
-       * and those survive the fade where a brightness contest does not.
+       * It is no longer true. A settled row now carries the score, the line on
+       * both sides, the winner by weight and the cover box — most of what this
+       * screen exists to show arrives only once a game is over. Fading it put
+       * the newest and most important information behind the heaviest
+       * treatment on the page, and the Results tab never did: its entered rows
+       * go `quiet` (a flatter surface) and keep full contrast.
        *
-       * The `NOT PICKED` stamp is the one exception, and it is not an exception
-       * to this argument: it carries no shape that survives, only words.
+       * ── The one row that still fades, and why it is not an exception ─────
+       *
+       * NOT PICKED. That is ABSENCE rather than settlement — there is no pick
+       * to read and no stake to weigh, so a fade says something true about it.
+       * Everything else on such a row is context for a decision nobody made.
+       *
+       * The stamp itself still renders OUTSIDE the fade (see `PickemGameCard`),
+       * because opacity multiplies and a label nobody can read is not a label.
+       *
+       * ── And it is what let the cover box become an outline ───────────────
+       *
+       * A 1px border inside the fade composited to within a few points of the
+       * card's own chrome, and could not be tuned out of it: at 0.38 over the
+       * light card even pure black reaches only rgb(158,158,158). That forced
+       * a tinted panel. Outside the fade the border is simply the colour it
+       * says it is.
        */
-      settled={outcome != null}
+      settled={outcome === "unpicked"}
       leading={
         points != null ? (
           <RankChip

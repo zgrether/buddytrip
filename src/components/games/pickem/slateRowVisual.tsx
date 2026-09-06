@@ -319,30 +319,39 @@ export function sideDecoration(m: SideMarks): CSSProperties | undefined {
 export function coverBoxStyle(m: SideMarks): CSSProperties {
   return {
     /**
-     * ── A FILL, NOT ONLY A HAIRLINE, AND THAT IS ARITHMETIC ─────────────
+     * ── AN OUTLINE, AND THE FILL IS GONE WITH THE FADE THAT FORCED IT ────
      *
-     * A settled row fades to 0.38 and the box is inside that fade, so its
-     * border composites against the card. MEASURED in the browser: a 1px
-     * `--color-bt-text-dim` border came out at rgb(196,202,211), against a
-     * card whose OWN border is rgb(200,208,218) at full strength. The mark
-     * for the single most important fact on the row was the same grey as
-     * the decorative outline around it.
+     * This was a tinted panel, and the tint was never the design — it was a
+     * workaround for the settled fade. Inside a 0.38 subtree a 1px
+     * `--color-bt-text-dim` border composited to rgb(196,202,211) against a
+     * card whose own border is rgb(200,208,218): the mark for the most
+     * important fact on the row, the same grey as the chrome around it. And
+     * it could not be tuned out, because at 0.38 over the light card even
+     * pure black reaches only rgb(158,158,158) — a hard floor. A fill has no
+     * such floor, because the eye integrates AREA where it cannot integrate
+     * a line, so a fill is what the constraint left.
      *
-     * And it cannot be tuned away: at 0.38 over white, even pure black
-     * composites to rgb(158,158,158). A hairline inside this fade has a
-     * hard floor, and that floor is barely darker than the chrome.
+     * The fade is gone (see `PickemSheetRow`), and re-measuring outside it
+     * the border is simply the colour it says it is — no compositing at all:
      *
-     * A fill does not have that problem, because the eye integrates AREA
-     * where it cannot integrate a line. So the box is a tinted panel with a
-     * full-strength `--color-bt-text` edge — and the edge is what carries it
-     * on the head-to-head, whose rows are not faded at all.
+     *   light   box rgb(15,23,42)     card border rgb(200,208,218)
+     *   dark    box rgb(241,245,249)  card border rgb(45,54,72)
      *
-     * It is deliberately NEUTRAL. Teal means your pick and amber means a
-     * weighted game; a third hue would be a third thing to learn and would
-     * collide with one of them on some row.
+     * Unmistakable in both, so the panel has nothing left to do. It also cost
+     * something: in dark mode a filled line reads as an INPUT, which is the
+     * wrong affordance on a screen where nothing here is editable.
+     *
+     * `--color-bt-text` rather than `--color-bt-text-dim`, which also clears
+     * the chrome now. Compared side by side at both themes: dim reads as
+     * another border in light mode, where the card outline is already grey.
+     * The box has to be a MARK, and the difference between a mark and a
+     * border is that a mark is darker than the text it is not wrapping.
+     *
+     * Deliberately NEUTRAL. Teal means your pick, amber means a weighted
+     * game; a third hue would be a third thing to learn and would collide
+     * with one of them on some row.
      */
     border: "1px solid " + (m.covered ? "var(--color-bt-text)" : "transparent"),
-    background: m.covered ? "var(--color-bt-dim-faint)" : undefined,
     borderRadius: 7,
     paddingLeft: 5,
     paddingRight: 5,

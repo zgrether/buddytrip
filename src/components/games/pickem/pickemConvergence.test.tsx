@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PickemSheetRow } from "./PickemSheetRow";
+import { SETTLED_DIM } from "./PickemGameCard";
 import { PickemRunView } from "./PickemRunView";
 import { PickemHeadToHead } from "./PickemHeadToHead";
 import { sideMarks, sideNameStyle, sideDecoration } from "./slateRowVisual";
@@ -437,5 +438,67 @@ describe("a push draws no box, on any surface", () => {
       // ...and not by rendering no rows at all.
       expect(markup, name + " rendered").toContain('data-covered="false"');
     }
+  });
+});
+
+describe("the fade says ABSENCE, not settlement", () => {
+  /**
+   * The rule: fade what has no content, not what is finished.
+   *
+   * Every settled row used to fade to 0.38, on the reading that a dealt-with row
+   * should recede. That stopped being true when the settled row became the
+   * INFORMATIVE one — the score, both sides of the line, the winner by weight
+   * and the cover box all arrive only once a game is over, and the fade put the
+   * newest information behind the heaviest treatment on the page.
+   *
+   * A NOT PICKED row is the opposite: no pick to read, no stake to weigh, and
+   * everything on it is context for a decision nobody made. Fading that says
+   * something true.
+   *
+   * ── Why this guard did not exist before ─────────────────────────────────
+   *
+   * `PickemSheet.test.tsx`'s "DARKENS the row it stamps" compares an unpicked
+   * row against a PICKED one — whose game, in that fixture, has no result. So it
+   * passed identically before and after this change: its control row was never
+   * settled, and the distinction it appeared to be making was one it could not
+   * see. The two cases below differ only in `outcome`, which is the axis the
+   * rule turns on.
+   */
+  const settled = { game: GAME, result: "home" as const, editable: false };
+
+  it("does NOT fade a settled row somebody picked", () => {
+    /**
+     * THE MUTATION: `settled={outcome != null}`, which is the build this
+     * replaces. It renders the same row with the same marks — the box, the
+     * bold, the strike are all still there, at 38% of their contrast.
+     */
+    const html = picks({ ...settled, outcome: "won", pick: "home" });
+    expect(html).not.toContain(`opacity:${SETTLED_DIM}`);
+    // ...and it is a settled row, not an unplayed one rendering by accident.
+    expect(html).toContain('data-covered="true"');
+  });
+
+  it("does not fade a LOST row either — a wrong pick is still information", () => {
+    expect(picks({ ...settled, outcome: "lost", pick: "away" })).not.toContain(
+      `opacity:${SETTLED_DIM}`
+    );
+  });
+
+  it("STILL fades a row nobody picked", () => {
+    // The other half. A build that simply deleted the fade would pass both
+    // assertions above and lose the one case where fading is honest.
+    const html = picks({ ...settled, outcome: "unpicked", pick: null });
+    expect(html).toContain(`opacity:${SETTLED_DIM}`);
+  });
+
+  it("keeps the NOT PICKED stamp out of the fade it triggers", () => {
+    // Opacity multiplies, so a stamp inside the faded subtree cannot be made
+    // legible from within it — and every row this stamp appears on is faded.
+    const html = picks({ ...settled, outcome: "unpicked", pick: null });
+    const content = html.indexOf('data-testid="pickem-card-content"');
+    const badge = html.indexOf('data-testid="pickem-card-badge"');
+    expect(badge).toBeGreaterThan(content);
+    const inner = html.slice(content, badge);
+    expect(inner).not.toContain("pickem-row-not-picked");
   });
 });
