@@ -112,7 +112,16 @@ export const FORMAT_SURFACE = {
     gameState: true,
   },
   stroke: {
-    gameTypes: ["gtt_stroke_play"],
+    // Scramble shares this surface rather than getting its own, because it IS
+    // this surface: the same `StrokeGameView`, the same settings zone, the same
+    // course and scorecard. It differs only in WHO a score belongs to — the
+    // team's play_group instead of a user — which is an input to the view, not
+    // a different one.
+    //
+    // Note the zone label below is more literally true of scramble than of
+    // stroke: its spine is not merely organised by the play group, the play
+    // group IS the scoring unit.
+    gameTypes: ["gtt_stroke_play", "gtt_scramble"],
     // Stroke's spine is the play GROUP, not the match — its settings zone holds
     // Point Distribution + Groupings + Handicaps.
     settingsZoneLabel: "Group Settings",

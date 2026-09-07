@@ -13,6 +13,7 @@ const GAME_ROUTES: Record<string, string> = {
   gtt_stroke_play: "new",
   gtt_match_play: "match/new",
   gtt_rack_n_stack: "rack/new",
+  gtt_scramble: "scramble/new",
 };
 
 /** The shared non-golf (manual) scoreboard route segment — every manual format
@@ -86,6 +87,23 @@ export function isStrokeFormat(gameTypeId: string | null): boolean {
 /** Pick'em — a PREDICTION format, and neither golf nor manual. It has an engine
  *  (`resultStrategy: "pickem"`), so `isManualGameType` is false for it and it needs
  *  its own predicate rather than riding the manual catch-all. */
+/**
+ * Scramble — stroke play whose SCORER IS THE TEAM.
+ *
+ * Its own predicate rather than a widening of `isStrokeFormat`, because the two
+ * answer different questions. `isStrokeFormat` gates surfaces that assume an
+ * INDIVIDUAL unit — the per-player handicap roster, the individual leaderboard,
+ * the "score only your own row" rule — and scramble has no individual level at
+ * all. Widening it would silently opt scramble into every one of those, which
+ * is CLAUDE.md #24's shape: one predicate quietly doing two jobs.
+ *
+ * It IS golf (it carries a scorecard) and it DOES open as a panel; both come
+ * from the `GAME_ROUTES` entry and the union below rather than from here.
+ */
+export function isScrambleFormat(gameTypeId: string | null): boolean {
+  return gameTypeId === "gtt_scramble";
+}
+
 export function isPickemFormat(gameTypeId: string | null): boolean {
   return gameTypeId === "gtt_pickem";
 }
@@ -101,6 +119,7 @@ export function opensAsPanel(gameTypeId: string | null): boolean {
     isMatchPlayFormat(gameTypeId) ||
     isRackFormat(gameTypeId) ||
     isStrokeFormat(gameTypeId) ||
+    isScrambleFormat(gameTypeId) ||
     isManualGameType(gameTypeId) ||
     isPickemFormat(gameTypeId)
   );

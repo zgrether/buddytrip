@@ -22,7 +22,28 @@ export const RACK_TYPE = "gtt_rack_n_stack";
 // participants assigned to a PLAYING GROUP (the manual group builder). Groupings are
 // MANDATORY for both (089) — an ungrouped player isn't in the game — so the caller
 // passes the GROUPED participant count (see the grouped-count branch below).
-export const ROSTER_TYPES = new Set(["gtt_stroke_play", RACK_TYPE]);
+export const SCRAMBLE_TYPE = "gtt_scramble";
+/**
+ * Scramble belongs here for a STRONGER reason than stroke and rack do, and it is
+ * worth stating because the arm it would otherwise fall to (`hasPoints`) looks
+ * survivable.
+ *
+ * For stroke and rack, an ungrouped roster means players nobody has put in a
+ * cart. For scramble the play_group IS the scoring unit — migration 181 resolves
+ * a member's right to write through `game_participants.play_group_id` — so a
+ * scramble game with no groups has literally nobody who can enter a score. Going
+ * live would produce a board that cannot be filled in.
+ *
+ * ── This rule is implemented TWICE and both had to learn it ─────────────────
+ *
+ * `save_game_config`'s go-live branch (migration 182) carries the same
+ * condition in SQL. That duplication is not introduced here — it predates
+ * scramble — but scramble is the first format to prove it is a real maintenance
+ * cost rather than defence in depth: adding a format means editing two
+ * enumerations in two languages that no test compares. Filed rather than fixed
+ * in passing.
+ */
+export const ROSTER_TYPES = new Set(["gtt_stroke_play", RACK_TYPE, SCRAMBLE_TYPE]);
 
 /**
  * Is the game configured enough to be Ready (vs still Setting up)?
