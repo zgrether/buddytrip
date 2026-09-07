@@ -56,6 +56,14 @@ interface StandardGridProps {
    * type cannot meaningfully disagree here and two arguments would let them.
    */
   rubric?: StablefordRubric | null;
+  /**
+   * What a participant IS, which decides whether its label may be abbreviated.
+   * Defaults to `person`, so every existing caller renders exactly as before.
+   * Scramble passes `team`: its participant is a team's play_group, and running
+   * a team name through the person ladder produced "D. Float" for "Do Dead
+   * Hookahs Float" — a plausible human that is not one.
+   */
+  participantKind?: "person" | "team";
   onCellTap?: (unitLabel: string) => void;
   orientation?: "participants-rows" | "participants-cols";
   /**
@@ -292,10 +300,26 @@ export function ScorecardLabelCell({
   people,
   nameCell,
   background,
+  kind = "person",
 }: {
   people: Array<{ id: string; name: string; color: string }>;
   nameCell: React.CSSProperties;
   background?: string;
+  /**
+   * WHAT KIND OF NAME THIS IS, which decides how it may be shortened.
+   *
+   * `person` (the default, so every existing caller is untouched) runs the name
+   * ladder: too long collapses to initial-plus-surname, because "J. Larson" is
+   * still recognisably a person and golfers read it without thinking.
+   *
+   * `team` does NOT. `fitName` is first-name/last-name logic, and applied to
+   * "Do Dead Hookahs Float" it produced "D. Float" — a plausible-looking human
+   * that is not one, which is worse than either the full name or a truncation
+   * because it reads as correct. A team name has no surname to fall back on, so
+   * it wraps instead: a scramble card has ONE row of scores, and the height is
+   * available.
+   */
+  kind?: "person" | "team";
 }) {
   /**
    * `background ?? nameCell.background` — NOT `background`.
@@ -316,14 +340,19 @@ export function ScorecardLabelCell({
   return (
     <div className="flex flex-col justify-center" style={{ ...nameCell, background: background ?? nameCell.background, padding: "4px 10px", gap: 2 }}>
       {people.map((q) => {
-        const fit = fitName(q.name, SCORECARD_LABEL_CAPACITY_EM);
+        const isTeam = kind === "team";
+        // A team name is never put through the person ladder — see `kind`. Step 1
+        // is reported for it because nothing was shortened, which is what the
+        // attribute means.
+        const fit = isTeam ? { text: q.name, step: 1 } : fitName(q.name, SCORECARD_LABEL_CAPACITY_EM);
         return (
-          <span key={q.id} className="flex min-w-0 items-center gap-1.5">
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: q.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
+          <span key={q.id} className={isTeam ? "flex min-w-0 items-start gap-1.5" : "flex min-w-0 items-center gap-1.5"}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: q.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0, marginTop: isTeam ? 3 : 0 }} />
             <span
-              className="truncate"
+              className={isTeam ? "min-w-0 break-words" : "truncate"}
               data-name-step={fit.step}
-              style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text)" }}
+              data-name-kind={kind}
+              style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text)", lineHeight: isTeam ? 1.25 : undefined }}
             >
               {fit.text}
             </span>
@@ -799,6 +828,7 @@ export function StandardGrid({
   glorious = NO_GLORIOUS,
   gameId,
   rubric = null,
+  participantKind = "person",
   resultLine,
   holeMarks,
 }: StandardGridProps) {
@@ -930,7 +960,7 @@ export function StandardGrid({
                   * identical path. That is also what drops the ampersand — the
                   * joined label is never rendered here, only the people in it.
                   */}
-                <ScorecardLabelCell people={scorecardPeople(p, p.players)} nameCell={nameCell} background={rowBg} />
+                <ScorecardLabelCell people={scorecardPeople(p, p.players)} nameCell={nameCell} background={rowBg} kind={participantKind} />
                 {units.map((u, i) => {
                   const v = valOf(p.id, u.label);
                   const hasPip = pips?.[p.id]?.has(u.label);

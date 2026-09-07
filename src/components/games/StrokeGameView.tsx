@@ -1003,23 +1003,39 @@ export function StrokeGameView() {
   // The groupings list rows (FoursomeEntry) — thru = the group's furthest hole; started = any.
   const groupViews = useMemo<FoursomeGroupView[]>(
     () => surfaceGroups.map((g) => {
-      const thruVals = g.userIds.map((uid) => Object.keys(values[uid] ?? {}).length);
+      // SCRAMBLE keys its scores to the GROUP, so a tile reading its members'
+      // rows finds nothing and says "not started" for the whole round — which is
+      // exactly what shipped. `currentHoleForGroup` below has the same shape and
+      // was fixed one round earlier; this reader sat a few lines away and was
+      // not, which is the sweep-unit lesson again: the unit is every reader of
+      // `values`, not the one being edited.
+      const scoreKeys = isScramble ? [g.id] : g.userIds;
+      const thruVals = scoreKeys.map((k) => Object.keys(values[k] ?? {}).length);
       const furthest = thruVals.length ? Math.max(...thruVals) : 0;
       return {
         id: g.id,
         name: g.name,
         teeLabel: g.teeTime,
         thru: furthest > 0 ? furthest : null,
+        // SCRAMBLE: the tile IS the team, so it carries the team's colour and
+        // lists who is on it. Every player takes that one colour rather than
+        // their own, because a per-player dot inside a team-coloured tile says
+        // there is something to tell apart when there is not.
+        teamColor: isScramble ? teamOfGroup.get(g.id)?.color ?? null : null,
         players: g.userIds.map((uid) => {
           const p = fieldParticipants.find((fp) => fp.id === uid);
-          return { id: uid, name: p?.name ?? "Player", teamColor: p?.color ?? "var(--color-bt-text-dim)" };
+          const name =
+            p?.name ??
+            (crew.data ?? []).find((c) => c.user_id === uid)?.displayName ??
+            "Player";
+          return { id: uid, name, teamColor: p?.color ?? "var(--color-bt-text-dim)" };
         }),
         mine: !!me && g.userIds.includes(me.id),
         // Every member thru every hole — the SAME predicate that gates finalize.
         finished: allUnitsComplete(thruVals, scUnits.length),
       };
     }),
-    [surfaceGroups, values, fieldParticipants, me, scUnits.length],
+    [surfaceGroups, values, fieldParticipants, me, scUnits.length, isScramble, teamOfGroup, crew.data],
   );
 
   // #550: as a PANEL, publish chrome to the app bar (back/title + owner gear) instead of
@@ -1318,12 +1334,19 @@ export function StrokeGameView() {
           // No `locked` term, deliberately — see StrokeRollUpRow: the roll-up
           // decides which of two banked result sets the board shows, so scores
           // existing is not a reason to freeze it.
+          // NOT ON SCRAMBLE. The roll-up chooses between ranking PLAYERS and
+          // ranking their teams, and a scramble game commits one score per team —
+          // there is no individual level for a team total to roll up FROM. The
+          // board's rows already are the teams either way, so both settings would
+          // render the identical screen: a control with one outcome.
           boardRollUpRow={
-            <StrokeRollUpRow
-              value={configDraft.rollUp}
-              canEdit={canEdit}
-              onChange={setRollUpDraft}
-            />
+            isScramble ? undefined : (
+              <StrokeRollUpRow
+                value={configDraft.rollUp}
+                canEdit={canEdit}
+                onChange={setRollUpDraft}
+              />
+            )
           }
           // Points term of the go-live gate (competition games only) — mirrors Match's
           // C3 gate. Standalone games (gameCompetitionId null) are unaffected. Stroke had
@@ -1357,7 +1380,20 @@ export function StrokeGameView() {
            * because it needs a decision (hide it, or make it per-group against
            * the `play_groups.handicap_strokes` column that already exists).
            */
-          settingsRows={<>{!isScramble && groupingsRow}{pointDistributionRow}{handicapsRow}</>}
+          /**
+           * SCRAMBLE SHOWS NEITHER GROUPINGS NOR HANDICAPS.
+           *
+           * Groupings: the teams ARE the groups (`seedScrambleTeamGroups`), so
+           * there is nothing to choose.
+           *
+           * Handicaps: the row lists PEOPLE, and this format has no individual
+           * level — a per-player stroke has nowhere to land. A team handicap has
+           * a column (`play_groups.handicap_strokes`, and the finalize already
+           * reads it for scramble) but no control and no agreed formula, so the
+           * honest state is none rather than a roster of settings that score
+           * nothing. Recorded as a decision in #1335 rather than left as a gap.
+           */
+          settingsRows={<>{!isScramble && groupingsRow}{pointDistributionRow}{!isScramble && handicapsRow}</>}
           rulesValue={configDraft.rulesForToday}
           onRulesChange={setRulesDraft}
           saveBar={
@@ -1433,6 +1469,8 @@ export function StrokeGameView() {
         values={values}
         pips={entryPips}
         rubric={cardRubric}
+        // SCRAMBLE: the row is a TEAM, so its name is not abbreviated as a person.
+        participantKind={isScramble ? "team" : "person"}
         saveStatus={saveStatus}
         onCellTap={canScoreStroke ? (label) => {
           setCurrentHole(Number(label) || 1);

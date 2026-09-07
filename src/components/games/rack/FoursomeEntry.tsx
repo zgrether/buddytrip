@@ -23,6 +23,16 @@ export interface FoursomeGroupView {
   thru: number | null; // null = not started
   players: FoursomePlayer[];
   mine: boolean;
+  /**
+   * SCRAMBLE: the tile IS a team, so it wears the team's colour and the player
+   * dots go. A dot per player inside a team-coloured card says there is
+   * something to tell apart, and there is not — one score, one team.
+   *
+   * `null` for every other format, which keeps its neutral card and its
+   * per-player dots: there the group is a convenience (a cart, a foursome) and
+   * the people in it are genuinely different competitors.
+   */
+  teamColor?: string | null;
   /** Every hole scored. Recedes the card — the group needs nothing further, so it
    *  stops competing for attention with the ones still out on the course. The
    *  CALLER decides this: only it knows the round's unit count. */
@@ -54,21 +64,36 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
               // token keeps every colour inside intact and still reads as "done".
               // `mine` still wins — the group you're scoring stays emphasized even
               // when complete, because it's still the one you might correct.
-              background: g.mine
-                ? "var(--color-bt-accent-faint)"
-                : g.finished
-                  ? "var(--color-bt-base)"
-                  : "var(--color-bt-card)",
-              borderColor: g.mine
-                ? "var(--color-bt-accent-border)"
-                : g.finished
-                  ? "var(--color-bt-subtle-border)"
-                  : "var(--color-bt-border)",
+              // A team tile is tinted FROM the team colour rather than filled
+              // with it: `color-mix` against the card keeps the text contrast the
+              // surface hierarchy already guarantees, where a saturated fill
+              // would need `teamTextColor` and a second set of rules for five
+              // different team colours. The border carries the identity at full
+              // strength, which is where the eye reads it anyway.
+              background: g.teamColor
+                ? `color-mix(in srgb, ${g.teamColor} 14%, var(--color-bt-card))`
+                : g.mine
+                  ? "var(--color-bt-accent-faint)"
+                  : g.finished
+                    ? "var(--color-bt-base)"
+                    : "var(--color-bt-card)",
+              borderColor: g.teamColor
+                ? `color-mix(in srgb, ${g.teamColor} 55%, transparent)`
+                : g.mine
+                  ? "var(--color-bt-accent-border)"
+                  : g.finished
+                    ? "var(--color-bt-subtle-border)"
+                    : "var(--color-bt-border)",
             }}
           >
             <div className="flex items-center justify-between gap-1">
+              {/* A TEAM NAME WRAPS; a group label truncates. "Do Dead Hookahs
+                  Float" is the whole identity of the tile and reading "Do Dead
+                  Hookahs Fl..." tells you almost nothing, where "Group 3" loses
+                  nothing to an ellipsis. `items-start` on the grid above already
+                  lets one card be taller than its neighbour. */}
               <span
-                className="min-w-0 truncate"
+                className={g.teamColor ? "min-w-0" : "min-w-0 truncate"}
                 style={{ fontSize: 15, fontWeight: 600, color: g.finished && !g.mine ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}
               >{g.name}</span>
               {g.mine ? (
@@ -86,7 +111,9 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
               {g.players.map((p) => (
                 <span key={p.id} className="flex items-center gap-1.5">
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.teamColor, flexShrink: 0 }} />
+                  {!g.teamColor && (
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.teamColor, flexShrink: 0 }} />
+                  )}
                   <span style={{ fontSize: 13, color: "var(--color-bt-text)" }}>{p.name}</span>
                 </span>
               ))}
