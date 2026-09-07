@@ -1050,7 +1050,16 @@ export function PickemSheet({
           );
           if (!editable) return row;
           return (
-            <div className="flex min-w-0 items-center gap-1.5">
+            /* ── THE GUTTER HANGS INTO THE SHEET'S OWN PADDING ──────────────
+               The sheet is `px-4`, so the row block started at 32px and the
+               tick sat hard against the card with all that space unused to
+               its left. `-ml-4` lets the mark hang outside the text column —
+               the typographic gutter this is, rather than a first column of
+               the row — and the card keeps the left edge it already had, so
+               nothing shrinks twice. `lg:ml-0` mirrors the container's own
+               `lg:px-0`: with no padding to hang into, hanging would put the
+               tick outside the panel. */
+            <div className="-ml-4 flex min-w-0 items-center gap-1.5 lg:ml-0">
               {/* Fixed width whether or not the tick is there, so the cards
                   keep ONE left edge down the list. A gutter that collapsed on
                   unsaved rows would make every save nudge the row sideways,
@@ -1061,7 +1070,7 @@ export function PickemSheet({
                 aria-hidden={!saved}
                 aria-label={saved ? "Saved" : undefined}
                 className="flex shrink-0 justify-center"
-                style={{ width: 14, color: "var(--color-bt-accent)" }}
+                style={{ width: 30, color: "var(--color-bt-accent)" }}
               >
                 {saved && <Check size={14} strokeWidth={3} />}
               </span>
