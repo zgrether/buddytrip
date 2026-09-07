@@ -10,6 +10,7 @@ import { httpBatchLink, httpLink, splitLink } from "@trpc/client";
 import { useState } from "react";
 import superjson from "superjson";
 import { ThemeProvider } from "next-themes";
+import { DEFAULT_THEME, THEMES, THEME_STORAGE_KEY } from "@/lib/theme";
 import { trpc } from "@/lib/trpc-client";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/Toaster";
@@ -130,11 +131,27 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    // App is locked to dark mode for now. The next-themes provider stays
-    // in place (and forcedTheme overrides every other source — storage,
-    // system preference, any stray setTheme call) so we can add the
-    // competition outdoor-mode toggle later without rewiring providers.
-    <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark">
+    /* The theme switch. `forcedTheme="dark"` is GONE — that prop overrode
+     * storage, system preference and every setTheme call, so while it was set
+     * the account-menu row would have been inert.
+     *
+     * `enableSystem={false}` on purpose: the value is a deliberate choice, not
+     * an OS mirror. `prefers-color-scheme` on a phone tracks a schedule or a
+     * battery saver, and this switch exists so a scorecard can be read in the
+     * sun — a different question with a different answer.
+     *
+     * This provider knows nothing about the account-menu row, and must not: if
+     * the row is hidden (`src/lib/themeMenu.ts`) a theme already stored still
+     * has to apply, which is the whole point of that fallback. Guarded in
+     * `src/lib/theme.test.ts`.
+     */
+    <ThemeProvider
+      attribute="class"
+      defaultTheme={DEFAULT_THEME}
+      storageKey={THEME_STORAGE_KEY}
+      themes={[...THEMES]}
+      enableSystem={false}
+    >
       <AuthProvider queryClient={queryClient}>
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>

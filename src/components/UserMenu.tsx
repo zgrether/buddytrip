@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase";
 import { Avatar } from "@/components/Avatar";
 import { AboutModal } from "@/components/AboutModal";
 import { ScrollLock } from "@/hooks/useScrollLock";
+import { ThemeMenuRow } from "@/components/ThemeMenuRow";
 
 /** Lazy — the panel pulls the avatar icon picker (96 Tabler icons) and the
  *  archive's own query. Keeping it out of the shell bundle is why the route
@@ -26,6 +27,7 @@ const PreferencesPanel = dynamic(
  *   │  Name                    │   ← account header
  *   │  email@example.com       │
  *   ├──────────────────────────┤
+ *   │  ☾  Appearance   [☾][☀] │   ← in-row control, no navigation
  *   │  ⚙  Settings             │   → PreferencesPanel (overlay)
  *   │  ⓘ  About BuddyTrip      │   → AboutModal
  *   ├──────────────────────────┤
@@ -241,6 +243,12 @@ export function UserMenu({ onOpenFeedback, onOpen, teamColor }: UserMenuProps = 
                 </div>
               )}
             </div>
+
+            {/* Appearance — directly above Settings. Not a `role="menuitem"`
+                row: it does not open anything, it holds a control, so it is a
+                radiogroup in a row rather than a button styled like its
+                neighbours. Renders nothing when the theme menu is hidden. */}
+            <ThemeMenuRow />
 
             {/* Settings → opens the preferences OVERLAY. It used to
                 `router.push("/profile")`; preferences was the last surface in
