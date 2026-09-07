@@ -22,8 +22,18 @@ const aPlayers = [
 
 /** Every laddered label in a document, with its dot colour — the label cell's
  *  whole observable output. */
+/**
+ * `data-name-kind` is named explicitly rather than absorbed into a wildcard.
+ *
+ * It was added when the label cell learned that a TEAM name must not go through
+ * the person ladder, and it broke both patterns here by landing between
+ * `data-name-step` and `style`. Attribute ORDER is part of what this guard pins
+ * — loosening the gap to `[^>]*` would quietly stop checking that the label is
+ * 11px/600 at all, which is the half of this test that catches a real
+ * regression.
+ */
 function labels(html: string) {
-  return [...html.matchAll(/background:(#[0-9a-f]{6})[^>]*><\/span><span class="truncate" data-name-step="(\d)" style="font-size:11px;font-weight:600;[^>]*>([^<]*)</g)]
+  return [...html.matchAll(/background:(#[0-9a-f]{6})[^>]*><\/span><span class="truncate" data-name-step="(\d)" data-name-kind="person" style="font-size:11px;font-weight:600;[^>]*>([^<]*)</g)]
     .map((m) => ({ dot: m[1], step: m[2], text: m[3] }));
 }
 
@@ -56,7 +66,7 @@ describe("both scorecards render the SAME row label", () => {
     const html = renderToStaticMarkup(
       <OutcomeScorecard units={units} a={a} b={b} aPlayers={aPlayers} outcomes={[]} leftColor="#3b82f6" />
     );
-    expect(html).toMatch(/data-name-step="[12]" style="font-size:11px;font-weight:600/);
+    expect(html).toMatch(/data-name-step="[12]" data-name-kind="person" style="font-size:11px;font-weight:600/);
     expect(html).not.toContain("font-weight:700;color:var(--color-bt-text);line-height:1.35");
     expect([...html.matchAll(/border-radius:50%;background:#3b82f6/g)]).toHaveLength(2);
   });
