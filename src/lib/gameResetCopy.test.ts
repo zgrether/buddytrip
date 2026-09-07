@@ -29,8 +29,20 @@ describe("resetScoresBlurb — the copy cannot name what the format lacks", () =
     // every assertion in this file.
     expect(TYPES.length).toBeGreaterThanOrEqual(5);
     // ...and every surface is actually reached, which the count alone does not
-    // prove: four ids could all map to one surface.
-    expect(new Set(TYPES.map((t) => surfaceForGameType(t))).size).toBe(5);
+    // prove: several ids could all map to one surface.
+    //
+    // Derived from the registry rather than written as a literal. It was `5` and
+    // went stale the moment skins added a sixth surface — a number that has to
+    // be edited by hand every time the thing it counts changes is a number that
+    // will eventually be edited to match a wrong answer. `FORMAT_SURFACE` is the
+    // registry this file already reads for `course` and the bracket, so counting
+    // its keys keeps one source.
+    //
+    // Still a real check: it asserts the SWEEP reaches every surface, and it
+    // fails if a new format's ids all collapse onto an existing one.
+    expect(new Set(TYPES.map((t) => surfaceForGameType(t))).size).toBe(
+      Object.keys(FORMAT_SURFACE).length
+    );
     for (const t of TYPES) expect(resetScoresBlurb(t), t).toBeTruthy();
   });
 

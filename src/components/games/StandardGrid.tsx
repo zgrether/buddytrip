@@ -163,24 +163,56 @@ export type HoleMark = { lead: number } | "level" | "dead";
  * this file rather than being imported from there because `OutcomeScorecard`
  * already imports from here, and the other direction is a cycle.
  */
+/** The geometry both pills share. One object so a change to the card's cell
+ *  metrics moves both, and so the two cannot drift into looking like different
+ *  components when they are meant to look like one. */
+function pillStyle(color: string): React.CSSProperties {
+  return {
+    minWidth: 30,
+    height: 26,
+    padding: "0 7px",
+    borderRadius: 7,
+    fontSize: 13,
+    fontWeight: 800,
+    background: `color-mix(in srgb, ${color} 16%, transparent)`,
+    color,
+  };
+}
+
 export function LeadPill({ value, color }: { value: number; color: string }) {
   return (
+    <span className="inline-flex items-center justify-center" data-testid="outcome-lead-pill" style={pillStyle(color)}>
+      {value}
+      {/* The arrow is what makes this a LEAD: it says the number has a direction
+          and somebody is on the other end of it. See `CountPill` below for the
+          case where that is false. */}
+      <span style={{ fontSize: 8, marginLeft: 2 }}>▲</span>
+    </span>
+  );
+}
+
+/**
+ * The same pill WITHOUT the arrow — a quantity rather than a lead.
+ *
+ * A skin is a count. Nobody is "3 up" in skins; three skins were won, and the
+ * ▲ would assert a direction the number does not have and an opponent it is
+ * measured against. Reusing `LeadPill` and hiding its arrow behind a flag would
+ * be one component doing two jobs; a sibling sharing the geometry says the two
+ * look alike on purpose and mean different things.
+ */
+export function CountPill({ value, color }: { value: number; color: string }) {
+  return (
+    // `data-count` so a caller can assert the VALUE without matching a bare
+    // integer against a card made of them — the scorecard renders hole numbers,
+    // par and yardage in the same markup, and a substring check over that region
+    // is the failure CLAUDE.md catalogues five times.
     <span
       className="inline-flex items-center justify-center"
-      data-testid="outcome-lead-pill"
-      style={{
-        minWidth: 30,
-        height: 26,
-        padding: "0 7px",
-        borderRadius: 7,
-        fontSize: 13,
-        fontWeight: 800,
-        background: `color-mix(in srgb, ${color} 16%, transparent)`,
-        color,
-      }}
+      data-testid="skins-count-pill"
+      data-count={value}
+      style={pillStyle(color)}
     >
       {value}
-      <span style={{ fontSize: 8, marginLeft: 2 }}>▲</span>
     </span>
   );
 }

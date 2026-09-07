@@ -5,6 +5,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeStrokePlayResults } from "../lib/strokePlay";
+import { computeSkinsResults } from "../lib/skins";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
 // The count the client writes when glorious is enabled without an explicit one —
@@ -1264,6 +1265,18 @@ export const gamesRouter = router({
       // wrong and reads well.
       } else if (strategy === "pickem") {
         await computePickemResults(ctx.supabase, input.gameId, { onFailure: "throw" });
+      // SKINS — the seventh engine. Same split as every arm above: the rule is
+      // client-safe (`src/lib/skins.ts`), the wrapper reads and commits.
+      //
+      // No `requireQualified` equivalent, deliberately. Stroke refuses to
+      // finalize when nobody completed the round, because a partial card
+      // aggregates to a total that means nothing. A skins card is settled hole
+      // by hole — a group thru 12 has genuinely won those twelve pots — so a
+      // partial finalize is an honest, if early, result. The pot still sitting
+      // on the table simply goes unpaid, which is the same thing a tied last
+      // hole does.
+      } else if (strategy === "skins") {
+        await computeSkinsResults(ctx.supabase, input.gameId, { onFailure: "throw" });
       } else if (strategy === "stroke_total") {
         standings = await computeStrokePlayResults(ctx.supabase, input.gameId, {
           onFailure: "throw",
@@ -2102,6 +2115,9 @@ export const gamesRouter = router({
       } else if ((g?.status as string | undefined) !== "complete") {
         if (strategy === "rack_n_stack") await computeRackNStackResults(ctx.supabase, input.gameId);
         else if (strategy === "stroke_total") await computeStrokePlayResults(ctx.supabase, input.gameId);
+        // Skins recomputes on the same terms as stroke and rack: only while the
+        // game is not complete, so a settings save cannot rewrite a posted card.
+        else if (strategy === "skins") await computeSkinsResults(ctx.supabase, input.gameId);
       }
 
       // 4 · Reconcile the clinch claim — the hole #841 left. It wired the

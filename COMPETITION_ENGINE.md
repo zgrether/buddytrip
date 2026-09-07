@@ -302,7 +302,7 @@ schedule anything.
 |-----|---------------------------|
 | `stroke_total` | Sum strokes, low wins |
 | `stableford` | Per-hole points vs par (rubric from `config`), high wins |
-| `skins` | Per-hole pot with carry on halve |
+| `skins` | Per-hole pot, WON OUTRIGHT or tied; a tie carries the whole pot into the next hole |
 | `match_play` | Hole-by-hole W/H/L between two sides → match state → match points |
 | `best_ball_match` | *(optional/future)* Each player holes out, app auto-takes the better ball per hole, then match play. **BBMI records one score per side instead** (`group_holes` + `match_play`), so this isn't on the build path |
 | `positional` | Sort each team's totals, compare by index (rack-n-stack) |
@@ -319,7 +319,7 @@ rather keep score in their heads and just record the winner, that's `winner_only
 |--------|-------|--------|-------------------|
 | Stroke play *(Slice A — build first)* | `user_holes` | `stroke_total` | No |
 | Stableford | `user_holes` | `stableford` (config rubric) | No |
-| Skins | `user_holes` | `skins` | No |
+| Skins | `hole_winner` | `skins` | No — but grouped (see below) |
 | **Singles (BBMI)** | `user_holes` | `match_play` | **Yes — 1v1, 2 per foursome card** |
 | **Foursomes / alt-shot (BBMI)** | `group_holes` | `match_play` | **Yes — 2v2** |
 | **Four-ball (BBMI)** | `group_holes` | `match_play` | **Yes — 2v2 (one score per side, like alt-shot)** |
@@ -328,6 +328,31 @@ rather keep score in their heads and just record the winner, that's `winner_only
 | Sabotage | `user_holes` | `stroke_total` | No — plain stroke play + handicap; themed UI only |
 | Cornhole | `group_holes` (sides) | `winner_only` / `best_of` | within-game |
 | Yahtzee | `categories` | target/high | No |
+
+**Skins is entered by OUTCOME, not by strokes — corrected 2026-09-07.** This
+table said `user_holes` (per-player gross, winner derived) from the day it was
+written, and that describes a two-player money game rather than this format.
+With three or four players and pick-ups there is very often no score to enter:
+the group applies strokes in their heads and records WHO WON THE HOLE. So a
+skins game stores no stroke scores and computes no handicaps — `entry_schema` is
+`hole_winner`, the rows live in `skins_hole_outcomes` (migration 184), and
+`strokedByPlayer` has no meaning here.
+
+Two consequences the old row hid:
+
+- **The grouping is the CONTEST, not a card.** A skins game is several
+  independent contests on one round — each `play_group` has its own pot and its
+  own carryover, and a tie in one never touches another. "No assigned pairing"
+  was true of pairings and false of the structure.
+- **`glorious_holes` applies, and it is what makes the arithmetic interesting.**
+  A hole's own value is `holeWeight`, so with GFH = 3 the closing three are worth
+  2 and each grouping plays for 21. The pot carries WHOLE: a tied 16 makes 17
+  worth 4, and a tied 17 then makes 18 worth 6. A tied final hole destroys the
+  pot — it does not split and does not roll.
+
+The corrected reading is recorded here rather than left to the code because this
+is the document someone reaches for when building the next format, and the old
+row was the one thing in it that had never been checked against a real game.
 
 **Rack-n-stack is the format that justifies the whole separation.** It enters
 identically to ordinary stroke play (`user_holes`) but its result strategy sorts
@@ -501,10 +526,16 @@ game_type_templates (+ columns)
 └── scorecard_schema jsonb
 ```
 
-> **Currently seeded:** skins, scramble, match play, Stableford — placeholder
-> names from our most-played games, not a curated v1 set. Re-seed against this
-> taxonomy. BBMI 2026 needs: **singles, foursomes (alt-shot), four-ball
-> (best-ball), rack-n-stack.**
+> **Was:** "Currently seeded: skins, scramble, match play, Stableford —
+> placeholder names from our most-played games, not a curated v1 set."
+>
+> **Those four placeholder rows are gone.** Migration 044 deleted them, keyed on
+> `key` plus the pre-engine marker `result_strategy IS NULL`, so they are absent
+> in every environment. The engine rows are `gtt_`-prefixed and are seeded by the
+> migration that ships each format — `gtt_stroke_play` (034), `gtt_match_play`
+> (073), `gtt_rack_n_stack`, `gtt_scramble` (181), `gtt_skins` (183),
+> `gtt_pickem`. A format cannot be created before its row exists, because
+> `games.game_type_id` is FK'd to this table.
 
 ---
 

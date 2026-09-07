@@ -414,7 +414,8 @@ type NotifyFormatKey =
   | "bracket"
   | "manual"
   | "pickem"
-  | "matches";
+  | "matches"
+  | "skins";
 
 interface NotifySurface {
   /**
@@ -475,6 +476,20 @@ const NOTIFY_SURFACE = {
   // (`matchAwards.writeTeamMatchPoints`), so there are no per-side rows for the
   // other choices to name.
   matches: { audience: "participants", competitor: "team", summary: "placement" },
+  // Skins. The registry found itself again — this file was not on the sweep and
+  // the `satisfies` below refused to compile until the row existed, which is the
+  // second time it has done that (see the Matches note above).
+  //
+  // `participants`: skins mints a real `game_participants` row per player and
+  // groups every one of them, so "the people who played it" resolves exactly.
+  //
+  // `competitor: "user"`, which is where it parts company with every other
+  // `placement` row here. A skin belongs to the PERSON who won the hole — the
+  // team total is a roll-up of individuals, the same shape Stableford has — so
+  // stroke play, not match play, is the analogue. `competitor: "team"` would
+  // report four teams for a sixteen-player round and lose exactly the fact the
+  // format is about.
+  skins: { audience: "participants", competitor: "user", summary: "placement" },
 } as const satisfies Record<NotifyFormatKey, NotifySurface>;
 
 /** The registry key for a resolved strategy. `null` is a real answer (manual,

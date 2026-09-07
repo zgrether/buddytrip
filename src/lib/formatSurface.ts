@@ -37,7 +37,7 @@ import { isGolfFormat } from "@/lib/gameRoutes";
  */
 
 /** The four game surfaces. Adding a member here is what forces the questions. */
-export type GameSurfaceId = "match" | "rack" | "stroke" | "nongolf" | "pickem";
+export type GameSurfaceId = "match" | "rack" | "stroke" | "nongolf" | "pickem" | "skins";
 
 export type FormatSurface = {
   /**
@@ -138,6 +138,20 @@ export const FORMAT_SURFACE = {
     course: false,
     modifiers: false,
     scorecard: false,
+    gameState: true,
+  },
+  skins: {
+    gameTypes: ["gtt_skins"],
+    // The spine is the GROUPING, and more literally so than stroke's: a
+    // grouping is not merely who you walk with, it is the boundary of the
+    // contest and the thing a carryover pot belongs to.
+    settingsZoneLabel: "Group Settings",
+    course: true,
+    // TRUE, and the second surface to say so. Glorious doubles a HOLE'S VALUE,
+    // which is exactly what a skins hole has — pinned to
+    // `compatibleModifiers: ["glorious_holes"]` by the registry test.
+    modifiers: true,
+    scorecard: true,
     gameState: true,
   },
   pickem: {

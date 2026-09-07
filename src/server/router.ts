@@ -24,6 +24,7 @@ import { gamesRouter } from "./routers/games";
 import { scoresRouter } from "./routers/scores";
 import { matchesRouter } from "./routers/matches";
 import { matchOutcomesRouter } from "./routers/matchOutcomes";
+import { skinsOutcomesRouter } from "./routers/skinsOutcomes";
 import { playGroupsRouter } from "./routers/playGroups";
 import { notificationsRouter } from "./routers/notifications";
 import { pickemRouter } from "./routers/pickem";
@@ -55,6 +56,7 @@ export const appRouter = router({
   scores: scoresRouter,
   matches: matchesRouter,
   matchOutcomes: matchOutcomesRouter,
+  skinsOutcomes: skinsOutcomesRouter,
   playGroups: playGroupsRouter,
   notifications: notificationsRouter,
 });

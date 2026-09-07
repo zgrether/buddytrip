@@ -39,6 +39,9 @@ const PRESERVED: Record<GameSurfaceId, string[]> = {
   // Pick'em: no course and no handicaps. It DOES have pairings — one person
   // from each side — and a points total, and both survive.
   pickem: ["The slate", "pairings", "points"],
+  // Skins: groupings, course and points, and NO handicaps — the format computes
+  // none, so naming them would be the exact failure this file exists to fix.
+  skins: ["Groupings", "course", "points"],
 };
 
 /** What a reset CLEARS, per surface. "Bracket pick" belongs only to the surface
@@ -52,6 +55,9 @@ const CLEARED: Record<GameSurfaceId, string> = {
   // results computed from them, and says so, because "clears every pick" would
   // read as sixteen people losing their sheets.
   pickem: "every recorded result",
+  // "Hole" rather than "score": a skins game stores no scores, and the thing a
+  // reset takes away is the record of who won each hole.
+  skins: "every recorded hole and result",
 };
 
 /** Sentence-case a list: "A, b, and c stay." */
