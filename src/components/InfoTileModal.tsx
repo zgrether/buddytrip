@@ -111,6 +111,24 @@ const PreviewChip: FC<{
               background: isAlert
                 ? "rgba(251,191,36,0.18)"
                 : "var(--color-bt-accent-faint)",
+              /* `#fbbf24` IS `--color-bt-warning`'s DARK value, and it is the
+               * right one here — do not migrate it to the token.
+               *
+               * This chip sits inside `PreviewChip`'s navy→teal gradient, which
+               * is a mode-INDEPENDENT literal: in light mode it still composites
+               * to `#182032`. Measured on that surface:
+               *
+               *     #fbbf24 (this)                9.78 : 1
+               *     var(--color-bt-warning)       5.12 : 1   ← worse in light
+               *
+               * The same literal WAS migrated in `TripHeaderDock` (1.67 → 3.19),
+               * because the dock sits on `--color-bt-card`. Same value, opposite
+               * answer, because the surfaces differ.
+               *
+               * Migrate this one only if the preview strip itself becomes
+               * theme-aware — at which point the dark literals throughout
+               * `PreviewChip` all move together, and this is one of them.
+               */
               color: isAlert ? "#fbbf24" : "var(--color-bt-accent)",
             }}
           >

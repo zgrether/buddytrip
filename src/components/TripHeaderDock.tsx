@@ -94,7 +94,7 @@ const CountdownRing: FC<{ countdown: CountdownResult | null }> = ({
     insideText = String(countdown.weeks) + "w";
   }
 
-  const trackColor = "rgba(255,255,255,0.13)";
+  const trackColor = "var(--color-bt-state-fill)";
   const fillColor = dim
     ? "var(--color-bt-text-dim)"
     : "var(--color-bt-accent)";
@@ -119,15 +119,14 @@ const CountdownRing: FC<{ countdown: CountdownResult | null }> = ({
           left: RING_STROKE,
           right: RING_STROKE,
           bottom: RING_STROKE,
-          background:
-            "radial-gradient(circle, rgba(15,23,42,0.96), rgba(15,23,42,0.92))",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)",
+          background: "var(--color-bt-card)",
+          boxShadow: "inset 0 1px 0 var(--color-bt-hover)",
         }}
       />
       <div
         className="absolute inset-0 flex items-center justify-center font-semibold"
         style={{
-          color: dim ? "rgba(255,255,255,0.45)" : "#ffffff",
+          color: dim ? "var(--color-bt-text-dim)" : "var(--color-bt-text)",
           fontSize: 12,
           lineHeight: 1,
           fontFeatureSettings: '"tnum" 1',
@@ -158,7 +157,7 @@ const CountdownMeta: FC<{
       <div className={wrapperClass}>
         <span
           className="flex items-center gap-1.5 text-[13px] font-medium"
-          style={{ color: "#ffffff" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           {isHappening && (
             <span
@@ -170,7 +169,7 @@ const CountdownMeta: FC<{
         </span>
         <span
           className="text-[11px]"
-          style={{ color: "rgba(255,255,255,0.55)" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           {daysLeft <= 0
             ? "Last day"
@@ -185,13 +184,13 @@ const CountdownMeta: FC<{
       <div className={wrapperClass}>
         <span
           className="text-[13px] font-medium"
-          style={{ color: "#ffffff" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           Wrapped
         </span>
         <span
           className="text-[11px]"
-          style={{ color: "rgba(255,255,255,0.55)" }}
+          style={{ color: "var(--color-bt-text-dim)" }}
         >
           {countdown.label}
         </span>
@@ -210,7 +209,7 @@ const CountdownMeta: FC<{
     <div className={wrapperClass}>
       <span
         className="text-[13px] font-medium"
-        style={{ color: "#ffffff" }}
+        style={{ color: "var(--color-bt-text)" }}
       >
         {line}
       </span>
@@ -236,9 +235,9 @@ const TileChip: FC<{
       className="inline-flex flex-shrink-0 items-center gap-2 rounded-lg px-2 py-1 transition-colors"
       style={{
         background: alert
-          ? "rgba(251,191,36,0.12)"
-          : "rgba(255,255,255,0.06)",
-        border: `1px solid ${alert ? "rgba(251,191,36,0.40)" : "rgba(255,255,255,0.09)"}`,
+          ? "var(--color-bt-warning-faint)"
+          : "var(--color-bt-hover)",
+        border: `1px solid ${alert ? "var(--color-bt-warning-border)" : "var(--color-bt-subtle-border)"}`,
         cursor: clickable ? "pointer" : "default",
       }}
     >
@@ -246,9 +245,9 @@ const TileChip: FC<{
         className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
         style={{
           background: alert
-            ? "rgba(251,191,36,0.18)"
+            ? "var(--color-bt-warning-faint)"
             : "var(--color-bt-accent-faint)",
-          color: alert ? "#fbbf24" : "var(--color-bt-accent)",
+          color: alert ? "var(--color-bt-warning)" : "var(--color-bt-accent)",
         }}
       >
         {alert ? (
@@ -261,14 +260,14 @@ const TileChip: FC<{
         <span
           className="text-[9px] font-semibold uppercase tracking-[0.10em]"
           style={{
-            color: alert ? "#fbbf24" : "rgba(255,255,255,0.50)",
+            color: alert ? "var(--color-bt-warning)" : "var(--color-bt-text-dim)",
           }}
         >
           {tile.label}
         </span>
         <span
           className="font-mono text-[13px] truncate max-w-[160px]"
-          style={{ color: "#ffffff" }}
+          style={{ color: "var(--color-bt-text)" }}
         >
           {tile.value}
         </span>
@@ -290,9 +289,9 @@ const AddTileButton: FC<{ onClick: () => void }> = ({ onClick }) => (
     type="button"
     onClick={onClick}
     data-testid="header-dock-add-tile"
-    className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[rgba(255,255,255,0.08)]"
+    className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors hover:bg-[var(--color-bt-hover)]"
     style={{
-      color: "rgba(255,255,255,0.55)",
+      color: "var(--color-bt-text-dim)",
     }}
     aria-label="Add info tile"
   >
@@ -307,10 +306,10 @@ const EmptyCta: FC<{ onClick: () => void }> = ({ onClick }) => (
     type="button"
     onClick={onClick}
     data-testid="header-dock-empty-cta"
-    className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[12px] font-medium transition-colors hover:bg-[rgba(255,255,255,0.06)]"
+    className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[12px] font-medium transition-colors hover:bg-[var(--color-bt-hover)]"
     style={{
-      border: "1px dashed rgba(255,255,255,0.20)",
-      color: "rgba(255,255,255,0.70)",
+      border: "1px dashed var(--color-bt-state-stroke)",
+      color: "var(--color-bt-text-dim)",
     }}
   >
     <Plus size={13} strokeWidth={2.2} />
@@ -441,12 +440,12 @@ export function TripHeaderDock({
       <div
         className="relative flex items-center gap-3 rounded-xl px-2 py-2 sm:gap-4 sm:px-2.5"
         style={{
-          background: "rgba(255,255,255,0.06)",
+          background: "var(--color-bt-hover)",
           // Borderless — the translucent fill + inset highlight + soft
           // drop shadow do the elevation work; an explicit hairline was
           // doubling up on the visual weight.
           boxShadow:
-            "inset 0 1px 0 rgba(255,255,255,0.08), 0 3px 10px rgba(0,0,0,0.16)",
+            "inset 0 1px 0 var(--color-bt-hover), var(--shadow-card)",
         }}
         data-testid="trip-header-dock"
       >
@@ -474,7 +473,7 @@ export function TripHeaderDock({
             className="self-stretch"
             style={{
               width: 1,
-              background: "rgba(255,255,255,0.10)",
+              background: "var(--color-bt-border)",
             }}
             aria-hidden="true"
           />
