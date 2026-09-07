@@ -33,7 +33,7 @@ import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
-import { PointsAtStake } from "@/components/games/PointsAtStake";
+import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { SkinsBoard } from "./SkinsBoard";
 import { SkinsEntryView } from "./SkinsEntryView";
 import { SkinsScorecard } from "./SkinsScorecard";
@@ -858,11 +858,26 @@ export function SkinsGameView() {
       chrome={standaloneChrome}
     >
       <div>
-        {configDraft.pointsTotal != null && (
-          <div style={{ padding: "10px 12px 0" }}>
-            <PointsAtStake value={configDraft.pointsTotal} />
-          </div>
-        )}
+        {/* The one banner every format shows at the top of its board — "This game
+            is worth 12 pts" in progress, and the locked / correcting states after
+            a finalize. Reads the SAME two lifecycle columns through the SAME
+            predicate as every other view, so skins cannot disagree with them
+            about what a re-opened game looks like (CLAUDE.md #24, and this
+            component's own header).
+
+            NOT `PointsAtStake`, which was here first and was wrong: that is the
+            inline chip a match CARD wears, so it rendered a bare "12 PTS" strip
+            where the game surface has an established banner that says what the
+            number MEANS. It also knew nothing about the lifecycle, so a posted
+            skins game would have shown its value and never said it was final.
+
+            `points_total` from the SERVER row, not the draft — the banner states
+            what the game is worth, and an unsaved edit is not yet true of it. */}
+        <ScoringStateBanner
+          status={gameQ.data?.status ?? null}
+          correctionsOpen={correctionsOpen}
+          pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
+        />
         <SkinsBoard
           rows={standings}
           teamRows={teamRows}
