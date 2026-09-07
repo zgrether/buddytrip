@@ -224,6 +224,14 @@ export function tallySkins(
  *
  * Every grouping plays for the same total, which is what makes a field-wide
  * ordering of individuals meaningful even though the contests are independent.
+ *
+ * NO SURFACE RENDERS THIS, and that is deliberate rather than leftover. It was
+ * on the board briefly ("21 skins each") and came off with the group strip — the
+ * board is Stableford's board, and this is a constant of the round rather than
+ * anything that changes as it is played. It stays exported because it is the
+ * SUBJECT of the round's closing identity: awarded + destroyed must equal it, and
+ * it must equal `holes + <glorious count>`. Naming the quantity is what lets that
+ * be asserted rather than re-derived inside the assertion.
  */
 export function skinsPerGrouping(holeCount: number, weighting: GloriousConfig = NO_GLORIOUS): number {
   let total = 0;

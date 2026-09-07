@@ -47,12 +47,12 @@ import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotIn
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { modifiersSummary, enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { unitsFromSchema, teeFromSchema } from "@/lib/strokePlayConfig";
+import { computeStrokeTeamStandings } from "@/lib/strokePlay";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { pointsReady } from "@/lib/matchDraft";
 import {
   tallySkins,
   computeSkinsStandings,
-  skinsPerGrouping,
   skinsGloriousConfig,
   type SkinsOutcomeRow,
 } from "@/lib/skins";
@@ -114,9 +114,27 @@ export function SkinsGameView() {
   const [courseBusy, setCourseBusy] = useState(false);
 
   // ── Queries ──────────────────────────────────────────────────────────────
+  const gameQ = trpc.games.getById.useQuery(
+    { tripId: tripId!, gameId: gid! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid }
+  );
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
-  const competitionId = competition.data?.id as string | undefined;
+  /**
+   * THE GAME'S competition, never the trip's.
+   *
+   * A trip can hold more than one, and `competitions.getByTrip` answers with the
+   * trip's FIRST — so on a two-cup trip every team lookup below resolves against
+   * a competition this game is not in. Found by probing the rendered avatar
+   * backgrounds rather than by reading: the colours that came back were real
+   * team colours from the OTHER cup, which is why it looked right.
+   *
+   * `getByTrip` is still read, as the fallback for a standalone game and for the
+   * board exit — but it is never the first answer.
+   */
+  const competitionId =
+    ((gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ??
+      (competition.data?.id as string | undefined)) || undefined;
   const teamsQ = trpc.teams.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
@@ -124,10 +142,6 @@ export function SkinsGameView() {
   const assignQ = trpc.teamAssignments.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
-  );
-  const gameQ = trpc.games.getById.useQuery(
-    { tripId: tripId!, gameId: gid! },
-    { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid }
   );
   const groupsQ = trpc.playGroups.listByGame.useQuery(
     { tripId: tripId!, gameId: gid! },
@@ -483,6 +497,31 @@ export function SkinsGameView() {
     () => groupingIds.flatMap((g) => membersOf(g).map(participantOf)),
     [groupingIds, membersOf, participantOf]
   );
+  /**
+   * The team roll-up, through the SAME `computeStrokeTeamStandings` the server
+   * finalize uses (`server/lib/skins.ts`) — so the live board and the banked
+   * result cannot diverge, which is the whole of CLAUDE.md #8.
+   */
+  const teamRows = useMemo(
+    () =>
+      computeStrokeTeamStandings(
+        standings.map((s) => ({ entityId: s.entityId, rawScore: s.skins, position: s.position })),
+        Object.fromEntries(teamOfUser),
+        "skins"
+      ),
+    [standings, teamOfUser]
+  );
+  const teamList = useMemo(
+    () => teamIds.map((id) => ({ id, name: teamMeta.get(id)?.name ?? "Team", color: teamMeta.get(id)?.color ?? "var(--color-bt-text-dim)" })),
+    [teamIds, teamMeta]
+  );
+  /** Holes RECORDED in a grouping — progress belongs to the group, because a
+   *  hole is decided for everyone in it at once. */
+  const thruOf = useCallback(
+    (groupingId: string) => (tallies[groupingId]?.lines ?? []).filter((l) => l.status !== "unplayed").length,
+    [tallies]
+  );
+
   const groupNames = useMemo(() => {
     const m: Record<string, string> = {};
     for (const g of groupings) m[g.id as string] = (g.display_name as string) ?? "Group";
@@ -826,11 +865,11 @@ export function SkinsGameView() {
         )}
         <SkinsBoard
           rows={standings}
+          teamRows={teamRows}
+          teams={teamList}
           participants={allParticipants}
-          tallies={tallies}
-          groupNames={groupNames}
-          perGrouping={skinsPerGrouping(scUnits.length || 18, glorious)}
-          meId={me?.id}
+          unitCount={scUnits.length}
+          thruOf={thruOf}
         />
         <FoursomeEntry
           groups={groupViews}

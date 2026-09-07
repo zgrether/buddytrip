@@ -4,6 +4,7 @@ import { SkinsEntryView } from "./SkinsEntryView";
 import { SkinsBoard } from "./SkinsBoard";
 import { SkinsScorecard } from "./SkinsScorecard";
 import { tallySkins, computeSkinsStandings, skinsPerGrouping, type SkinsOutcomeRow } from "@/lib/skins";
+import { computeStrokeTeamStandings } from "@/lib/strokePlay";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import type { Participant } from "../types";
 
@@ -156,7 +157,7 @@ describe("SkinsEntryView — the choice list", () => {
   });
 });
 
-describe("SkinsBoard", () => {
+describe("SkinsBoard — Stableford's board, with SKINS where it has PTS", () => {
   function renderBoard(rowsByGrouping: Record<string, SkinsOutcomeRow[]>) {
     const tallies = tallySkins(["A", "B"], rowsByGrouping, 18, GFH3);
     const standings = computeSkinsStandings(
@@ -167,40 +168,73 @@ describe("SkinsBoard", () => {
       ],
       tallies
     );
+    const teamRows = computeStrokeTeamStandings(
+      standings.map((s) => ({ entityId: s.entityId, rawScore: s.skins, position: s.position })),
+      { [ANN.id]: "t1", [BEN.id]: "t2", [CAL.id]: "t1" },
+      "skins"
+    );
     return renderToStaticMarkup(
       <SkinsBoard
         rows={standings}
+        teamRows={teamRows}
+        teams={[
+          { id: "t1", name: "Aces", color: "#2dd4bf" },
+          { id: "t2", name: "Bears", color: "#f59e0b" },
+        ]}
         participants={[ANN, BEN, CAL]}
-        tallies={tallies}
-        groupNames={{ A: "A Flight", B: "B Flight" }}
-        perGrouping={skinsPerGrouping(18, GFH3)}
+        unitCount={18}
+        thruOf={(g) => (tallies[g]?.lines ?? []).filter((l) => l.status !== "unplayed").length}
       />
     );
   }
 
-  it("every row says which group it was competing in", () => {
-    /**
-     * The board's whole problem: four independent contests in one ordering. A
-     * row without its group is a comparison between people who never met, so the
-     * chip is not decoration — it is what makes the single ordering honest.
-     */
-    const html = renderBoard({ A: [won(1, ANN.id)], B: [won(1, CAL.id)] });
-    for (const p of [ANN, BEN, CAL]) {
-      expect(html, `${p.name} has no group chip`).toContain(`data-testid="skins-group-chip-${p.id}"`);
-    }
-    const annChip = html.slice(html.indexOf(`data-testid="skins-group-chip-${ANN.id}"`));
-    expect(annChip).toContain("A Flight");
+  it("carries TEAM TOTALS above the flat leaderboard, ranked high-first", () => {
+    // Ann 2 + Cal 1 on Aces, Ben 1 on Bears — so Aces lead. Rolled up through
+    // the SAME function the finalize banks, which is what keeps the live board
+    // and the persisted result from disagreeing.
+    const html = renderBoard({ A: [won(1, ANN.id), won(2, ANN.id), won(3, BEN.id)], B: [won(1, CAL.id)] });
+    expect(html).toContain('data-testid="skins-team-totals"');
+    expect(html.slice(html.indexOf('data-testid="skins-team-total-t1"')).slice(0, 80)).toContain(">3<");
+    expect(html.slice(html.indexOf('data-testid="skins-team-total-t2"')).slice(0, 80)).toContain(">1<");
+    // Team totals come FIRST in document order, as on the Stableford board.
+    expect(html.indexOf('data-testid="skins-team-totals"')).toBeLessThan(
+      html.indexOf('data-testid="skins-board"')
+    );
   });
 
-  it("a live carry and a dead pot read differently on the group strip", () => {
-    const live = renderBoard({ A: [...allWonThrough(15, ANN.id), tied(16)], B: [] });
-    expect(live.slice(live.indexOf('data-testid="skins-pot-state-A"'))).toContain("on hole 17");
+  it("adds exactly ONE column to Stableford's row — SKINS", () => {
+    const html = renderBoard({ A: [won(1, ANN.id)], B: [won(1, CAL.id)] });
+    expect(html).toContain('data-testid="skins-lb-col-skins"');
+    // The columns skins does NOT have. Asserting their absence is what stops a
+    // later edit reintroducing stroke vocabulary this format cannot fill in —
+    // there are no strokes here, so there is no round score and nothing to be
+    // over par by.
+    expect(html).not.toContain("To par");
+    expect(html).not.toContain("Rnd");
+  });
 
-    const dead = renderBoard({
-      A: [...allWonThrough(15, ANN.id), tied(16), tied(17), tied(18)],
-      B: [],
-    });
-    expect(dead.slice(dead.indexOf('data-testid="skins-pot-state-A"'))).toContain("unpaid");
+  it("carries NO group chips and NO group summary strip", () => {
+    /**
+     * Both were built and then removed, so this is a regression guard rather
+     * than a description. The chips were a per-row answer to "which contest was
+     * this row in"; the strip was a second home for the carry, which belongs on
+     * the entry screen's pot banner where the question is actually being asked.
+     * Stableford's board has neither, and this one is that board.
+     */
+    const html = renderBoard({ A: [...allWonThrough(15, ANN.id), tied(16)], B: [won(1, CAL.id)] });
+    expect(html).not.toContain("skins-group-chip");
+    expect(html).not.toContain("skins-pots");
+    expect(html).not.toContain("SKINS EACH");
+    expect(html).not.toContain("on hole 17");
+  });
+
+  it("THRU is the GROUP's progress, and a finished round reads F", () => {
+    // Progress belongs to the group — a hole is decided for everyone in it at
+    // once — and it runs through the shared `thruLabel`, so this reads exactly
+    // as the other three boards do.
+    const html = renderBoard({ A: [...allWonThrough(18, ANN.id)], B: [won(1, CAL.id), won(2, CAL.id)] });
+    expect(html.slice(html.indexOf(`data-testid="skins-thru-${ANN.id}"`)).slice(0, 120)).toContain(">F<");
+    expect(html.slice(html.indexOf(`data-testid="skins-thru-${CAL.id}"`)).slice(0, 120)).toContain(">2<");
   });
 
   it("a player in a group that has not started shows a dash, not a zero", () => {
