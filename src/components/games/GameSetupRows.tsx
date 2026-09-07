@@ -111,10 +111,20 @@ export function GameSetupRows({
   onClearCourse?: () => void;
   /** Controlled mode: the page's course write is in flight (drives the tee chooser). */
   courseBusy?: boolean;
-  /** §3.3: outcome-mode match play taps the winner per hole and NEVER reads a
-   *  handicap — so the Course row's "Handicaps enabled" subtitle would be a lie. When
-   *  true, the subtitle drops the handicaps claim. Default false (score modes gate on
-   *  the course's stroke-index table, so the handicaps subtitle is honest there). */
+  /**
+   * THIS GAME NEVER READS A HANDICAP, so the Course row must not claim it does.
+   *
+   * §3.3 introduced this for outcome-mode match play, which taps the winner per
+   * hole — "Handicaps enabled" there is a lie about a number nothing consults.
+   * SKINS is the same claim through a different door and a stronger one: it is
+   * not a MODE that skips handicaps, it is a format that has none at all, with
+   * no roster row to set them on and nothing in the engine to apply them.
+   *
+   * So the flag is about the QUESTION ("does anything here read a handicap?")
+   * rather than about `entry_mode`, which is the column its first caller happened
+   * to derive it from. Default false: score modes gate on the course's
+   * stroke-index table, so the handicaps subtitle is honest there.
+   */
   outcomeMode?: boolean;
   /** The rack Total-Points draft slice — present on the RACK path only; the stepper
    *  reports the total to the page's rack draft (never self-persists; #626). */

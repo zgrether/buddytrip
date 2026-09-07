@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
-import { Users } from "lucide-react";
+import { Scale, Sparkles, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
@@ -50,6 +50,11 @@ import { unitsFromSchema, teeFromSchema } from "@/lib/strokePlayConfig";
 import { computeStrokeTeamStandings } from "@/lib/strokePlay";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { pointsReady } from "@/lib/matchDraft";
+import { isWinnerTakesAll } from "@/lib/configDraft";
+import { type PointsDistribution } from "@/lib/pointsDistribution";
+import { teamPlaceCapacity } from "@/lib/placeCapacity";
+import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
+import { fmtValue } from "@/components/competition/CompetitionGamesPanel";
 import {
   tallySkins,
   computeSkinsStandings,
@@ -100,7 +105,7 @@ export function SkinsGameView() {
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
   const [currentHole, setCurrentHole] = useState(1);
-  const [openAccordion, setOpenAccordion] = useState<"groupings" | "modifiers" | null>(null);
+  const [openAccordion, setOpenAccordion] = useState<"groupings" | "modifiers" | "distribution" | null>(null);
 
   // ── Composite draft SLICES (null = untouched → tracks the server) ─────────
   const [nameDraft, setNameDraft] = useState<string | null>(null);
@@ -108,6 +113,12 @@ export function SkinsGameView() {
   const [scoringDraft, setScoringDraft] = useState<boolean | null>(null);
   const [delegatesDraft, setDelegatesDraft] = useState<string[] | null>(null);
   const [pointsTotalDraft, setPointsTotalDraft] = useState<number | null | undefined>(undefined);
+  // The DISTRIBUTION is its own slice, and it was missing entirely — so the
+  // draft carried the server value with no way to change it, and the Point
+  // Distribution row had nothing to write to. Same `undefined` = untouched
+  // convention as the total beside it (a drafted distribution can legitimately
+  // be null, which is Winner-takes-all).
+  const [pointsDistDraft, setPointsDistDraft] = useState<PointsDistribution | null | undefined>(undefined);
   const [groupsDraft, setGroupsDraft] = useState<string[][] | null>(null);
   const [modifiersDraft, setModifiersDraft] = useState<ModifiersMap | null>(null);
   const [courseDraft, setCourseDraft] = useState<SkinsConfigDraft["course"] | null>(null);
@@ -309,6 +320,7 @@ export function SkinsGameView() {
     scoringDraft !== null ||
     delegatesDraft !== null ||
     pointsTotalDraft !== undefined ||
+    pointsDistDraft !== undefined ||
     groupsDraft !== null ||
     modifiersDraft !== null ||
     courseDraft !== null;
@@ -319,6 +331,8 @@ export function SkinsGameView() {
       rulesForToday: rulesDraft ?? serverConfigDraft.rulesForToday,
       scoringEnabled: scoringDraft ?? serverConfigDraft.scoringEnabled,
       pointsTotal: pointsTotalDraft !== undefined ? pointsTotalDraft : serverConfigDraft.pointsTotal,
+      pointsDistribution:
+        pointsDistDraft !== undefined ? pointsDistDraft : serverConfigDraft.pointsDistribution,
       delegates: delegatesDraft ?? serverConfigDraft.delegates,
       groups: groupsDraft ?? serverConfigDraft.groups,
       modifiers: modifiersDraft ?? serverConfigDraft.modifiers,
@@ -326,7 +340,7 @@ export function SkinsGameView() {
     }),
     [
       serverConfigDraft, nameDraft, rulesDraft, scoringDraft, delegatesDraft,
-      pointsTotalDraft, groupsDraft, modifiersDraft, courseDraft,
+      pointsTotalDraft, pointsDistDraft, groupsDraft, modifiersDraft, courseDraft,
     ]
   );
 
@@ -361,6 +375,7 @@ export function SkinsGameView() {
     setScoringDraft(null);
     setDelegatesDraft(null);
     setPointsTotalDraft(undefined);
+    setPointsDistDraft(undefined);
     setGroupsDraft(null);
     setModifiersDraft(null);
     setCourseDraft(null);
@@ -381,7 +396,7 @@ export function SkinsGameView() {
 
   const { saveState, saving, saveError, setSaveError, handleSave, handleCancel } = useConfigDraft<
     SkinsConfigDraft,
-    { name: string | null; rules: string | null; scoring: boolean | null; delegates: string[] | null; pointsTotal: number | null | undefined; groups: string[][] | null; modifiers: ModifiersMap | null; course: SkinsConfigDraft["course"] | null }
+    { name: string | null; rules: string | null; scoring: boolean | null; delegates: string[] | null; pointsTotal: number | null | undefined; pointsDistribution: PointsDistribution | null | undefined; groups: string[][] | null; modifiers: ModifiersMap | null; course: SkinsConfigDraft["course"] | null }
   >({
     tripId,
     gameId: gid,
@@ -398,7 +413,8 @@ export function SkinsGameView() {
     toPayload: (draft, baseline) => skinsDraftToPayload(draft, baseline),
     bundle: {
       name: nameDraft, rules: rulesDraft, scoring: scoringDraft, delegates: delegatesDraft,
-      pointsTotal: pointsTotalDraft, groups: groupsDraft, modifiers: modifiersDraft, course: courseDraft,
+      pointsTotal: pointsTotalDraft, pointsDistribution: pointsDistDraft,
+      groups: groupsDraft, modifiers: modifiersDraft, course: courseDraft,
     },
     applyRecovered: (b) => {
       setNameDraft(b.name);
@@ -406,6 +422,7 @@ export function SkinsGameView() {
       setScoringDraft(b.scoring);
       setDelegatesDraft(b.delegates);
       setPointsTotalDraft(b.pointsTotal);
+      setPointsDistDraft(b.pointsDistribution);
       setGroupsDraft(b.groups);
       setModifiersDraft(b.modifiers);
       setCourseDraft(b.course);
@@ -613,6 +630,20 @@ export function SkinsGameView() {
   if (showConfig && gid && gameQ.data && canEdit) {
     const groupCount = configDraft.groups.filter((g) => g.length > 0).length;
     const modCount = enabledCount(configDraft.modifiers, getGameTypeDefinition(SKINS)?.compatibleModifiers ?? []);
+    /**
+     * ONE controlled object for both halves of the points split (the shape
+     * stroke uses): the bare Total renders in GAME MANAGEMENT via
+     * `GameSetupRows`, and the placement editor renders in the settings zone.
+     * Sharing it is what stops the two disagreeing about the same number.
+     */
+    const placementControlled = {
+      value: { total: configDraft.pointsTotal, distribution: configDraft.pointsDistribution },
+      onChange: (total: number | null, distribution: PointsDistribution | null) => {
+        setPointsTotalDraft(total);
+        setPointsDistDraft(distribution);
+      },
+    };
+    const distIsWta = isWinnerTakesAll(configDraft.pointsDistribution);
     const setupRowsProps = {
       tripId,
       competitionId: competitionId ?? null,
@@ -625,6 +656,12 @@ export function SkinsGameView() {
       onRemoveBackNine: removeBackNineFromDraft,
       onClearCourse: clearCourseInDraft,
       courseBusy,
+      // Skins reads no handicap anywhere, so the Course row must not say
+      // "Handicaps enabled/disabled" — it would name a setting this format does
+      // not have. The course is still real (par and the stroke index are on the
+      // card, and the stroke index is what the group applies in their heads), so
+      // the row describes the COURSE state instead.
+      outcomeMode: true,
     };
     return (
       <>
@@ -648,11 +685,12 @@ export function SkinsGameView() {
           // game is one contest producing a finishing order, not a set of slots
           // that each pay. So there is no per-slot divisor to show or derive.
           totalPointsRow={
-            <GameSetupRows
-              {...setupRowsProps}
-              slot="config"
-              rackPoints={{ value: configDraft.pointsTotal, onChange: (total) => setPointsTotalDraft(total) }}
-            />
+            // `placementPoints`, NOT `rackPoints`. Skins pays a finishing ORDER
+            // over the whole field, exactly as stroke does — one contest, one
+            // placement split — where `rackPoints` is the per-SLOT stepper and
+            // needs a slot count skins has nothing to supply. Passing it left a
+            // read-only card with no value in it.
+            <GameSetupRows {...setupRowsProps} slot="config" placementPoints={placementControlled} />
           }
           // The course row LOCKS once holes are recorded, because the server
           // refuses the change (COURSE_LOCKED via migration 185's widened
@@ -676,6 +714,36 @@ export function SkinsGameView() {
           }}
           settingsRows={
             <>
+              {/* POINT DISTRIBUTION — how the game's total splits across finishing
+                  places. Was missing outright, so a skins game could carry a
+                  total with no way to say how it pays.
+
+                  Winner-takes-all is the DEFAULT and a valid configured state,
+                  so the row reads "resolved" either way rather than nagging.
+                  Capacity is the TEAM count, because the cup scores the team
+                  rows this game banks. */}
+              <ChecklistRow
+                icon={Scale}
+                title="Point Distribution"
+                subtitle={
+                  distIsWta
+                    ? "Winner takes all"
+                    : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
+                }
+                state="resolved"
+                expanded={openAccordion === "distribution"}
+                onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
+                testId="row-point-distribution"
+              >
+                <FormatPointsPanel
+                  game={gameQ.data as unknown as GameRow}
+                  canEdit={canEdit}
+                  controlled={placementControlled}
+                  part="distribution"
+                  winnerTakesAll
+                  capacity={teamPlaceCapacity(teamsQ.data?.length)}
+                />
+              </ChecklistRow>
               <ChecklistRow
                 icon={Users}
                 title="Groupings"
@@ -707,7 +775,7 @@ export function SkinsGameView() {
           // place, exactly as its own header says it should.
           modifiersRow={
             <ChecklistRow
-              icon={Users}
+              icon={Sparkles}
               title="Game Modifiers"
               subtitle={
                 modCount > 0
