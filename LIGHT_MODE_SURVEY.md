@@ -21,7 +21,11 @@ score entry / scorecard, Quick Match Play setup / match card / score entry. Unde
 `CLAUDE.md` Enforced Pattern #7 those score-entry and scorecard components are the
 *same components* the Cup game surfaces use, so the measurements transfer.
 **Not reached live:** competition leaderboard, competition hero, pick'em's three
-tabs — the local database has no seeded trip. Those rows are from code, and say so.
+tabs — the local database had no seeded trip. Those rows are from code, and say so.
+
+**The Trip surfaces were added in a second pass** (see § Addendum) against a seeded
+fixture trip, after the first pass sampled Cup only. That pass corrects two things
+this document originally got wrong, both marked in place.
 
 ---
 
@@ -31,7 +35,9 @@ tabs — the local database has no seeded trip. Those rows are from code, and sa
 
 - **Zero** tokens are defined only in `.dark`. All 81 `:root` tokens have a value;
   the 25 without a `.dark` counterpart are each documented as deliberately
-  mode-independent (vote colours, domain colours, the overlay-row wash).
+  mode-independent (vote colours, domain colours, the overlay-row wash). **Complete
+  is not the same as correct** — 16 of those 25 are the domain colours, and the
+  Trip pass measured 7 of their 8 hues below 3 : 1 in light (#1353).
 - **Zero** Tailwind `dark:` variants anywhere in `src/`. The whole app themes
   through CSS custom properties, which is why this list is short.
 - `CompetitionLeaderboard.tsx`, `CompetitionFace.tsx` and `GameRow.tsx` — the
@@ -40,6 +46,13 @@ tabs — the local database has no seeded trip. Those rows are from code, and sa
 
 **Nine surfaces are actually broken in light mode, seven of them Cup.** Everything
 else that "bypasses a token" is cosmetically wrong and visually fine.
+
+> **The Trip pass revises this.** The worst surface in the app is the Trip-side
+> Quick Info dock — white text on a white card, 1.00 : 1 — and two of the bullets
+> above are qualified by the Addendum: the domain colours listed as "documented
+> mode-independent" are *not* visually correct in light, and a token being complete
+> is not the same as its light value being right. Read § Addendum with the table
+> below, not after it.
 
 **And separately: ordinary light mode probably does not solve the stated problem.**
 See the last section — that is a token-*value* question, not a bypass, and it is
@@ -64,7 +77,7 @@ the one that decides whether this is the answer or the first step.
 | 6 | **Scorecard to-par column** — `StandardGrid.tsx:1305` | `diff > 0 ? "#93c5fd" : "#fca5a5"` — same dark pastels as #1. | **Cup** | same family as #1. |
 | 7 | **Match number badge / SINGLES–DOUBLES label** — `MatchNumberBadge.tsx:29`, `matchSetup/MatchSetup.tsx:495` | `doubles ? "#c4b5fd" : "#93c5fd"` on a `rgba(…,0.14)` tint. | **Cup** | same family as #1. |
 | 8 | **Amber alert glyphs** — `TripHeaderDock.tsx:251,264`, `InfoTileModal.tsx:114`, `HelperCards.tsx:31` | `#fbbf24` hardcoded — that is `--color-bt-warning`'s **dark** value; light is `#d97706`. | Trip / Shared | **1.67 : 1** on white. This is the "amber token inconsistency" the brief mentioned, now located. |
-| 9 | **Trip header dock** — `TripHeaderDock.tsx` | **16** `rgba(255,255,255,*)` values in one file — the largest single concentration in the app. | Trip | not measured live; flagged by concentration. |
+| 9 | **Trip header dock / Quick Info** — `TripHeaderDock.tsx` | **29 colour literals against 5 token references** — the component was written for a dark card and never joined the token system. | **Trip** | ⚠️ **CORRECTED BY THE TRIP PASS — this is the worst surface in the app, not a concentration of near-misses.** Values and labels are `#ffffff` on `#ffffff`: **1.00 : 1**, 8 of 8 text nodes below 3 : 1. See § Addendum. |
 
 **#2 in full, because it is the one a player would call a broken app.** The three
 constants were measured live on the same Quick Match Play screen, toggled:
@@ -89,7 +102,8 @@ competition match played before rosters exist.
 | `#0d1f1a` written out instead of `var(--color-bt-on-accent)` | **58** (18 Cup, 19 Trip, 15 Shared, 3 lib, 3 marketing) | The token is `#0d1f1a` **in both `:root` and `.dark`** — mode-independent by design. Every one of these renders identically to the token. Verified live: the selected keypad key and the confirm button read correctly in light. **The largest number in this survey is the one that changes nothing.** |
 | `rgba(0,0,0,0.5)` scrims | 46 | `--color-bt-overlay` *is* `rgba(0,0,0,0.5)` in light. Identical output. |
 | `rgba(0,0,0,0.35–0.45)` box-shadows | ~12 | Heavier than the light `--shadow-*` set, but a shadow that is too strong is not a legibility failure. |
-| `--color-bt-overlay-row*`, vote colours, domain colours | 25 tokens | Documented mode-independent in `globals.css` with reasons. Not omissions. |
+| `--color-bt-overlay-row*` and the vote colours | 9 tokens | Documented mode-independent in `globals.css` with reasons, and the reasons hold — the overlay-row wash is dark glass over a card, and vote fills carry their own paired text token. |
+| ~~domain colours~~ | 16 tokens | ⚠️ **WRONG — CORRECTED BY THE TRIP PASS.** These were placed here on the strength of the comment declaring them mode-independent. Measured, 7 of 8 fall below 3 : 1 on the light base (`home` 1.73 : 1, `events` 1.55 : 1). Documented-as-intended is not correct-in-both-themes. Now **#1353**. |
 | Team colours, tee-marker colours, per-player chart colours, email styling, PWA manifest | — | `STYLE_GUIDE.md` §7's exception table, unchanged. |
 
 ### Off-token, mild, worth one issue between them
@@ -259,13 +273,146 @@ grep -rEn "#[0-9a-fA-F]{6}\b" src --include=*.tsx --include=*.ts | grep -v "\.te
 
 ---
 
+## Addendum — the Trip pass, and two corrections
+
+**The first pass sampled Cup only**, because the local database had no populated
+trip. That limit was stated, but stating it did not make the Trip rows sound. They
+were derived from *concentration* — how many literals sit in a file — which is the
+weaker instrument, and it got two things wrong.
+
+For this pass a fixture trip was seeded locally (15 crew, lodging, agenda, three
+quick-info tiles including one alert) so all four surfaces render populated, and the
+same probe was run against them.
+
+### Correction 1 — row #9 understated the worst surface in the app
+
+Row #9 said *"`TripHeaderDock.tsx` — 16 `rgba(255,255,255,*)` values in one file —
+the largest single concentration. Not measured live; flagged by concentration."*
+
+Measured, it is not a concentration of near-misses. **The Quick Info dock is white
+text on a white card.**
+
+| element | colour | on | ratio |
+|---|---|---|---|
+| tile value — `4417`, `9022#`, `gulfshores2026` | `#ffffff` | `#ffffff` | **1.00 : 1** |
+| tile label — `LOCKBOX`, `DOOR CODE` | `rgba(255,255,255,0.5)` | `#ffffff` | **1.00 : 1** |
+| `2 days to go` | `#ffffff` | `#ffffff` | **1.00 : 1** |
+| the dock panel itself (330 × 145) | `rgba(255,255,255,0.06)` | `#ffffff` | delta **0.00/255** |
+| each tile pill (96 × 38, 110 × 38) | `rgba(255,255,255,0.06)` | `#ffffff` | delta **0.00/255** |
+| countdown ring track | `rgba(255,255,255,0.13)` | `#ffffff` | invisible |
+
+**Scoped to the dock, 8 of 8 text nodes measure below 3 : 1 and none above.** The
+information is not dim — it is not on the screen. The only tile with any visible
+tint is an *alert* tile, whose `rgba(251,191,36,0.12)` amber wash is why the wifi
+row is the one thing that shows in the screenshot; its value is still white on it.
+
+The cause is structural rather than incidental: **`TripHeaderDock.tsx` carries 29
+colour literals against 5 token references.** It is not a component that drifted, it
+is a component written entirely for a dark card. (Its sibling `InfoTileModal.tsx` is
+the opposite — 47 token references to 16 literals — so the modal behind the same
+tiles is largely fine.)
+
+Verified by walking the full ancestor chain of each text node: every ancestor is
+`rgba(0,0,0,0)` or `rgba(255,255,255,0.06)`, with **no `background-image` anywhere**
+— so this is not a gradient the probe failed to see.
+
+### Correction 2 — the domain colours were in the wrong table
+
+The first pass put `--color-bt-domain-*` in *"off-token but visually correct — do not
+let these inflate the count"*, reasoning that they are "documented mode-independent
+in `globals.css` with reasons. Not omissions."
+
+**Documented-as-intended is not the same as correct-in-both-themes, and that is the
+mistake.** All eight hues were chosen against a dark card:
+
+| domain token | on the dark card | on the light base | on a light card |
+|---|---|---|---|
+| `home` `#2dd4bf` | 8.95 : 1 | **1.73 : 1** | 1.86 : 1 |
+| `events` / `competition` `#fbbf24` | 9.98 : 1 | **1.55 : 1** | 1.67 : 1 |
+| `receipts` `#22c55e` | 7.31 : 1 | **2.12 : 1** | 2.28 : 1 |
+| `crew` / `travel` `#fb7185` | 6.19 : 1 | **2.50 : 1** | 2.69 : 1 |
+| `agenda` `#f97316` | 5.94 : 1 | **2.61 : 1** | 2.80 : 1 |
+| `lodging` `#3b82f6` | 4.53 : 1 | 3.42 : 1 | 3.68 : 1 |
+
+**Seven of eight fall below 3 : 1 in light.** Confirmed live: the `GET SET UP`
+eyebrow, the `Edit dates` button and the active `Home` tab label all measure
+**1.73 : 1**, and all three resolve through `var(--color-bt-domain-home)` — while
+`--color-bt-accent` on the same page correctly resolves to the light `#0d9488`. The
+token system is working; the value is wrong for light.
+
+**This class is invisible to the grep in §7**, because there is no literal to find.
+That is the reason it survived the first pass, and the reason it deserves its own
+issue rather than a row on the literals one.
+
+### A third class the Cup pass never met — opacity-dimmed text
+
+`STYLE_GUIDE.md:197` is explicit: *"Never use opacity to dim text — use explicit
+token values. Opacity-based dimming compounds the contrast problem, especially in
+light mode."* Two Trip surfaces do it anyway:
+
+| where | mechanism | ratio |
+|---|---|---|
+| date-picker day cells | `--color-bt-text-dim` under `opacity: 0.45` on the button | **1.82 : 1** at 11px |
+| trip-card dates (`Sep 9 – Sep 13`, `Dates TBD`) | `rgba(0,0,0,0.45)` as a text colour | **3.35 : 1** at 12px |
+
+Another code/doc disagreement, and the guide is unambiguous about which side is right.
+
+### The four surfaces, measured
+
+| surface | `<3 : 1` | `3–4.5` | `4.5–7` | `≥7` | vanishing fills | verdict |
+|---|---|---|---|---|---|---|
+| **Quick Info dock** | **8** | 0 | 0 | **0** | 3 | **unusable** — nothing on it reads |
+| **Trip header** (incl. dock) | 8 | 1 | 1 | 2 | 5 | broken by the dock it contains |
+| **Setup wizard + panels** | 15 | 8 | 14 | 42 | 35 | usable; eyebrows, step numbers and calendar weak |
+| **Home trip cards** | 0\* | 17 | 7 | 13 | **0** | **the healthiest surface measured, either pass** |
+
+\* Two ratio-1.00 hits on the dashboard were **probe artefacts** and are excluded:
+`New trip` and the countdown `2` sit on their *own* element's fill, which the
+`behind()` walker skips because it starts at `parentElement`. Both are legible —
+`New trip` is `#f4f7fa` on the light accent `#0d9488` (4.5 : 1). The quick-info hits
+survive the same check; the dashboard ones did not. **Two of the strongest-looking
+numbers in this pass were wrong, and only re-deriving them caught it.**
+
+Trip cards' remaining weakness is ordinary token weakness, not bypass: role badges
+(`Owner`, `Organizer`) are the correct light `#d97706` at 3.19 : 1 and 10px, the
+section eyebrow `NOW` is 2.96 : 1, and the state silhouette is
+`--color-bt-state-fill` = `rgba(0,0,0,0.08)` → 1.20 : 1 (decorative, and the correct
+light value).
+
+### Separately, and it is a design observation rather than a defect
+
+**Light base plus light cards produces a flatter hierarchy than dark does, and the
+gap is measurable:**
+
+```
+light   base #f4f7fa → card #ffffff    1.08 : 1
+dark    base #0a0e1a → card #161e2f    1.16 : 1
+```
+
+The light theme's surface step is **less than half** the dark theme's, and it is
+compounded rather than compensated by the shadow set — `--shadow-card` is
+`rgba(0,0,0,.08)` in light against `rgba(0,0,0,.3)` in dark. So the two mechanisms
+that separate a card from its ground are *both* weaker in light. Every card measured
+on both the trip page and the dashboard came back at exactly 1.075 : 1.
+
+This is not one of the nine and is not filed as a bug. It is a palette decision:
+either the base goes further from white, the card gains a border by default, or the
+light shadow set gets stronger. Zach's call.
+
+---
+
 ## Filed
 
-- **#1343** — the dark-only-literal class: eight sites, one fix shape (a light/dark
-  pair where there is currently one dark value). Carries the `STYLE_GUIDE.md:473`
-  disagreement as a decision for Zach, not a resolution.
+- **#1343** — the dark-only-literal class: one fix shape (a light/dark pair where
+  there is currently one dark value). Carries the `STYLE_GUIDE.md:473` disagreement
+  as a decision for Zach, not a resolution. **Updated after the Trip pass** — the
+  Quick Info dock is now its #1 instance.
 - **#1344** — `MatchCard`'s neutral ramp, separately, because it is not a token
   swap: the encoding reverses and the fix is a design call.
+- **#1353** — the light theme's own token VALUES: eight mode-independent domain
+  colours picked against dark, plus the opacity-dimming `STYLE_GUIDE.md:197`
+  already forbids. Separate from #1343 because there is no literal to replace, and
+  no grep can find it.
 
 Nothing else met `CLAUDE.md`'s entry rule. The 58 `#0d1f1a` sites, the 46 scrims
 and the twelve dark shadows are not issues, because there is no version of that
