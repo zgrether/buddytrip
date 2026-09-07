@@ -301,7 +301,22 @@ export function PickemSheet({
     // Safe on the server (the helper is SSR-guarded and returns null) and never
     // a hydration mismatch, because this component only mounts once the tRPC
     // query has resolved, which is client-side.
-    const stored = draftOutboxRecover("pickem", gameId, JSON.stringify(server.picks)) as
+    //
+    // ── THE SCOPE, WITHOUT WHICH THIS READS A KEY NOTHING EVER WROTE ─────
+    //
+    // The write below passes `scope: subject.userId`, and `storeKey` appends
+    // it: `bt.draft.v1:pickem:<game>:<user>`. This read omitted it, so it
+    // looked under `bt.draft.v1:pickem:<game>` — a key with nothing in it,
+    // ever. Recovery for this sheet was dead from the moment the scope was
+    // added for proxy entry, and dead silently: a miss and an absent draft
+    // are the same `null`, so the machinery looked wired and restored
+    // nothing.
+    //
+    // Pick'em is the ONLY view that calls `draftOutboxRecover` directly —
+    // every other format goes through `useDraftOutbox`'s own `recover`,
+    // which forwards the scope it was given. Bypassing the hook is what let
+    // the two sides of one key drift apart.
+    const stored = draftOutboxRecover("pickem", gameId, JSON.stringify(server.picks), subject.userId) as
       | SheetPick[]
       | null;
     return stored ? { base: JSON.stringify(server.picks), picks: stored } : null;
@@ -437,7 +452,44 @@ export function PickemSheet({
     picked: ready.length,
     submitted: server.submitted,
   });
+  /** The DRAFT's unpicked count — what is on screen, saved or not. */
   const remaining = unpickedCount(picks);
+  /**
+   * THE SUBMITTED COUNT, AND IT READS THE SERVER BECAUSE THAT IS WHAT THE
+   * WORD MEANS.
+   *
+   * ── The bug ────────────────────────────────────────────────────────────
+   *
+   * This was `slate.length - remaining` — the DRAFT. Save five of sixteen and
+   * the line correctly read "Submitted 5/16"; carry on picking without
+   * saving and it counted up with every tap, all the way to "Submitted
+   * 16/16", while the server still held five. Leaving then lost eleven picks
+   * the screen had just said were submitted.
+   *
+   * That is the staged-state lie (#18) in its purest form: a value repointed
+   * at the draft while the WORD around it still promises the server. The
+   * reader is not wrong to believe it — "Submitted" is a claim about what
+   * was stored, and there is no reading of it that means "typed".
+   *
+   * ── Why the server count and not a re-wording ──────────────────────────
+   *
+   * The other repair is to keep the draft number and rename the line, which
+   * is what the PROXY branch below already does — it says "N of M picked",
+   * claims nothing about storage, and has always been honest. That would fix
+   * the lie and lose the fact: on your OWN sheet, how much of it is actually
+   * saved is the thing worth knowing, and it is the only place it is said.
+   *
+   * So the count moves to the server and the word stays true. While a draft
+   * is outstanding the line holds still at what was stored — which reads as
+   * a discrepancy, and IS one: the Save bar is showing at the same time
+   * (`needsSave` is dirty-driven), and those two together are the honest
+   * description of the state.
+   *
+   * `server.picks` is slate-length by construction — `reconcileSheet` maps over
+   * the slate and fills an unstored game with `pick: null` — so this subtraction
+   * is exact and does not depend on how much was stored.
+   */
+  const submittedCount = slate.length - unpickedCount(server.picks);
 
   /**
    * MY PICKS' status line — Other Picks' three tones (`sheetStateLine`), with
@@ -463,7 +515,7 @@ export function PickemSheet({
    * cheap and reading it does not commit to rendering it.
    */
   const myStatus = sheetStateLine(
-    { picked: slate.length - remaining, total: slate.length, isGuest: subject.isGuest },
+    { picked: submittedCount, total: slate.length, isGuest: subject.isGuest },
     editable,
     { invertPhaseTone: true },
   );
