@@ -169,6 +169,28 @@ describe("the mark on the sheet", () => {
     expect(html.split('data-testid="pickem-row-saved"').length - 1).toBe(3);
   });
 
+  it("hangs the gutter into the sheet's own padding", () => {
+    /**
+     * The sheet is `px-4`, so a gutter that did not hang started 32px in and
+     * put the tick hard against the card with all that space unused to its
+     * left. Measured before and after: the glyph centre moved 39 -> 31 against
+     * an available centre of 34, and the card kept its left edge — so nothing
+     * shrank twice.
+     *
+     * THE MUTATION: drop the negative margin. The tick returns to the card's
+     * elbow and every assertion about WHICH rows are ticked still passes,
+     * because they are about the data and this is about the space.
+     *
+     * `lg:ml-0` mirrors the container's own `lg:px-0`: with no padding to
+     * hang into, hanging would put the tick outside the panel.
+     */
+    const html = render({ picks: fillAll(emptySheet(SLATE), "home") });
+    const at = html.indexOf('data-testid="pickem-row-saved"');
+    const wrapper = html.slice(html.lastIndexOf("<div", at), at);
+    expect(wrapper).toContain("-ml-4");
+    expect(wrapper).toContain("lg:ml-0");
+  });
+
   it("shows no gutter at all once picks are locked", () => {
     /**
      * Nothing can be unsaved then, so a column of ticks would confirm a thing
@@ -221,6 +243,36 @@ describe("both exits are gated (source guard)", () => {
     expect(src).toContain("${!!data.beforeLeave}");
   });
 
+  it("gates the BROWSER back too, which no chrome handler can see", () => {
+    /**
+     * `beforeLeave` covers the back CONTROL. A browser back, an OS gesture or a
+     * mouse side button pops history directly and reaches no handler of ours —
+     * the gap Zach hit immediately after the control was gated.
+     *
+     * `useModalBackButton` is the app's answer (phantom entry per layer, shared
+     * stack, depth-tagged ownership) and this file already registers two. The
+     * third must be armed on the DIRTY STATE — not the ref, which an effect
+     * cannot see change — and disarmed while the prompt is up so it can re-arm
+     * when the reader keeps editing.
+     */
+    const src = read("src/components/games/PickemGameView.tsx");
+    expect(src).toContain("sheetIsDirty && picksOpen(clock, now) && !backPrompt");
+    // The mirror exists, or the guard is keyed on a value that never changes.
+    expect(src).toContain("setSheetIsDirty(d);");
+    /**
+     * SCOPED TO THE KEEP-EDITING HANDLER. A whole-file `toContain` passed
+     * against a build that had dropped it from exactly this one, because
+     * Discard, Save and the save-failure path all clear it too — three other
+     * emitters of the same string, which is the substring corollary with the
+     * collision inside one file rather than one document.
+     *
+     * This is the handler that matters: the phantom entry was consumed by the
+     * press that raised the prompt, so staying put without re-arming leaves
+     * the NEXT back unguarded.
+     */
+    const keep = src.slice(src.indexOf("onKeepEditing="));
+    expect(keep.slice(0, keep.indexOf("}}"))).toContain("setBackPrompt(false)");
+  });
   it("pick'em gates BOTH the panel back and the standalone back", () => {
     const src = read("src/components/games/PickemGameView.tsx");
     expect(src, "panel").toContain("beforeLeave: leaveSheet");

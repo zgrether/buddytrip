@@ -335,6 +335,28 @@ export function PickemGameView() {
    *  can actually save it rather than only offering to. */
   const sheetDraft = useRef<SubmittedPick[]>([]);
   const [pendingLeave, setPendingLeave] = useState<null | (() => void)>(null);
+  /**
+   * The dirty flag AS STATE, mirroring `sheetDirty`.
+   *
+   * The ref exists so a keystroke does not re-render this whole view, and it
+   * stays for the handlers that only read it at call time. But the browser
+   * back guard is an EFFECT keyed on whether it should be armed, and an
+   * effect cannot see a ref change — so the arming condition needs a value
+   * that re-renders. React bails on an unchanged `setState`, so mirroring it
+   * on every report costs a comparison and not a render.
+   */
+  const [sheetIsDirty, setSheetIsDirty] = useState(false);
+  /**
+   * The prompt was raised by a BACK PRESS rather than by a tab change.
+   *
+   * The two need different history handling and that is the whole reason this
+   * flag exists. A back press has ALREADY consumed the phantom entry by the
+   * time we hear about it, so the guard must disarm while the prompt is up
+   * and re-arm if the reader keeps editing. A tab change has touched no
+   * history at all — disarming there would pop the phantom for real and
+   * leave the game underneath the dialog.
+   */
+  const [backPrompt, setBackPrompt] = useState(false);
 
   /**
    * Run `go` now, or hold it behind the prompt if the sheet has unsaved work.
@@ -703,6 +725,38 @@ export function PickemGameView() {
    * separately anyway, because "they cannot both be open" is a fact about
    * today's conditions and not about this hook.
    */
+  /**
+   * ── THE BROWSER / MOUSE BACK BUTTON, WHICH THE CHROME GATE CANNOT SEE ──
+   *
+   * `beforeLeave` covers the back CONTROL — the one in the action row and the
+   * standalone header. A browser back, an OS gesture or a mouse side button
+   * pops history directly and reaches no handler of ours, so the panel closed
+   * with an unsaved sheet and nothing asked.
+   *
+   * Reused rather than re-derived, for the reason the note above gives about
+   * the other two registrations: a phantom entry per layer, a shared stack so
+   * only the topmost reacts, and depth-tagged ownership so a foreign pop
+   * passes through. Those ownership rules are exactly where a second
+   * implementation would go wrong.
+   *
+   * ── This hook is built for "back CLOSES me"; here back must PROMPT ─────
+   *
+   * Its other two callers set state that makes `enabled` false, so the phantom
+   * tears down and the layer closes. This one must stay put and ask — so
+   * `backPrompt` takes the place of that state: raising the prompt disarms the
+   * guard (the entry is already gone, so there is nothing to pop), and
+   * Keep editing clears it, which re-runs the effect and pushes a fresh
+   * phantom. Discard and Save call `go()`, which is a real back — and by then
+   * our phantom is spent, so it pops the panel and leaves.
+   */
+  useModalBackButton(
+    () => {
+      setBackPrompt(true);
+      setPendingLeave(() => () => window.history.back());
+    },
+    sheetIsDirty && picksOpen(clock, now) && !backPrompt
+  );
+
   useModalBackButton(() => setReadingSheetOf(null), readingSheetOf != null);
   useModalBackButton(() => setProxyFor(null), proxyFor != null);
 
@@ -1629,6 +1683,7 @@ export function PickemGameView() {
                   onSave={(picks) => savePicks.mutate({ tripId: tripId!, gameId, picks })}
                   onDirtyChange={(d, picks) => {
                     sheetDirty.current = d;
+                    setSheetIsDirty(d);
                     sheetDraft.current = picks;
                   }}
                 />
@@ -1725,6 +1780,7 @@ export function PickemGameView() {
                     }}
                     onDirtyChange={(d, picks) => {
                       sheetDirty.current = d;
+                      setSheetIsDirty(d);
                       sheetDraft.current = picks;
                     }}
                   />
@@ -1918,11 +1974,18 @@ export function PickemGameView() {
       {pendingLeave && (
         <DiscardChangesPrompt
           message="Your picks haven’t been saved yet. Leaving now discards them."
-          onKeepEditing={() => setPendingLeave(null)}
+          onKeepEditing={() => {
+            setPendingLeave(null);
+            /* Re-arms the back guard: the phantom this press consumed is gone,
+               and without a fresh one the NEXT back leaves unasked. */
+            setBackPrompt(false);
+          }}
           onDiscard={() => {
             const go = pendingLeave;
             setPendingLeave(null);
+            setBackPrompt(false);
             sheetDirty.current = false;
+            setSheetIsDirty(false);
             go();
           }}
           onSave={() => {
@@ -1936,13 +1999,17 @@ export function PickemGameView() {
               .mutateAsync({ tripId: tripId!, gameId, picks: sheetDraft.current })
               .then(() => {
                 setPendingLeave(null);
+                setBackPrompt(false);
                 sheetDirty.current = false;
+                setSheetIsDirty(false);
                 go();
               })
               .catch(() => {
                 /* The mutation surfaces its own error. Keep them here rather
-                   than leaving with the picks unsaved. */
+                   than leaving with the picks unsaved — and re-arm, because
+                   the draft is still unsaved and still worth guarding. */
                 setPendingLeave(null);
+                setBackPrompt(false);
               });
           }}
           saving={savePicks.isPending || savePicksFor.isPending}
