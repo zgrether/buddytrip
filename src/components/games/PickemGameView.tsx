@@ -1124,6 +1124,11 @@ export function PickemGameView() {
       ? {
           title: gameName,
           onSettings: canEdit ? settings.openConfig : undefined,
+          /* The back button now asks the sheet first (#1348). Same guard the
+             tab changes use, so the two exits cannot answer differently —
+             which is the whole reason it is one function and not a second
+             copy of the predicate. */
+          beforeLeave: leaveSheet,
           /**
            * SUPPRESSED WHILE SETTINGS IS OPEN, as all four other formats already
            * did (`!showConfig`). Pick'em was the one view without the gate, and
@@ -1395,7 +1400,10 @@ export function PickemGameView() {
       {standaloneHeader && (
         <GameStandaloneHeader
           title="Pick'em"
-          onBack={exitToBoard}
+          /* The standalone route's own back — the panel's goes through
+             `beforeLeave` on the chrome. Two exits, ONE guard: a sheet that
+             asked on one and not the other is the shape #24 counts. */
+          onBack={() => leaveSheet(exitToBoard)}
           chrome={standaloneHeader}
         />
       )}

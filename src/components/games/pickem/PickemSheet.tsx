@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Check } from "lucide-react";
 import { ReorderableList } from "@/components/ReorderableList";
 import { PickemSheetRow } from "./PickemSheetRow";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
@@ -31,6 +32,38 @@ import { isPlayedOutcome, type PickOutcome } from "./PickemSheetRow";
 
 /** "Sat 11:00 AM" — a weekday and a clock time, because a deadline people are
  *  told about is spoken that way. No year: a sheet is read within days of it. */
+/**
+ * IS THIS ROW'S PICK ACTUALLY SAVED?
+ *
+ * ── Why a per-row answer was needed ──────────────────────────────────────
+ *
+ * The header count now reads the server, so "Submitted 5/16" is true again.
+ * It says nothing about WHICH five. A row you picked a moment ago and a row
+ * saved yesterday are drawn identically — the same teal name, the same
+ * selected segment — so a sheet mid-edit looks entirely submitted, which is
+ * the half of the report the counter fix did not reach.
+ *
+ * ── Equality, not a dirty flag ───────────────────────────────────────────
+ *
+ * Saved means THIS game's pick matches what the server holds for it. Picking
+ * home, changing to away, and changing back to home leaves the row saved —
+ * because it is: the stored value and the drafted value agree, and there is
+ * nothing outstanding for this game however much tapping happened.
+ *
+ * A row with no pick is never marked. There is nothing to have saved, and a
+ * tick on an empty row would be claiming an absence was stored — the
+ * empty-is-not-unknown mistake in its cheapest form.
+ */
+export function pickIsSaved(
+  slateGameId: string,
+  draft: SheetPick[],
+  stored: SheetPick[]
+): boolean {
+  const mine = draft.find((x) => x.slateGameId === slateGameId)?.pick ?? null;
+  if (mine == null) return false;
+  return mine === (stored.find((x) => x.slateGameId === slateGameId)?.pick ?? null);
+}
+
 export function formatClosedAt(ms: number): string {
   const d = new Date(ms);
   if (!Number.isFinite(d.getTime())) return "";
@@ -954,7 +987,28 @@ export function PickemSheet({
            */
           const points =
             outcome === "unpicked" ? null : settings.useConfidence || played ? stake : null;
-          return (
+          /**
+           * ── THE SAVED MARK, IN A GUTTER OUTSIDE THE CARD ─────────────────
+           *
+           * Left of the row and outside its surface, so it reads as a note
+           * ABOUT the card rather than a field on it. The card gives up the
+           * gutter's width, which is the trade: a little less room for two
+           * team names, in exchange for the row saying whether it is stored.
+           *
+           * ONLY WHILE EDITABLE. Once picks lock nothing can be unsaved, so a
+           * column of ticks down a settled sheet would be sixteen rows
+           * confirming a thing that is no longer in question — and it would
+           * take the width from the surface that has the most to say (score,
+           * both lines, the cover box).
+           *
+           * A TICK OR NOTHING, rather than a tick and a pending dot. The row
+           * itself already says whether it is picked — the teal name, the
+           * selected segment — so an empty gutter beside a picked row reads
+           * as "picked, not stored" without a second glyph to learn. A
+           * second mark is the obvious extension if this proves too quiet.
+           */
+          const saved = editable && pickIsSaved(id, picks, server.picks);
+          const row = (
             <PickemSheetRow
               game={{
                 id: g.id,
@@ -993,6 +1047,26 @@ export function PickemSheet({
               editable={editable}
               onPick={(side) => editPicks((prev) => setPick(prev, id, side))}
             />
+          );
+          if (!editable) return row;
+          return (
+            <div className="flex min-w-0 items-center gap-1.5">
+              {/* Fixed width whether or not the tick is there, so the cards
+                  keep ONE left edge down the list. A gutter that collapsed on
+                  unsaved rows would make every save nudge the row sideways,
+                  which is movement carrying no meaning. */}
+              <span
+                data-testid="pickem-row-saved"
+                data-saved={saved ? "true" : "false"}
+                aria-hidden={!saved}
+                aria-label={saved ? "Saved" : undefined}
+                className="flex shrink-0 justify-center"
+                style={{ width: 14, color: "var(--color-bt-accent)" }}
+              >
+                {saved && <Check size={14} strokeWidth={3} />}
+              </span>
+              <span className="min-w-0 flex-1">{row}</span>
+            </div>
           );
         }}
       />

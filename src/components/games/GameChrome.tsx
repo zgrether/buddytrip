@@ -45,6 +45,30 @@ export interface GameChromeData {
   /** Owner/delegate-only settings gear. Present ⇒ the bar shows it. The VIEW
    *  gates on `useGameEditAccess`, so a member simply never passes it. */
   onSettings?: () => void;
+  /**
+   * ASKED BEFORE THE BACK BUTTON LEAVES. Call `go()` to proceed, or hold it
+   * and call it later — which is what a confirm prompt does.
+   *
+   * ── Why the chrome needs this at all ──────────────────────────────────
+   *
+   * The back button is `window.history.back()`, hardcoded in
+   * `GameActionRow`, and there was no way for a view to be consulted before
+   * it fired. Pick'em has a draft-then-save sheet with its own leave guard
+   * (`leaveSheet`), and that guard was wired to every tab change and to
+   * nothing else — so switching tabs asked, and leaving the game entirely
+   * did not (#1348).
+   *
+   * A CALLBACK-STYLE gate rather than a boolean, deliberately. A
+   * `hasUnsavedChanges` flag would make the ROW own the prompt — its copy, its
+   * three buttons, its save call — for a decision only the view can make and
+   * with a shape that differs per format. Handing the continuation over
+   * keeps the question here and the answer where the draft lives.
+   *
+   * Every other format may adopt it; none is required to. Absent means the
+   * back button behaves exactly as it always has, which is why this is safe
+   * to add to chrome shared by five views.
+   */
+  beforeLeave?: (go: () => void) => void;
   /** Opens the scorecard overlay (the entry surface's Table2 affordance, moved
    *  into the bar when the entry header is removed). Present ⇒ the bar shows it. */
   onScorecard?: () => void;
@@ -184,7 +208,7 @@ export function usePublishGameChrome(data: GameChromeData | null) {
     ref.current = data;
   });
   const key = data
-    ? `${data.title}|${data.titleSuffix ?? ""}|${!!data.onSettings}|${!!data.onScorecard}|${data.rules ? data.rules.gameId + data.rules.canEdit + (data.rules.text ?? "") : ""}|${!!data.focusedEntry}`
+    ? `${data.title}|${data.titleSuffix ?? ""}|${!!data.onSettings}|${!!data.onScorecard}|${data.rules ? data.rules.gameId + data.rules.canEdit + (data.rules.text ?? "") : ""}|${!!data.focusedEntry}|${!!data.beforeLeave}`
     : "";
   useEffect(() => {
     if (!setChrome) return;
@@ -196,6 +220,18 @@ export function usePublishGameChrome(data: GameChromeData | null) {
       title: ref.current.title,
       titleSuffix: ref.current.titleSuffix,
       onSettings: ref.current.onSettings ? () => ref.current?.onSettings?.() : undefined,
+      /* Read through the ref at INVOKE time, like the handlers above, so the
+         gate sees the current draft rather than the one that existed when
+         the chrome was last published. If the data has gone between publish
+         and tap there is nothing left to guard, so the navigation proceeds
+         rather than being swallowed. */
+      beforeLeave: ref.current.beforeLeave
+        ? (go: () => void) => {
+            const gate = ref.current?.beforeLeave;
+            if (gate) gate(go);
+            else go();
+          }
+        : undefined,
       onScorecard: ref.current.onScorecard ? () => ref.current?.onScorecard?.() : undefined,
       rules: ref.current.rules,
       focusedEntry: ref.current.focusedEntry,
