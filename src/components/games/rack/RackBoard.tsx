@@ -4,7 +4,6 @@ import { TrendingUp } from "lucide-react";
 import { fmtToPar, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
 import { teamTextColor } from "@/lib/teamTextColor";
 import { thruLabel } from "@/lib/thruLabel";
-import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 
 /**
  * Rack-n-Stack display board (Slice C part 3 + addendum). PURE / display-only —
@@ -39,19 +38,10 @@ interface RackBoardProps {
   showProjectedToggle?: boolean;
   nameOf: (id: string) => string;
   variant?: "carded" | "stacked";
-  /** Drives the projected-results toggle only. The BANNER no longer reads this —
-   *  it takes the lifecycle columns below, so a re-opened game gets a banner
-   *  instead of silently losing the one it had. */
+  /** Drives the projected-results toggle only — this board keeps no private
+   *  opinion about what "final" means (CLAUDE.md #24); the lifecycle BANNER is
+   *  the game surface's, rendered above the groups by `RackGameView`. */
   final?: boolean;
-  /** `games.status` + `games.corrections_open` — passed straight through to the
-   *  shared banner rather than pre-reduced to a boolean here, so this component
-   *  keeps no private opinion about what "final" means (CLAUDE.md #24). */
-  status?: string | null;
-  correctionsOpen?: boolean;
-  /** `games.points_total` — the banner's in-progress content. The GAME total,
-   *  NOT the per-slot value shown beside the board: the banner names the number
-   *  the leaderboard sums for this game. */
-  pointsTotal?: number | null;
 }
 
 // ── The board (label + toggle + rack + sit-out) ──────────────────────────────
@@ -66,9 +56,6 @@ export function RackBoard({
   showProjectedToggle = true,
   nameOf,
   variant = "stacked",
-  status,
-  correctionsOpen,
-  pointsTotal,
   final,
 }: RackBoardProps) {
   const colorOf = (t: "A" | "B") => (t === "A" ? teamA.color : teamB.color);
@@ -87,11 +74,11 @@ export function RackBoard({
       </div>
 
       {/* Rack's inline locked banner used to live here, and it is where the
-          shared one came from — the markup is unchanged, it just answers to
-          `gameLockState` now so the CORRECTING case exists at all. Before, this
-          was gated on `final` alone and so disappeared exactly when there was
-          something worth saying. */}
-      <ScoringStateBanner status={status} correctionsOpen={correctionsOpen === true} pointsTotal={pointsTotal} />
+          shared `ScoringStateBanner` came from. It has now moved UP to the game
+          surface, directly under the hero, where match/stroke/skins/non-golf all
+          carry it — buried below the groups list it was the one format whose
+          banner you had to scroll to find. Nothing about the banner changed;
+          only where it is rendered (`RackGameView`). */}
 
       {slots.length === 0 ? (
         <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", padding: "8px 2px" }}>
