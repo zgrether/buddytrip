@@ -60,3 +60,30 @@ export function teamTextColor(bgColor: string | null | undefined): string {
   const whiteContrast = contrast(1, bgL); // white luminance = 1
   return darkContrast >= whiteContrast ? TEAM_TEXT_DARK : TEAM_TEXT_LIGHT;
 }
+
+/**
+ * teamInk — a team colour used AS TEXT, on a card.
+ *
+ * `teamTextColor` above answers the fill question: what reads ON a team colour.
+ * This is the other one, and it was missing: the team colour itself as ink. The
+ * eight identity hues measure 2.15–3.96 : 1 on a white card — amber `#f59e0b`
+ * at 2.15 and cyan `#06b6d4` at 2.43 are the worst — so a team name or score
+ * painted in its own colour is barely there in light mode.
+ *
+ * DERIVED, never stored. `teams.color_dim` exists, is routed through three
+ * routers, and is rendered nowhere; it is a set of near-black tints that only
+ * make sense on a dark card, and as ink on white it would erase the identity
+ * entirely, which is the whole point of the colour. Do not reach for it.
+ *
+ * The darkening is CSS rather than arithmetic so it needs no theme hook and
+ * cannot flash on hydration: `color-mix` scales toward black in sRGB, which
+ * preserves hue exactly, and `--color-bt-team-ink` carries the amount —
+ * **67% in light** (the weakest value that clears 4.5 : 1 for all eight, amber
+ * landing at 4.53) and **100% in dark**, where `color-mix` returns the colour
+ * untouched. There is no dark delta.
+ *
+ * Pass any CSS colour; the result is a `color-mix()` expression.
+ */
+export function teamInk(color: string): string {
+  return `color-mix(in srgb, ${color} var(--color-bt-team-ink), black)`;
+}
