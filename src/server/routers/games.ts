@@ -21,6 +21,7 @@ import { isPlacement, liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
+import { seedScrambleTeamGroups } from "@/server/lib/scrambleTeamGroups";
 import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
@@ -433,6 +434,9 @@ export const gamesRouter = router({
           message: `Failed to create game: ${insertErr.message}`,
         });
       }
+
+      // SCRAMBLE: the teams ARE the groupings, so the game arrives with them.
+      await seedScrambleTeamGroups(ctx.supabase, id, input.gameTypeId, input.competitionId ?? null);
 
       const { data, error } = await ctx.supabase
         .from("games")
@@ -1474,6 +1478,24 @@ export const gamesRouter = router({
       // A2-core: the mode toggle OWNS status — Setup→Scoring sets status:'active'
       // (no longer "first score owns Live"). Server readiness guard refuses an
       // under-configured flip (all formats), and publishes pairings.
+      // SCRAMBLE: seed the team groups BEFORE the readiness check, not after.
+      // Its groups are not a setting, so a game created before its cup had any
+      // team assignments has none and no surface to make them on — and readiness
+      // is "at least one grouped participant" (182), so it would refuse forever.
+      // Idempotent by emptiness: a game that already has groups is untouched.
+      {
+        const { data: g } = await ctx.supabase
+          .from("games")
+          .select("game_type_id, competition_id")
+          .eq("id", input.gameId)
+          .maybeSingle();
+        await seedScrambleTeamGroups(
+          ctx.supabase,
+          input.gameId,
+          (g?.game_type_id as string | null) ?? null,
+          (g?.competition_id as string | null) ?? null,
+        );
+      }
       await assertGameReady(ctx.supabase, input.gameId);
       // #889 — a COMPLETE game is not resurrected by going live.
       //

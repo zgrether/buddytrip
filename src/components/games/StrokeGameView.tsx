@@ -1344,7 +1344,20 @@ export function StrokeGameView() {
           }}
           // GROUP SETTINGS order (item 5): Groupings → Point Distribution → Handicaps —
           // distribution divides across the groups, so Groupings leads (dependency order).
-          settingsRows={<>{groupingsRow}{pointDistributionRow}{handicapsRow}</>}
+          /**
+           * SCRAMBLE HAS NO GROUPINGS ROW. The teams ARE the groups — there is no
+           * choice to offer, and a builder whose only correct answer is the one
+           * the competition already knows is a control that can only be got
+           * wrong. The groups arrive with the game (`seedScrambleTeamGroups`)
+           * and re-derive from the roster on every save, so this is a setting
+           * with nothing to set rather than one that is merely hidden.
+           *
+           * Handicaps still renders and still lists PLAYERS, which is wrong for
+           * a format with no individual scoring — #1335 item 2, left alone here
+           * because it needs a decision (hide it, or make it per-group against
+           * the `play_groups.handicap_strokes` column that already exists).
+           */
+          settingsRows={<>{!isScramble && groupingsRow}{pointDistributionRow}{handicapsRow}</>}
           rulesValue={configDraft.rulesForToday}
           onRulesChange={setRulesDraft}
           saveBar={
