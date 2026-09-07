@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { THEME_MENU_VISIBLE } from "./themeMenu";
 import {
   DEFAULT_THEME,
   THEMES,
@@ -155,9 +156,12 @@ describe("THEME_SANITIZE_SCRIPT (executed)", () => {
 // against the source — a render-only test cannot see a provider that stopped
 // applying the theme.
 //
-// The wrong build these fail against is the current one before this PR:
-// `forcedTheme="dark"` overrides storage, system preference and every
-// setTheme call, so the switch would be inert no matter what the menu did.
+// The wrong build these fail against is a provider that stops applying the
+// stored theme while the row goes on offering the choice.
+//
+// NOTE the shape of T0 below. It used to be a flat ban on `forcedTheme`, which
+// was a STRONGER claim than the intent and ended up blocking the only working
+// revert. Assert the intent, not a proxy that happens to imply it.
 const SRC = resolve(__dirname, "..");
 
 /** Strip comments so prose ABOUT a pattern can't satisfy a guard on it. */
@@ -178,11 +182,42 @@ describe("hiding the menu row cannot disable the switch", () => {
     expect(codeOf("lib/providers.tsx")).not.toMatch(/themeMenu/);
   });
 
-  it("the provider does not force a theme", () => {
-    // `forcedTheme` overrides storage AND setTheme, so its presence means the
-    // switch is dead regardless of whether the row renders. This is the
-    // assertion that fails against the pre-PR build.
-    expect(codeOf("lib/providers.tsx")).not.toMatch(/forcedTheme/);
+  /**
+   * T0 — THE ESCAPE HATCH IS EXPRESSIBLE, AND THE ORIGINAL BUG IS STILL REFUSED.
+   *
+   * This assertion used to read `not.toMatch(/forcedTheme/)` — a flat ban. Its
+   * INTENT was "do not ship the switch dead": a build that forces dark while
+   * still offering the row is lying to whoever taps it. The flat ban encoded
+   * that as a strictly stronger claim, and the stronger claim turned out to lie
+   * across the only working revert.
+   *
+   * `forcedTheme` is the ONLY lever that reverts a user who has already stored
+   * `light` — verified against the installed library, where it wins at both the
+   * pre-hydration boot script and the React effect. `THEME_MENU_VISIBLE = false`
+   * does NOT revert anyone; it only hides the row, which is deliberate (see
+   * `themeMenu.ts`) and is the opposite of what an escape hatch needs.
+   *
+   * So the ban is replaced by the implication it always meant:
+   *
+   *     forcedTheme present  ⟹  THEME_MENU_VISIBLE === false
+   *
+   * | state                                  | result |
+   * |----------------------------------------|--------|
+   * | normal — no force, row visible          | passes |
+   * | escape hatch — forced dark, row hidden  | passes |
+   * | THE ORIGINAL BUG — forced, row visible  | FAILS  |
+   *
+   * The two changes are COUPLED, which is the point: under pressure nobody can
+   * do half of the revert and ship a menu row that silently does nothing.
+   */
+  it("the escape hatch is expressible: forcing a theme implies the menu row is hidden", () => {
+    const forcesTheme = /forcedTheme/.test(codeOf("lib/providers.tsx"));
+    // Asserted as a pair rather than a bare boolean so a failure prints BOTH
+    // facts — otherwise the message says `true !== false` and names neither.
+    expect({ forcesTheme, menuVisible: THEME_MENU_VISIBLE }).not.toEqual({
+      forcesTheme: true,
+      menuVisible: true,
+    });
   });
 
   it("the provider applies the stored theme from the shared storage key", () => {
