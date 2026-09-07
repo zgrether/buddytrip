@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { isMatchPlayFormat, isRackFormat, isStrokeFormat, isPickemFormat } from "@/lib/gameRoutes";
+import { isMatchPlayFormat, isRackFormat, isStrokeFormat, isScrambleFormat, isPickemFormat } from "@/lib/gameRoutes";
 import { MatchGameView } from "@/components/games/MatchGameView";
 import { RackGameView } from "@/components/games/RackGameView";
 import { NonGolfGameView } from "@/components/games/NonGolfGameView";
@@ -68,7 +68,11 @@ export function gamePanelView(openType: string | null, openGameId: string): Reac
   // `opensAsPanel` allowlist and fails the build if any branch comes back unkeyed.
   if (isMatchPlayFormat(openType)) return <MatchGameView key={openGameId} />;
   if (isRackFormat(openType)) return <RackGameView key={openGameId} />;
-  if (isStrokeFormat(openType)) return <StrokeGameView key={openGameId} />;
+  // Scramble renders the SAME view as stroke — it is stroke play whose scorer is
+  // the team, which `StrokeGameView` takes as an input. Listed explicitly rather
+  // than by widening `isStrokeFormat`, which gates individual-unit surfaces
+  // elsewhere and must stay false for scramble.
+  if (isStrokeFormat(openType) || isScrambleFormat(openType)) return <StrokeGameView key={openGameId} />;
   if (isPickemFormat(openType)) return <PickemGameView key={openGameId} />;
   // Non-golf is the deliberate fall-through, and only ever reached after
   // `opensAsPanel` has already vetted the type (CompetitionFace gates on it).
