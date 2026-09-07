@@ -121,25 +121,36 @@ export function SkinsGameView() {
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   /**
-   * THE GAME'S competition. There is no second answer, and no fallback.
+   * THE GAME'S competition — read directly, never inferred from the trip.
    *
-   * A trip can hold more than one, and `competitions.getByTrip` answers with the
-   * trip's FIRST — so reading it here resolved every team lookup against a
-   * competition this game is not in. Found by probing the rendered avatar
-   * backgrounds rather than by reading: the colours that came back were real
-   * team colours from the OTHER cup, which is why it looked right.
+   * **A trip has exactly one competition**, and that is the app's invariant, not
+   * an accident: `competitions.create` refuses a second with a CONFLICT, prod
+   * holds one per trip across the board, and the only writer that can produce
+   * two is the admin-client test helper. So `competitions.getByTrip` is a
+   * CORRECT answer, and this is not a fix for a bug in it.
    *
-   * `undefined` UNTIL THE GAME ROW LOADS, deliberately. An earlier version fell
-   * back to the trip's competition while `gameQ` was in flight, which fixed the
-   * displayed colours and left the first render fetching the wrong cup's teams
-   * and JOINING ITS REALTIME TOPIC before correcting itself. A transient wrong
-   * answer is still a wrong answer; not answering yet is the honest state, and
-   * every consumer below already gates on the id being present.
+   * It is preferred anyway, for two reasons that hold whatever the invariant is:
+   * the game row states its competition as a FACT while the trip lookup derives
+   * it, and a derived answer that happens to agree is still one more thing that
+   * has to keep agreeing. Second, this needs no second query to be right.
+   *
+   * `undefined` UNTIL THE GAME ROW LOADS. Every consumer below already gates on
+   * the id being present, and an earlier version that fell back to the trip's
+   * competition during the first render fetched a whole team roster and JOINED A
+   * REALTIME TOPIC before correcting itself. Not answering yet is cheaper and
+   * more honest than answering early.
    *
    * A STANDALONE game keeps a null competition and gets no teams, which is
-   * correct — it has none. The trip-level competition is read for exactly one
-   * thing, the board exit below, where "back to the leaderboard" is a trip-level
-   * idea rather than this game's.
+   * correct — it has none, and borrowing the trip's would be an inference with
+   * nothing behind it. The trip-level competition is read for exactly one thing,
+   * the board exit below, where "back to the leaderboard" is a trip-level idea
+   * rather than this game's.
+   *
+   * (Historical note worth keeping, because it misled me: on a shared LOCAL
+   * stack this trip had two competitions, left by test fixtures, and the avatars
+   * wore the other one's team colours. That is a fixture artefact — see #1342,
+   * which is about the missing `UNIQUE (trip_id)` that would have stopped the
+   * fixtures creating it.)
    */
   const competitionId = gameQ.data
     ? (((gameQ.data as { competition_id?: string | null }).competition_id ?? undefined) || undefined)
