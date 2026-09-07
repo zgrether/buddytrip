@@ -48,7 +48,7 @@ const ROWS = computeStrokeLeaderboard(
 
 function board(participants: Participant[]) {
   return renderToStaticMarkup(
-    <StrokeLeaderboard rows={ROWS} participants={participants} rubric={null} />
+    <StrokeLeaderboard rows={ROWS} participants={participants} rubric={null} unitCount={18} />
   );
 }
 

@@ -1238,6 +1238,7 @@ export function RackGameView() {
           (config) is gone. Edit handicaps in Setup mode (gear → Who's playing ·
           Handicaps), where mid-game config is deliberate. */}
       <RackBoard
+        unitCount={scUnits.length}
         teamA={teamMeta.A}
         teamB={teamMeta.B}
         slots={rack.slots}

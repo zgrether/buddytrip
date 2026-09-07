@@ -94,7 +94,7 @@ describe("the leaderboard paints a player their team's colour", () => {
       { "1": 4 },
       null
     );
-    return { html: renderToStaticMarkup(<StrokeLeaderboard rows={rows} participants={people} rubric={null} />), people };
+    return { html: renderToStaticMarkup(<StrokeLeaderboard rows={rows} participants={people} rubric={null} unitCount={18} />), people };
   }
 
   it("carries each team's own colour, read from the competition's palette", () => {
