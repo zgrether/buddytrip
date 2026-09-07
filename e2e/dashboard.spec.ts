@@ -181,16 +181,10 @@ test.describe("Dashboard", () => {
 
     await page.goto("/dashboard");
 
-    // Past toggle should be visible but trips collapsed by default
+    // Past toggle should be visible and its trips EXPANDED by default
     await expect(page.locator('[data-testid="past-toggle"]')).toBeVisible({
       timeout: 10_000,
     });
-    await expect(
-      page.locator('[data-testid="trip-card-trip-past-1"]')
-    ).not.toBeVisible();
-
-    // Expand
-    await page.locator('[data-testid="past-toggle"]').click();
     await expect(
       page.locator('[data-testid="trip-card-trip-past-1"]')
     ).toBeVisible();
@@ -200,6 +194,12 @@ test.describe("Dashboard", () => {
     await expect(
       page.locator('[data-testid="trip-card-trip-past-1"]')
     ).not.toBeVisible();
+
+    // Expand again
+    await page.locator('[data-testid="past-toggle"]').click();
+    await expect(
+      page.locator('[data-testid="trip-card-trip-past-1"]')
+    ).toBeVisible();
   });
 
   test("FAB navigates to /trips/new", async ({ page }) => {
