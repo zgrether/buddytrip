@@ -23,10 +23,25 @@ import type { Participant } from "./types";
  */
 
 const WIN_GREEN = "#22c55e"; // = --color-bt-place-1 base; neutral "winning" color (NOT teal)
-// Neutral history ramp — value/lightness, not hue (the hue budget is for teams).
-const NEU_WON_L = "#eaeef4"; // left won — bright
-const NEU_WON_R = "#566275"; // right won — dark (wide gap)
-const NEU_HALF = "#8c97a8"; // halved — mid
+
+/**
+ * Neutral history ramp — the no-team case. THEMED, because it used to encode
+ * the winner as VALUE and value reverses when the card does.
+ *
+ * The old comment here read "value/lightness, not hue (the hue budget is for
+ * teams)", and on a fixed dark card that was a sound decision. It stopped being
+ * one the moment the card could be either end of the ramp: `#eaeef4` measured
+ * 14.30 : 1 on the dark card and 1.16 : 1 on a light one, so "A won" went from
+ * the loudest mark on the strip to invisible while "B won" went the other way.
+ * Not a contrast bug — the two sides swapped which of them you could see.
+ *
+ * Light is now a cool/warm pair at matched weight (7.11 / 6.25, ratio 1.14).
+ * Dark keeps its original values and its original asymmetry (D3b). The values
+ * live in `globals.css`; the reasoning for each is there.
+ */
+const NEU_WON_L = "var(--color-bt-match-a)";
+const NEU_WON_R = "var(--color-bt-match-b)";
+const NEU_HALF = "var(--color-bt-match-halved)";
 
 /**
  * THE NAME SIZE IS KEYED TO THE VIEWPORT, exactly as the chrome below is.
@@ -211,6 +226,25 @@ export function MatchCard({
   const rc = rightColor || WIN_GREEN; // right emphasis color
   const wonL = teams ? lc : NEU_WON_L;
   const wonR = teams ? rc : NEU_WON_R;
+  /**
+   * THE TWO PATHS PAINT "HALVED" DIFFERENTLY ON PURPOSE — and here is what
+   * would make unifying them correct, so this does not read as drift.
+   *
+   * The team path uses `--color-bt-text-dim`. The neutral path cannot: at
+   * `#64748b` it sits ΔE 12.8 from `--color-bt-match-a` (`#3f5a7a`), and a
+   * halved hole reading as a half-win for A is the exact failure the cool/warm
+   * pair was chosen to prevent. `--color-bt-match-halved` is achromatic for
+   * that reason.
+   *
+   * Unify when EITHER of these becomes true:
+   *   - the team path gains its own halved treatment (both paths then have one,
+   *     and the neutral value is the model to follow), or
+   *   - a team colour lands close enough to `--color-bt-text-dim` to hit the
+   *     same collision — slate-blue is the case to watch, since `text-dim` IS
+   *     a slate-blue. No colour in `TEAM_COLORS` is one today.
+   *
+   * Until one of those holds, the divergence is the fix, not the drift.
+   */
   const halfC = teams ? "var(--color-bt-text-dim)" : NEU_HALF;
 
   const aLeads = st.leader === "A";

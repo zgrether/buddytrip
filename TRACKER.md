@@ -73,6 +73,18 @@ R1's shape has changed under it — see §2. What remains:
 
 ### PARKED behind launch (per the ranking)
 
+- **A slate-blue team colour would collide with `--color-bt-text-dim` on halved.**
+  Latent, not live — no colour in `TEAM_COLORS` is slate-blue today (`#3b82f6`
+  Blue is the closest and is far brighter). `MatchCard`'s TEAM path paints a
+  halved hole with `--color-bt-text-dim`, which is itself a slate-blue, so a team
+  whose colour landed near it would make "neither side won" read as a win for
+  that team. This is the same collision the NEUTRAL path was given an achromatic
+  `--color-bt-match-halved` to avoid (#1344, PR C); the team path did not get one
+  because its pair is arbitrary team hues rather than a fixed cool/warm split.
+  **Not an issue — there is no version of it anyone would pick up today.** The
+  condition that would make it live, and the one that would make unifying the two
+  paths correct, is written beside `halfC` in `MatchCard.tsx`.
+
 - **Money / gambling** — killer feature *only if* UI/UX nailed. **The "no vision yet" half is spent:** the
   side-bets handoff is the vision, and it is BUILT on Quick Play — bets as objects with a start hole
   (`src/lib/sideBets.ts`), presses derived rather than recorded, Nassau in one action, carryovers, the ☠️

@@ -5,6 +5,7 @@ import { Settings, Trophy } from "lucide-react";
 import { fmtPts, ProjectionPill } from "./GameRow";
 import { ClinchCelebration } from "./ClinchCelebration";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { teamInk } from "@/lib/teamTextColor";
 import { useShrinkToFit } from "@/hooks/useShrinkToFit";
 
 /** The collapsed bar's ladder. Starts at its designed 14 (the expanded hero's
@@ -40,7 +41,7 @@ export function isRace(scoringModel: ScoringModel, teamCount: number): boolean {
   return scoringModel === "match_play" && teamCount >= 2;
 }
 
-const NEUTRAL_CARD = "linear-gradient(158deg,#222e44 0%,#1a2231 100%)";
+const NEUTRAL_CARD = "var(--color-bt-hero-neutral)";
 
 /**
  * teamGlow — the hero background: a faint two-color TEAM glow (team A from
@@ -213,7 +214,7 @@ export function CompetitionHero({
         borderRadius: 16,
         border: "1px solid var(--color-bt-border)",
         background: showScores && a && b ? teamGlow(a, b) : NEUTRAL_CARD,
-        boxShadow: "0 10px 28px rgba(0,0,0,0.40)",
+        boxShadow: "var(--shadow-floating)",
       }}
       data-testid="competition-hero"
     >
@@ -269,7 +270,7 @@ export function CompetitionHero({
               className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
               // Semi-transparent white pill, matching the trip header's gear on its
               // gradient (rgba over the hero art — same treatment, same values).
-              style={{ background: "rgba(255,255,255,0.08)", color: "rgba(241,245,249,0.6)" }}
+              style={{ background: "var(--color-bt-hover)", color: "var(--color-bt-text-dim)" }}
               data-testid="competition-settings-btn"
             >
               <Settings size={16} />
@@ -321,14 +322,14 @@ export function CompetitionHero({
                 return (
                   <>
                     <span
-                      style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: a.color, opacity: aDim ? loserOpacity : 1 }}
+                      style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: teamInk(a.color), opacity: aDim ? loserOpacity : 1 }}
                       className="tabular-nums"
                       data-testid={aDim ? "hero-score-dimmed" : undefined}
                     >
                       {aStr}
                     </span>
                     <span
-                      style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: b.color, opacity: bDim ? loserOpacity : 1 }}
+                      style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: teamInk(b.color), opacity: bDim ? loserOpacity : 1 }}
                       className="tabular-nums"
                       data-testid={bDim ? "hero-score-dimmed" : undefined}
                     >
@@ -392,8 +393,8 @@ export function CompetitionHero({
                   data-testid="clinch-replay-btn"
                   className="rounded-full px-3 py-1.5 text-[12px] font-semibold transition-[background-color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
                   style={{
-                    color: clincher?.color ?? "var(--color-bt-text)",
-                    background: "rgba(255,255,255,0.07)",
+                    color: clincher ? teamInk(clincher.color) : "var(--color-bt-text)",
+                    background: "var(--color-bt-hover)",
                     border: `1px solid ${clincher ? `color-mix(in srgb, ${clincher.color} 40%, transparent)` : "var(--color-bt-border)"}`,
                   }}
                 >
@@ -610,7 +611,7 @@ export function CollapsedHero({
     // surfaces read as one system; neutral fallback for a points cup.
     border: "1px solid var(--color-bt-border)",
     background: teams.length <= 2 && teams[0] && teams[1] ? teamGlowCollapsed(teams[0], teams[1]) : NEUTRAL_CARD,
-    boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+    boxShadow: "var(--shadow-raised)",
     overflow: "hidden", // clip the flush projected-tier row to the card radius
   };
   // The projected tier is its OWN flush row (card-raised fill + top hairline), not
@@ -675,7 +676,7 @@ export function CollapsedHero({
               {targetLabel && pointsAvailable > 0 && a && b && (
                 <div
                   className="relative mt-[7px] flex h-1 w-full overflow-hidden rounded-full"
-                  style={{ background: "rgba(148,163,184,0.18)" }}
+                  style={{ background: "var(--color-bt-border)" }}
                 >
                   <div className="h-full rounded-l-full transition-all duration-500" style={{ width: `${aWidth}%`, background: a.color }} />
                   <div className="ml-auto h-full rounded-r-full transition-all duration-500" style={{ width: `${bWidth}%`, background: b.color }} />
@@ -720,7 +721,7 @@ function MiniScore({ team, points }: { team: LBTeam | undefined; points: number 
   return (
     <span
       className="tabular-nums"
-      style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: team.color }}
+      style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: teamInk(team.color) }}
     >
       {fmtPts(points)}
     </span>
@@ -834,7 +835,7 @@ function MiniName({
       <span
         ref={nameRef}
         className="line-clamp-2 w-full break-normal"
-        style={{ fontSize: nameSize, fontWeight: 600, lineHeight: 1.2, color: team.color }}
+        style={{ fontSize: nameSize, fontWeight: 600, lineHeight: 1.2, color: teamInk(team.color) }}
       >
         {team.name}
       </span>
@@ -959,10 +960,10 @@ function CollapsedTeam({
       style={{ textAlign: align, minWidth: 96 }}
       data-testid={`comp-team-name-collapsed-${team.id}`}
     >
-      <div className="truncate" style={{ fontSize: 11, fontWeight: 600, color: team.color, lineHeight: 1.1 }}>
+      <div className="truncate" style={{ fontSize: 11, fontWeight: 600, color: teamInk(team.color), lineHeight: 1.1 }}>
         {name ?? team.name}
       </div>
-      <div className="tabular-nums" style={{ fontSize: 26, fontWeight: 800, color: team.color, lineHeight: 1, marginTop: 1 }}>
+      <div className="tabular-nums" style={{ fontSize: 26, fontWeight: 800, color: teamInk(team.color), lineHeight: 1, marginTop: 1 }}>
         {fmtPts(points)}
       </div>
     </button>
@@ -1097,7 +1098,7 @@ function TeamName({
         <span
           ref={nameRef}
           className="line-clamp-2 w-full break-normal"
-          style={{ fontSize: nameSize, fontWeight: 600, lineHeight: 1.2, color: team.color }}
+          style={{ fontSize: nameSize, fontWeight: 600, lineHeight: 1.2, color: teamInk(team.color) }}
         >
           {team.name}
         </span>
@@ -1144,14 +1145,14 @@ function HeroProjSide({
   const delta = projected - banked; // ≥ 0 (projections are awarded points)
   const projectsWin = projected >= winNumber;
   const num = (
-    <span className="tabular-nums" style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: team.color }}>
+    <span className="tabular-nums" style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: teamInk(team.color) }}>
       {fmtPts(projected)}
     </span>
   );
   // Pill only when the team projects a gain; delta 0 → bare number (no pill).
   const pill = delta > 0 ? <ProjectionPill color={team.color} value={delta} /> : null;
   const cup = projectsWin ? (
-    <Trophy size={15} style={{ color: team.color }} aria-label="Projected to win" data-testid={`hero-proj-cup-${align === "left" ? "a" : "b"}`} />
+    <Trophy size={15} style={{ color: teamInk(team.color) }} aria-label="Projected to win" data-testid={`hero-proj-cup-${align === "left" ? "a" : "b"}`} />
   ) : null;
   // [number, pill, cup] → the row reverses for the right team, keeping the number
   // outermost (aligned) and the cup innermost (toward center, inner side of the pill).

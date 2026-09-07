@@ -70,6 +70,55 @@
   --color-bt-overlay-row-text: #f1f5f9;   /* the requirement — the thing to read */
   --color-bt-overlay-row-label: #94a3b8;  /* "Requires:" — scaffolding */
 
+  /* ── Match-play neutral ramp (#1344) ───────────────────────────────────
+   *
+   * Who won a hole, when the two sides have NO team colours — a bracket card,
+   * a standalone game, a 3+-team competition, or any side whose participant is
+   * not yet assigned to a team. (`MatchCard`'s `teams` is derived per-card as
+   * `!!(leftColor && rightColor)`, not from the competition.)
+   *
+   * THESE USED TO ENCODE THE WINNER AS BRIGHTNESS — `#eaeef4` for A, `#566275`
+   * for B — which reverses when the card does. On the dark card that ramp is
+   * 14.30 : 1 against 2.70 : 1; on a light card it became 1.16 : 1 against
+   * 6.18 : 1, so A's bar disappeared and B's shouted. The meaning inverted,
+   * not just the contrast.
+   *
+   * The light values are a cool/warm pair at MATCHED weight instead: 7.11 and
+   * 6.25 on the card, a ratio of 1.14. Dark is unchanged (D3b) — its existing
+   * 5.3x asymmetry is quiet-vs-loud rather than present-vs-absent, and nobody
+   * has reported it.
+   *
+   * `halved` is deliberately ACHROMATIC. The pair is a cool/warm split, so any
+   * hue leans toward one member — and "neither side won" reading as a half-win
+   * for one of them is the exact failure the pair exists to prevent. It is also
+   * the quietest of the three (4.88), because a halved hole is the least
+   * significant outcome and must not outweigh a win. */
+  /* Competition hero, NEUTRAL fallback card (#1343). The two-team hero uses
+   * teamGlow(), which composites over --color-bt-card and was always correct;
+   * this is the path a POINTS cup and a half-built cup take. It was a hardcoded
+   * dark gradient carrying var(--color-bt-text), so in light the cup name sat
+   * near-black on dark navy at 1.31 : 1. Light is now a card-to-base gradient,
+   * which keeps the art and puts the name at 17.85 : 1. Dark is the gradient it
+   * has always had. */
+  /* Team colour used as TEXT on a card (#1343, D4). teamTextColor() solves the
+   * FILL case — what reads ON a team colour. This is the other one: the team
+   * colour itself as ink, where the eight identity hues sit 2.15-3.96 : 1 on a
+   * white card. Amber and cyan are the worst.
+   *
+   * DERIVED, never stored — no column, following teamTextColor own "COMPUTED,
+   * not per-color" pattern, so it works for any future team colour.
+   * color-mix scales toward black in sRGB, which preserves hue exactly; 67%
+   * is the weakest darkening that clears 4.5 for all eight (Amber, the worst,
+   * lands at 4.53). Dark is 100% — color-mix returns the colour untouched, so
+   * there is no dark delta at all. */
+  --color-bt-team-ink: 67%;
+
+  --color-bt-hero-neutral: linear-gradient(158deg, #ffffff 0%, #f4f7fa 100%);
+
+  --color-bt-match-a: #3f5a7a;       /* A won this hole */
+  --color-bt-match-b: #7a5a3f;       /* B won this hole */
+  --color-bt-match-halved: #717171;  /* neither did */
+
   --color-bt-on-accent: #0d1f1a;  /* mode-independent — dark text on teal accent fills (badges, primary buttons) */
   --color-bt-subtle-border: #e2e8f0;
   --color-bt-dim-faint: rgba(100, 116, 139, 0.12);
@@ -224,6 +273,16 @@
   --shadow-floating: 0 8px 24px rgba(0,0,0,.5), 0 4px 8px rgba(0,0,0,.3);
   --color-bt-card-raised: #1f2a40;   /* lifted +8% — inputs, zebra rows, inactive chips read clean against lifted card */
   --color-bt-card-float: #2a3654;   /* lifted to stay clearly above card-raised — tooltips, popovers, drawers */
+
+  /* Match-play neutral ramp — the values these have always had. Written out
+   * EXPLICITLY, not left to inherit: a token defined only in `:root` is
+   * inherited by dark, so changing the light value silently changes dark too.
+   * An absent override is not an absent change. */
+  --color-bt-team-ink: 100%;
+  --color-bt-hero-neutral: linear-gradient(158deg, #222e44 0%, #1a2231 100%);
+  --color-bt-match-a: #eaeef4;
+  --color-bt-match-b: #566275;
+  --color-bt-match-halved: #8c97a8;
 
   --color-bt-hover: rgba(255, 255, 255, 0.06);
   --color-bt-overlay: rgba(0, 0, 0, 0.7);
