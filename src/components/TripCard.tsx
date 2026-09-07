@@ -73,7 +73,9 @@ export const TripCard: FC<TripCardProps> = ({ trip }) => {
 
   const titleColor = isDark ? "#ffffff" : "rgba(0,0,0,0.85)";
   const subColor = isDark ? "rgba(255,255,255,0.70)" : "rgba(0,0,0,0.55)";
-  const metaColor = isDark ? "rgba(255,255,255,0.50)" : "rgba(0,0,0,0.45)";
+  // Alpha-as-dimming, both arms — STYLE_GUIDE.md:197 forbids it, and in light
+  // rgba(0,0,0,0.45) measured 3.35 : 1 on the card. One token replaces the pair.
+  const metaColor = "var(--color-bt-text-dim)";
 
   const handleClick = () => {
     // Seed the getById cache with data we already have so the detail page

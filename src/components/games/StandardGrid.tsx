@@ -1283,7 +1283,7 @@ function HeaderSub({ label, wide }: { label: string; wide?: boolean }) {
         width: wide ? TOTAL_W : SUB_W,
         minWidth: wide ? TOTAL_W : SUB_W,
         flexShrink: 0,
-        background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
+        background: wide ? "var(--color-bt-zebra-total)" : "var(--color-bt-zebra)",
       }}
     >
       <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-bt-text-dim)" }}>
@@ -1320,7 +1320,7 @@ export function SubCell({
         minWidth: wide ? TOTAL_W : SUB_W,
         minHeight: 44,
         flexShrink: 0,
-        background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
+        background: wide ? "var(--color-bt-zebra-total)" : "var(--color-bt-zebra)",
         // Totals are white; only the leader/winner goes green.
         color: leader ? "var(--color-bt-place-1-text)" : "var(--color-bt-text)",
       }}
@@ -1334,7 +1334,7 @@ export function SubCell({
 /** ±-vs-par line: over = blue, under = red, even = dim "E" (Slice C §2). */
 function VsPar({ diff }: { diff: number }) {
   const text = diff > 0 ? `+${diff}` : diff < 0 ? `−${Math.abs(diff)}` : "E";
-  const color = diff > 0 ? "#93c5fd" : diff < 0 ? "#fca5a5" : "var(--color-bt-text-dim)";
+  const color = diff > 0 ? "var(--color-bt-score-bogey)" : diff < 0 ? "var(--color-bt-score-birdie)" : "var(--color-bt-text-dim)";
   return <span style={{ fontSize: 10, fontWeight: 600, color, fontVariantNumeric: "tabular-nums" }}>{text}</span>;
 }
 
@@ -1355,7 +1355,7 @@ function BlankSub({ wide, testId }: { wide?: boolean; testId?: string }) {
         width: wide ? TOTAL_W : SUB_W,
         minWidth: wide ? TOTAL_W : SUB_W,
         flexShrink: 0,
-        background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
+        background: wide ? "var(--color-bt-zebra-total)" : "var(--color-bt-zebra)",
       }}
     />
   );
@@ -1377,7 +1377,7 @@ function ParSub({ value, wide }: { value: number; wide?: boolean }) {
         width: wide ? TOTAL_W : SUB_W,
         minWidth: wide ? TOTAL_W : SUB_W,
         flexShrink: 0,
-        background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
+        background: wide ? "var(--color-bt-zebra-total)" : "var(--color-bt-zebra)",
       }}
     >
       <span style={{ fontSize: 11, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>{value}</span>
