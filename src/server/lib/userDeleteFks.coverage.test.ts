@@ -50,6 +50,18 @@ const DELIBERATELY_BLOCKING: Record<string, string> = {
   // refusal, leaving the placeholder in place (migration 131, reversing 027).
   expenses_paid_by_user_id_fkey: "expenses.paid_by_user_id",
   expense_splits_user_id_fkey: "expense_splits.user_id",
+  // The same argument in a different currency (migration 184). A skins hole was
+  // won by a person, and deleting that person must not change what happened in
+  // their grouping: CASCADE would turn played holes into unplayed ones, leaving
+  // a card with gaps and a grouping whose awarded skins stop adding up to what
+  // it played for. SET NULL is not an option either — it violates the `won` half
+  // of the result-shape CHECK, so the delete fails anyway with a worse error.
+  //
+  // Safe to block for the same reason the two above are: since migration 130
+  // account deletion converts to a placeholder and never deletes the row, and
+  // the one caller that does (`delete_orphan_guest_user`) swallows the
+  // violation on purpose so the placeholder survives with its history.
+  skins_hole_outcomes_winner_user_id_fkey: "skins_hole_outcomes.winner_user_id",
 };
 
 describe("FKs into public.users that block a delete are declared, not accidental", () => {
