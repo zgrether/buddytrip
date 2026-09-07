@@ -31,11 +31,11 @@ export interface GolfStyle {
 }
 
 export const GOLF_STYLE: Record<GolfResult, GolfStyle> = {
-  eagle: { shape: "circle", ring: "double", fg: "#fcd34d", bg: "rgba(251,191,36,0.22)" },
-  birdie: { shape: "circle", ring: "single", fg: "#fca5a5", bg: "rgba(248,113,113,0.18)" },
+  eagle: { shape: "circle", ring: "double", fg: "var(--color-bt-score-eagle)", bg: "var(--color-bt-score-eagle-bg)" },
+  birdie: { shape: "circle", ring: "single", fg: "var(--color-bt-score-birdie)", bg: "var(--color-bt-score-birdie-bg)" },
   par: { shape: "none", ring: "none", fg: "var(--color-bt-text)", bg: "transparent" },
-  bogey: { shape: "square", ring: "single", fg: "#93c5fd", bg: "rgba(96,165,250,0.16)" },
-  double: { shape: "square", ring: "double", fg: "#c4b5fd", bg: "rgba(139,92,246,0.20)" },
+  bogey: { shape: "square", ring: "single", fg: "var(--color-bt-score-bogey)", bg: "var(--color-bt-score-bogey-bg)" },
+  double: { shape: "square", ring: "double", fg: "var(--color-bt-score-double)", bg: "var(--color-bt-score-double-bg)" },
 };
 
 /**

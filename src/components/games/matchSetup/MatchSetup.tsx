@@ -492,7 +492,7 @@ function AddShapeButton({ kind, label, onClick }: { kind: "1V1" | "2V2"; label: 
       className="flex flex-1 flex-col items-center gap-0.5"
       style={{ padding: 11, borderRadius: 11, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
     >
-      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", color: doubles ? "#c4b5fd" : "#93c5fd" }}>{kind}</span>
+      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.04em", color: doubles ? "var(--color-bt-score-double)" : "var(--color-bt-score-bogey)" }}>{kind}</span>
       <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>{label}</span>
     </button>
   );

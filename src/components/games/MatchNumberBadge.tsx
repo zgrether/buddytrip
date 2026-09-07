@@ -26,8 +26,8 @@ export function MatchNumberBadge({
           letterSpacing: "0.03em",
           padding: "1px 4px",
           borderRadius: 4,
-          color: doubles ? "#c4b5fd" : "#93c5fd",
-          background: doubles ? "rgba(167,139,250,0.14)" : "rgba(96,165,250,0.14)",
+          color: doubles ? "var(--color-bt-score-double)" : "var(--color-bt-score-bogey)",
+          background: doubles ? "var(--color-bt-score-double-bg)" : "var(--color-bt-score-bogey-bg)",
         }}
       >
         {doubles ? "2V2" : "1V1"}

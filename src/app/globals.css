@@ -115,6 +115,33 @@
 
   --color-bt-hero-neutral: linear-gradient(158deg, #ffffff 0%, #f4f7fa 100%);
 
+  /* Golf score colours (#1343, D2). Eagle/birdie/bogey/double were fixed
+   * dark-mode pastels — 1.23-1.61 : 1 on a light card, i.e. every score except
+   * par unreadable. par was always var(--color-bt-text) and was always right.
+   *
+   * The light foregrounds are measured against THEIR OWN TINT, not the card:
+   * that is the surface they sit on, and against the card all four passed while
+   * three failed on the tint (birdie 4.22, bogey 4.29, double 4.06). The light
+   * tints drop to .14 so the darker ink still reads on them. Dark keeps both
+   * its pastels and its heavier tints. */
+  /* Scorecard OUT/IN/subtotal column tint (#1343, D5). STYLE_GUIDE.md:473
+   * specifies a PAIR — rgba(0,0,0,0.025) light / rgba(255,255,255,0.025) dark —
+   * and the code carried only the dark half, so in light the tint composited to
+   * a delta of 0.0-0.58/255 over white: a literal no-op, and the OUT/IN/TOTAL
+   * separation simply vanished. Implementing the guide is Zach ruling on the
+   * disagreement, not CC picking a side. :490 caps this at 0.03. */
+  --color-bt-zebra: rgba(0, 0, 0, 0.025);
+  --color-bt-zebra-total: rgba(13, 148, 136, 0.07);
+
+  --color-bt-score-eagle: #8d6d02;
+  --color-bt-score-eagle-bg: rgba(251, 191, 36, 0.14);
+  --color-bt-score-birdie: #db0707;
+  --color-bt-score-birdie-bg: rgba(248, 113, 113, 0.14);
+  --color-bt-score-bogey: #046bdd;
+  --color-bt-score-bogey-bg: rgba(96, 165, 250, 0.14);
+  --color-bt-score-double: #6138fa;
+  --color-bt-score-double-bg: rgba(139, 92, 246, 0.14);
+
   --color-bt-match-a: #3f5a7a;       /* A won this hole */
   --color-bt-match-b: #7a5a3f;       /* B won this hole */
   --color-bt-match-halved: #717171;  /* neither did */
@@ -182,22 +209,22 @@
      whole area reskins. Shared hues: Travel borrows Crew rose (arrivals
      are per-person crew data); Events borrows Competition amber (events
      belong to the competition, not the agenda). */
-  --color-bt-domain-home: #2dd4bf;                       /* teal   */
-  --color-bt-domain-home-faint: rgba(45, 212, 191, 0.13);
-  --color-bt-domain-crew: #fb7185;                       /* rose   */
-  --color-bt-domain-crew-faint: rgba(251, 113, 133, 0.13);
-  --color-bt-domain-lodging: #3b82f6;                    /* blue   */
-  --color-bt-domain-lodging-faint: rgba(59, 130, 246, 0.13);
-  --color-bt-domain-agenda: #f97316;                     /* orange */
-  --color-bt-domain-agenda-faint: rgba(249, 115, 22, 0.13);
-  --color-bt-domain-travel: #fb7185;                     /* rose (= Crew) */
-  --color-bt-domain-travel-faint: rgba(251, 113, 133, 0.13);
-  --color-bt-domain-events: #fbbf24;                     /* amber (= Competition) */
-  --color-bt-domain-events-faint: rgba(251, 191, 36, 0.13);
-  --color-bt-domain-receipts: #22c55e;                   /* green  */
-  --color-bt-domain-receipts-faint: rgba(34, 197, 94, 0.13);
-  --color-bt-domain-competition: #fbbf24;                /* amber  */
-  --color-bt-domain-competition-faint: rgba(251, 191, 36, 0.13);
+  --color-bt-domain-home: #1d7c90;                       /* teal   */
+  --color-bt-domain-home-faint: rgba(29, 124, 144, 0.13);
+  --color-bt-domain-crew: #d80686;                       /* rose   */
+  --color-bt-domain-crew-faint: rgba(216, 6, 134, 0.13);
+  --color-bt-domain-lodging: #1368f4;                    /* blue   */
+  --color-bt-domain-lodging-faint: rgba(19, 104, 244, 0.13);
+  --color-bt-domain-agenda: #bf4d1a;                     /* orange */
+  --color-bt-domain-agenda-faint: rgba(191, 77, 26, 0.13);
+  --color-bt-domain-travel: #d80686;                     /* rose (= Crew) */
+  --color-bt-domain-travel-faint: rgba(216, 6, 134, 0.13);
+  --color-bt-domain-events: #916903;                     /* amber (= Competition) */
+  --color-bt-domain-events-faint: rgba(145, 105, 3, 0.13);
+  --color-bt-domain-receipts: #17823e;                   /* green  */
+  --color-bt-domain-receipts-faint: rgba(23, 130, 62, 0.13);
+  --color-bt-domain-competition: #916903;                /* amber  */
+  --color-bt-domain-competition-faint: rgba(145, 105, 3, 0.13);
 
   color-scheme: light;
 }
@@ -274,12 +301,46 @@
   --color-bt-card-raised: #1f2a40;   /* lifted +8% — inputs, zebra rows, inactive chips read clean against lifted card */
   --color-bt-card-float: #2a3654;   /* lifted to stay clearly above card-raised — tooltips, popovers, drawers */
 
+  /* Domain colours — the values these have always had, written out EXPLICITLY.
+   * They were declared once in `:root` and inherited by dark, so giving them
+   * light values without this block would have changed dark at the same time.
+   * An absent override is not an absent change. */
+  --color-bt-domain-home: #2dd4bf;
+  --color-bt-domain-home-faint: rgba(45, 212, 191, 0.13);
+  --color-bt-domain-crew: #fb7185;
+  --color-bt-domain-crew-faint: rgba(251, 113, 133, 0.13);
+  --color-bt-domain-lodging: #3b82f6;
+  --color-bt-domain-lodging-faint: rgba(59, 130, 246, 0.13);
+  --color-bt-domain-agenda: #f97316;
+  --color-bt-domain-agenda-faint: rgba(249, 115, 22, 0.13);
+  --color-bt-domain-travel: #fb7185;
+  --color-bt-domain-travel-faint: rgba(251, 113, 133, 0.13);
+  --color-bt-domain-events: #fbbf24;
+  --color-bt-domain-events-faint: rgba(251, 191, 36, 0.13);
+  --color-bt-domain-receipts: #22c55e;
+  --color-bt-domain-receipts-faint: rgba(34, 197, 94, 0.13);
+  --color-bt-domain-competition: #fbbf24;
+  --color-bt-domain-competition-faint: rgba(251, 191, 36, 0.13);
+
   /* Match-play neutral ramp — the values these have always had. Written out
    * EXPLICITLY, not left to inherit: a token defined only in `:root` is
    * inherited by dark, so changing the light value silently changes dark too.
    * An absent override is not an absent change. */
   --color-bt-team-ink: 100%;
   --color-bt-hero-neutral: linear-gradient(158deg, #222e44 0%, #1a2231 100%);
+  /* Golf score colours — the pastels and tints these have always had. */
+  --color-bt-zebra: rgba(255, 255, 255, 0.025);
+  --color-bt-zebra-total: rgba(45, 212, 191, 0.07);
+
+  --color-bt-score-eagle: #fcd34d;
+  --color-bt-score-eagle-bg: rgba(251, 191, 36, 0.22);
+  --color-bt-score-birdie: #fca5a5;
+  --color-bt-score-birdie-bg: rgba(248, 113, 113, 0.18);
+  --color-bt-score-bogey: #93c5fd;
+  --color-bt-score-bogey-bg: rgba(96, 165, 250, 0.16);
+  --color-bt-score-double: #c4b5fd;
+  --color-bt-score-double-bg: rgba(139, 92, 246, 0.20);
+
   --color-bt-match-a: #eaeef4;
   --color-bt-match-b: #566275;
   --color-bt-match-halved: #8c97a8;

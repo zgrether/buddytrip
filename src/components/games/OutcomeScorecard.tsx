@@ -269,7 +269,7 @@ function LeadSubCell({ side, wide }: { side: "A" | "B"; wide?: boolean }) {
         minWidth: wide ? TOTAL_W : SUB_W,
         minHeight: 44,
         flexShrink: 0,
-        background: wide ? "rgba(45,212,191,0.07)" : "rgba(255,255,255,0.025)",
+        background: wide ? "var(--color-bt-zebra-total)" : "var(--color-bt-zebra)",
       }}
       data-testid={`lead-subcell-${side}${wide ? "-total" : ""}`}
     >

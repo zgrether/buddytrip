@@ -877,7 +877,13 @@ function InlineRangeCalendar({
                       ? "var(--color-bt-text)"
                       : "var(--color-bt-text-dim)",
                   fontWeight: isCap ? 700 : 400,
-                  opacity: inMonth ? 1 : 0.45,
+                  // NO opacity multiplier. The out-of-month day already carries
+                  // --color-bt-text-dim; multiplying it by 0.45 took it to 1.82 : 1
+                  // in light. STYLE_GUIDE.md:197 — "Never use opacity to dim text —
+                  // use explicit token values. Opacity-based dimming compounds the
+                  // contrast problem, especially in light mode." The cell is
+                  // clickable, so :615 disabled-opacity does not apply; the token
+                  // alone still separates it from an in-month day (4.76 vs 17.85).
                   // 1px teal inset ring on hover for non-cap days, same
                   // treatment as DatePicker / DatesSheet's full picker.
                   boxShadow:
