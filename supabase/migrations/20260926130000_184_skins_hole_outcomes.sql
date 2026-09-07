@@ -52,6 +52,34 @@
 -- `submitted_by` is audit only, never a gate — the same contract
 -- `score_entries.submitted_by` carries.
 --
+-- ── The two FKs into `public.users` point in OPPOSITE directions ───────────
+--
+-- Migration 027's policy is "authorship SET NULL, transient rows CASCADE", and
+-- 129 added a coverage guard because `score_entries.submitted_by` had arrived
+-- with the DEFAULT (NO ACTION) and made every account that had ever entered a
+-- score undeleteable in production (#993). So:
+--
+--   · `submitted_by`   -> SET NULL. It is authorship. Losing it costs an audit
+--                         trail and nothing else.
+--   · `winner_user_id` -> NO ACTION, and therefore a DELIBERATELY BLOCKING FK,
+--                         declared as such in `userDeleteFks.coverage.test.ts`.
+--
+-- The second needs its reason stated, because "blocking" reads as the careless
+-- option and here it is the considered one. Since migration 130, deleting an
+-- ACCOUNT converts the `users` row to a placeholder and never deletes it, so a
+-- blocking FK cannot break account deletion. The only thing that still deletes a
+-- row is `delete_orphan_guest_user`, which catches `foreign_key_violation` ON
+-- PURPOSE — being blocked there is the DESIRED outcome, and the placeholder
+-- survives with its history rather than taking it along.
+--
+-- That is exactly the case here, and it is the `expense_splits` argument in a
+-- different currency: a placeholder who won holes is part of what happened in
+-- that grouping. CASCADE would delete those rows and turn played holes into
+-- unplayed ones — a card with gaps in it, and a grouping whose awarded skins
+-- silently stop adding up to what it played for. SET NULL is not available at
+-- all: it would violate the `won` half of the result-shape CHECK below, so the
+-- delete would fail anyway, and with a far less legible error.
+--
 -- ── NOT hashed, deliberately ───────────────────────────────────────────────
 --
 -- `configHash` (#16) fingerprints CONFIG, and score-derived fields are excluded
@@ -69,8 +97,14 @@ CREATE TABLE IF NOT EXISTS public.skins_hole_outcomes (
   -- The discriminator. 'won' = one player took the hole outright; 'tied' = it
   -- was played and carried. Absence of a row = not entered.
   result text NOT NULL CHECK (result IN ('won', 'tied')),
-  winner_user_id text REFERENCES public.users(id) ON DELETE CASCADE,
-  submitted_by text REFERENCES public.users(id),
+  -- NO ACTION (the default, spelled out), which makes this a DELIBERATELY
+  -- BLOCKING FK into `public.users` — see the note below.
+  winner_user_id text REFERENCES public.users(id) ON DELETE NO ACTION,
+  -- SET NULL: authorship, per migration 027's policy. `score_entries.submitted_by`
+  -- arrived with the default NO ACTION and made every account that had entered a
+  -- score undeleteable (#993, fixed in 129); this is that lesson applied at the
+  -- point the column is created rather than after someone hits it.
+  submitted_by text REFERENCES public.users(id) ON DELETE SET NULL,
   submitted_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (grouping_id, hole_number),
   CONSTRAINT skins_hole_outcomes_result_shape CHECK (
