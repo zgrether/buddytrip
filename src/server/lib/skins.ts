@@ -89,7 +89,34 @@ export async function computeSkinsResults(
 
   const groupingIds = [...new Set(participants.map((p) => p.groupingId))];
   const tallies = tallySkins(groupingIds, rowsByGrouping, holeCount, glorious);
-  const standings = computeSkinsStandings(participants, tallies);
+
+  /**
+   * ONLY PLAYERS WHOSE GROUPING HAS RECORDED SOMETHING ARE BANKED.
+   *
+   * This is a qualification step, and skipping it put points on a real cup
+   * board. `computeSkinsStandings` gives every grouped participant a row — which
+   * is right for the LIVE board, where a player yet to tee off shows a dash — but
+   * banking those rows publishes N standings all on 0 skins and all at
+   * `position: 1`. The leaderboard reads that as every team TIED FOR FIRST and
+   * `placementPoints` averages the whole distribution across them, so a game
+   * sitting in CONFIGURING paid out its entire pot evenly (5·5·5·5 of 20, seen
+   * on BBMI 2025).
+   *
+   * It fires on the SETUP path rather than the finalize: `games.saveConfig`
+   * recomputes after every settings Save, so merely configuring the game
+   * published an awardable result.
+   *
+   * The rule is the one `StrokeTeamTotals` already states for its own board — "a
+   * team with nobody playing yet gets NO row rather than a row totalling zero" —
+   * applied to what is BANKED rather than what is drawn. Zero is a real score
+   * here; not having played is not a score at all, and the two must not be
+   * written the same way.
+   *
+   * `started` is per GROUPING, which is the honest unit: a hole is decided for
+   * everyone in it at once, so a player on 0 in a grouping thru nine has
+   * genuinely been beaten nine times and belongs in the standings.
+   */
+  const standings = computeSkinsStandings(participants, tallies).filter((s) => s.started);
 
   // Team aggregate — competition games only. A standalone game has no
   // `competition_id`, so `teamOf` stays empty and the roll-up returns [],

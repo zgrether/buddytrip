@@ -229,6 +229,110 @@ describe("skins — the carryover reaches the cup", () => {
     expect((rows ?? []).find((r) => r.entity_id === owner)?.raw_score).toBe(18);
   }, 60_000);
 
+it("AN UNPLAYED GAME BANKS NOTHING — it must not pay the pot out evenly", async () => {
+    /**
+     * The bug, and it reached a real cup board: a skins game sitting in
+     * CONFIGURING ("Ready — enable scoring") was awarding 5 · 5 · 5 · 5 of its 20
+     * points to four teams that had not played it.
+     *
+     * The mechanism is not the leaderboard. `computeSkinsResults` emitted a row
+     * for EVERY grouped participant regardless of whether anything had been
+     * recorded, so an unplayed game produced N standings all on 0 skins and all
+     * at `position: 1`. `rollUp` then read four teams TIED FOR FIRST and
+     * `placementPoints` averaged the whole distribution across them — which is
+     * the correct behaviour for a genuine four-way tie and nonsense for a game
+     * nobody has played.
+     *
+     * It fires on the SETUP path, not the finalize: `games.saveConfig` recomputes
+     * results after every settings Save (the arm stroke and rack use), so simply
+     * configuring the game published a full set of awardable rows.
+     *
+     * Asserting the ABSENCE of rows is what makes this real. A test that checked
+     * the leaderboard total would pass against a build that wrote the rows and
+     * happened to display them differently.
+     */
+    const comp = await ctx.createCompetition(tripId, "Skins Unplayed", { scoringModel: "points" });
+    const teamA = await ctx.createTeam(comp, "Alpha2", { shortName: "AL2" });
+    const teamB = await ctx.createTeam(comp, "Bravo2", { shortName: "BR2" });
+    const owner = ctx.getUser("owner").id;
+    const planner = ctx.getUser("planner").id;
+    await ctx.admin.from("team_assignments").insert([
+      { competition_id: comp, user_id: owner, team_id: teamA },
+      { competition_id: comp, user_id: planner, team_id: teamB },
+    ]);
+
+    const game = (await ctx.caller().games.create({
+      tripId, gameTypeId: SKINS, name: "Unplayed Skins", competitionId: comp,
+    })) as { id: string };
+    await ctx.caller().games.addParticipants({ tripId, gameId: game.id, userIds: [owner, planner] });
+    await ctx.groupStrokeParticipants(game.id, [owner, planner]);
+
+    // The setup-path recompute, through the same procedure the settings page
+    // calls. No hole has been recorded.
+    await ctx.caller().games.finish({ tripId, gameId: game.id });
+
+    const { data: rows } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, entity_type, raw_score, position")
+      .eq("game_id", game.id);
+
+    expect(
+      rows ?? [],
+      "an unplayed skins game must bank no results — every row here is points the cup will pay out"
+    ).toEqual([]);
+  }, 60_000);
+
+  it("…and a PARTLY played one banks only the groups that have played", async () => {
+    /**
+     * The other half, and the control: the fix must not be "write nothing until
+     * every group is done". A group thru a few holes has genuinely won those
+     * pots; a group that has not teed off has won nothing and is not on 0, it is
+     * absent.
+     *
+     * That is the rule `StrokeTeamTotals` already states for its own board — "a
+     * team with nobody playing yet gets NO row rather than a row totalling zero"
+     * — applied to what gets BANKED rather than what gets drawn.
+     */
+    const comp = await ctx.createCompetition(tripId, "Skins Partial", { scoringModel: "points" });
+    const teamA = await ctx.createTeam(comp, "Alpha3", { shortName: "AL3" });
+    const teamB = await ctx.createTeam(comp, "Bravo3", { shortName: "BR3" });
+    const owner = ctx.getUser("owner").id;
+    const planner = ctx.getUser("planner").id;
+    const member = ctx.getUser("member").id;
+    const outsider = ctx.getUser("outsider").id;
+    await ctx.admin.from("team_assignments").insert([
+      { competition_id: comp, user_id: owner, team_id: teamA },
+      { competition_id: comp, user_id: planner, team_id: teamA },
+      { competition_id: comp, user_id: member, team_id: teamB },
+      { competition_id: comp, user_id: outsider, team_id: teamB },
+    ]);
+
+    const game = (await ctx.caller().games.create({
+      tripId, gameTypeId: SKINS, name: "Partial Skins", competitionId: comp,
+    })) as { id: string };
+    await ctx.caller().games.addParticipants({
+      tripId, gameId: game.id, userIds: [owner, planner, member, outsider],
+    });
+    const played = await ctx.groupStrokeParticipants(game.id, [owner, planner]);
+    await ctx.groupStrokeParticipants(game.id, [member, outsider]); // never tees off
+    await ctx.caller().games.enableScoring({ tripId, gameId: game.id });
+    await hole(game.id, played, 1, owner, owner);
+
+    await ctx.caller().games.finish({ tripId, gameId: game.id });
+
+    const { data: rows } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, entity_type, raw_score")
+      .eq("game_id", game.id);
+    const users = (rows ?? []).filter((r) => r.entity_type === "user").map((r) => r.entity_id);
+
+    expect(users.sort(), "only the group that played is banked").toEqual([owner, planner].sort());
+    // …and the untouched group's TEAM gets no row either, rather than a zero that
+    // would read as "played and won nothing".
+    const teams = (rows ?? []).filter((r) => r.entity_type === "team").map((r) => r.entity_id);
+    expect(teams).toEqual([teamA]);
+  }, 60_000);
+
   it("the game is reported as STARTED once a hole is recorded", async () => {
     /**
      * Migration 186's arm, from the caller's side. `game_started` is what the
