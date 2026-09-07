@@ -913,7 +913,16 @@ export function SkinsGameView() {
           onClear={onClear}
           currentHole={currentHole}
           onHoleChange={setCurrentHole}
-          onFinish={() => void finalize()}
+          // PURE NAVIGATION back to the board — no mutation, the same as rack
+          // and stroke pass. This called `finalize()`, so a group finishing its
+          // own card POSTED THE WHOLE GAME: every other grouping was locked out
+          // mid-round by the first one to reach 18.
+          //
+          // The entry screen only ever knows about ONE grouping, so it cannot be
+          // the thing that decides a game is over. The board's
+          // `GameLifecycleActions` is, and it gates on `allComplete` across every
+          // grouping.
+          onFinish={back}
           onBack={back}
           onOpenGrid={() => setGridOpen(true)}
           onConfig={inPanel ? undefined : canEdit ? openConfig : undefined}
@@ -924,7 +933,10 @@ export function SkinsGameView() {
           onRetryCell={retryCell}
           hideHeader={inPanel}
           readOnly={!scoringEnabled}
-          finishSubtext={allComplete ? "Saves results · shows final standings" : "Every hole must be in first"}
+          // No subtext: the shared default describes a Finish that banks results,
+          // and this one returns to the board. A caption promising something the
+          // button does not do is how the button came to do it.
+          finishSubtext=""
         />
         </div>
         {gridOpen && (

@@ -99,7 +99,12 @@ export function SkinsEntryView({
   onConfig,
   subtitle,
   finishLabel = "Finish",
-  finishSubtext = "Saves results · shows final standings",
+  // Empty by default. `Finish` on a skins card means "this GROUP is done" and
+  // hands back to the board; it banks nothing, because one grouping finishing is
+  // not the game finishing. The borrowed "Saves results" caption described
+  // stroke's old game-level Finish and was the reason this one was wired to a
+  // finalize.
+  finishSubtext = "",
   meId,
   glorious = NO_GLORIOUS,
   saveStatus = {},
