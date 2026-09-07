@@ -11,6 +11,7 @@ import { GolfChip } from "./GolfChip";
 import { ScoreSaveBadge } from "./ScoreSaveBadge";
 import { UnsavedScoresBanner } from "./UnsavedScoresBanner";
 import { golfWord, golfResult, GOLF_STYLE } from "./golfScore";
+import { fmtToPar } from "@/lib/rackNStack";
 import {
   parseScoreCellKey,
   scoreCellKey,
@@ -73,6 +74,22 @@ interface ScoreEntryViewProps {
    * this whole feature keeps having to guard against.
    */
   rubric?: StablefordRubric | null;
+  /**
+   * How the RUNNING line reads.
+   *
+   * `rank` (the default) is the multi-competitor form: a running total plus a
+   * “Leading” badge for whoever is ahead of the others on this card.
+   *
+   * `toPar` is for a card with ONE competitor — scramble, where the team is the
+   * only participant. “Leading” there is either vacuously true or, worse,
+   * comparing against teams on other cards — and because this is golf, the group
+   * that teed off last is always “leading” on holes-played alone. A badge whose
+   * value is decided by tee time is noise wearing a result’s clothes.
+   *
+   * So it says what a scramble team actually wants: the round so far and where
+   * it sits against par, which is the number the format is played to.
+   */
+  runningStyle?: "rank" | "toPar";
   pips?: Record<string, Set<string>>;
   /** #550: hide the view's own header — as a panel the app bar carries
    *  back/title (+ the config gear). The scorecard affordance relocates to the
@@ -121,6 +138,7 @@ export function ScoreEntryView({
   onRetryCell,
   pips,
   rubric = null,
+  runningStyle = "rank",
   banner,
   hideHeader = false,
   finishSubtext = "Saves results · shows final standings",
@@ -194,6 +212,18 @@ export function ScoreEntryView({
     : computeStrokePlayStandings(scoredIds, entries);
   const standingById = new Map(standings.map((s) => [s.entityId, s]));
   const totalOf = (pid: string) => standingById.get(pid)?.rawScore ?? 0;
+  /**
+   * NET TO-PAR OVER SCORED HOLES — the number a scramble card is played to.
+   *
+   * Relative to holes PLAYED, never a full round’s par: a team thru 3 is −2 for
+   * three holes, not −17. Same rule `computeStrokeLeaderboard` uses, and built
+   * from the same `netStrokeEntriesByHole` + `parByHole` the running total and
+   * the per-hole points already come from, so the three cannot disagree.
+   */
+  const toParOf = (pid: string) =>
+    netStrokeEntriesByHole(rawEntries, pips ?? {})
+      .filter((e) => e.participant_id === pid && parByHole[e.unit_label] != null)
+      .reduce((acc, e) => acc + (e.value - parByHole[e.unit_label]), 0);
   /**
    * WHAT THIS HOLE WAS WORTH — the points for one player on one hole.
    *
@@ -434,8 +464,13 @@ export function ScoreEntryView({
                       <span style={{ fontWeight: 400, color: "var(--color-bt-text-dim)" }}>No scores yet</span>
                     ) : (
                       <>
-                        <span style={{ fontWeight: 400, color: lead ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}>
-                          {total} {rubric ? "pts" : anyStrokes ? "net" : "total"}
+                        <span
+                          style={{ fontWeight: 400, color: lead && runningStyle === "rank" ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)" }}
+                          data-testid={`entry-running-${p.id}`}
+                        >
+                          {runningStyle === "toPar"
+                            ? `Total: ${total} · To Par: ${fmtToPar(toParOf(p.id))}`
+                            : `${total} ${rubric ? "pts" : anyStrokes ? "net" : "total"}`}
                         </span>
                         {par != null && v != null && golfWord(v, par) ? (
                           <span style={{ fontWeight: 600, color: GOLF_STYLE[golfResult(v, par)!].fg }}>
@@ -464,7 +499,11 @@ export function ScoreEntryView({
                           <span style={{ fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
                             {` · ${v - par > 0 ? "+" : ""}${v - par} · ${ptsLabel(holePts)}`}
                           </span>
-                        ) : lead ? (
+                        ) : lead && runningStyle === "rank" ? (
+                          /* No “Leading” on a one-competitor card — see `runningStyle`.
+                             It is either vacuous or a comparison decided by tee
+                             time, and the to-par above already says where the
+                             team stands. */
                           <span style={{ fontWeight: 600, color: "var(--color-bt-place-1-text)" }}> · Leading</span>
                         ) : null}
                       </>

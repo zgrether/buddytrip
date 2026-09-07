@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
+import { groupThruLine } from "@/lib/thruLabel";
 
 /**
  * Groups (entry) for rack-n-stack (addendum §3). One card per foursome; tapping
@@ -86,7 +87,12 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
                     : "var(--color-bt-border)",
             }}
           >
-            <div className="flex items-center justify-between gap-1">
+            {/* items-START, not center. Once a team name can wrap to two lines
+                a centred row drags the "Enter ›" affordance down to the middle of
+                the name, so it no longer lines up with the first line of text
+                or with the chevrons on the single-line cards beside it. Pinned
+                to the top, it reads as one row of controls across the grid. */}
+            <div className="flex items-start justify-between gap-1">
               {/* A TEAM NAME WRAPS; a group label truncates. "Do Dead Hookahs
                   Float" is the whole identity of the tile and reading "Do Dead
                   Hookahs Fl..." tells you almost nothing, where "Group 3" loses
@@ -106,7 +112,7 @@ export function FoursomeEntry({ groups, onEnter }: { groups: FoursomeGroupView[]
             </div>
             <div className="truncate" style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 1, whiteSpace: "nowrap" }}>
               {g.teeLabel ? `${g.teeLabel} tee · ` : ""}
-              {g.thru == null ? "not started" : `thru ${g.thru}`}
+              {groupThruLine(g.thru, !!g.finished)}
             </div>
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
               {g.players.map((p) => (

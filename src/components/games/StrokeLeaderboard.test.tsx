@@ -80,7 +80,7 @@ describe("the Stableford board", () => {
   it("renders in POINTS order where to-par would disagree", () => {
     const rows = computeStrokeLeaderboard(["steady", "spiky"], STEADY_VS_SPIKY, PAR4, BBMI);
     const html = renderToStaticMarkup(
-      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={BBMI} />
+      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={BBMI} unitCount={18} />
     );
 
     // The ORDER on screen, not the order in the array the engine returned.
@@ -90,7 +90,7 @@ describe("the Stableford board", () => {
   it("shows each player's points in a cell only that player's row emits", () => {
     const rows = computeStrokeLeaderboard(["steady", "spiky"], STEADY_VS_SPIKY, PAR4, BBMI);
     const html = renderToStaticMarkup(
-      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={BBMI} />
+      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={BBMI} unitCount={18} />
     );
 
     // Anchored per player, because 8 and 6 are short generic numbers and the
@@ -100,15 +100,18 @@ describe("the Stableford board", () => {
     expect(html).toContain('data-testid="stroke-lb-col-pts"');
   });
 
-  it("keeps STRK and TO PAR alongside PTS — a true fact is not dropped to fit a new one", () => {
+  it("keeps RND and TO PAR alongside PTS — a true fact is not dropped to fit a new one", () => {
     const rows = computeStrokeLeaderboard(["steady", "spiky"], STEADY_VS_SPIKY, PAR4, BBMI);
     const html = renderToStaticMarkup(
-      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={BBMI} />
+      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={BBMI} unitCount={18} />
     );
 
+    // RND · THRU · TO PAR — "Strk" was renamed and moved ahead of THRU: the
+    // round's score is the number being compared and THRU qualifies it.
+    expect(html).toContain(">Rnd<");
     expect(html).toContain(">Thru<");
-    expect(html).toContain(">Strk<");
     expect(html).toContain(">To par<");
+    expect(html).not.toContain(">Strk<");
     expect(html).toContain(">Pts<");
     // spiky's card is still 20 strokes and +8 — the board reports the round as
     // played as well as what it pays.
@@ -121,7 +124,7 @@ describe("the Traditional board is unchanged", () => {
   it("ranks by to-par and renders NO points column", () => {
     const rows = computeStrokeLeaderboard(["steady", "spiky"], STEADY_VS_SPIKY, PAR4, null);
     const html = renderToStaticMarkup(
-      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={null} />
+      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={null} unitCount={18} />
     );
 
     // The other ordering — which is what makes the Stableford case above
@@ -147,13 +150,13 @@ describe("the Traditional board is unchanged", () => {
      */
     const rows = computeStrokeLeaderboard(["steady", "spiky"], STEADY_VS_SPIKY, PAR4, null);
     const html = renderToStaticMarkup(
-      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={null} />
+      <StrokeLeaderboard rows={rows} participants={PEOPLE} rubric={null} unitCount={18} />
     );
 
     expect(html).toContain('class="w-12 text-right text-sm font-bold tabular-nums"');
     // Four numeric columns would mean five `w-` trailing cells per row; three
     // means three. Counting the header's column spans is the cheapest form.
     const headerCols = (html.match(/uppercase tracking-wider/g) ?? []).length;
-    expect(headerCols).toBe(4); // "Leaderboard" eyebrow + Thru + Strk + To par
+    expect(headerCols).toBe(4); // "Leaderboard" eyebrow + Rnd + Thru + To par
   });
 });

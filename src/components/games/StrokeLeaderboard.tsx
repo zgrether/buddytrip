@@ -6,6 +6,7 @@ import { ordinalShort } from "@/components/competition/CompetitionGamesPanel";
 import type { StrokeLeaderboardRow } from "@/lib/strokePlay";
 import type { StablefordRubric } from "@/lib/stableford";
 import type { Participant } from "@/components/games/types";
+import { thruLabel } from "@/lib/thruLabel";
 
 /**
  * Stroke game SURFACE leaderboard — a traditional golf board: avatar · player · thru ·
@@ -34,6 +35,7 @@ export function StrokeLeaderboard({
   rows,
   participants,
   rubric,
+  unitCount,
 }: {
   rows: StrokeLeaderboardRow[];
   participants: Participant[];
@@ -48,6 +50,12 @@ export function StrokeLeaderboard({
    * as a stroke-play one.
    */
   rubric: StablefordRubric | null;
+  /**
+   * The round's length, from the scorecard schema — never a literal 18. It is
+   * only used to decide when THRU reads **F**, and a 9-hole game is exactly the
+   * case a hardcoded 18 gets wrong.
+   */
+  unitCount: number;
 }) {
   const pById = new Map(participants.map((p) => [p.id, p]));
   const anyStarted = rows.some((r) => r.started);
@@ -61,8 +69,12 @@ export function StrokeLeaderboard({
         </span>
         {anyStarted && (
           <div className="flex items-center gap-4">
+            {/* RND · THRU · TO PAR. "Rnd" is the round's score and leads,
+                because that is the number being compared; THRU qualifies it.
+                "Strk" said the same thing in a word golf does not use on a
+                board. */}
+            <span className="w-10 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Rnd</span>
             <span className="w-10 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Thru</span>
-            <span className="w-10 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>Strk</span>
             <span className="w-12 text-right text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>To par</span>
             {showPoints && (
               <span
@@ -112,11 +124,15 @@ export function StrokeLeaderboard({
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                   {p?.name ?? "Player"}
                 </span>
-                <span className="w-10 text-right text-[13px] tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
-                  {r.holesPlayed}
-                </span>
                 <span className="w-10 text-right text-[13px] tabular-nums" style={{ color: "var(--color-bt-text)" }}>
                   {r.started ? r.totalStrokes : "—"}
+                </span>
+                <span
+                  className="w-10 text-right text-[13px] tabular-nums"
+                  style={{ color: "var(--color-bt-text-dim)" }}
+                  data-testid={`stroke-lb-thru-${r.entityId}`}
+                >
+                  {thruLabel(r.holesPlayed, unitCount)}
                 </span>
                 <span
                   className={

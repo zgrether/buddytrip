@@ -3,6 +3,7 @@
 import { TrendingUp } from "lucide-react";
 import { fmtToPar, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
 import { teamTextColor } from "@/lib/teamTextColor";
+import { thruLabel } from "@/lib/thruLabel";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 
 /**
@@ -25,6 +26,10 @@ export interface RackTeam {
 }
 
 interface RackBoardProps {
+  /** The round's length, from the scorecard schema — never a literal 18. Decides
+   *  when THRU reads **F**, and a 9-hole rack is the case a hardcoded 18 gets
+   *  wrong. Shared with the stroke board through `thruLabel`. */
+  unitCount: number;
   teamA: RackTeam;
   teamB: RackTeam;
   slots: RackSlot[];
@@ -51,6 +56,7 @@ interface RackBoardProps {
 
 // ── The board (label + toggle + rack + sit-out) ──────────────────────────────
 export function RackBoard({
+  unitCount,
   teamA,
   teamB,
   slots,
@@ -98,7 +104,7 @@ export function RackBoard({
               <div className="flex items-center" style={{ height: 24, padding: "0 12px", background: "var(--color-bt-card-raised)", borderBottom: "1px solid var(--color-bt-border)" }}>
                 <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--color-bt-text-dim)" }}>Slot {s.slot}</span>
               </div>
-              <RackRow slot={s} nameOf={nameOf} colorOf={colorOf} />
+              <RackRow unitCount={unitCount} slot={s} nameOf={nameOf} colorOf={colorOf} />
             </div>
           ))}
         </div>
@@ -117,7 +123,7 @@ export function RackBoard({
           <div className="min-w-0 flex-1 overflow-hidden rounded-xl border" style={{ borderColor: "var(--color-bt-border)", background: "var(--color-bt-card)" }}>
             {slots.map((s, i) => (
               <div key={s.slot} style={{ borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)" }}>
-                <RackRow slot={s} nameOf={nameOf} colorOf={colorOf} />
+                <RackRow unitCount={unitCount} slot={s} nameOf={nameOf} colorOf={colorOf} />
               </div>
             ))}
           </div>
@@ -160,13 +166,13 @@ const PRIMARY = 30;
 const SECONDARY = 22;
 const ROW_H = TOP_PAD + PRIMARY + SECONDARY;
 
-function RackRow({ slot, nameOf, colorOf }: { slot: RackSlot; nameOf: (id: string) => string; colorOf: (t: "A" | "B") => string }) {
+function RackRow({ slot, nameOf, colorOf, unitCount }: { slot: RackSlot; nameOf: (id: string) => string; colorOf: (t: "A" | "B") => string; unitCount: number }) {
   const aLead = slot.leader === "A";
   const bLead = slot.leader === "B";
   const gap = Math.round(slot.gap);
   return (
     <div className="flex items-stretch" style={{ height: ROW_H }}>
-      <ScoreBlock value={slot.a.value} thru={slot.a.thru} lead={aLead} color={colorOf("A")} />
+      <ScoreBlock value={slot.a.value} thru={slot.a.thru} unitCount={unitCount} lead={aLead} color={colorOf("A")} />
       <NameBlock name={nameOf(slot.a.id)} align="right" lead={aLead} color={colorOf("A")} gapText={aLead ? `Up by ${gap}` : null} />
       <div className="flex shrink-0 flex-col" style={{ width: 28, paddingTop: TOP_PAD, background: "var(--color-bt-card-raised)" }}>
         <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
@@ -175,12 +181,12 @@ function RackRow({ slot, nameOf, colorOf }: { slot: RackSlot; nameOf: (id: strin
         <div style={{ height: SECONDARY }} />
       </div>
       <NameBlock name={nameOf(slot.b.id)} align="left" lead={bLead} color={colorOf("B")} gapText={bLead ? `Up by ${gap}` : null} />
-      <ScoreBlock value={slot.b.value} thru={slot.b.thru} lead={bLead} color={colorOf("B")} />
+      <ScoreBlock value={slot.b.value} thru={slot.b.thru} unitCount={unitCount} lead={bLead} color={colorOf("B")} />
     </div>
   );
 }
 
-function ScoreBlock({ value, thru, lead, color }: { value: number; thru: number; lead: boolean; color: string }) {
+function ScoreBlock({ value, thru, unitCount, lead, color }: { value: number; thru: number; unitCount: number; lead: boolean; color: string }) {
   return (
     <div className="flex shrink-0 flex-col" style={{ width: 60, paddingTop: TOP_PAD, background: lead ? color : "transparent" }}>
       <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
@@ -192,7 +198,7 @@ function ScoreBlock({ value, thru, lead, color }: { value: number; thru: number;
         {/* Secondary label on the leader's team color — same computed contrast
             color, slightly muted so it reads as a sub-label (not full-strength). */}
         <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.06em", color: lead ? teamTextColor(color) : "var(--color-bt-text-dim)", opacity: lead ? 0.85 : undefined }}>
-          THRU {thru}
+          THRU {thruLabel(thru, unitCount)}
         </span>
       </div>
     </div>
