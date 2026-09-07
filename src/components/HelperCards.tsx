@@ -28,7 +28,7 @@ const HELPER_FEATURES = [
   {
     icon: Trophy,
     iconBg: "rgba(251,191,36,0.12)",
-    iconColor: "#fbbf24",
+    iconColor: "var(--color-bt-warning)",
     title: "Compete",
     body: "Teams, events, live scoring. Weight the last round heavier so it stays interesting.",
   },
