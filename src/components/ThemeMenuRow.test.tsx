@@ -1,16 +1,35 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ThemeMenuRow } from "./ThemeMenuRow";
-import { THEMES, THEME_LABELS } from "@/lib/theme";
 
 /**
  * The VISIBLE case. Its sibling `ThemeMenuRow.hidden.test.tsx` mocks
  * `themeMenu` to false; a `vi.mock` applies to a whole file, which is why
  * these are two files rather than two `it`s.
  *
- * No visual assertions — `renderToStaticMarkup` has no layout engine, and the
- * PR this ships with is a survey whose instrument is Zach's eyes.
+ * ── WHY THIS FILE MOCKS THE FLAG **TRUE** RATHER THAN INHERITING IT ────────
+ *
+ * It used to render `ThemeMenuRow` against whatever `THEME_MENU_VISIBLE`
+ * happened to be in production. That reads as harmless — it IS true today —
+ * and it made these four assertions a TRIPWIRE across the kill switch: flip
+ * the flag to hide the row and all four fail, because the component correctly
+ * renders nothing.
+ *
+ * Found by building the revert rather than by reasoning about it. It is the
+ * same shape as the `forcedTheme` flat ban that PR 0 part 1 replaced: a test
+ * that couples itself to a production constant's CURRENT value blocks the
+ * change that constant exists to make.
+ *
+ * So both render files now pin the flag explicitly — this one true, its
+ * sibling false — and neither can be broken by flipping it for real.
+ * `theme.test.ts`'s T0 is the one place that reads the live value, and it does
+ * so deliberately, to assert the pairing.
+ *
+ * No visual assertions — `renderToStaticMarkup` has no layout engine.
  */
+vi.mock("@/lib/themeMenu", () => ({ THEME_MENU_VISIBLE: true }));
+
+import { ThemeMenuRow } from "./ThemeMenuRow";
+import { THEMES, THEME_LABELS } from "@/lib/theme";
 describe("ThemeMenuRow", () => {
   const html = renderToStaticMarkup(<ThemeMenuRow />);
 
