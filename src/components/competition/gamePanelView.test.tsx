@@ -7,6 +7,9 @@ import { MatchGameView } from "@/components/games/MatchGameView";
 import { RackGameView } from "@/components/games/RackGameView";
 import { NonGolfGameView } from "@/components/games/NonGolfGameView";
 import { StrokeGameView } from "@/components/games/StrokeGameView";
+import { PickemGameView } from "@/components/games/PickemGameView";
+import { GAME_TYPES } from "@/lib/gameTypes";
+import { surfaceForGameType, type GameSurfaceId } from "@/lib/formatSurface";
 
 /**
  * #744 — the board's game pane must not survive a `?game=` swap.
@@ -25,13 +28,33 @@ import { StrokeGameView } from "@/components/games/StrokeGameView";
  * `Zach's device check` on the PR is what closes the last gap.
  */
 
-const ALL_PANEL_FORMATS = [
-  "gtt_match_play",
-  "gtt_rack_n_stack",
-  "gtt_stroke_play",
-  "gtt_manual",
-  "gtt_generic_card",
-] as const;
+/**
+ * Every panel format, DERIVED FROM THE CATALOG rather than listed.
+ *
+ * This was a hardcoded array, and that is how scramble went uncovered: a new
+ * game type does not add itself to a literal, so the guard below simply never
+ * asked about it. Reading `GAME_TYPES` means a format is covered the moment it
+ * exists — the same move `formatSurface.test.ts` already makes, and the reason
+ * that one caught its half of this bug while this one did not.
+ */
+const ALL_PANEL_FORMATS = GAME_TYPES.map((t) => t.id).filter(opensAsPanel);
+
+/**
+ * The view each surface opens. Keyed by SURFACE, not by game type, because that
+ * is the unit that has a view — stroke and scramble share one, exactly as
+ * `FORMAT_SURFACE` says they share a settings surface.
+ *
+ * `satisfies Record<GameSurfaceId, …>` is what makes this self-maintaining: a
+ * fifth surface does not compile until it names its component, which is the
+ * property `FORMAT_SURFACE` itself relies on.
+ */
+const VIEW_FOR_SURFACE = {
+  match: MatchGameView,
+  rack: RackGameView,
+  stroke: StrokeGameView,
+  nongolf: NonGolfGameView,
+  pickem: PickemGameView,
+} satisfies Record<GameSurfaceId, unknown>;
 
 const GAME_A = "11111111-2222-4333-8444-555555555555";
 const GAME_B = "99999999-8888-4777-8666-555555555555";
@@ -113,10 +136,48 @@ describe("class guard — no panel-hosted view may mount unkeyed", () => {
   /**
    * A future format added to `opensAsPanel` but not to `gamePanelView` falls
    * through to the non-golf branch, which IS keyed — so it can't reintroduce #744.
-   * This asserts the fall-through stays keyed rather than asserting the (correct)
-   * fact that an unknown golf format would render the wrong view; that is
-   * `opensAsPanel`'s allowlist job, covered in `gameRoutes.test.ts`.
+   *
+   * ── THE REASONING BELOW WAS WRONG, AND IT SHIPPED THE BUG IT DESCRIBES ─────
+   *
+   * This block used to continue: "…rather than asserting the (correct) fact that
+   * an unknown golf format would render the wrong view; that is `opensAsPanel`'s
+   * allowlist job, covered in `gameRoutes.test.ts`."
+   *
+   * Scramble is the case it named, and the delegation does not hold.
+   * `opensAsPanel` answers WHETHER a format panels, never WHICH view it opens.
+   * Scramble was added to the allowlist correctly — it does panel —
+   * `gameRoutes.test.ts` passed, this file passed, and the board opened
+   * `NonGolfGameView` for a golf game. Zach found it by pressing the button: a
+   * scramble game showed the non-golf competition-format selector and refused to
+   * go live, because non-golf readiness wants a point value.
+   *
+   * Both guards were green because both asked properties the wrong answer also
+   * has. The fall-through IS keyed. The format IS on the allowlist. Neither
+   * question is "is it the right component", which is the only one that
+   * distinguishes the builds — the "assert the mechanism, not the outcome"
+   * family, arriving through a documented decision NOT to assert it.
+   *
+   * `every panel format opens its REGISTERED view` below is that missing
+   * question, and it is driven off the catalog so a format cannot be absent from
+   * the list the way scramble was absent from `ALL_PANEL_FORMATS`.
    */
+  it.each(ALL_PANEL_FORMATS)("%s opens its REGISTERED view", (format) => {
+    /**
+     * THE QUESTION NEITHER GUARD ASKED. `opensAsPanel` says a format panels;
+     * this says WHICH view it gets, resolved through the same registry the
+     * settings page uses — so routing and settings cannot disagree about what a
+     * format is, and a format missing from `gamePanelView` fails here instead of
+     * silently rendering the non-golf fall-through.
+     *
+     * Scramble is the worked case: golf, panels, on the allowlist, registered to
+     * the `stroke` surface — and it was opening `NonGolfGameView`.
+     */
+    const surface = surfaceForGameType(format);
+    expect(surface, `${format} resolves to no surface`).not.toBeNull();
+    const expected = VIEW_FOR_SURFACE[surface as GameSurfaceId];
+    expect(gamePanelView(format, GAME_A).type, `${format} opens the wrong view`).toBe(expected);
+  });
+
   it("the fall-through branch is keyed too", () => {
     expect(gamePanelView("gtt_some_future_format", GAME_A).key).toBe(GAME_A);
   });
