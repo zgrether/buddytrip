@@ -394,7 +394,7 @@ export function SkinsGameView() {
     }
   }
 
-  const { saveState, saving, saveError, setSaveError, handleSave, handleCancel } = useConfigDraft<
+  const { saveState, saving, saveError, setSaveError, handleSave } = useConfigDraft<
     SkinsConfigDraft,
     { name: string | null; rules: string | null; scoring: boolean | null; delegates: string[] | null; pointsTotal: number | null | undefined; pointsDistribution: PointsDistribution | null | undefined; groups: string[][] | null; modifiers: ModifiersMap | null; course: SkinsConfigDraft["course"] | null }
   >({
@@ -800,7 +800,19 @@ export function SkinsGameView() {
               saving={saving}
               error={saveError}
               onSave={handleSave}
-              onDiscard={handleCancel}
+              // `confirmDiscard`, NOT the draft hook's `handleCancel`.
+              //
+              // `SettingsSaveBar` documents Cancel as "discard the draft AND
+              // close the panel", and `handleCancel` only does the first half —
+              // it resets the slices and returns. With a clean draft there are no
+              // slices to reset, so Cancel did visibly nothing and the only ways
+              // out were the X or the back button.
+              //
+              // `confirmDiscard` is the overlay's handler: it fires `onDiscard`
+              // (which is wired to this same `handleCancel` through
+              // `discardRef`) and then closes. Both halves, in the order the bar
+              // expects, and it is what the other four views pass.
+              onDiscard={confirmDiscard}
               onLeave={leave}
             />
           }

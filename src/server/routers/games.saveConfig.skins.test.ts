@@ -92,6 +92,10 @@ async function save(
     scoringEnabled?: boolean;
     pointsTotal?: number;
     courseId?: string;
+    /** MODIFIERS MUST ALWAYS BE SENT — the RPC resolves a missing key to `{}`,
+     *  so omitting it WIPES them (the P2 rule). The echo below sends the current
+     *  value on every save; this overrides it. */
+    modifiers?: Record<string, Record<string, unknown>>;
   }
 ) {
   const s = await scalars(gameId);
@@ -100,6 +104,7 @@ async function save(
     scoringEnabled: slice.scoringEnabled ?? s.scoringEnabled,
     ...(slice.pointsTotal !== undefined ? { pointsTotal: slice.pointsTotal } : {}),
     ...(slice.courseId !== undefined ? { courseId: slice.courseId } : {}),
+    ...(slice.modifiers !== undefined ? { modifiers: slice.modifiers } : {}),
     ...(slice.groups !== undefined
       ? { groups: slice.groups, groupsStructureDirty: slice.groupsStructureDirty ?? true }
       : {}),
@@ -264,5 +269,87 @@ describe("185 · the go-live arm", () => {
 
     const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
     expect(g.scoring_enabled).toBe(true);
+  }, 60_000);
+});
+
+describe("187 · glorious finishing holes on skins", () => {
+  const GFH = { glorious_holes: { holes: 3 } };
+
+  it("CAN BE TURNED ON — the refusal named an action skins does not have", async () => {
+    /**
+     * The bug, in one case. `games.entry_mode` defaults to `'score'` and skins
+     * never sets it, so the guard read that default as an answer and refused
+     * with "switch this game to hole-outcome entry" — a control skins does not
+     * render, on a game that already records a hole winner and nothing else.
+     *
+     * Fails against 185's function with GLORIOUS_REQUIRES_OUTCOME_ENTRY.
+     */
+    const gameId = await newSkinsGame("Glorious on");
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }] });
+    await expect(save(gameId, { modifiers: GFH })).resolves.toBeUndefined();
+
+    const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
+    expect(g.modifiers).toEqual(GFH);
+    // …and the column it was judged on has NOT been quietly changed to make the
+    // guard pass. The fix is to the question, not to the game.
+    expect(g.entry_mode, "skins must not need an entry mode to hold glorious").toBe("score");
+  }, 60_000);
+
+  it("THE GATE STILL BITES — the same save on a MATCH-PLAY game is refused", async () => {
+    /**
+     * The control, and the case that separates this migration from one that
+     * simply deleted the guard. Everything is identical to the case above except
+     * `game_type_id`: same caller, same payload, same modifiers, same
+     * `entry_mode = 'score'`.
+     *
+     * Done by moving ONE COLUMN on a game this file created rather than by
+     * building a second fixture or reverting the function — the shared local
+     * stack gates every save through this RPC, so restoring the old body to make
+     * a point would briefly break other suites (the reasoning
+     * `scrambleGroupScoring.rls.test.ts` sets out).
+     */
+    const gameId = await newSkinsGame("Glorious gate control");
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }] });
+
+    await ctx.admin.from("games").update({ game_type_id: "gtt_match_play" }).eq("id", gameId);
+    const refused = await save(gameId, { modifiers: GFH }).then(
+      () => null,
+      (e: Error) => e
+    );
+    // Restore BEFORE asserting so a failure cannot strand the fixture as a match
+    // game for whatever runs next.
+    await ctx.admin.from("games").update({ game_type_id: "gtt_skins" }).eq("id", gameId);
+
+    expect(refused, "a score-mode match game must still be refused").not.toBeNull();
+    expect(refused!.message).toMatch(/hole-outcome entry/i);
+  }, 60_000);
+
+  it("THE FREEZE COVERS SKINS — a recorded hole inside the window locks it", async () => {
+    /**
+     * 178 froze glorious against revaluing an already-played hole and gated it on
+     * match play. That gap had to close in the SAME change that lets skins turn
+     * glorious on: a mid-round change would otherwise revalue a hole whose pot
+     * has already been paid, which is worse here than in match play — there the
+     * weight moves a running tally, here it moves skins somebody already won.
+     *
+     * Hole 17 is inside the current window (GFH 3 → holes 16-18), so no value of
+     * N is available and the whole setting is frozen.
+     */
+    const gameId = await newSkinsGame("Glorious freeze");
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }] });
+    await save(gameId, { modifiers: GFH });
+    const groupingId = await groupingOf(gameId);
+    await recordHole(gameId, groupingId, 17);
+
+    await expect(save(gameId, { modifiers: {} })).rejects.toThrow(/no longer be changed/i);
+  }, 60_000);
+
+  it("…and an unplayed skins game still changes it freely", async () => {
+    // The freeze is a freeze, not a ban. Without this the case above would pass
+    // against a build that refused every glorious change on every skins game.
+    const gameId = await newSkinsGame("Glorious open");
+    await save(gameId, { groups: [{ name: "G1", userIds: [owner, member] }] });
+    await expect(save(gameId, { modifiers: GFH })).resolves.toBeUndefined();
+    await expect(save(gameId, { modifiers: {} })).resolves.toBeUndefined();
   }, 60_000);
 });
