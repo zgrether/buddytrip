@@ -121,20 +121,30 @@ export function SkinsGameView() {
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   /**
-   * THE GAME'S competition, never the trip's.
+   * THE GAME'S competition. There is no second answer, and no fallback.
    *
    * A trip can hold more than one, and `competitions.getByTrip` answers with the
-   * trip's FIRST — so on a two-cup trip every team lookup below resolves against
-   * a competition this game is not in. Found by probing the rendered avatar
+   * trip's FIRST — so reading it here resolved every team lookup against a
+   * competition this game is not in. Found by probing the rendered avatar
    * backgrounds rather than by reading: the colours that came back were real
    * team colours from the OTHER cup, which is why it looked right.
    *
-   * `getByTrip` is still read, as the fallback for a standalone game and for the
-   * board exit — but it is never the first answer.
+   * `undefined` UNTIL THE GAME ROW LOADS, deliberately. An earlier version fell
+   * back to the trip's competition while `gameQ` was in flight, which fixed the
+   * displayed colours and left the first render fetching the wrong cup's teams
+   * and JOINING ITS REALTIME TOPIC before correcting itself. A transient wrong
+   * answer is still a wrong answer; not answering yet is the honest state, and
+   * every consumer below already gates on the id being present.
+   *
+   * A STANDALONE game keeps a null competition and gets no teams, which is
+   * correct — it has none. The trip-level competition is read for exactly one
+   * thing, the board exit below, where "back to the leaderboard" is a trip-level
+   * idea rather than this game's.
    */
-  const competitionId =
-    ((gameQ.data as { competition_id?: string | null } | undefined)?.competition_id ??
-      (competition.data?.id as string | undefined)) || undefined;
+  const competitionId = gameQ.data
+    ? (((gameQ.data as { competition_id?: string | null }).competition_id ?? undefined) || undefined)
+    : undefined;
+  const tripCompetitionId = competition.data?.id as string | undefined;
   const teamsQ = trpc.teams.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
@@ -536,7 +546,7 @@ export function SkinsGameView() {
   // here is exactly the divergence #24 catalogues.
   const { isLocked: locked } = gameLockState({ status: gameQ.data?.status, correctionsOpen });
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
-  const exitToBoard = useExitToBoard(tripId, competitionId ?? null);
+  const exitToBoard = useExitToBoard(tripId, competitionId ?? tripCompetitionId ?? null);
   const { finalize, isPending: finalizePending } = useGameFinalize({
     tripId,
     gameId: gid,
