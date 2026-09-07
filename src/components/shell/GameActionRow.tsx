@@ -70,7 +70,17 @@ function ActionRow({ chrome }: { chrome: NonNullable<ReturnType<typeof useGameCh
     >
       <button
         type="button"
-        onClick={() => window.history.back()}
+        /* ── ASKS THE VIEW FIRST, IF THE VIEW ASKED TO BE ASKED ───────────
+           This was a bare `window.history.back()`, which meant a view with
+           an unsaved draft had no way to intervene: pick'em's sheet guard
+           covered every tab change and not the one control that leaves
+           (#1348). `beforeLeave` is absent for every format that has not
+           opted in, and absent behaves exactly as before. */
+        onClick={() =>
+          chrome.beforeLeave
+            ? chrome.beforeLeave(() => window.history.back())
+            : window.history.back()
+        }
         aria-label="Back"
         data-testid="game-back"
         className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--color-bt-hover)]"
