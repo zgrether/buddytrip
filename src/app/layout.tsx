@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Providers } from "@/lib/providers";
 import { SiteFooter } from "@/components/SiteFooter";
 import { INSTALL_CAPTURE_SCRIPT } from "@/lib/pwaInstall";
+import { THEME_SANITIZE_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -48,8 +49,16 @@ export const metadata: Metadata = {
 };
 
 // Browser/OS chrome color (PWA Phase 1). #0a0e1a = --color-bt-base dark —
-// a meta tag can't read CSS variables, and the app is dark-mode-forced, so
-// the single dark value is correct (no white flash on standalone launch).
+// a meta tag can't read CSS variables, so it is a literal by necessity.
+//
+// It is a single DARK value and the app is no longer dark-only. That is a
+// KNOWN, UNFIXED consequence of the theme switch and it is in the survey: a
+// user on light mode gets dark browser chrome above a light page, and on a
+// standalone iOS launch a dark splash before a light first paint. Fixing it
+// means either a `media`-keyed pair (which keys off the OS, not off this
+// app's stored theme, so it would be wrong for exactly the user who chose
+// light against a dark OS) or a runtime `<meta>` rewrite. Neither is a
+// find-and-replace, and this PR deliberately repairs nothing.
 export const viewport: Viewport = {
   themeColor: "#0a0e1a",
   // WITHOUT this, iOS in standalone mode insets the layout viewport away from
@@ -73,6 +82,24 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
+        {/* Repair a stored theme value that is not a known theme, BEFORE
+            next-themes reads it. It reads storage unvalidated and applies
+            whatever it finds as a class name, so a stray value resolves to
+            `:root` — light — rather than to the intended dark default.
+
+            A plain inline <script>, not next/script: inline scripts execute in
+            DOCUMENT ORDER, and next-themes renders its own inline script where
+            the provider sits, further down this body. Being first in the body
+            is therefore a guarantee, where a `beforeInteractive` strategy would
+            be an assumption about Next's injection point.
+
+            No `suppressHydrationWarning` needed — this element's markup is
+            identical on server and client; it is the <html> class it protects
+            that differs, which the tag on <html> above already covers. */}
+        <script
+          id="bt-theme-sanitize"
+          dangerouslySetInnerHTML={{ __html: THEME_SANITIZE_SCRIPT }}
+        />
         {/* Capture beforeinstallprompt at the earliest possible point (before
             hydration) so the late-mounting install banner never misses it —
             PWA install follow-up. Runs on every route; the banner itself
