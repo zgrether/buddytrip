@@ -14,6 +14,7 @@ const GAME_ROUTES: Record<string, string> = {
   gtt_match_play: "match/new",
   gtt_rack_n_stack: "rack/new",
   gtt_scramble: "scramble/new",
+  gtt_skins: "skins/new",
 };
 
 /** The shared non-golf (manual) scoreboard route segment — every manual format
@@ -104,6 +105,25 @@ export function isScrambleFormat(gameTypeId: string | null): boolean {
   return gameTypeId === "gtt_scramble";
 }
 
+/**
+ * Skins — a per-hole contest with carryover, scored by recording who won.
+ *
+ * Its own predicate, and NOT a widening of `isStrokeFormat` or
+ * `isMatchPlayFormat`, for the reason `isScrambleFormat` gives one above:
+ * those two gate surfaces that assume things skins does not have.
+ * `isStrokeFormat` gates the per-player handicap roster and stroke entry, and
+ * skins stores no strokes and computes no handicaps at all.
+ * `isMatchPlayFormat` gates a two-sided engine — `HoleOutcomeResult`,
+ * `DecidedHole`'s W/L/H, `matchState`'s A/B leader — and skins is up to four
+ * players plus Tied.
+ *
+ * It IS golf (it carries a scorecard) and it DOES open as a panel; both come
+ * from the `GAME_ROUTES` entry and the union below rather than from here.
+ */
+export function isSkinsFormat(gameTypeId: string | null): boolean {
+  return gameTypeId === "gtt_skins";
+}
+
 export function isPickemFormat(gameTypeId: string | null): boolean {
   return gameTypeId === "gtt_pickem";
 }
@@ -120,6 +140,7 @@ export function opensAsPanel(gameTypeId: string | null): boolean {
     isRackFormat(gameTypeId) ||
     isStrokeFormat(gameTypeId) ||
     isScrambleFormat(gameTypeId) ||
+    isSkinsFormat(gameTypeId) ||
     isManualGameType(gameTypeId) ||
     isPickemFormat(gameTypeId)
   );

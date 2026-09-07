@@ -28,8 +28,29 @@
  * round with no handicaps entered is already exactly that.
  */
 
-/** Traditional = count strokes, lowest wins. Stableford = points, highest wins. */
-export type ScoringType = "traditional" | "stableford";
+/**
+ * The two scoring types a STROKE game's `games.config` can hold. Traditional =
+ * count strokes, lowest wins. Stableford = points, highest wins.
+ *
+ * Split out from `ScoringType` when skins joined it: `scoringOf` and `configFor`
+ * below are about the stroke game's config block, and skins has no such block —
+ * it stores no scores at all. Giving those two the narrow set makes a skins
+ * value INEXPRESSIBLE at them rather than silently resolving to Traditional,
+ * which is what a single widened union would have done.
+ */
+export type StrokeScoringType = "traditional" | "stableford";
+
+/**
+ * What a total MEANS for ranking — the key `rankingDirection` maps to a
+ * direction. Every stroke scoring type, plus `skins`.
+ *
+ * Skins is its own value rather than borrowing `"stableford"` to get high-wins.
+ * The two are both "more is better" and are nothing else alike: there is no
+ * rubric, no par, no differential, and no `games.config` scoring block. A site
+ * reading `scoring === "stableford"` on a skins game would be true about the
+ * wrong thing, which is the failure mode this codebase keeps finding.
+ */
+export type ScoringType = StrokeScoringType | "skins";
 
 export interface StablefordRubric {
   /**
@@ -263,7 +284,7 @@ export function matchesPreset(rubric: StablefordRubric, preset: StablefordPreset
  * back rather than scoring `undefined` — a wrong-looking card is worse than a
  * card that reads exactly as it always did.
  */
-export function scoringOf(config: unknown): { type: ScoringType; rubric: StablefordRubric | null } {
+export function scoringOf(config: unknown): { type: StrokeScoringType; rubric: StablefordRubric | null } {
   const c = (config ?? {}) as { scoringType?: unknown; stableford?: unknown };
   if (c.scoringType !== "stableford") return { type: "traditional", rubric: null };
   const s = c.stableford as Partial<StablefordRubric> | undefined;
@@ -272,7 +293,7 @@ export function scoringOf(config: unknown): { type: ScoringType; rubric: Stablef
 }
 
 /** The `games.config` value for a scoring choice — the write side of `scoringOf`. */
-export function configFor(type: ScoringType, cfg: StablefordConfig | null): Record<string, unknown> {
+export function configFor(type: StrokeScoringType, cfg: StablefordConfig | null): Record<string, unknown> {
   if (type === "traditional" || !cfg) return { scoringType: "traditional" };
   return {
     scoringType: "stableford",

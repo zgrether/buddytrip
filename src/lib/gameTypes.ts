@@ -34,7 +34,7 @@ import type { ScorecardSchema } from "@/lib/courseIndex";
 
 /** The scoring engines a format can dispatch to. `null` = manual / non-engine
  *  (finishing order entered by hand — cornhole, trivia, generic games). */
-export type ResultStrategy = "stroke_total" | "match_play" | "rack_n_stack" | "pickem";
+export type ResultStrategy = "stroke_total" | "match_play" | "rack_n_stack" | "pickem" | "skins";
 
 /** Creation Type tier the dialog groups formats under. */
 export type GameCategory = "golf" | "card" | "yard" | "bar" | "other";
@@ -116,6 +116,23 @@ const strokeSchema = {
   scoring: { strategy: "stroke_total", direction: "low_wins", aggregation: "sum", sections: SECTIONS_18, tiebreaker: "shared" },
   interaction: { model: "simultaneous", entry_timing: "per_unit" },
   participants: { min: 2, max: 4, participant_type: "individual", assigned_pairings: false },
+} as ScorecardSchema;
+
+// Skins. Same holes, par and stroke index as stroke play — the card still shows
+// the course — but the ENTRY block says what it actually takes: a participant,
+// labelled Winner, not an integer count of strokes. `direction: "high_wins"`
+// because skins are won and more is better.
+//
+// `handicap_index` is kept deliberately even though skins computes no handicaps.
+// It is COURSE data, and the stroke index is precisely the reference the group
+// applies in their heads before deciding who won the hole — the card showing it
+// is the whole of how a handicap reaches this format.
+const skinsSchema = {
+  units: { type: "holes", count: 18, ordered: true, labels: HOLE_LABELS, metadata: { par: PAR_72, handicap_index: STROKE_INDEX_DEFAULT } },
+  entry: { value_type: "participant", value_label: "Winner", min: null, max: null },
+  scoring: { strategy: "skins", direction: "high_wins", aggregation: "sum", sections: SECTIONS_18, tiebreaker: "shared" },
+  interaction: { model: "simultaneous", entry_timing: "per_unit" },
+  participants: { min: 2, max: null, participant_type: "individual", assigned_pairings: false },
 } as ScorecardSchema;
 
 // Unified match-play scorecard (Refactor A1) — one schema for singles + doubles +
@@ -208,6 +225,51 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultStrategy: "stroke_total",
     scorecardSchema: strokeSchema,
     compatibleModifiers: [],
+    supportsFreeForAll: true,
+    supportsSides: false,
+    requiresSides: false,
+    maxPlayersPerSide: null,
+    compatibleScoringModels: ["points"],
+  },
+  gtt_skins: {
+    id: "gtt_skins",
+    key: "skins",
+    name: "Skins",
+    description:
+      "Every hole is worth a skin. Win it outright and it is yours; tie it and the pot carries into the next hole. Record who won each hole — no scores, no handicaps. Most skins wins.",
+    sortOrder: 4,
+    category: "golf",
+    /**
+     * ENTRY IS BY OUTCOME, and every field here follows from that.
+     *
+     * Players pick up once they are out of a hole, so there is very often no
+     * score to enter — the group applies strokes in their heads and says who
+     * won. So nothing is stored in `score_entries`, nothing is allotted, and
+     * there is no handicap roster. `entrySchema` is `hole_winner` to say so;
+     * nothing in the app reads that column (migration 181 established the same
+     * for scramble), so it is honest description rather than behaviour.
+     *
+     * `resultStrategy` is a NEW `skins` rather than a reuse, and the two
+     * candidates each fail for their own reason. `stroke_total` sums a number
+     * nobody entered. `match_play` is two-sided at every level —
+     * `HoleOutcomeResult`, `DecidedHole`'s W/L/H, `matchState`'s A/B leader —
+     * and this is up to four players plus Tied. The carryover fold is genuinely
+     * new arithmetic on top of both.
+     *
+     * `compatibleModifiers: ["glorious_holes"]` — the SECOND format to take it,
+     * and the half of stroke play's long-standing "Skins/scramble take
+     * `glorious_holes` when built" that survived contact with the code. Glorious
+     * doubles a HOLE'S VALUE, which is exactly what a skins hole has and exactly
+     * what a stroke total does not (see scramble's note above).
+     *
+     * `compatibleScoringModels: ["points"]` — skins belongs to a POINTS cup, the
+     * same as stroke and scramble. It produces a per-player COUNT, not the
+     * per-slot win/halve a match-play competition scores.
+     */
+    entrySchema: "hole_winner",
+    resultStrategy: "skins",
+    scorecardSchema: skinsSchema,
+    compatibleModifiers: ["glorious_holes"],
     supportsFreeForAll: true,
     supportsSides: false,
     requiresSides: false,

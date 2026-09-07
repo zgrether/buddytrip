@@ -43,7 +43,25 @@ export const SCRAMBLE_TYPE = "gtt_scramble";
  * enumerations in two languages that no test compares. Filed rather than fixed
  * in passing.
  */
-export const ROSTER_TYPES = new Set(["gtt_stroke_play", RACK_TYPE, SCRAMBLE_TYPE]);
+export const SKINS_TYPE = "gtt_skins";
+/**
+ * Skins belongs here for scramble's reason AND one of its own.
+ *
+ * A member's right to record a hole resolves through
+ * `game_participants.play_group_id` (`can_score_skins_grouping`, migration 184),
+ * so a groupless skins game has nobody who may enter anything — that half is
+ * scramble's argument verbatim.
+ *
+ * The extra half is that the grouping is also the CARRYOVER BOUNDARY. Skins is
+ * several independent contests on one round and the grouping is what separates
+ * them, so a game with no groups has no contests in it at all — not merely
+ * nobody to write, but nothing to write into.
+ *
+ * Added in the same change as migration 185's matching SQL arm, which is the
+ * duplication the note above describes (#1332) being paid a second time rather
+ * than discovered a second time.
+ */
+export const ROSTER_TYPES = new Set(["gtt_stroke_play", RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE]);
 
 /**
  * Is the game configured enough to be Ready (vs still Setting up)?

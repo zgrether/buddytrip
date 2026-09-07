@@ -52,8 +52,23 @@ export type ScoreDirection = "low_wins" | "high_wins";
  * literal of its own, which is the only way a second, drifting answer could
  * appear.
  */
+/**
+ * Written as "which one counts DOWN" rather than as a list of the ones that
+ * count up, and that is not a style choice. Traditional stroke play is the only
+ * scoring type in the app where a smaller number is better; Stableford and skins
+ * both pay you something. So the low-wins side is the closed set, and a scoring
+ * type added later gets high-wins by default — which is the safe direction to
+ * fall in, because a new PAYING format ranked upside-down is a leaderboard that
+ * reads as broken, while the reverse would need a new counting-down format to
+ * even be reachable.
+ *
+ * The previous form named `"stableford"` as the exception. That was correct with
+ * two values and became a trap with three: it is the shape a skins caller would
+ * have had to satisfy by passing the literal `"stableford"` to get the direction
+ * it needed.
+ */
 export function rankingDirection(scoring: ScoringType): ScoreDirection {
-  return scoring === "stableford" ? "high_wins" : "low_wins";
+  return scoring === "traditional" ? "low_wins" : "high_wins";
 }
 
 /**

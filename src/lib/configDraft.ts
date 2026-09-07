@@ -32,7 +32,7 @@ import type { ModifiersMap } from "./modifiers";
 import {
   matchesPreset,
   scoringOf,
-  type ScoringType,
+  type StrokeScoringType,
   type StablefordConfig,
   type StablefordPresetId,
 } from "./stableford";
@@ -971,6 +971,116 @@ export function rackDraftsEqual(a: RackConfigDraft, b: RackConfigDraft): boolean
   );
 }
 
+// ── Skins variant ────────────────────────────────────────────────────────────
+
+/**
+ * Skins' draft — the base plus GROUPINGS, the COURSE and MODIFIERS.
+ *
+ * Rack's shape minus `strokes`, and the omission is the format rather than an
+ * oversight: skins computes no handicaps. The group applies strokes in their
+ * heads and records who won, so there is nothing to allot and no per-participant
+ * number for a settings row to edit.
+ *
+ * ── The groupings are the CONTEST, not a card ─────────────────────────────
+ *
+ * `groups` is the same `string[][]` rack, stroke and the bracket pool all use,
+ * so the shared `RackGroupBuilder` drives this page too and there is no second
+ * person-picker to keep in step. What differs is what a group MEANS: for rack it
+ * is a cart, and for skins it is the boundary of an independent contest with its
+ * own carryover pot. That is why migration 185 refuses ANY structural groups
+ * change once holes are recorded — including a rename, which the rack rule
+ * permits — and why this draft's dirty check must not be quietly loosened.
+ */
+export interface SkinsConfigDraft extends BaseConfigDraft {
+  groups: string[][];
+  course: DraftCourse;
+  modifiers: ModifiersMap;
+}
+
+/** Server snapshot → skins draft baseline. The caller resolves the persisted
+ *  play_groups into an ordered `string[][]` first, exactly as rack does. */
+export function configToSkinsDraft(
+  game: ConfigGameSnapshot,
+  groups: string[][],
+  delegates: string[]
+): SkinsConfigDraft {
+  return {
+    gameTypeId: game.game_type_id ?? null,
+    name: game.name ?? "",
+    rulesForToday: game.rules_for_today ?? null,
+    competitionFormat: (game.competition_format ?? null) as CompetitionFormat | null,
+    bracketConfig: toBracketConfig(game.bracket_config),
+    scoringEnabled: game.scoring_enabled ?? false,
+    pointsTotal: game.points_total ?? null,
+    pointsDistribution: game.points_distribution ?? null,
+    delegates: [...delegates].sort(),
+    groups: groups.map((g) => [...g]),
+    course: {
+      id: game.course_id ?? null,
+      backId: game.back_course_id ?? null,
+      scorecardSchema: game.scorecard_schema ?? null,
+    },
+    modifiers: game.modifiers ?? {},
+  };
+}
+
+/**
+ * Skins draft → the atomic RPC payload.
+ *
+ * The points shape is PLACEMENT, not `per_match`, and that is the one real
+ * decision in here. Rack derives a per-slot share because a rack game is a set
+ * of slots that each pay; a skins game is one contest that produces a finishing
+ * ORDER over the whole field, which is exactly what stroke play writes. So the
+ * distribution is authored as-is rather than recomputed from a divisor, and
+ * there is no `slotCount` argument to get wrong.
+ *
+ * `modifiers` is sent EXPLICITLY. The RPC resolves a MISSING key to `{}`, so
+ * omitting it wipes Glorious Finishing Holes — the P2 rule
+ * (MODIFIERS-MUST-ALWAYS-SEND), and it bites harder here than anywhere else,
+ * because a wiped GFH silently re-values three holes and every pot that ran
+ * through them.
+ */
+export function skinsDraftToPayload(draft: SkinsConfigDraft, baseline?: SkinsConfigDraft): SaveConfigPayload {
+  const persistGroups = rackGroupsToPersist(draft.groups);
+  return {
+    ...baseDraftToPayload(draft, draft.pointsDistribution, baseline),
+    modifiers: draft.modifiers,
+    courseId: draft.course.id,
+    backCourseId: draft.course.backId,
+    scorecardSchema: draft.course.scorecardSchema,
+    groups: persistGroups,
+    groupsStructureDirty: baseline ? !skinsGroupsEqual(draft.groups, baseline.groups) : true,
+  };
+}
+
+/** Pure whole-page equality — drives the Save-enabled gate. */
+export function skinsDraftsEqual(a: SkinsConfigDraft, b: SkinsConfigDraft): boolean {
+  return (
+    baseDraftsEqual(a, b) &&
+    a.course.id === b.course.id &&
+    a.course.backId === b.course.backId &&
+    canonical(a.course.scorecardSchema) === canonical(b.course.scorecardSchema) &&
+    canonical(a.modifiers) === canonical(b.modifiers) &&
+    skinsGroupsEqual(a.groups, b.groups)
+  );
+}
+
+/**
+ * Groupings equality for skins.
+ *
+ * Deliberately `rackGroupsEqual` — the same predicate, called through a named
+ * alias rather than duplicated, so the two cannot drift while looking alike
+ * (CLAUDE.md #24's shape). The alias exists so this file states that skins
+ * INTENDS the rack rule rather than merely happening to share a function.
+ *
+ * Note what the shared rule already gets right for skins: it is
+ * position-sensitive, so reordering the groups counts as a change. That is
+ * stricter than "who is with whom" and it is correct here, because the RPC
+ * re-mints every `play_groups` id on a structural save and a skins hole is keyed
+ * to one of those ids.
+ */
+const skinsGroupsEqual = (a: string[][], b: string[][]) => rackGroupsEqual(a, b);
+
 /** Groupings equality — membership-per-cart, position-sensitive (a reorder renames the
  *  carts, so it's a structural rebuild). Empty carts are dropped first (an unfinished
  *  add is never a change); userIds compare order-independently within a cart (a cart is
@@ -1012,7 +1122,7 @@ function rackGroupsEqual(a: string[][], b: string[][]): boolean {
  * which preset a set of numbers happens to equal.
  */
 export interface StrokeScoringDraft {
-  type: ScoringType;
+  type: StrokeScoringType;
   /** Null exactly when `type === "traditional"`. */
   stableford: StablefordConfig | null;
 }

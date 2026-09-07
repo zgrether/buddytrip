@@ -1,7 +1,7 @@
 import {
   configFor,
   scoringOf,
-  type ScoringType,
+  type StrokeScoringType,
   type StablefordConfig,
   type StablefordRubric,
 } from "./stableford";
@@ -32,7 +32,7 @@ import {
  */
 export interface StrokeGameConfig {
   /** Traditional or Stableford, and the rubric when Stableford. */
-  scoring: { type: ScoringType; stableford: StablefordConfig | null };
+  scoring: { type: StrokeScoringType; stableford: StablefordConfig | null };
   /** Whether the board ranks players or their teams. */
   rollUp: StrokeRollUp;
 }
@@ -75,7 +75,7 @@ export function rollUpOf(config: unknown): StrokeRollUp {
 /** `games.config` → the complete stroke config. Delegates the scoring half to
  *  `scoringOf` rather than re-reading those keys, so there is one reader. */
 export function readStrokeConfig(config: unknown): {
-  scoring: { type: ScoringType; rubric: StablefordRubric | null };
+  scoring: { type: StrokeScoringType; rubric: StablefordRubric | null };
   rollUp: StrokeRollUp;
 } {
   return { scoring: scoringOf(config), rollUp: rollUpOf(config) };

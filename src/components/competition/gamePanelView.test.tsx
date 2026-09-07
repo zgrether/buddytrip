@@ -8,6 +8,7 @@ import { RackGameView } from "@/components/games/RackGameView";
 import { NonGolfGameView } from "@/components/games/NonGolfGameView";
 import { StrokeGameView } from "@/components/games/StrokeGameView";
 import { PickemGameView } from "@/components/games/PickemGameView";
+import { SkinsGameView } from "@/components/games/skins/SkinsGameView";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { surfaceForGameType, type GameSurfaceId } from "@/lib/formatSurface";
 
@@ -54,6 +55,7 @@ const VIEW_FOR_SURFACE = {
   stroke: StrokeGameView,
   nongolf: NonGolfGameView,
   pickem: PickemGameView,
+  skins: SkinsGameView,
 } satisfies Record<GameSurfaceId, unknown>;
 
 const GAME_A = "11111111-2222-4333-8444-555555555555";

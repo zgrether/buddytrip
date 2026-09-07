@@ -1,12 +1,13 @@
 "use client";
 
 import type { ReactElement } from "react";
-import { isMatchPlayFormat, isRackFormat, isStrokeFormat, isScrambleFormat, isPickemFormat } from "@/lib/gameRoutes";
+import { isMatchPlayFormat, isRackFormat, isStrokeFormat, isScrambleFormat, isSkinsFormat, isPickemFormat } from "@/lib/gameRoutes";
 import { MatchGameView } from "@/components/games/MatchGameView";
 import { RackGameView } from "@/components/games/RackGameView";
 import { NonGolfGameView } from "@/components/games/NonGolfGameView";
 import { StrokeGameView } from "@/components/games/StrokeGameView";
 import { PickemGameView } from "@/components/games/PickemGameView";
+import { SkinsGameView } from "@/components/games/skins/SkinsGameView";
 
 /**
  * gamePanelView — picks the format's view for the board's game panel, **keyed by
@@ -74,6 +75,9 @@ export function gamePanelView(openType: string | null, openGameId: string): Reac
   // elsewhere and must stay false for scramble.
   if (isStrokeFormat(openType) || isScrambleFormat(openType)) return <StrokeGameView key={openGameId} />;
   if (isPickemFormat(openType)) return <PickemGameView key={openGameId} />;
+  // Skins has its own view: its entry is a choice LIST, its board carries a
+  // carryover pot per grouping, and neither exists on the stroke surface.
+  if (isSkinsFormat(openType)) return <SkinsGameView key={openGameId} />;
   // Non-golf is the deliberate fall-through, and only ever reached after
   // `opensAsPanel` has already vetted the type (CompetitionFace gates on it).
   return <NonGolfGameView key={openGameId} />;

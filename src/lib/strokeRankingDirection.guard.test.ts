@@ -45,6 +45,14 @@ const STROKE_PATH = [
   // direction, not the file the type lives in.
   "components/games/StrokeGameView.tsx",
   "components/games/ScoreEntryView.tsx",
+  // SKINS joined `ScoringType`, so it joins the list. It is not stroke play,
+  // but it ranks through the same `ranking()` mapping and rolls its individual
+  // results up through the same `computeStrokeTeamStandings` — which is exactly
+  // what "every file that ranks, renders or persists" means here. The name of
+  // the guard is about the path, not about the format.
+  "lib/skins.ts",
+  "server/lib/skins.ts",
+  "components/games/skins/SkinsBoard.tsx",
 ];
 
 /**
@@ -54,7 +62,10 @@ const STROKE_PATH = [
  */
 const ALLOWED = [
   'export type ScoreDirection = "low_wins" | "high_wins";',
-  'return scoring === "stableford" ? "high_wins" : "low_wins";',
+  // Inverted when `skins` joined `ScoringType`: the mapping now names the one
+  // scoring type that counts DOWN rather than listing the ones that count up,
+  // so a third paying format does not have to be added to it to rank correctly.
+  'return scoring === "traditional" ? "low_wins" : "high_wins";',
   // `ranking()` — the one branch below the mapping, handing out a comparator
   // and a strictly-better predicate together so no site can hand-roll half.
   'const low = rankingDirection(scoring) === "low_wins";',
