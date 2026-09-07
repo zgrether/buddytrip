@@ -805,7 +805,14 @@ export function SkinsGameView() {
       );
     }
     return (
-      <>
+      // The entry surface OWNS THE VIEWPORT, which is what lets its commit bar
+      // anchor to the bottom instead of trailing the content (CLAUDE.md #14 —
+      // a content-anchored CTA falls below the fold on a tall hole). As a panel
+      // it fills below the app bar; standalone it is full-screen. Same wrapper
+      // rack and match use, and it is the reason `h-full` inside the view has a
+      // height to be full OF.
+      <div className={inPanel ? "absolute inset-0" : "fixed inset-0 z-50"}>
+        <div className="flex flex-col" style={{ height: inPanel ? "100%" : "100dvh" }}>
         <SkinsEntryView
           gameName={(gameQ.data?.name as string | undefined)?.trim() || "Skins"}
           units={scUnits}
@@ -828,12 +835,13 @@ export function SkinsGameView() {
           readOnly={!scoringEnabled}
           finishSubtext={allComplete ? "Saves results · shows final standings" : "Every hole must be in first"}
         />
+        </div>
         {gridOpen && (
           <ScorecardSheet title={groupNames[entryGroupId] ?? "Group"} subtitle={courseName ?? undefined} onClose={back}>
             {scorecard}
           </ScorecardSheet>
         )}
-      </>
+      </div>
     );
   }
 
