@@ -110,6 +110,50 @@ describe("one settings page", () => {
     },
   );
 
+it("every view's Save bar CANCEL closes the panel, not just the draft", () => {
+    /**
+     * `SettingsSaveBar` documents Cancel as "discard the draft AND close the
+     * panel", and it is the caller that supplies both halves. There are two
+     * handlers a view can reach for and only one does both:
+     *
+     *   · `confirmDiscard` (from `useGameSettingsOverlay`) fires the discard AND
+     *     closes — correct.
+     *   · `handleCancel` (from `useConfigDraft`) only resets the draft slices.
+     *
+     * Skins shipped with the second. With a CLEAN draft there are no slices to
+     * reset, so Cancel did visibly nothing and the only ways out were the X or
+     * the back button — a dead control on every settings page for that format.
+     *
+     * A source scan rather than a render test, for the reason the sibling scans
+     * in this file give: the failure is a view reaching for the wrong handler,
+     * which is invisible to a test that renders the bar with a stub. And it is
+     * asserted over EVERY view, because the next format to be added will copy one
+     * of these files and inherit whichever it copied.
+     */
+    for (const id of SURFACES) {
+      const src = read(ALL.find((f) => base(f) === CALLERS[id])!);
+      // Scoped to the <SettingsSaveBar> ELEMENT, not to every `onDiscard=` in
+      // the file. `DiscardChangesPrompt` takes the prop too and legitimately
+      // passes something else — pick'em gives it an inline handler that saves
+      // picks. The first version of this guard matched both and reported that
+      // as a failure, which is the guard being wider than the thing it is about.
+      const bars = [...src.matchAll(/<SettingsSaveBar[\s\S]*?\/>/g)].map((m) => m[0]);
+      const passed = bars
+        .map((b) => b.match(/onDiscard=\{([^}]*)\}/)?.[1]?.trim())
+        .filter((h): h is string => !!h);
+      expect(bars.length, `${CALLERS[id]}: renders no SettingsSaveBar`).toBeGreaterThan(0);
+      expect(passed.length, `${CALLERS[id]}: a SettingsSaveBar with no onDiscard`).toBe(bars.length);
+      for (const handler of passed) {
+        expect(
+          /confirmDiscard/.test(handler),
+          `${CALLERS[id]}: onDiscard={${handler}} — Cancel must close the panel, ` +
+            `which only \`confirmDiscard\` does. \`handleCancel\` resets the draft and returns, ` +
+            `so on a clean draft the button does nothing.`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it("the scan sees the real files (not passing vacuously)", () => {
     expect(ALL.length).toBeGreaterThan(20);
     expect(ALL.some((f) => base(f) === PAGE)).toBe(true);
