@@ -69,7 +69,10 @@ function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
 
 export default function DashboardClient({ lastTripId }: { lastTripId: string | null }) {
   const router = useRouter();
-  const [pastExpanded, setPastExpanded] = useState(false);
+  /** Past starts EXPANDED — a finished trip is still where people go back for
+   *  scores, so hiding the list behind a tap made the common case the extra
+   *  step. The toggle stays, for folding a long history out of the way. */
+  const [pastExpanded, setPastExpanded] = useState(true);
   /**
    * The create flow, as a modal over Home. No pre-selected path (item 4): the
    * dashboard's "New trip" and the empty state are generic entry points — unlike
