@@ -37,7 +37,7 @@ import { type ModifiersMap } from "@/lib/modifiers";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { RackBoard, type RackTeam } from "@/components/games/rack/RackBoard";
-import { PointsAtStake } from "@/components/games/PointsAtStake";
+import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/FoursomeEntry";
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
@@ -1222,17 +1222,26 @@ export function RackGameView() {
             : undefined
         }
       />
-      {/* What each SLOT is worth. Rack's slots are the unit that pays out, so the
-          per-slot value is the number that decides whether a slot matters — the
-          board only ever showed the game total. Sourced from the same
-          `perSlotValue` the projection already computes, so the two can't
-          disagree. (The field is `per_match`; rack DISPLAYS it as slots. Label
-          only — the code field is load-bearing and is not renamed.) */}
-      {perSlotValue > 0 && (
-        <div className="flex justify-end px-4">
-          <PointsAtStake value={perSlotValue} unit="per slot" />
-        </div>
-      )}
+      {/* The shared lifecycle banner, directly under the hero — the position
+          match/stroke/skins/non-golf already use. Rack rendered it INSIDE
+          `RackBoard`, below the whole groups list, so it was the one format whose
+          banner you had to scroll past the entry surface to read.
+
+          It also replaces the bare `PointsAtStake value={perSlotValue} unit="per
+          slot"` row that used to sit here: the same removal skins, non-golf and
+          bracket each already made, for the reason skins wrote down — that is the
+          inline chip a match CARD wears, and on a game surface it rendered a
+          floating "1 PTS PER SLOT" with no container while the established banner
+          sat below saying what the number MEANS. Rack was the last surface still
+          carrying it. `perSlotValue` is unchanged and still feeds the projection.
+
+          `points_total` from the SERVER row, not the draft — the banner states
+          what the game is worth, and an unsaved edit is not yet true of it. */}
+      <ScoringStateBanner
+        status={gameQ.data?.status ?? null}
+        correctionsOpen={correctionsOpen}
+        pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
+      />
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(currentHoleForGroup(id)); setGridOpen(false); }} />
       {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
           (config) is gone. Edit handicaps in Setup mode (gear → Who's playing ·
@@ -1247,12 +1256,6 @@ export function RackGameView() {
         onMode={setMode}
         nameOf={(id) => nameOf.get(id) ?? "Player"}
         final={final}
-        status={gameQ.data?.status}
-        correctionsOpen={correctionsOpen}
-        // The GAME's total, not the per-slot value beside it — the banner names
-        // the number the leaderboard sums for this game, and rack's per-slot
-        // figure is a different fact about the same game.
-        pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
       />
       {/* Finalize / #7's deliberate, auditable correction path / re-lock — all
           three now decided by the SHARED `gameLifecycle` predicate and rendered
