@@ -257,5 +257,25 @@ grep -rEn "#[0-9a-fA-F]{6}\b" src --include=*.tsx --include=*.ts | grep -v "\.te
 # the grep will produce a list four times too long.
 ```
 
+---
+
+## Filed
+
+- **#1343** — the dark-only-literal class: eight sites, one fix shape (a light/dark
+  pair where there is currently one dark value). Carries the `STYLE_GUIDE.md:473`
+  disagreement as a decision for Zach, not a resolution.
+- **#1344** — `MatchCard`'s neutral ramp, separately, because it is not a token
+  swap: the encoding reverses and the fix is a design call.
+
+Nothing else met `CLAUDE.md`'s entry rule. The 58 `#0d1f1a` sites, the 46 scrims
+and the twelve dark shadows are not issues, because there is no version of that
+work anybody would pick up — they already render correctly.
+
+The **high-contrast theme** is deliberately not filed. It is strategy, not a
+defect, and `CLAUDE.md` says a nomination does not become an issue until it is
+about to be worked — that is a `TRACKER.md` entry and Zach's call to make.
+
+---
+
 *Survey run 2026-09-07 against `dfac3956`. Zach's eyes are the instrument that
 settles it — where this list and the eye disagree, the eye is right.*
