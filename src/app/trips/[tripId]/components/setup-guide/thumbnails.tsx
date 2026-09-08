@@ -1,5 +1,7 @@
 "use client";
 
+import { useTheme } from "next-themes";
+
 // ── Step thumbnails ──────────────────────────────────────────────────────
 //
 // Each thumbnail renders flush into StepCard's dark preview area — no
@@ -8,10 +10,42 @@
 // than a single tinted plate (lodging blue gradient, crew rose/teal/blue
 // dots, agenda amber outlines, etc.).
 
-const DIM = "rgba(255,255,255,0.10)";
-const DIM_BRIGHTER = "rgba(255,255,255,0.18)";
-const TEXT_DIM = "rgba(255,255,255,0.35)";
-const TEXT_DIMMER = "rgba(255,255,255,0.22)";
+/**
+ * The four neutral tones every thumbnail draws its placeholder bars with.
+ *
+ * THEY WERE WHITE LITERALS, so on a light card all 42 of them composited to a
+ * delta of ~2/255 against their own ground and the mockups rendered as their
+ * coloured accents floating on nothing — the teal cells with no calendar, the
+ * roster dots with no names, the amber markers with no rows. Every COLOURED
+ * element was always fine; only the neutrals were missing a light value.
+ *
+ * One hook rather than four copies of the branch: these are one family, and a
+ * per-thumbnail copy is how the four drift apart. Same shape as the sibling
+ * silhouette consumers (TripCard.tsx:174 and RailTripRow.tsx:209), so the dark
+ * arm is the literal each constant already had and dark is byte-identical.
+ *
+ * DIM and DIM_BRIGHTER map onto existing tokens whose LIGHT halves are
+ * right; TEXT_DIM and TEXT_DIMMER have no token that fits and mirror their
+ * own alpha instead. Measured against the preview surface, dark vs light:
+ *
+ *   DIM           72 -> 59     DIM_BRIGHTER  129 -> 111
+ *   TEXT_DIM     250 -> 259    TEXT_DIMMER   157 -> 163
+ *
+ * All four land at or below their dark weight — DIM most of all, at 18%
+ * lighter. That measurement is why the calendar's 31 cells are safe to do
+ * mechanically: the worry was that a grid of them would read as a heavy grey
+ * block in light, and it reads softer than dark does instead.
+ */
+function useThumbnailTones() {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+  return {
+    DIM: isDark ? "rgba(255,255,255,0.10)" : "var(--color-bt-state-fill)",
+    DIM_BRIGHTER: isDark ? "rgba(255,255,255,0.18)" : "var(--color-bt-state-stroke)",
+    TEXT_DIM: isDark ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)",
+    TEXT_DIMMER: isDark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.22)",
+  };
+}
 
 // ── Calendar (Step 1: Set dates) ─────────────────────────────────────────
 //
@@ -20,6 +54,7 @@ const TEXT_DIMMER = "rgba(255,255,255,0.22)";
 // month — the picker itself does that.
 
 export function CalendarThumbnail({ accent }: { accent?: string } = {}) {
+  const { DIM, TEXT_DIM } = useThumbnailTones();
   const ACCENT = accent ?? "var(--color-bt-accent)";
   // Cells filled solid teal — the "selected range" hint.
   const filled = new Set([10, 26]);
@@ -57,6 +92,7 @@ export function CalendarThumbnail({ accent }: { accent?: string } = {}) {
 // a shorter detail bar with a small button on the right.
 
 export function LodgingThumbnail() {
+  const { DIM, DIM_BRIGHTER } = useThumbnailTones();
   return (
     <div className="flex h-full w-full flex-col gap-2 p-3" aria-hidden="true">
       <div
@@ -88,6 +124,7 @@ export function LodgingThumbnail() {
 // placeholder-teal state.
 
 export function CrewThumbnail() {
+  const { DIM_BRIGHTER } = useThumbnailTones();
   const rows: [string, number][] = [
     ["rgba(244,114,182,0.95)", 70], // rose
     ["rgba(45,212,191,0.95)", 60], // teal
@@ -120,6 +157,7 @@ export function CrewThumbnail() {
 // title line + a small trailing time pill.
 
 export function AgendaThumbnail() {
+  const { DIM_BRIGHTER, TEXT_DIMMER } = useThumbnailTones();
   const items = [
     { ring: "rgba(251,191,36,0.85)", line: 60 },
     { ring: "rgba(251,113,36,0.85)", line: 70 },
