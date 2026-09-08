@@ -12,6 +12,7 @@ import {
   quickGamePips,
   quickGameUnits,
   quickMatchDecided,
+  type QuickGameFormat,
   type QuickGameState,
   type QuickMatchState,
 } from "@/lib/quickGame";
@@ -131,17 +132,72 @@ export function quickBetDefaultSides(state: QuickGameState, mkId: () => string):
   return [];
 }
 
+/**
+ * A MATCH round's two betting sides, from the SETUP screen's draft rows.
+ *
+ * The live-round answer is `quickBetDefaultSides`, which reads `state.sideA` /
+ * `state.sideB`. Setup has no round yet — the slots are minted by
+ * `buildQuickGameFromDrafts` on Start — so this reads the same A/B split off the
+ * rows the roster fields write, using the same `r.side !== "B"` rule
+ * `buildQuickMatchSides` does. The ids are literals rather than uuids because a
+ * betting side's id is only ever used INSIDE its own bet; who a side IS travels
+ * in `playerIds`, which is also how `matchSideOf` resolves it (player-set
+ * equality, never id), so a bet agreed on the first tee still settles against
+ * the slots Start goes on to mint.
+ *
+ * Empty when either side has nobody, which is the same condition
+ * `buildQuickMatchSides` returns null for and which the setup screen is already
+ * refusing to Start on.
+ */
+export function quickMatchDraftSides(rows: { id: string; side?: "A" | "B" }[]): BetSide[] {
+  const a = rows.filter((r) => r.side !== "B").map((r) => r.id);
+  const b = rows.filter((r) => r.side === "B").map((r) => r.id);
+  if (a.length === 0 || b.length === 0) return [];
+  return [
+    { id: "quick-match-side-a", playerIds: a },
+    { id: "quick-match-side-b", playerIds: b },
+  ];
+}
+
+/**
+ * The setup screen's answer to `quickBetSidesLocked` + `quickBetDefaultSides`,
+ * one call, from the drafts rather than from a round.
+ *
+ * Both halves in one place because they are one decision — a match's bets are
+ * side against side, and these are the sides — and because splitting them is
+ * how the setup screen came to answer the first half `false` for every format
+ * while there was nothing to answer the second half with at all.
+ */
+export function quickBetSetupSides(
+  format: QuickGameFormat,
+  rows: { id: string; side?: "A" | "B" }[]
+): { sidesLocked: boolean; lockedSides: BetSide[] } {
+  if (format !== "match") return { sidesLocked: false, lockedSides: [] };
+  return { sidesLocked: true, lockedSides: quickMatchDraftSides(rows) };
+}
+
 /** Everyone in this round, as one side each — the skins preset. */
 export function quickBetEveryoneSides(state: QuickGameState, mkId: () => string): BetSide[] {
   return state.players.map((p) => ({ id: mkId(), playerIds: [p.id] }));
 }
 
-/** A side's display name: the players' first names, joined — the same shape
- *  `quickSideName` gives a match side, applied to any betting side. */
-export function quickBetSideName(state: QuickGameState, side: BetSide): string {
-  const byId = new Map(state.players.map((p) => [p.id, p]));
+/**
+ * A side's display name: the players' first names, joined — the same shape
+ * `quickSideName` gives a match side, applied to any betting side.
+ *
+ * Takes a ROSTER rather than a round, because the setup screen names sides
+ * before a round exists and had grown its own copy of this mapping. Two places
+ * naming one side is the drift the Glossary opens by warning about.
+ */
+export function betSideName(players: { id: string; name: string }[], side: BetSide): string {
+  const byId = new Map(players.map((p) => [p.id, p]));
   const names = side.playerIds.map((id) => byId.get(id)?.name.split(/\s+/)[0] ?? "Player");
   return names.join(" & ") || "Side";
+}
+
+/** `betSideName` for a saved round. */
+export function quickBetSideName(state: QuickGameState, side: BetSide): string {
+  return betSideName(state.players, side);
 }
 
 /** Whose number the live banner reads. Falls back to the first player entered
@@ -159,8 +215,16 @@ export function quickNassauAvailable(state: QuickGameState): boolean {
   return nassauAvailable(quickBetHoles(state).length);
 }
 
-/** The last-hole double prompts, if the round is at that point (§3.2). */
+/** The last-hole double prompts, if the round is at that point (§3.2). Every
+ *  bet already ANSWERED is filtered out, both the taken and the declined —
+ *  the prompt asks once. */
 export function quickDoubleOffers(state: QuickGameState, result: SideBetsResult): DoubleOffer[] {
-  return lastHoleDoubleOffers(result, quickBetHoles(state), state.bets.declinedDoubles);
+  return lastHoleDoubleOffers(result, quickBetHoles(state), state.bets.answeredDoubles);
+}
+
+/** The round's last hole — what a double is recorded against. */
+export function quickLastHole(state: QuickGameState): number {
+  const holes = quickBetHoles(state);
+  return holes[holes.length - 1] ?? 1;
 }
 

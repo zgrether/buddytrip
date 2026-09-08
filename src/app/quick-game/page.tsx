@@ -5,6 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { RotateCcw, Table2, Zap } from "lucide-react";
 import {
   hasAnyScore,
+  isSkinsGame,
+  quickSkinsGlorious,
+  quickSkinsMoney,
+  quickSkinsRows,
+  quickSkinsStandings,
+  quickSkinsTally,
+  QUICK_SKINS_GROUPING,
   readQuickGameState,
   writeQuickGameState,
   clearQuickGameState,
@@ -25,7 +32,7 @@ import {
 import { QuickMatchSurface } from "@/components/games/quick/QuickMatchSurface";
 import { QuickGameSetupSheet } from "@/components/games/quick/QuickGameSetupSheet";
 import type { HoleOutcomeResult } from "@/lib/matchPlay";
-import { buildDoubleBet, playerBetLines, type SideBet } from "@/lib/sideBets";
+import { answerLastHoleDoubles, playerBetLines, type DoubleOffer, type SideBet } from "@/lib/sideBets";
 import {
   quickSideBets,
   quickHasBets,
@@ -36,6 +43,7 @@ import {
   quickBetHoles,
   quickNassauAvailable,
   quickDoubleOffers,
+  quickLastHole,
 } from "@/lib/quickGameBets";
 import { SideBetStrip } from "@/components/games/bets/SideBetStrip";
 import { SideBetSheet } from "@/components/games/bets/SideBetSheet";
@@ -45,6 +53,10 @@ import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
 import { OutcomeScorecard } from "@/components/games/OutcomeScorecard";
+import { SkinsEntryView } from "@/components/games/skins/SkinsEntryView";
+import { SkinsScorecard } from "@/components/games/skins/SkinsScorecard";
+import { QuickSkinsResult } from "@/components/games/quick/QuickSkinsResult";
+import { QuickSkinsStrip } from "@/components/games/quick/QuickSkinsStrip";
 import { FinalStandings } from "@/components/games/FinalStandings";
 import { ScorecardSheet } from "@/components/games/ScorecardSheet";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
@@ -158,7 +170,7 @@ function QuickResultCard({
  * whose strokes are relative (one side receives them) and therefore owned by
  * `MatchSetupFields` — two handicap models on one screen would contradict.
  */
-const VALID_FORMATS: readonly QuickGameFormat[] = ["stroke", "match", "rack"];
+const VALID_FORMATS: readonly QuickGameFormat[] = ["stroke", "match", "rack", "skins"];
 
 /**
  * `?format=` is the tile that sent you here — `useSearchParams()` opts the
@@ -310,6 +322,32 @@ function QuickGamePageInner() {
   function onOutcome(label: string, result: HoleOutcomeResult) {
     setState((s) => (s && isMatchGame(s) ? { ...s, outcomes: { ...s.outcomes, [label]: result } } : s));
   }
+  /** Skins writes its OWN outcome shape — `{result, winnerId}` paired, so a tie
+   *  with a winner is not representable. A third storage shape beside `values`
+   *  and the match's `outcomes`, for the same reason the match has one: there
+   *  is no per-player stroke behind a recorded hole. */
+  function onSkinOutcome(_groupingId: string, hole: number, result: "won" | "tied", winnerId: string | null) {
+    setState((s) =>
+      s && isSkinsGame(s)
+        ? {
+            ...s,
+            outcomes: {
+              ...s.outcomes,
+              [String(hole)]:
+                result === "won" && winnerId ? { result: "won", winnerId } : { result: "tied" },
+            },
+          }
+        : s
+    );
+  }
+  function onClearSkin(_groupingId: string, hole: number) {
+    setState((s) => {
+      if (!s || !isSkinsGame(s)) return s;
+      const next = { ...s.outcomes };
+      delete next[String(hole)];
+      return { ...s, outcomes: next };
+    });
+  }
   function onClearOutcome(label: string) {
     setState((s) => {
       if (!s || !isMatchGame(s)) return s;
@@ -339,19 +377,33 @@ function QuickGamePageInner() {
               ...s.bets,
               bets: s.bets.bets.filter((b) => b.id !== betId),
               // A double recorded against a removed bet has nothing left to
-              // double, and its decline no longer means anything either.
-              declinedDoubles: s.bets.declinedDoubles.filter((id) => id !== betId),
+              // double, and the answer no longer means anything either.
+              answeredDoubles: s.bets.answeredDoubles.filter((id) => id !== betId),
             },
           }
         : s
     );
   }
-  function declineDouble(parentBetId: string) {
+  /**
+   * Answer the last-hole prompt — ONE update for the whole decision.
+   *
+   * Accepting used to be two calls (`addBets` then a decline), which is one
+   * fact written twice and the second write is the one that closes the sheet.
+   * `answerLastHoleDoubles` is pure and does both, so there is no ordering left
+   * to get wrong and no state where the double exists and the prompt still
+   * offers to make it.
+   */
+  function answerDoubles(offers: DoubleOffer[], acceptedBetIds: string[]) {
     setState((s) =>
       s
         ? {
             ...s,
-            bets: { ...s.bets, declinedDoubles: [...s.bets.declinedDoubles, parentBetId] },
+            bets: answerLastHoleDoubles(s.bets, {
+              offers,
+              acceptedBetIds,
+              lastHole: quickLastHole(s),
+              mkId: () => crypto.randomUUID(),
+            }),
           }
         : s
     );
@@ -412,7 +464,10 @@ function QuickGamePageInner() {
             values: {},
             currentHole: 1,
             finished: false,
-            ...(s.format === "match" ? { outcomes: {} } : {}),
+            // Both outcome-shaped formats. A `values`-only clear would leave a
+            // match or a skins round fully scored under a button that says it
+            // emptied the card — the label contradicting itself, silently.
+            ...(s.format === "match" || s.format === "skins" ? { outcomes: {} } : {}),
           }
         : s
     );
@@ -443,12 +498,28 @@ function QuickGamePageInner() {
   const viewedHoleLine = betResult?.holeLines.find((l) => l.hole === (state?.currentHole ?? 1)) ?? null;
   const betPlayerName = (id: string) => state?.players.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player";
   const doubleOffers = state && betResult ? quickDoubleOffers(state, betResult) : [];
-  const doubleOffer = doubleOffers[0] ?? null;
 
   // One column per player. `state.players` is the roster even for a match, whose
   // bets are keyed to SIDES — `playerBetLines` resolves through each side's
   // `playerIds`, so a 2v2 gives four columns rather than two.
   const betLines = betResult ? playerBetLines(betResult, state?.players.map((p) => p.id) ?? []) : [];
+
+  // ── Skins, derived ────────────────────────────────────────────────────────
+  // Same discipline as the bets above: nothing is stored but the recorded
+  // outcomes, so a correction on the 9th re-folds every pot after it and the
+  // money follows, with nothing to reconcile.
+  const skinsTally = state && isSkinsGame(state) ? quickSkinsTally(state) : null;
+  const skinsMoney = state && isSkinsGame(state) ? quickSkinsMoney(state) : null;
+  const skinsStandings = state && isSkinsGame(state) ? quickSkinsStandings(state) : null;
+  const skinsMoneyStrip =
+    state && isSkinsGame(state) && skinsStandings && skinsMoney ? (
+      <QuickSkinsStrip
+        players={state.players}
+        standings={skinsStandings}
+        netByPlayer={skinsMoney.netByPlayer}
+        stake={state.stake}
+      />
+    ) : null;
 
   const betStripNode =
     betsOn && betResult ? (
@@ -483,32 +554,16 @@ function QuickGamePageInner() {
           />
         )}
         {/* The last-hole double is a PROMPT, never applied for you (§9), and it
-            asks once — declining is recorded so the round stops offering. */}
-        {!betsOpen && doubleOffer && (
+            asks once — every offer it showed is recorded as answered, taken or
+            not, so the round stops offering. ALL the live offers go into the
+            one sheet: asking them one at a time re-mounted an identical sheet
+            in the frame the last one closed, which reads as a dead button. */}
+        {!betsOpen && doubleOffers.length > 0 && (
           <LastHoleDoublePrompt
-            offer={doubleOffer}
-            trailingName={quickBetSideName(
-              state,
-              doubleOffer.bet.sides.find((sd) => sd.id === doubleOffer.trailingSideId) ?? doubleOffer.bet.sides[0]
-            )}
-            leadingName={quickBetSideName(
-              state,
-              doubleOffer.bet.sides.find((sd) => sd.id === doubleOffer.leadingSideId) ?? doubleOffer.bet.sides[1]
-            )}
-            lastHole={betHoles[betHoles.length - 1] ?? 18}
-            onAccept={() => {
-              addBets([
-                buildDoubleBet({
-                  mkId: () => crypto.randomUUID(),
-                  offer: doubleOffer,
-                  lastHole: betHoles[betHoles.length - 1] ?? 18,
-                }),
-              ]);
-              // Recorded either way: taking it must not leave the prompt open
-              // to be taken a second time on the next render.
-              declineDouble(doubleOffer.bet.id);
-            }}
-            onDecline={() => declineDouble(doubleOffer.bet.id)}
+            offers={doubleOffers}
+            sideName={(side) => quickBetSideName(state, side)}
+            lastHole={quickLastHole(state)}
+            onAnswer={(acceptedBetIds) => answerDoubles(doubleOffers, acceptedBetIds)}
           />
         )}
       </>
@@ -551,6 +606,22 @@ function QuickGamePageInner() {
             .map(([label, result]) => ({ hole: Number(label), result }))
             .filter((r) => Number.isFinite(r.hole))}
           glorious={quickMatchGlorious(state)}
+        />
+      );
+    }
+    if (isSkinsGame(state)) {
+      // The format's OWN card — a chip where somebody took the hole and a PUSH
+      // row carrying what rolled. `StandardGrid` would draw a correct-looking
+      // empty grid, since a skins round never writes `values` at all: exactly
+      // the two-storage-shapes mistake (CLAUDE.md #27) that had outcome-mode
+      // match play rendering a blank card for a round played all the way round.
+      return (
+        <SkinsScorecard
+          units={units}
+          players={state.players}
+          rows={quickSkinsRows(state)}
+          groupingId={QUICK_SKINS_GROUPING}
+          glorious={quickSkinsGlorious(state)}
         />
       );
     }
@@ -651,6 +722,23 @@ function QuickGamePageInner() {
             onPlayAgain={playAgain}
             onDiscard={discard}
           />
+        ) : isSkinsGame(state) && skinsStandings && skinsMoney && skinsTally ? (
+          <QuickSkinsResult
+            players={state.players}
+            standings={skinsStandings}
+            netByPlayer={skinsMoney.netByPlayer}
+            settlement={skinsMoney.settlement}
+            stake={state.stake}
+            // `carried` is the pot on the table after the last hole and means
+            // two different things; `potIsDead` is which one. Reading `carried`
+            // alone would announce a destroyed pot mid-round, when it is
+            // actually the next hole's value.
+            deadPot={skinsTally.potIsDead ? skinsTally.carried : 0}
+            subtitle={state.course?.name ?? null}
+            onScorecard={() => setView("grid")}
+            onPlayAgain={playAgain}
+            onDiscard={discard}
+          />
         ) : (
           <FinalStandings
             participants={state.players}
@@ -674,12 +762,37 @@ function QuickGamePageInner() {
   }
 
   // ── Playing ── the surface is chosen by FORMAT. Match routes through
-  // `QuickMatchSurface` (which picks score vs outcome entry); stroke and rack
-  // both use `ScoreEntryView` — rack IS net stroke entry, its difference is in
-  // how the results are read, not how they are entered.
+  // `QuickMatchSurface` (which picks score vs outcome entry); SKINS records who
+  // took each hole (`SkinsEntryView`, the trip-side format's own view, reused
+  // whole); stroke and rack both use `ScoreEntryView` — rack IS net stroke
+  // entry, its difference is in how the results are read, not how they are
+  // entered.
   return (
     <div className="fixed inset-0 z-50">
-      {isMatchGame(state) ? (
+      {isSkinsGame(state) ? (
+        <SkinsEntryView
+          gameName={quickGameTitle(state)}
+          units={units}
+          grouping={{ id: QUICK_SKINS_GROUPING, name: "", players: state.players }}
+          rows={quickSkinsRows(state)}
+          onChange={onSkinOutcome}
+          onClear={onClearSkin}
+          currentHole={state.currentHole}
+          onHoleChange={setCurrentHole}
+          onFinish={finish}
+          onBack={() => router.push("/dashboard")}
+          onOpenGrid={() => setView("grid")}
+          onConfig={() => setSettingsOpen(true)}
+          subtitle={state.course?.name}
+          glorious={quickSkinsGlorious(state)}
+          // Finish BANKS nothing here and there is no group to hand back to —
+          // a quick round is the whole game — so the trip-side caption's
+          // "this group is done" reading does not apply. `finish` flips the
+          // round to its result screen, which is what the word means locally.
+          finishSubtext=""
+          banner={skinsMoneyStrip}
+        />
+      ) : isMatchGame(state) ? (
         <QuickMatchSurface
           state={state}
           onScore={onChange}

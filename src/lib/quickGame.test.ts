@@ -476,6 +476,7 @@ describe("editing an in-flight match keeps its scores", () => {
     course: null,
     bets: EMPTY_SIDE_BETS,
     entryMode: "score" as const,
+    stake: 0,
     relStrokes: 0,
     glorious: false,
     gloriousHoles: 3,
@@ -797,7 +798,12 @@ describe("migrateQuickGameState — the format is READ, never inferred", () => {
   });
 
   it("an UNRECOGNIZED format is rejected, not coerced to stroke", () => {
-    expect(migrateQuickGameState({ ...state(), format: "skins" })).toBeNull();
+    // This case used to name `"skins"`, which is now a real format — so the
+    // stand-in has to be something no build has ever written. A rejection test
+    // whose subject quietly becomes valid stops testing rejection and nothing
+    // about a green run says so.
+    expect(migrateQuickGameState({ ...state(), format: "stableford" })).toBeNull();
+    expect(migrateQuickGameState({ ...state(), format: 7 })).toBeNull();
   });
 
   it("a half-written match (one side) is rejected rather than half-populated", () => {

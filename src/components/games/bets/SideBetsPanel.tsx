@@ -39,6 +39,7 @@ export function SideBetsPanel({
   sideName,
   onAdd,
   onRemove,
+  onPlaySkinsRound,
 }: {
   players: Participant[];
   result: SideBetsResult;
@@ -52,16 +53,18 @@ export function SideBetsPanel({
   sideName: (side: BetSide) => string;
   onAdd: (bets: SideBet[]) => void;
   onRemove: (betId: string) => void;
+  /** Setup-time only — see `BetForm`. */
+  onPlaySkinsRound?: () => void;
 }) {
   const hasBets = result.bets.length > 0;
   const [open, setOpen] = useState(!hasBets);
   const [creating, setCreating] = useState(false);
-  const [draft, setDraft] = useState<BetDraft>(() => freshBetDraft(players, currentHole));
+  const [draft, setDraft] = useState<BetDraft>(() => freshBetDraft(players, currentHole, sidesLocked));
 
   const commit = (bets: SideBet[]) => {
     onAdd(bets);
     setCreating(false);
-    setDraft(freshBetDraft(players, currentHole));
+    setDraft(freshBetDraft(players, currentHole, sidesLocked));
   };
 
   /** The one line worth reading without expanding. "None yet" rather than a
@@ -133,13 +136,14 @@ export function SideBetsPanel({
                 sideName={sideName}
                 onCancel={() => setCreating(false)}
                 onCommit={commit}
+                onPlaySkinsRound={onPlaySkinsRound}
               />
             </div>
           ) : (
             <button
               type="button"
               onClick={() => {
-                setDraft(freshBetDraft(players, currentHole));
+                setDraft(freshBetDraft(players, currentHole, sidesLocked));
                 setCreating(true);
               }}
               data-testid="side-bets-panel-add"

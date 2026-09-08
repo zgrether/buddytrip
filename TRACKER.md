@@ -94,6 +94,15 @@ R1's shape has changed under it — see §2. What remains:
   the TRIP-side version (a bet that other people can see, that survives the round, that touches a
   competition) — and it stays parked until the rules have been played with, not until they have been
   specced further.
+- **Quick Skins** — SHIPPED as the third Quick tile. The skins FORMAT
+  (`src/lib/skins.ts`, `SkinsEntryView`, `SkinsScorecard`) backed by local
+  storage instead of a game row: tap who took the hole or Tied, the pot carries
+  whole, and a per-skin stake settles over the top. It exists because a skins
+  SIDE BET derives its winner from net scores, which needs everyone to card
+  every hole — and people pick up. The bet form now offers the format when
+  someone picks Skins before a round starts; the two price a skin identically
+  (`sideStake` / `quickSkinsMoney`), so the choice is about how the round is
+  SCORED and never about the money. **First look outstanding.**
 - **Quick Game / Games-tab taxonomy** — the surface moved to the dashboard strip (#559) and `/quick-game`
   exists; the format→game picker still needs trip-less game creation (#558). The SHAPE decision (throwaway
   shortcut vs Circle-era generic scorekeeper) is still owed, and still gates R1's registry.

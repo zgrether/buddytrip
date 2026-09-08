@@ -6,6 +6,7 @@ import { Stepper } from "@/components/games/Stepper";
 import { FieldLabel, Segmented } from "@/components/games/FieldChrome";
 import { MAX_STROKES } from "@/lib/handicap";
 import { GLORIOUS_HOLES_MIN, GLORIOUS_HOLES_MAX } from "@/lib/modifiers";
+import { STAKE_PRESETS } from "@/lib/betDraft";
 import type { Team } from "@/lib/rackNStack";
 import type { DraftPlayerRow, QuickGameCourse } from "@/lib/quickGame";
 
@@ -137,39 +138,13 @@ export function MatchSetupFields({
           (`holeWeight` measures against a frozen 18, so nothing would ever
           double). An inert-but-visible toggle is the silent-wrong failure this
           codebase keeps paying for; showing nothing is the honest version. */}
-      {gloriousAvailable && (
-        <div>
-          <FieldLabel>Glorious finishing holes</FieldLabel>
-          <button
-            type="button"
-            onClick={() => onGlorious(!glorious)}
-            aria-pressed={glorious}
-            className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left"
-            style={{
-              background: glorious ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
-              border: `1px solid ${glorious ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
-            }}
-            data-testid="quick-match-glorious"
-          >
-            <span style={{ fontSize: 13.5, color: glorious ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
-              {glorious ? `Last ${gloriousHoles} holes count double` : "Off"}
-            </span>
-          </button>
-          {glorious && (
-            <div className="mt-2 flex justify-center">
-              <Stepper
-                size="compact"
-                value={gloriousHoles}
-                min={GLORIOUS_HOLES_MIN}
-                max={GLORIOUS_HOLES_MAX}
-                onChange={onGloriousHoles}
-                label="holes"
-                testId="quick-match-glorious-holes"
-              />
-            </div>
-          )}
-        </div>
-      )}
+      <GloriousField
+        available={gloriousAvailable}
+        on={glorious}
+        onToggle={onGlorious}
+        holes={gloriousHoles}
+        onHoles={onGloriousHoles}
+      />
     </div>
   );
 }
@@ -442,3 +417,154 @@ export function RosterFields({
   );
 }
 
+
+/**
+ * The Glorious Finishing Holes control, extracted so match play and skins ask
+ * for it identically.
+ *
+ * The two formats reach it through DIFFERENT readers — `gloriousConfig` for
+ * match (which also refuses score entry) and `skinsGloriousConfig` for skins
+ * (which has no entry mode to refuse) — and through different availability
+ * rules. That is the part that genuinely differs, and it stays with each
+ * caller. What does not differ is the control, so it does not get two copies:
+ * the second one is where "Last 3 holes count double" would quietly become
+ * something else on one screen.
+ */
+export function GloriousField({
+  available,
+  on,
+  onToggle,
+  holes,
+  onHoles,
+}: {
+  available: boolean;
+  on: boolean;
+  onToggle: (on: boolean) => void;
+  holes: number;
+  onHoles: (n: number) => void;
+}) {
+  if (!available) return null;
+  return (
+    <div>
+      <FieldLabel>Glorious finishing holes</FieldLabel>
+      <button
+        type="button"
+        onClick={() => onToggle(!on)}
+        aria-pressed={on}
+        className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left"
+        style={{
+          background: on ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+          border: `1px solid ${on ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+        }}
+        data-testid="quick-match-glorious"
+      >
+        <span style={{ fontSize: 13.5, color: on ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}>
+          {on ? `Last ${holes} holes count double` : "Off"}
+        </span>
+      </button>
+      {on && (
+        <div className="mt-2 flex justify-center">
+          <Stepper
+            size="compact"
+            value={holes}
+            min={GLORIOUS_HOLES_MIN}
+            max={GLORIOUS_HOLES_MAX}
+            onChange={onHoles}
+            label="holes"
+            testId="quick-match-glorious-holes"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The extra answers a SKINS round needs beyond the roster: what a skin is
+ * worth, and whether the last few are worth double.
+ *
+ * ── There is no handicap question, and that is the format ─────────────────
+ *
+ * `gtt_skins`'s own description is "no scores, no handicaps" — a skin is won
+ * outright by whoever takes the hole, and there is no net for a stroke to move.
+ * `RosterFields` is passed `showHandicaps={false}` for the same reason rather
+ * than being given a disabled stepper: an inert control that looks live is the
+ * failure this file's match arm already avoids twice.
+ *
+ * ── $0 is offered, and offered first ──────────────────────────────────────
+ *
+ * Skins for nothing is how most of these get played, and a form that starts at
+ * a stake nobody named is how a round quietly acquires one. The presets are the
+ * side-bet form's own (`STAKE_PRESETS`) with a zero in front, so "a $10 skin"
+ * is the same $10 whichever route recorded it.
+ */
+export function SkinsSetupFields({
+  stake,
+  onStake,
+  gloriousAvailable,
+  glorious,
+  onGlorious,
+  gloriousHoles,
+  onGloriousHoles,
+}: {
+  stake: number;
+  onStake: (n: number) => void;
+  gloriousAvailable: boolean;
+  glorious: boolean;
+  onGlorious: (on: boolean) => void;
+  gloriousHoles: number;
+  onGloriousHoles: (n: number) => void;
+}) {
+  return (
+    <div className="mt-4 flex flex-col gap-4">
+      <div>
+        <FieldLabel>What a skin is worth</FieldLabel>
+        <div className="flex items-center gap-2">
+          {[0, ...STAKE_PRESETS].map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => onStake(v)}
+              aria-pressed={stake === v}
+              data-testid={`quick-skins-stake-${v}`}
+              className="rounded-[10px] px-3 py-1.5"
+              style={{
+                background: stake === v ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+                border: `1px solid ${stake === v ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                color: stake === v ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              {v === 0 ? "None" : `$${v}`}
+            </button>
+          ))}
+          <div className="ml-auto">
+            <Stepper
+              value={stake}
+              min={0}
+              step={1}
+              onChange={onStake}
+              size="compact"
+              formatValue={(n) => `$${n}`}
+              testId="quick-skins-stake"
+            />
+          </div>
+        </div>
+        <div className="mt-1" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
+          {stake > 0
+            ? "Everyone in splits it, so the winner of a hole collects from each of the others. A tie carries the whole skin to the next hole."
+            : "Playing for nothing — the card still counts skins, and no money is shown."}
+        </div>
+      </div>
+
+      <GloriousField
+        available={gloriousAvailable}
+        on={glorious}
+        onToggle={onGlorious}
+        holes={gloriousHoles}
+        onHoles={onGloriousHoles}
+      />
+    </div>
+  );
+}

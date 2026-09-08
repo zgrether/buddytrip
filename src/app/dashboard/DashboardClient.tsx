@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronRight, Zap, Swords } from "lucide-react";
+import { ChevronDown, ChevronRight, Coins, LandPlot, Zap, Swords, type LucideIcon } from "lucide-react";
 import {
   readAllQuickGames,
   quickGameSubtitle,
@@ -23,6 +23,28 @@ import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
 import { CreateTripModal } from "@/components/trips/CreateTripModal";
 import { getTripStatus, type TripStatus } from "@/components/StatusBadge";
 import type { TripRole } from "@/server/middleware";
+
+/**
+ * One icon per tile, as an EXHAUSTIVE map rather than a ternary.
+ *
+ * It was `format === "match" ? Swords : Zap`, which is not a choice between two
+ * things — it is a default with one exception, so the third format silently
+ * arrives wearing stroke play's lightning bolt and nothing says so. A
+ * `Record<QuickGameFormat, …>` makes adding a format a compile error here.
+ *
+ * NOT `categoryIcon`: that map is keyed by CATEGORY, and all of these are golf,
+ * so it would correctly give three tiles the same glyph. The tiles are
+ * distinguishing formats from each other, which is a different question than
+ * the one the shared map answers.
+ */
+const QUICK_TILE_ICON: Record<QuickGameFormat, LucideIcon> = {
+  stroke: Zap,
+  match: Swords,
+  skins: Coins,
+  // No tile today (`QUICK_GAME_TILE_FORMATS`), and a value here anyway so the
+  // map stays total — the point of it being a Record.
+  rack: LandPlot,
+};
 
 interface TripRow {
   id: string;
@@ -259,7 +281,7 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
           </h2>
           <div className="grid grid-cols-2 gap-3">
             {QUICK_GAME_TILE_FORMATS.map((format) => {
-              const Icon = format === "match" ? Swords : Zap;
+              const Icon = QUICK_TILE_ICON[format];
               const saved = quickGames[format] ?? null;
               return (
                 <button
@@ -442,6 +464,7 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
             over the page you came from, not a place you navigate to. */}
         {setupFormat && (
           <QuickGameSetupSheet
+            key={setupFormat}
             format={setupFormat}
             onClose={() => {
               setSetupFormat(null);
@@ -450,6 +473,11 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
               setQuickGames(readAllQuickGames());
             }}
             navigatesOnCommit
+            /* The "play the whole round as skins?" nudge. Remounts the sheet on
+               the skins tile's draft — `key` is the format, so React discards
+               the old draft rather than carrying a stroke roster's handicaps
+               into a format that has none. */
+            onSwitchFormat={setSetupFormat}
             onStarted={(f) => {
               // REPLACE, and do NOT unmount the sheet first.
               //

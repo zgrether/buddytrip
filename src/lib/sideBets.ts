@@ -44,16 +44,18 @@ export interface BetSide {
  * No carryover; a carried hole in a two-way is just a bigger hole, and nobody
  * asks for it by name.
  *
- * `skins` — a pot. Everyone in contributes the stake, low net takes the whole
- * thing, and a tie carries it to the next hole. Carryover is not a setting
- * here, it is the entire point. Presses are meaningless: in a pot there is no
- * "down two to someone", there are three other people and a running total.
+ * `skins` — a pot. Low net takes the whole thing and a tie carries it to the
+ * next hole; carryover is not a setting here, it is the entire point. Presses
+ * are meaningless: in a pot there is no "down two to someone", there are three
+ * other people and a running total.
  *
- * **The arithmetic is the same either way** and always was — the winner
- * collects the stake from every other side, which for four players at $10 is
- * +$30 and three × −$10, i.e. a $40 pot taken by one person. What differs is
- * what is OFFERED (presses, carryover) and what is DISPLAYED (`holeValue`).
- * At two players the two kinds are identical, which needs no special case.
+ * **The two kinds read `amount` differently, and `sideStake` is the one place
+ * that knows it.** Head-to-head's `amount` is the per-side stake; skins'
+ * `amount` is the SKIN — what the hole is worth — which everyone in splits.
+ * Four at "$10/skin" are $2.50 each and the winner takes $7.50. What else
+ * differs is what is OFFERED (presses, carryover) and what is DISPLAYED
+ * (`holeValue`). At two sides the shapes converge but the numbers do not: a
+ * $10 skin is $5 each, a $10 head-to-head is $10 each.
  */
 export type BetKind = "head_to_head" | "skins";
 
@@ -80,7 +82,9 @@ export interface SideBet {
   id: string;
   kind: BetKind;
   sides: BetSide[];
-  /** Stakes per hole, in whole currency units, per SIDE. */
+  /** The stakes, in whole currency units. Head-to-head: what each SIDE has on
+   *  the hole. Skins: what the SKIN is worth, which the sides split — read it
+   *  through `sideStake`, never directly, or a pot is priced per person. */
   amount: number;
   /** Where it begins. 1 for a bet made on the first tee — not a special case. */
   startHole: number;
@@ -212,7 +216,8 @@ export interface HoleMoneyLine {
 }
 
 export interface ExposureState {
-  /** The standing rate: the sum of the stakes of every live bet. */
+  /** The standing rate: the sum of `sideStake` over every live bet — what one
+   *  side is in for per hole, never the skin. */
   perHole: number;
   liveBetCount: number;
   /** The same sum over live bets that are NOT presses — the opening stake the
@@ -276,7 +281,13 @@ export function makePressBet(parent: SideBet, triggerHole: number): SideBet {
     // `rulesForKind` refuses skins an `autoPressAt` to fire from.
     kind: "head_to_head",
     sides: parent.sides,
-    amount: parent.amount,
+    // `sideStake`, not `parent.amount`: the press is head-to-head, so its
+    // `amount` IS the per-side stake, and copying a skins parent's figure
+    // across the kind boundary would silently size the press at the whole pot.
+    // Unreachable today (`rulesForKind` refuses skins a press) and written this
+    // way so it stays true if that ever changes — the same reason
+    // `buildManualPress` does it.
+    amount: sideStake(parent),
     startHole: triggerHole + 1,
     endHole: null, // §3.3 — to the end of the round, not to where the original ends
     carryover: parent.carryover,
@@ -317,9 +328,10 @@ export function buildManualPress(args: {
     // press of a press is still two sides.
     kind: "head_to_head",
     sides: args.parent.sides,
-    // Presses stay the same size as what they press. The escalation is one
-    // more stake per press, not a doubling.
-    amount: args.parent.amount,
+    // Presses stay the same size as what they press — one more STAKE per press,
+    // not a doubling, and `sideStake` is what "the same size" means once a
+    // skins parent prices its `amount` as the pot rather than per side.
+    amount: sideStake(args.parent),
     startHole: Math.max(1, Math.round(args.fromHole)),
     endHole: null,
     // A manual press does not itself auto-press — you agreed to ONE bet, and
@@ -408,15 +420,47 @@ export function rulesForKind(
 }
 
 /**
+ * What one SIDE puts in per hole — the only number the money is ever built
+ * from, and the one place the two kinds read `amount` differently.
+ *
+ * Head-to-head: `amount` is the stake, because that is what changes hands.
+ * Skins: `amount` is the SKIN — what the hole is worth to whoever takes it —
+ * so each side puts in a share of it, `amount / sides`. A $10 skin between
+ * four is $2.50 each; the winner collects $7.50 and the hole was worth $10,
+ * which is what the form asked for.
+ *
+ * ── THIS REVERSES WHAT SKINS USED TO MEAN, and the reversal is the fix ──────
+ *
+ * `amount` was the per-side stake in BOTH kinds, and `holeValue` multiplied it
+ * up: four people at "$10/skin" were each in for $10 and the hole was worth
+ * $40. Every figure was self-consistent and every one of them was four times
+ * what the person setting it up had asked for, because the form's own label
+ * has always read **Stakes (per skin)** and the strip has always printed
+ * `$10/skin` — the rate names the SKIN, and the arithmetic behind it named the
+ * stake. Same shape as the naming entries in CLAUDE.md: not a wrong number,
+ * a number answering a different question than its label.
+ *
+ * The head-to-head reading is untouched, which is why presses and the last-hole
+ * double (both head-to-head only, by `rulesForKind`) need no thought here.
+ */
+export function sideStake(bet: SideBet): number {
+  if (bet.kind !== "skins") return bet.amount;
+  // `sides.length` is >= 2 for anything `migrateBet` will admit, so there is no
+  // divide-by-zero to guard; the max is belt-and-braces for a hand-built bet.
+  return bet.amount / Math.max(1, bet.sides.length);
+}
+
+/**
  * What a hole is WORTH, as the tracker says it — distinct from `pot`, which is
  * what each side has at risk (§11's "two numbers, two names").
  *
  * Head-to-head: the stake, because that is what changes hands.
- * Skins: the stake times everyone in, because that is the pot — four at $10 is
- * a $40 skin, and three carries makes it $160.
+ * Skins: the pot times everyone in, which puts the skin back together — four
+ * sides at $2.50 each is the $10 skin the form asked for, and three carries
+ * makes it $40.
  *
- * Derived, never set: the setup asks what you are each putting in, and this is
- * the only place that turns it into what the hole is worth.
+ * Derived, never set: the setup asks what the skin is worth, `sideStake` turns
+ * that into what each person puts in, and this turns it back.
  */
 export function holeValue(bet: SideBet, pot: number): number {
   return bet.kind === "skins" ? pot * bet.sides.length : pot;
@@ -464,9 +508,9 @@ export interface PlayerBetLine {
   playerId: string;
   /** The round's net for this player. Not a function of the hole being viewed. */
   total: number;
-  /** What THIS player has riding on the next hole — the sum of the stakes of
-   *  the bets they are actually in, which is the number they can act on. The
-   *  round's aggregate exposure is not: with separate bets between separate
+  /** What THIS player has riding on the next hole — the sum of `sideStake`
+   *  over the bets they are actually in, which is the number they can act on.
+   *  The round's aggregate exposure is not: with separate bets between separate
    *  people, "$35/hole across 4 bets" is nobody's risk. */
   perHole: number;
   /** Their live bets, in the order `result.bets` already sorted them. */
@@ -494,15 +538,16 @@ export function playerBetLines(result: SideBetsResult, playerIds: string[]): Pla
     return {
       playerId,
       total: playerTotal(result, playerId),
-      perHole: mine.reduce((sum, t) => sum + t.bet.amount, 0),
+      perHole: round2(mine.reduce((sum, t) => sum + sideStake(t.bet), 0)),
       // `rate` is the primary text on the strip and `qualifier` the aside —
-      // see `betRate`. `amount` stays for anything that needs the number
-      // rather than the phrase.
+      // see `betRate`. `amount` is what THIS player is in for per hole
+      // (`sideStake`), not the recorded figure: on a skins bet those differ,
+      // and the column is headed by a person.
       bets: mine.map((t) => ({
         betId: t.bet.id,
         rate: betRate(t.bet),
         qualifier: betQualifier(t.bet),
-        amount: t.bet.amount,
+        amount: sideStake(t.bet),
       })),
     };
   });
@@ -611,7 +656,11 @@ function tallyBet(bet: SideBet, input: SideBetsInput, lastHole: number): BetTall
 
   for (const hole of input.holes) {
     if (hole < bet.startHole || hole > end) continue;
-    const pot = bet.amount * (1 + carried);
+    // `sideStake`, not `bet.amount`: in skins the recorded figure is the SKIN
+    // and each side is in for a share of it (see `sideStake`). Carryover then
+    // multiplies the whole thing, so a tied hole rolls the pot WHOLE — the same
+    // sentence `src/lib/skins.ts` hangs its arithmetic off.
+    const pot = sideStake(bet) * (1 + carried);
     const { decided, winnerSideId } = resolveHole(bet, hole, input.scoring);
     const delta: Record<string, number> = {};
 
@@ -709,7 +758,7 @@ export function computeSideBets(input: SideBetsInput): SideBetsResult {
 
   // Exposure per hole, now that every bet (derived presses included) is known.
   const stakeOn = (hole: number) =>
-    tallies.reduce((sum, t) => sum + (liveOn(t.bet, hole, lastHole) ? t.bet.amount : 0), 0);
+    tallies.reduce((sum, t) => sum + (liveOn(t.bet, hole, lastHole) ? sideStake(t.bet) : 0), 0);
 
   for (const t of tallies) {
     if (t.pressTriggerHole == null || t.bet.autoPressAt == null) continue;
@@ -791,11 +840,14 @@ export function computeSideBets(input: SideBetsInput): SideBetsResult {
     }
   }
 
+  // Exposure is what a person is IN for, so it counts `sideStake` — the pot's
+  // per-side share, not the skin. A four-way $10 skin is $2.50 of anybody's
+  // exposure, and counting the skin here would read as four times the risk.
   const liveBets = tallies.filter((t) => t.live);
-  const perHole = liveBets.reduce((s, t) => s + t.bet.amount, 0);
-  const baseStake = liveBets
-    .filter((t) => t.bet.origin.kind !== "press")
-    .reduce((s, t) => s + t.bet.amount, 0);
+  const perHole = round2(liveBets.reduce((s, t) => s + sideStake(t.bet), 0));
+  const baseStake = round2(
+    liveBets.filter((t) => t.bet.origin.kind !== "press").reduce((s, t) => s + sideStake(t.bet), 0)
+  );
 
   return {
     bets: tallies,
@@ -941,16 +993,44 @@ export interface DoubleOffer {
   /** The side that is down — the one the prompt is offered to. */
   trailingSideId: string;
   leadingSideId: string;
-  /** Stakes of the double: twice the parent's, for one hole. */
+  /** Stakes of the double: twice what a side is in for per hole, for one hole. */
   amount: number;
+  /**
+   * What the PARENT is running at per side per hole — `sideStake`, not
+   * `bet.amount`.
+   *
+   * Carried on the offer rather than re-derived at the prompt because the
+   * prompt's sentence compares the two ("twice the $5 the original is running
+   * at") and a component reading `bet.amount` off a two-sided SKINS bet would
+   * print the skin against the doubled stake: $10 described as twice $10.
+   */
+  parentStake: number;
 }
 
 /**
  * Whether to prompt for a last-hole double, and on which bets.
  *
- * Offered once the second-to-last hole is in and the last one isn't — "after
- * the 17th is entered" on a full round, and after the 8th on a nine (§8), which
- * falls out of counting from the round's real length rather than from 18.
+ * Offered once the second-to-last hole is COMPLETE and the last one has not
+ * started — "after the 17th is in" on a full round, and after the 8th on a nine
+ * (§8), which falls out of counting from the round's real length rather than
+ * from 18.
+ *
+ * ── "IS IN" MEANS SETTLED, NOT TOUCHED, and that is the fix ────────────────
+ *
+ * The gate was `playedThrough === penultimate` alone. `playedThrough` is the
+ * furthest hole ANY score has reached, so it moves on the FIRST player's entry
+ * — the prompt arrived over the scorecard the moment one person's 17 was typed,
+ * interrupting the hole it needs the answer to and offering a double against a
+ * tally that was still one, two or three scores short of the landscape.
+ * `playedThrough` is exactly right for what it is for (which bets have started,
+ * what the next hole is) and was the wrong question here: this one is "is the
+ * penultimate hole SETTLED", and the module already answers that per hole.
+ *
+ * `holeLines[penultimate].decided` is that answer — every bet with a line on
+ * that hole has a result, which in `net` mode means every player of every side
+ * of every live bet has a score on it (`sideValueAt` refuses a half-entered
+ * side). Same family as CLAUDE.md's "empty is not unknown": a hole one score
+ * into being played rendered identically to a hole that was over.
  *
  * A PROMPT, never automatic (§9): it is a decision, and the app doing it to you
  * is exactly the thing that makes a bet feel like it got away from someone.
@@ -960,18 +1040,23 @@ export interface DoubleOffer {
 export function lastHoleDoubleOffers(
   result: SideBetsResult,
   holes: number[],
-  declinedParentIds: string[] = []
+  answeredParentIds: string[] = []
 ): DoubleOffer[] {
   const sorted = [...holes].sort((a, b) => a - b);
   const lastHole = sorted[sorted.length - 1];
   if (lastHole == null || sorted.length < 2) return [];
   const penultimate = sorted[sorted.length - 2];
+  // The last hole has not been started. Kept as its own condition rather than
+  // folded into the line check: a decided penultimate hole says nothing about
+  // whether the round has already moved past it.
   if (result.playedThrough !== penultimate) return [];
-  const declined = new Set(declinedParentIds);
+  // ...and the penultimate hole is finished, not merely begun.
+  if (!result.holeLines.find((l) => l.hole === penultimate)?.decided) return [];
+  const answered = new Set(answeredParentIds);
 
   const offers: DoubleOffer[] = [];
   for (const t of result.bets) {
-    if (declined.has(t.bet.id)) continue;
+    if (answered.has(t.bet.id)) continue;
     if (t.bet.origin.kind === "double") continue;
     if (t.bet.sides.length !== 2) continue;
     if (!t.live) continue;
@@ -979,14 +1064,73 @@ export function lastHoleDoubleOffers(
     const va = t.totals[a.id] ?? 0;
     const vb = t.totals[b.id] ?? 0;
     if (va === vb) continue;
+    const stake = sideStake(t.bet);
     offers.push({
       bet: t.bet,
       trailingSideId: va < vb ? a.id : b.id,
       leadingSideId: va < vb ? b.id : a.id,
-      amount: t.bet.amount * 2,
+      // Twice what a SIDE is in for, not twice the recorded figure: on a
+      // two-sided skins bet those differ by half, and `buildDoubleBet` records
+      // a head-to-head, whose `amount` IS the per-side stake.
+      amount: stake * 2,
+      parentStake: stake,
     });
   }
   return offers;
+}
+
+/**
+ * Answer the last-hole prompt for EVERY offer it put on the table, in ONE
+ * transition.
+ *
+ * ── Why one function and not two state writes ─────────────────────────────
+ *
+ * The page used to accept by calling `addBets(...)` and then `declineDouble(...)`
+ * — two updates for one decision, where only the second is what closes the
+ * prompt. Nothing between them can be allowed to fail, and nothing has to be:
+ * they are one fact ("this was answered, and here is what it created"), so they
+ * are one write. There is no longer an ordering, and no longer a state where a
+ * double exists and the prompt still offers to create it.
+ *
+ * ── Why it answers the whole set ──────────────────────────────────────────
+ *
+ * The prompt is one question asked at one moment — you are standing on the 18th
+ * tee — so every bet it offered is answered by the tap, whether or not it was
+ * ticked. Answering them one at a time is what made the prompt look STUCK: a
+ * Nassau reaches the 17th with two live legs, so dismissing the back nine
+ * immediately re-rendered an identical sheet for the overall, and the button
+ * read as doing nothing. Same shape as CLAUDE.md's composition-bug entry — each
+ * prompt was correct on its own and the sequence was the defect.
+ *
+ * Unticked is a real answer and is recorded as one; `answeredDoubles` carries
+ * both, which is why it is no longer called `declinedDoubles`.
+ */
+export function answerLastHoleDoubles(
+  state: SideBetsState,
+  args: {
+    /** Every offer the prompt showed — the ones taken and the ones not. */
+    offers: DoubleOffer[];
+    /** Parent bet ids the person ticked. Empty = "No thanks" to all of them. */
+    acceptedBetIds: string[];
+    lastHole: number;
+    mkId: () => string;
+  }
+): SideBetsState {
+  const accepted = new Set(args.acceptedBetIds);
+  const taken = args.offers.filter((o) => accepted.has(o.bet.id));
+  return {
+    ...state,
+    bets: [
+      ...state.bets,
+      ...taken.map((offer) => buildDoubleBet({ mkId: args.mkId, offer, lastHole: args.lastHole })),
+    ],
+    answeredDoubles: [
+      ...state.answeredDoubles,
+      // Every offer, not just the taken ones — the question was asked of all of
+      // them and a re-ask is the bug this replaces.
+      ...args.offers.map((o) => o.bet.id).filter((id) => !state.answeredDoubles.includes(id)),
+    ],
+  };
 }
 
 /** The bet a taken double records: the same sides, twice the stake, the last
@@ -1042,14 +1186,23 @@ export function betTotalForPlayer(tally: BetTally, playerId: string | null): num
 export interface SideBetsState {
   bets: SideBet[];
   perspectivePlayerId: string | null;
-  /** Bet ids whose last-hole double was declined, so the prompt asks once. */
-  declinedDoubles: string[];
+  /**
+   * Bet ids whose last-hole double has been ANSWERED, so the prompt asks once.
+   *
+   * Both answers land here, which is why it is no longer called
+   * `declinedDoubles`: accepting recorded the id under that name too (the page
+   * called `declineDouble` right after adding the bet, with a comment
+   * explaining that it had to), so the field has always meant "asked and
+   * answered" and only the name said otherwise. `migrateSideBetsState` reads
+   * the old key, so a round saved mid-answer resumes with its answers intact.
+   */
+  answeredDoubles: string[];
 }
 
 export const EMPTY_SIDE_BETS: SideBetsState = {
   bets: [],
   perspectivePlayerId: null,
-  declinedDoubles: [],
+  answeredDoubles: [],
 };
 
 /** A bet made by hand — the general case §2 describes, of which a press is the
@@ -1093,10 +1246,15 @@ export function migrateSideBetsState(raw: unknown): SideBetsState {
   return {
     bets,
     perspectivePlayerId: typeof r.perspectivePlayerId === "string" ? r.perspectivePlayerId : null,
-    declinedDoubles: Array.isArray(r.declinedDoubles)
-      ? r.declinedDoubles.filter((x): x is string => typeof x === "string")
-      : [],
+    // `declinedDoubles` is the pre-rename key; a round saved under it keeps its
+    // answers rather than being asked every question again on resume.
+    answeredDoubles: strings(r.answeredDoubles ?? r.declinedDoubles),
   };
+}
+
+/** The string members of a value that ought to be a string array. */
+function strings(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
 }
 
 function migrateBet(raw: unknown): SideBet | null {

@@ -20,6 +20,9 @@ import {
   formatSignedMoney,
   betLabel,
   betTotalForPlayer,
+  answerLastHoleDoubles,
+  sideStake,
+  EMPTY_SIDE_BETS,
   rulesForKind,
   holeValue,
   EXPOSURE_WARN_MULTIPLE,
@@ -92,6 +95,19 @@ function run(over: Partial<SideBetsInput> = {}): ReturnType<typeof computeSideBe
   return computeSideBets({ holes: holes18, bets: [bet()], scoring: duel({}), ...over });
 }
 
+/**
+ * A carrying two-side bet, priced so each side is in for $10 — the SAME
+ * per-side stake as the plain `bet()` fixture, which is what makes the
+ * carryover numbers below comparable with the head-to-head ones.
+ *
+ * `amount` is 20 rather than 10 because carrying makes it skins, and a skins
+ * bet's `amount` is the SKIN, which its sides split (`sideStake`). A $20 skin
+ * between two is $10 each. The cases in this block are about the carry, not
+ * about pricing — the pricing has its own block (§11) — so the fixture holds
+ * the stake still and lets the carry be the only thing moving.
+ */
+const carryBet = (over: Partial<SideBet> = {}) => bet({ carryover: true, amount: 20, ...over });
+
 describe("no bets", () => {
   it("returns nothing to show and no exposure", () => {
     const r = run({ bets: [] });
@@ -140,7 +156,7 @@ describe("a plain bet", () => {
 describe("carryover", () => {
   it("halving the 4th makes the 5th worth $20", () => {
     const r = run({
-      bets: [bet({ carryover: true })],
+      bets: [carryBet()],
       scoring: duel({ 1: "W", 2: "W", 3: "W", 4: "H", 5: "W" }),
     });
     expect(r.holeLines[3].atStake).toBe(10); // the 4th was worth its own $10
@@ -152,7 +168,7 @@ describe("carryover", () => {
 
   it("several halves accumulate", () => {
     const r = run({
-      bets: [bet({ carryover: true })],
+      bets: [carryBet()],
       scoring: duel({ 1: "H", 2: "H", 3: "H", 4: "W" }),
     });
     expect(r.holeLines.map((l) => l.atStake).slice(0, 5)).toEqual([10, 20, 30, 40, 10]);
@@ -167,7 +183,7 @@ describe("carryover", () => {
 
   it("the pot rolls THROUGH an unplayed hole rather than resetting on it", () => {
     // Halve the 1st, skip the 2nd entirely, win the 3rd: the 3rd is worth $20.
-    const r = run({ bets: [bet({ carryover: true })], scoring: duel({ 1: "H", 3: "W" }) });
+    const r = run({ bets: [carryBet()], scoring: duel({ 1: "H", 3: "W" }) });
     expect(r.holeLines[2].atStake).toBe(20);
     expect(r.totalsByPlayer[P.zach]).toBe(20);
   });
@@ -360,7 +376,7 @@ describe("a bet that has not started", () => {
 
 describe("the per-hole line", () => {
   const scoring = duel({ 1: "H", 2: "H", 3: "H", 4: "H", 5: "H", 6: "H", 7: "W", 8: "W" });
-  const r = computeSideBets({ holes: holes18, bets: [bet({ carryover: true })], scoring });
+  const r = computeSideBets({ holes: holes18, bets: [carryBet()], scoring });
 
   it("shows what THAT hole was worth", () => {
     // Six halves carried in: the 7th is worth $70.
@@ -374,7 +390,7 @@ describe("the per-hole line", () => {
     // The banner and the hole lines come out of ONE call with no notion of a
     // current hole, which is the mechanism behind "navigating to hole 3 doesn't
     // rewind it": there is no input a navigation could change.
-    const again = computeSideBets({ holes: holes18, bets: [bet({ carryover: true })], scoring });
+    const again = computeSideBets({ holes: holes18, bets: [carryBet()], scoring });
     expect(again.holeLines).toEqual(r.holeLines);
     expect(again.totalsByPlayer).toEqual(r.totalsByPlayer);
     expect(playerTotal(again, P.zach)).toBe(80);
@@ -383,7 +399,7 @@ describe("the per-hole line", () => {
   it("names the stake and the pot separately — two numbers, two names (§11)", () => {
     const mid = computeSideBets({
       holes: holes18,
-      bets: [bet({ carryover: true })], // carryover ⇒ skins, per the fixture
+      bets: [carryBet()], // carryover ⇒ skins, per the fixture
       scoring: duel({ 1: "H", 2: "H" }),
     });
     // The standing rate — what each player is putting in per hole.
@@ -403,7 +419,7 @@ describe("recompute — the property the derived design buys", () => {
     const mk = (results: Record<number, "W" | "L" | "H">) =>
       computeSideBets({
         holes: holes18,
-        bets: [bet({ carryover: true })],
+        bets: [carryBet()],
         scoring: duel(results),
       });
 
@@ -450,11 +466,15 @@ describe("skins", () => {
     { id: "s3", playerIds: [P.cal] },
     { id: "s4", playerIds: [P.dave] },
   ];
+  /** A $40 skin between four is $10 each — the same per-side stake the rest of
+   *  this file uses, so these cases stay about who collects from whom rather
+   *  than about the pricing (which §11's block owns). */
+  const fourWayPot = () => bet({ sides: four, carryover: true, amount: 40 });
 
   it("the winner collects the stake from every other side", () => {
     const r = computeSideBets({
       holes: holes18,
-      bets: [bet({ sides: four, carryover: true })],
+      bets: [fourWayPot()],
       scoring: net({
         [P.zach]: { 1: 4 },
         [P.brad]: { 1: 5 },
@@ -470,7 +490,7 @@ describe("skins", () => {
   it("two tying for the low score halves the hole and carries it", () => {
     const r = computeSideBets({
       holes: holes18,
-      bets: [bet({ sides: four, carryover: true })],
+      bets: [fourWayPot()],
       scoring: net({
         [P.zach]: { 1: 4, 2: 4 },
         [P.brad]: { 1: 4, 2: 5 },
@@ -709,11 +729,143 @@ describe("the last-hole double", () => {
   });
 });
 
+describe("the last-hole double waits for the penultimate hole to be SETTLED", () => {
+  /** Holes 1..16 in the books (A won the 1st, the rest halved), then whatever
+   *  the caller says about the 17th — per player, so a half-entered hole is
+   *  expressible. */
+  const through16 = (h17: { a?: number; b?: number } = {}) => {
+    const a: Record<number, number> = {};
+    const b: Record<number, number> = {};
+    for (let h = 1; h <= 16; h++) {
+      a[h] = 4;
+      b[h] = h === 1 ? 5 : 4;
+    }
+    if (h17.a != null) a[17] = h17.a;
+    if (h17.b != null) b[17] = h17.b;
+    return net({ [P.zach]: a, [P.brad]: b });
+  };
+  const offersFor = (scoring: BetScoring) =>
+    lastHoleDoubleOffers(computeSideBets({ holes: holes18, bets: [bet()], scoring }), holes18);
+
+  it("does NOT offer on the FIRST score of the 17th — the reported bug", () => {
+    // `playedThrough` is 17 the instant anybody's 17 is typed, and that alone
+    // used to open the prompt: over the scorecard, mid-entry, against a tally
+    // still a score short of the landscape it is asking you to bet on.
+    const half = through16({ b: 4 });
+    expect(computeSideBets({ holes: holes18, bets: [bet()], scoring: half }).playedThrough).toBe(17);
+    expect(offersFor(half)).toEqual([]);
+  });
+
+  it("offers once BOTH scores on the 17th are in", () => {
+    expect(offersFor(through16({ a: 4, b: 4 }))).toHaveLength(1);
+  });
+
+  it("still does not offer with the 17th untouched, or once the 18th has started", () => {
+    expect(offersFor(through16())).toEqual([]);
+    const done = through16({ a: 4, b: 4 });
+    if (done.mode === "net") done.net[P.zach][18] = 4;
+    expect(offersFor(done)).toEqual([]);
+  });
+
+  it("waits on every side of a FOUR-way pot, not just the first two", () => {
+    // The case a two-player fixture cannot see: `decided` is a property of the
+    // hole across every bet on it, so a foursome's skin is undecided until the
+    // fourth card is in. A two-sided bet alongside it is offered on its own
+    // terms — but only once the hole as a whole has settled.
+    const four = ["p-zach", "p-brad", "p-cal", "p-dave"].map((id) => ({ id: `s-${id}`, playerIds: [id] }));
+    const rows: Record<string, Record<number, number>> = {};
+    for (const pid of Object.values(P)) {
+      rows[pid] = {};
+      for (let h = 1; h <= 16; h++) rows[pid][h] = pid === P.zach && h === 1 ? 3 : 4;
+    }
+    const pot = bet({ id: "pot", kind: "skins", sides: four, carryover: true, amount: 40 });
+    const three = { ...rows, [P.dave]: { ...rows[P.dave] } };
+    for (const pid of [P.zach, P.brad, P.cal]) three[pid] = { ...three[pid], 17: 4 };
+    expect(
+      lastHoleDoubleOffers(computeSideBets({ holes: holes18, bets: [pot, bet()], scoring: net(three) }), holes18)
+    ).toEqual([]);
+    const all = { ...three, [P.dave]: { ...three[P.dave], 17: 4 } };
+    expect(
+      lastHoleDoubleOffers(computeSideBets({ holes: holes18, bets: [pot, bet()], scoring: net(all) }), holes18)
+    ).toHaveLength(1); // the head-to-head; a four-side pot has no "down" to offer
+  });
+});
+
+describe("answering the last-hole prompt", () => {
+  const scoring = (() => {
+    const a: Record<number, number> = {};
+    const b: Record<number, number> = {};
+    for (let h = 1; h <= 17; h++) {
+      a[h] = 4;
+      b[h] = h === 1 ? 5 : 4;
+    }
+    return net({ [P.zach]: a, [P.brad]: b });
+  })();
+  /** A round with two live doubleable bets — what a Nassau reaches the 17th
+   *  with (back nine + overall), and the shape that made the prompt look
+   *  stuck. */
+  const two = [bet({ id: "bet-1" }), bet({ id: "bet-2", amount: 5 })];
+  const state = (over: Partial<typeof EMPTY_SIDE_BETS> = {}) => ({
+    ...EMPTY_SIDE_BETS,
+    bets: two,
+    ...over,
+  });
+  const offersOf = (st: { bets: SideBet[]; answeredDoubles: string[] }) =>
+    lastHoleDoubleOffers(
+      computeSideBets({ holes: holes18, bets: st.bets, scoring }),
+      holes18,
+      st.answeredDoubles
+    );
+
+  it("offers BOTH at once — the queue that read as a modal refusing to close", () => {
+    expect(offersOf(state()).map((o) => o.bet.id)).toEqual(["bet-1", "bet-2"]);
+  });
+
+  it("taking one answers the whole set, so nothing is offered again", () => {
+    const offers = offersOf(state());
+    const next = answerLastHoleDoubles(state(), {
+      offers,
+      acceptedBetIds: ["bet-1"],
+      lastHole: 18,
+      mkId: () => "dbl-1",
+    });
+    // One double recorded, both parents answered, nothing left to ask.
+    expect(next.bets.filter((b) => b.origin.kind === "double").map((b) => b.id)).toEqual(["dbl-1"]);
+    expect(next.answeredDoubles.sort()).toEqual(["bet-1", "bet-2"]);
+    expect(offersOf(next)).toEqual([]);
+  });
+
+  it("declining everything records the answer and creates no bet", () => {
+    const next = answerLastHoleDoubles(state(), {
+      offers: offersOf(state()),
+      acceptedBetIds: [],
+      lastHole: 18,
+      mkId: () => "never",
+    });
+    expect(next.bets).toEqual(two);
+    expect(offersOf(next)).toEqual([]);
+  });
+
+  it("prices the double off the SIDE stake, so a two-sided skin does not double twice", () => {
+    // `buildDoubleBet` records a head-to-head, whose `amount` IS the per-side
+    // stake. Copying a skins parent's `amount` across would size the double at
+    // the whole pot: 4× the stake, offered as 2×.
+    const skin = bet({ id: "sk", kind: "skins", carryover: false, amount: 20 });
+    const offer = lastHoleDoubleOffers(
+      computeSideBets({ holes: holes18, bets: [skin], scoring }),
+      holes18
+    )[0];
+    expect(offer.parentStake).toBe(10); // $20 skin between two
+    expect(offer.amount).toBe(20); // twice the $10 a side
+    expect(buildDoubleBet({ mkId: () => "d", offer, lastHole: 18 }).amount).toBe(20);
+  });
+});
+
 describe("a nine-hole round", () => {
   it("carries over and presses within its own length, never reaching for an 18th hole", () => {
     const r = computeSideBets({
       holes: holes9,
-      bets: [bet({ carryover: true, autoPressAt: 2 })],
+      bets: [carryBet({ autoPressAt: 2 })],
       scoring: duel({ 1: "H", 2: "L", 3: "L" }),
     });
     expect(r.holeLines).toHaveLength(9);
@@ -802,19 +954,41 @@ describe("skins — the pot (§11)", () => {
     return net(out);
   };
 
-  it("four at $10 makes the first skin $40 — winner +$30, everyone else −$10", () => {
+  it("a $10 skin between four is $2.50 each — winner +$7.50, everyone else −$2.50", () => {
     const r = computeSideBets({
       holes: holes18,
       bets: [skins()],
       scoring: merge(hole(1, [4, 5, 5, 5])),
     });
-    // The stake is what each puts in; the skin is what the hole is worth.
-    expect(r.holeLines[0].pot).toBe(40);
-    expect(r.exposure.perHole).toBe(10);
-    expect(r.totalsByPlayer[P.zach]).toBe(30);
-    expect(r.totalsByPlayer[P.brad]).toBe(-10);
-    expect(r.totalsByPlayer[P.cal]).toBe(-10);
-    expect(r.totalsByPlayer[P.dave]).toBe(-10);
+    // `amount` is the SKIN — what the hole is worth — and the sides split it.
+    // The reverse reading (each in for $10, hole worth $40) is what this block
+    // asserted before, and it was four times what "Stakes (per skin) $10" and
+    // the strip's "$10/skin" had been telling the person setting it up.
+    expect(r.holeLines[0].pot).toBe(10);
+    expect(r.exposure.perHole).toBe(2.5);
+    expect(r.totalsByPlayer[P.zach]).toBe(7.5);
+    expect(r.totalsByPlayer[P.brad]).toBe(-2.5);
+    expect(r.totalsByPlayer[P.cal]).toBe(-2.5);
+    expect(r.totalsByPlayer[P.dave]).toBe(-2.5);
+    // …and it still sums to zero, which is the property the split can break.
+    expect(Object.values(r.totalsByPlayer).reduce((a, b) => a + b, 0)).toBeCloseTo(0, 10);
+  });
+
+  it("scales with the field: the same $10 skin between three is $3.33 each", () => {
+    // The case the four-player one cannot catch — `sides.length` really is the
+    // divisor, rather than a 4 that happens to match the fixture. Also the
+    // rounding case: a third of $10 is not payable, so the per-player figures
+    // are rounded to cents and the SKIN is what stays whole.
+    const three = ["p-zach", "p-brad", "p-cal"].map((id) => ({ id: `s-${id}`, playerIds: [id] }));
+    const r = computeSideBets({
+      holes: holes18,
+      bets: [skins({ sides: three })],
+      scoring: net({ [P.zach]: { 1: 4 }, [P.brad]: { 1: 5 }, [P.cal]: { 1: 5 } }),
+    });
+    expect(r.holeLines[0].pot).toBe(10);
+    expect(r.totalsByPlayer[P.brad]).toBe(-3.33);
+    expect(r.totalsByPlayer[P.cal]).toBe(-3.33);
+    expect(r.totalsByPlayer[P.zach]).toBe(6.67);
   });
 
   it("second gets nothing, same as fourth", () => {
@@ -826,7 +1000,7 @@ describe("skins — the pot (§11)", () => {
     expect(r.totalsByPlayer[P.brad]).toBe(r.totalsByPlayer[P.dave]);
   });
 
-  it("a tie for low pays nobody and carries — $80 next, and $160 after three", () => {
+  it("a tie for low pays nobody and carries the skin WHOLE — $20 next, $40 after three", () => {
     const tied = computeSideBets({
       holes: holes18,
       bets: [skins()],
@@ -834,27 +1008,68 @@ describe("skins — the pot (§11)", () => {
     });
     expect(tied.holeLines[0].delta).toEqual({});
     expect(Object.values(tied.totalsByPlayer).every((v) => v === 0)).toBe(true);
-    expect(tied.holeLines[1].pot).toBe(80);
+    expect(tied.holeLines[1].pot).toBe(20);
 
     const thrice = computeSideBets({
       holes: holes18,
       bets: [skins()],
       scoring: merge(hole(1, [4, 4, 5, 5]), hole(2, [4, 4, 5, 5]), hole(3, [4, 4, 5, 5])),
     });
-    // Three carries on a $40 skin makes the fourth hole worth $160.
-    expect(thrice.holeLines[3].pot).toBe(160);
+    // Three carries on a $10 skin makes the fourth hole worth $40 — the pot
+    // carries WHOLE, which is the sentence `src/lib/skins.ts` hangs the golf
+    // format's arithmetic off too. A flat "+1 stake per tie" would give $25
+    // here: self-consistent, plausible, and not this game.
+    expect(thrice.holeLines[3].pot).toBe(40);
+    expect(thrice.holeLines[3].atStake).toBe(10); // $2.50 × 4 carries
   });
 
-  it("is arithmetically identical to head-to-head at two players", () => {
+  it("at two sides a skin is HALF a head-to-head of the same number, not the same", () => {
+    // This block used to assert the two were identical, and under the old
+    // per-person reading they were. They are not the same question: "$10 a
+    // hole" is $10 out of each pocket, "$10 a skin" is $10 on the table. The
+    // shapes still converge — same winner, same settlement direction — which is
+    // what the second half pins.
     const two = [
       { id: "s1", playerIds: [P.zach] },
       { id: "s2", playerIds: [P.brad] },
     ];
     const scoring = duel({ 1: "W", 2: "L", 3: "W" });
-    const asSkins = computeSideBets({ holes: holes18, bets: [bet({ kind: "skins", sides: two, carryover: false })], scoring });
-    const asH2H = computeSideBets({ holes: holes18, bets: [bet({ kind: "head_to_head", sides: two })], scoring });
-    expect(asSkins.totalsByPlayer).toEqual(asH2H.totalsByPlayer);
-    expect(asSkins.settlement).toEqual(asH2H.settlement);
+    const asSkins = computeSideBets({ holes: holes18, bets: [bet({ kind: "skins", sides: two, carryover: false, amount: 10 })], scoring });
+    const asH2H = computeSideBets({ holes: holes18, bets: [bet({ kind: "head_to_head", sides: two, amount: 10 })], scoring });
+    expect(asSkins.totalsByPlayer[P.zach]).toBe(5);
+    expect(asH2H.totalsByPlayer[P.zach]).toBe(10);
+
+    // Double the skin and they DO line up — the one identity worth having,
+    // because it is the conversion between the two ways of saying it.
+    const doubled = computeSideBets({ holes: holes18, bets: [bet({ kind: "skins", sides: two, carryover: false, amount: 20 })], scoring });
+    expect(doubled.totalsByPlayer).toEqual(asH2H.totalsByPlayer);
+    expect(doubled.settlement).toEqual(asH2H.settlement);
+  });
+});
+
+describe("sideStake — the one place the two kinds read `amount` differently", () => {
+  const twoSides = [
+    { id: "a", playerIds: [P.zach] },
+    { id: "b", playerIds: [P.brad] },
+  ];
+  const fourSides = ["a", "b", "c", "d"].map((id, i) => ({ id, playerIds: [Object.values(P)[i]] }));
+
+  it("is the whole amount in a head-to-head and a share of it in skins", () => {
+    expect(sideStake(bet({ kind: "head_to_head", sides: twoSides, amount: 10 }))).toBe(10);
+    expect(sideStake(bet({ kind: "skins", sides: twoSides, amount: 10, carryover: true }))).toBe(5);
+    expect(sideStake(bet({ kind: "skins", sides: fourSides, amount: 10, carryover: true }))).toBe(2.5);
+  });
+
+  it("round-trips with holeValue: split the skin, put it back, get the skin", () => {
+    // The invariant the two functions exist to hold between them. Stated here
+    // rather than left implicit in the tally, because a change to either one
+    // that keeps its own tests green can still break the pair.
+    for (const sides of [twoSides, fourSides]) {
+      for (const amount of [1, 5, 10, 20, 45]) {
+        const b = bet({ kind: "skins", sides, amount, carryover: true });
+        expect(holeValue(b, sideStake(b))).toBeCloseTo(amount, 10);
+      }
+    }
   });
 });
 
@@ -882,6 +1097,9 @@ describe("the kinds carry different rules (§12/§13)", () => {
       { id: "a", playerIds: [P.zach] },
       { id: "b", playerIds: [P.brad] },
     ];
+    // `holeValue` takes the POT (a side's share, carries included) and puts the
+    // skin back together — so a $20 skin between two is $10 a side at the
+    // stake, and worth $20 to whoever takes it.
     expect(holeValue(bet({ kind: "head_to_head", sides: two }), 10)).toBe(10);
     expect(holeValue(bet({ kind: "skins", sides: two, carryover: true }), 10)).toBe(20);
   });
@@ -914,7 +1132,9 @@ describe("several bets at once (§14)", () => {
       id: "sk-1",
       kind: "skins",
       carryover: true,
-      amount: 10,
+      // $30 on the table between three is $10 each — the same per-side stake
+      // the head-to-heads above are using, so the totals below stay readable.
+      amount: 30,
       sides: [
         { id: "z3", playerIds: [P.zach] },
         { id: "m3", playerIds: [P.cal] },
