@@ -461,6 +461,21 @@ export function PickemSheet({
   const gameById = useMemo(() => new Map(slate.map((g) => [g.id, g])), [slate]);
   const order = useMemo(() => rankedOrder(picks), [picks]);
 
+  /**
+   * Does THIS slate carry a weighted game?
+   *
+   * The hint line branches on it, because a sentence about multipliers on a
+   * flat slate points at a chip that is not drawn: `MatchupLine` renders no
+   * multiplier markup at all at 1× (pinned in `pickemConvergence.test.tsx`,
+   * "draws none at all on an ordinary game"). Telling a reader to look for
+   * something absent is the same defect as a refusal naming an action that
+   * cannot be performed — they go looking, find nothing, and conclude the
+   * screen is broken rather than that the sentence is.
+   *
+   * Absent reads as 1, never as 0, exactly as `pickemMatchCard` has it.
+   */
+  const anyWeighted = useMemo(() => slate.some((g) => (g.multiplier ?? 1) > 1), [slate]);
+
 
   /**
    * The sheet as a PAYLOAD — the games actually picked, and only those.
@@ -733,10 +748,28 @@ export function PickemSheet({
 
                 The spread's ownership moved out of here because it is on the
                 ROW, next to the team it belongs to — a legend for a badge
-                sitting six pixels away is a legend nobody needs. */}
+                sitting six pixels away is a legend nobody needs.
+
+                ── FOUR SENTENCES, NOT TWO, AND THE MULTIPLIER IS WHY ────────
+
+                The weight applies in BOTH modes — `pickPoints` is confidence ×
+                multiplier with confidence on and 1 × multiplier with it off —
+                so "Every game is worth the same" was false on a weighted slate
+                and "each pick earns the points shown" is false on one too. The
+                chip beside a row is the RANK while the sheet is editable, on
+                purpose (see the stake comment down in the list): a 2× game at
+                the top of sixteen shows 16 and pays 32.
+
+                Both sentences are still the right ones on a FLAT slate, which
+                is why this branches on the slate rather than replacing them —
+                see `anyWeighted`. */}
             {settings.useConfidence
-              ? "Tap a team to make it your pick. Order with confidence where each pick earns the points shown."
-              : "Tap a team to make it your pick. Every game is worth the same."}
+              ? anyWeighted
+                ? "Tap a team to make it your pick. Order with confidence where each pick earns the points shown, times any multiplier on the row."
+                : "Tap a team to make it your pick. Order with confidence where each pick earns the points shown."
+              : anyWeighted
+                ? "Tap a team to make it your pick. Check for a multiplier — some games are worth more than others."
+                : "Tap a team to make it your pick. Every game is worth the same."}
           </p>
           <button
             type="button"
@@ -951,10 +984,16 @@ export function PickemSheet({
            * ── The chip answers a different question either side of the result ──
            *
            * UNPLAYED, it is the RANK: what this position is worth, renumbering
-           * as the row is dragged. It must not carry the multiplier there — the
-           * hint line one screen up promises "the top of the list is worth 16",
-           * and a number that moves with the drag has to be the thing the drag
-           * changes.
+           * as the row is dragged. It must not carry the multiplier there — a
+           * number that moves with the drag has to be the thing the drag
+           * changes, and folding the weight in would make it move for a second
+           * reason nobody touched.
+           *
+           * (This used to cite the hint line as the reason — "the top of the
+           * list is worth 16" — and that sentence has not been on screen for
+           * some time. The decision survives its old justification; the hint
+           * now carries the multiplier in WORDS instead, on a weighted slate,
+           * which is the other half of this trade.)
            *
            * PLAYED, the drag is over and the question becomes what the game was
            * worth, which is the rank TIMES the multiplier. A 2× game at the top

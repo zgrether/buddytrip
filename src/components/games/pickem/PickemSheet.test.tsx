@@ -272,6 +272,79 @@ describe("the sheet, confidence OFF", () => {
 
 });
 
+/**
+ * ── THE HINT LINE NAMES THE MULTIPLIER ONLY WHEN ONE IS DRAWN ──────────────
+ *
+ * Two facts have to hold together, and neither alone is the property:
+ *
+ *   1. the weight applies in BOTH modes (`pickPoints` is confidence × the
+ *      multiplier with confidence on, 1 × the multiplier with it off), so a
+ *      line saying "every game is worth the same" or "each pick earns the
+ *      points shown" is FALSE on a weighted slate — the chip beside a row is
+ *      the rank while the sheet is editable, so a 2× game at the top of the
+ *      list shows its rank and pays double it;
+ *   2. `MatchupLine` draws no multiplier markup at all at 1× (pinned in
+ *      `pickemConvergence.test.tsx`), so a line telling a flat-slate reader to
+ *      look for one sends them after something that is not on the screen.
+ *
+ * So the assertion is the COUPLING, not the sentence: the word appears in the
+ * hint exactly when the badge appears on a row. That is what fails against
+ * both plausible wrong builds — the one that always mentions the multiplier
+ * and the one that never does — where an assertion on either slate alone
+ * passes against one of them.
+ *
+ * Scoped to the hint's own element rather than the page: "multiplier" is on
+ * the rows too, and a document-wide `toContain` would be satisfied by the very
+ * badge this is about.
+ */
+describe("the hint line, against the slate it is describing", () => {
+  const hintOf = (html: string): string => {
+    const at = html.indexOf('data-testid="pickem-sheet-hint"');
+    if (at < 0) return "";
+    const open = html.indexOf(">", at) + 1;
+    return html.slice(open, html.indexOf("</p>", open));
+  };
+
+  /** The shared fixture carries a 2× game; this is the same slate without it. */
+  const FLAT = SLATE.map((g) => ({ ...g, multiplier: 1 }));
+  const ON: Props["settings"] = { useConfidence: true, rollUp: "individual_matches" };
+  const OFF: Props["settings"] = { useConfidence: false, rollUp: "individual_matches" };
+
+  it("says the word when a row carries the badge — in BOTH modes", () => {
+    for (const settings of [ON, OFF]) {
+      const label = settings.useConfidence ? "confidence on" : "confidence off";
+      const html = render({ settings });
+      // The premise: this slate really does draw one.
+      expect(html, label).toContain("pickem-matchup-multiplier");
+      expect(hintOf(html), label).toContain("multiplier");
+    }
+  });
+
+  it("does NOT when no row carries one — the reader would find nothing", () => {
+    for (const settings of [ON, OFF]) {
+      const label = settings.useConfidence ? "confidence on" : "confidence off";
+      const html = render({ settings, slate: FLAT });
+      // The premise, from the other side: nothing to point at.
+      expect(html, label).not.toContain("pickem-matchup-multiplier");
+      expect(hintOf(html), label).not.toContain("multiplier");
+    }
+  });
+
+  it("still says how the sheet is scored on a flat slate", () => {
+    // Absence assertions are satisfied by an empty hint. The flat wording is
+    // the one that was correct before multipliers were mentioned at all, and
+    // it is still the right sentence here.
+    expect(hintOf(render({ settings: ON, slate: FLAT }))).toContain("points shown");
+    expect(hintOf(render({ settings: OFF, slate: FLAT }))).toContain("worth the same");
+  });
+
+  it("never tells a weighted slate that every game is worth the same", () => {
+    // The specific falsehood this replaced, kept as its own case because it is
+    // the one a reader could act on — spending picks as if the slate were flat.
+    expect(hintOf(render({ settings: OFF }))).not.toContain("worth the same");
+  });
+});
+
 describe("the sheet carries NO explanation of its own", () => {
   const VARIANTS: Props["settings"][] = [
     { useConfidence: true, rollUp: "individual_matches" },
