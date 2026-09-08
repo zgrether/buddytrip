@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { RotateCcw, Table2, Zap } from "lucide-react";
 import {
   hasAnyScore,
+  isQuickGameFormat,
   isSkinsGame,
   quickGameScreen,
   quickSkinsGlorious,
@@ -171,7 +172,7 @@ function QuickResultCard({
  * whose strokes are relative (one side receives them) and therefore owned by
  * `MatchSetupFields` — two handicap models on one screen would contradict.
  */
-const VALID_FORMATS: readonly QuickGameFormat[] = ["stroke", "match", "rack", "skins"];
+
 
 /**
  * `?format=` is the tile that sent you here — `useSearchParams()` opts the
@@ -198,11 +199,10 @@ function QuickGamePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const formatParam = searchParams.get("format");
-  const format: QuickGameFormat = (
-    VALID_FORMATS as readonly string[]
-  ).includes(formatParam ?? "")
-    ? (formatParam as QuickGameFormat)
-    : "stroke";
+  // `isQuickGameFormat` rather than a list here — the dashboard has to answer
+  // the same question about its own `?setup=`, and two lists is one list short
+  // the next time a format is added.
+  const format: QuickGameFormat = isQuickGameFormat(formatParam) ? formatParam : "stroke";
   const [state, setState] = useState<QuickGameState | null>(null);
   const [view, setView] = useState<"entry" | "grid">("entry");
   // currentHole lives IN the persisted state so a refresh resumes on the same
@@ -290,18 +290,31 @@ function QuickGamePageInner() {
       setConfirmReplace(true);
       return;
     }
-    resetGame();
+    startOver();
   }
 
-  /** Reset game (§5) — everything goes: players, course, scores, bets. Lands
-   *  on the landing state, where the setup sheet opens blank, which is what
-   *  "back to a blank setup" now means. */
-  function resetGame() {
-    setState(null);
-    setSetupOpen(true);
+  /**
+   * Reset game (§5) — everything goes: players, course, scores, bets.
+   *
+   * Lands on the DASHBOARD with this tile's setup sheet open, which is exactly
+   * where tapping the tile puts you. It used to land on `/quick-game`'s own
+   * landing screen — a thin page that exists to have something behind a sheet,
+   * carrying a heading and a "Nothing in progress" line about a round you had
+   * just deliberately thrown away. Two places to start a round is one more than
+   * there is, and the tile is the one people arrive by.
+   *
+   * Storage is cleared HERE rather than through `setState(null)` and the
+   * persist effect. Nulling the state would render that landing for the frames
+   * before the route changes — the flash the loading gate exists to prevent,
+   * reintroduced on the way out.
+   */
+  function startOver() {
+    // `format` is the URL's, and `readQuickGameState` only ever returns a round
+    // whose own format matches it, so this is the key the round was written to.
+    clearQuickGameState(format);
     setConfirmReplace(false);
     setSettingsOpen(false);
-    setView("entry");
+    router.push(`/dashboard?setup=${format}`);
   }
 
 
@@ -409,40 +422,16 @@ function QuickGamePageInner() {
         : s
     );
   }
+  /** Play again — a blank slate, which is the same act as Reset game and now
+   *  goes to the same place. It used to leave you on the landing screen, and
+   *  worse, only opened the sheet if `setupOpen` happened to still be true. */
   function playAgain() {
-    setState(null);
-    setView("entry");
+    startOver();
   }
   function discard() {
     setState(null);
     router.push("/dashboard");
   }
-  /**
-   * Clear scores (§5 — renamed; it used to be called "Reset game", which is
-   * now the OTHER action). #879 item 1b; revised — feedback: hole 1 was the wrong
-   * landing spot). Clears scores AND returns to the setup screen, with the
-   * current players/handicaps/course staged as editable drafts — not blank
-   * (that's `playAgain`) and not straight back into hole-1 scoring (the old
-   * behavior). "The odds are much higher that's what you want" after a
-   * reset: you're at least as likely to want to fix a handicap or swap a
-   * player as you are to re-score the identical setup, and the old behavior
-   * made the second case one extra trip (gear → Players & handicaps) while
-   * this makes it zero. Tapping Start immediately reproduces the old
-   * behavior exactly, so nothing is lost for the "just re-score it" case.
-   *
-   * This and the roster editor (`openRosterEditor`/`saveRoster`, below) are
-   * now two INDEPENDENT affordances, not one gating the other: this clears
-   * SCORES and returns to setup; that edits players/handicaps/course
-   * WITHOUT touching scores, any time. Both stage via the same
-   * `prefillDrafts` so they can't drift into different pre-fill rules — the
-   * only difference is whether `state` gets cleared (this) or kept (that).
-   *
-   * Not a `useScoreSaver.clearAll` situation (#807's fix target): that bug was
-   * specific to `reconcileScores`' overlay-only merge dropping an empty SERVER
-   * response — there is no server here, no reconcile, no outbox. Quick Stroke
-   * Play's whole state is one local object with no other writer, so replacing
-   * it is atomic and there is nothing this can race against.
-   */
   /**
    * Clear scores (§5) — the round STAYS, only what was played goes.
    *
@@ -955,7 +944,7 @@ function QuickGamePageInner() {
           isPending={false}
           testId="quick-game-new-confirm"
           onCancel={() => setConfirmReplace(false)}
-          onConfirm={resetGame}
+          onConfirm={startOver}
         />
       )}
     </div>

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import DashboardClient from "./DashboardClient";
+import { isQuickGameFormat } from "@/lib/quickGame";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,31 @@ export const dynamic = "force-dynamic";
  * validates it against the user's actual trips — a pointer at a deleted or
  * revoked trip must not offer tabs that lead nowhere.
  */
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const lastTripId = (await cookies()).get("bt-last-trip-id")?.value ?? null;
-  return <DashboardClient lastTripId={lastTripId} />;
+  /**
+   * `?setup=<format>` — "open this Quick Game tile's setup sheet on arrival".
+   *
+   * Written by the round's own Reset game / Play again, which send you back to
+   * the tile you started from rather than to a second setup screen. Read on the
+   * SERVER for the same reason `lastTripId` is: this page already established
+   * that handing a first-render fact down as a prop beats an effect that
+   * discovers it afterwards, and the client half of this one has to open a
+   * modal, where a cascading render is a history entry in the wrong place.
+   *
+   * VALIDATED, not passed through — the shared `isQuickGameFormat`, so a hand-
+   * typed `?setup=nonsense` opens nothing instead of a sheet for a format that
+   * does not exist.
+   */
+  const setup = (await searchParams).setup;
+  return (
+    <DashboardClient
+      lastTripId={lastTripId}
+      openSetupFormat={isQuickGameFormat(setup) ? setup : null}
+    />
+  );
 }

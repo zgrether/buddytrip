@@ -79,6 +79,22 @@ export type QuickGameFormat = "stroke" | "match" | "rack" | "skins";
  *  from earlier testing; it's just never reachable from a tile. */
 export const QUICK_GAME_TILE_FORMATS = ["stroke", "match", "skins"] as const;
 
+/** Every format that exists, tile or not — `rack` has no tile but its rounds
+ *  are real and reachable by direct link. */
+const QUICK_GAME_FORMATS: readonly QuickGameFormat[] = ["stroke", "match", "rack", "skins"];
+
+/**
+ * Is this string one of the formats?
+ *
+ * The ONE reader of an untrusted format — a `?format=` on the round, a
+ * `?setup=` on the dashboard. Both used to answer it for themselves, and a
+ * format added to one list and not the other is a tile that opens the wrong
+ * round or a link that silently falls back to stroke play.
+ */
+export function isQuickGameFormat(v: unknown): v is QuickGameFormat {
+  return typeof v === "string" && (QUICK_GAME_FORMATS as readonly string[]).includes(v);
+}
+
 /** This format's own storage key. `stroke`'s key intentionally reuses the
  *  legacy name (`bt-quick-game:stroke`, not a bare `bt-quick-game`) — a real
  *  key per format, none of them ambiguous with the pre-slots single key, so
