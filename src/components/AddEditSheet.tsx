@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
+import { useKeyboardInset } from "@/hooks/useKeyboardInset";
 import { ScrollLock } from "@/hooks/useScrollLock";
 
 /**
@@ -26,6 +27,13 @@ import { ScrollLock } from "@/hooks/useScrollLock";
  * dirty-state, validation and footer wiring, and folding a five-surface
  * refactor into a Quick Games change would put unrelated regressions behind
  * one review. They move separately, and the follow-up is filed.
+ *
+ * ── 90vh, matching the rest of the app ─────────────────────────────────────
+ * It was 85, which made this and `AddScheduleItemSheet` the only two sheets in
+ * the app not at 88–90 (`Sheet`, `CompetitionGamesPanel`, `CreateTripModal`,
+ * `IdeaZonePanel`, `NewsHelpModal`). No reason was ever recorded for the
+ * difference, and the five extra percent is five percent fewer fields below the
+ * fold on the surface people fill in standing on a tee box.
  *
  * ── The add/edit split ─────────────────────────────────────────────────────
  * `mode` exists because the two genuinely differ — an edit opens onto
@@ -74,6 +82,21 @@ export function AddEditSheet({
   // — the same hook every hand-rolled copy of this already uses.
   const { consumeMarker } = useModalBackButton(onClose);
 
+  /**
+   * Sit above the on-screen keyboard rather than behind it.
+   *
+   * A bottom sheet pinned to `bottom: 0` at `max-h-[85vh]` is sized and placed
+   * against the LAYOUT viewport, which no keyboard shrinks — so on a phone the
+   * sheet's lower half went behind the keyboard, the browser scrolled to chase
+   * the focused input, and the first block of fields ended up above the top of
+   * what you could see. You had to scroll back up to fill in the form you had
+   * just opened.
+   *
+   * Null on desktop, on any browser without `visualViewport`, and whenever the
+   * keyboard is down — in every one of those the classes below apply unchanged.
+   */
+  const keyboard = useKeyboardInset();
+
   return (
     <ScrollLock>
       {/* Tiered backdrop tokens — sheet (mobile) vs drawer (desktop). */}
@@ -97,14 +120,24 @@ export function AddEditSheet({
         data-sheet-mode={mode}
         className={[
           "fixed z-50 flex flex-col",
-          "inset-x-0 bottom-0 max-h-[85vh] rounded-t-2xl",
+          // The keyboard's two values arrive as CSS VARS read by these MOBILE
+          // classes, defaulting to what they have always been. An inline style
+          // would beat `sm:bottom-auto` / `sm:max-h-screen` and drag the
+          // desktop drawer around too; a var leaves the breakpoint owned by the
+          // one place that already owns it. See `sheetKeyboardVars`.
+          "inset-x-0 bottom-[var(--bt-kb-bottom,0px)] max-h-[var(--bt-kb-max,90vh)] rounded-t-2xl",
           "sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-0 sm:h-screen sm:max-h-screen sm:w-[440px] sm:rounded-none",
         ].join(" ")}
-        style={{
-          background: "var(--color-bt-card-float)",
-          boxShadow: "var(--shadow-floating)",
-          borderLeft: "1px solid var(--color-bt-border)",
-        }}
+        style={
+          {
+            background: "var(--color-bt-card-float)",
+            boxShadow: "var(--shadow-floating)",
+            borderLeft: "1px solid var(--color-bt-border)",
+            ...(keyboard
+              ? { "--bt-kb-bottom": keyboard.bottom, "--bt-kb-max": keyboard.maxHeight }
+              : null),
+          } as React.CSSProperties
+        }
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header — sticky top */}

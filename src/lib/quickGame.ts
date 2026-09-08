@@ -813,6 +813,42 @@ export function buildQuickGameFromDrafts(d: QuickGameDrafts): QuickGameState | n
   return { ...common, format: "stroke", strokes: roster.strokes };
 }
 
+/**
+ * Which screen `/quick-game` shows — as a function, so the ORDER of the checks
+ * is a thing that can be asserted rather than a sequence of early returns.
+ *
+ * ── The `loading` arm is the whole reason this exists ─────────────────────
+ *
+ * The saved round is read in an EFFECT (local storage is external data, and the
+ * page is re-used across a `?format=` change rather than remounted), so there
+ * is always one commit where `state` is null and the round is simply not known
+ * yet. The page branched on `!state` alone, so that commit rendered the LANDING
+ * — "Nothing in progress. Set one up to start scoring." — with its setup sheet
+ * open, for a round that exists.
+ *
+ * That is worse than a flash. `AddEditSheet` runs `useModalBackButton`, which
+ * PUSHES a phantom history entry on mount and calls `history.back()` on unmount
+ * — so arriving at a saved round pushed an entry and popped it again, one tick
+ * after `router.replace` had just navigated there. That is the same race the
+ * `consumeMarker` fix was written for (see `modalPhantomPop.test.ts`), arriving
+ * from the other side: that fix stopped the DEPARTING sheet popping an entry it
+ * had handed over, and nothing stopped the ARRIVING page opening a second sheet
+ * over a round it already had.
+ *
+ * "Not known yet" and "known to be nothing" are different facts and were
+ * rendering identically — CLAUDE.md's "empty is not unknown", with a history
+ * side effect attached to getting it wrong.
+ */
+export function quickGameScreen(o: {
+  /** Has the load effect run? False on the first commit, always. */
+  hydrated: boolean;
+  state: { finished: boolean } | null;
+}): "loading" | "landing" | "final" | "round" {
+  if (!o.hydrated) return "loading";
+  if (!o.state) return "landing";
+  return o.state.finished ? "final" : "round";
+}
+
 // ── Skins ────────────────────────────────────────────────────────────────────
 
 /**

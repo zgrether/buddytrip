@@ -6,6 +6,7 @@ import { RotateCcw, Table2, Zap } from "lucide-react";
 import {
   hasAnyScore,
   isSkinsGame,
+  quickGameScreen,
   quickSkinsGlorious,
   quickSkinsMoney,
   quickSkinsRows,
@@ -649,6 +650,31 @@ function QuickGamePageInner() {
    * something behind it and there is no hole to show yet — not as a screen in
    * its own right.
    */
+  const screen = quickGameScreen({ hydrated, state });
+
+  /**
+   * ── Loading ── the round has not been read yet.
+   *
+   * Blank, not the landing. `state` is null on the first commit whether or not
+   * a round exists (the read is an effect — see `quickGameScreen`), and
+   * rendering the landing there opens a SETUP SHEET over a round that is about
+   * to appear. That sheet pushes a phantom history entry and pops it again on
+   * unmount, one tick after the `router.replace` that brought you here — which
+   * is why "Resume round" on the dashboard tile could read as doing nothing.
+   *
+   * The same shade as the `Suspense` fallback above, so arriving at a saved
+   * round is one uninterrupted background rather than a flash of a screen that
+   * says you have nothing in progress.
+   */
+  if (screen === "loading") {
+    return <div className="fixed inset-0" style={{ background: "var(--color-bt-base)" }} />;
+  }
+
+  // From here `screen` cannot be "loading", so `state` is KNOWN — null means
+  // there is genuinely no round. The two branches below read `state` directly
+  // rather than `screen` because that is what narrows the union for
+  // TypeScript; `quickGameScreen` is what fixes the ORDER, and it agrees with
+  // both of them by construction ("landing" is exactly the null case).
   if (!state) {
     return (
       <div className="mx-auto max-w-md px-4 py-6" style={{ background: "var(--color-bt-base)", minHeight: "100vh" }}>
