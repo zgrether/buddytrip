@@ -39,6 +39,7 @@ export function SideBetsPanel({
   sideName,
   onAdd,
   onRemove,
+  onPlaySkinsRound,
 }: {
   players: Participant[];
   result: SideBetsResult;
@@ -52,6 +53,8 @@ export function SideBetsPanel({
   sideName: (side: BetSide) => string;
   onAdd: (bets: SideBet[]) => void;
   onRemove: (betId: string) => void;
+  /** Setup-time only — see `BetForm`. */
+  onPlaySkinsRound?: () => void;
 }) {
   const hasBets = result.bets.length > 0;
   const [open, setOpen] = useState(!hasBets);
@@ -133,6 +136,7 @@ export function SideBetsPanel({
                 sideName={sideName}
                 onCancel={() => setCreating(false)}
                 onCommit={commit}
+                onPlaySkinsRound={onPlaySkinsRound}
               />
             </div>
           ) : (

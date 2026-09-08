@@ -16,10 +16,18 @@ import {
 import { clampStrokes, effectiveStrokes } from "@/lib/handicap";
 import { fmtToPar, playerStats, computeRack, type RackPlayer, type RackResult, type Team } from "@/lib/rackNStack";
 import { gloriousConfig } from "@/lib/gloriousHoles";
+import {
+  computeSkinsStandings,
+  skinsGloriousConfig,
+  tallyGrouping,
+  type SkinsGroupingTally,
+  type SkinsOutcomeRow,
+  type SkinsStanding,
+} from "@/lib/skins";
 import { type ModifiersMap } from "@/lib/modifiers";
 import { unitsFromSchema, strokeIndexOf, PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import type { ScorecardSchema } from "@/lib/courseIndex";
-import { migrateSideBetsState, type SideBetsState } from "@/lib/sideBets";
+import { migrateSideBetsState, settle, type Settlement, type SideBetsState } from "@/lib/sideBets";
 import type { Participant, ScoreUnit, ScoreValues } from "@/components/games/types";
 
 /**
@@ -53,21 +61,23 @@ const QUICK_GAME_LEGACY_STORAGE_KEY = "bt-quick-game";
  * The per-format storage keys were the same STATE shape and needed no bump.
  * v4 added `bets` — side bets, which every round saved before them lacks
  * entirely, so the migrator supplies the empty state rather than failing.
+ * v5 added the `skins` format, whose payload no earlier version can produce —
+ * so nothing migrates INTO it and every older round keeps loading unchanged.
  */
-export const QUICK_GAME_STATE_VERSION = 4;
+export const QUICK_GAME_STATE_VERSION = 5;
 
 /** Which game a saved round is. Each format gets its OWN storage key
  *  (`quickGameStorageKey`) — the dashboard's two tiles and the rail's list can
  *  hold a stroke round and a match round at once, which is the entire point of
  *  this being tiles instead of one slot behind a picker. */
-export type QuickGameFormat = "stroke" | "match" | "rack";
+export type QuickGameFormat = "stroke" | "match" | "rack" | "skins";
 
 /** Every format the dashboard actually offers a tile for. `rack`'s state/
  *  migration/setup UI exist (from #1050) but it has no tile yet — no board was
  *  built — so it's deliberately excluded here rather than shown half-finished.
  *  A rack payload under its own key still round-trips correctly if one exists
  *  from earlier testing; it's just never reachable from a tile. */
-export const QUICK_GAME_TILE_FORMATS = ["stroke", "match"] as const;
+export const QUICK_GAME_TILE_FORMATS = ["stroke", "match", "skins"] as const;
 
 /** This format's own storage key. `stroke`'s key intentionally reuses the
  *  legacy name (`bt-quick-game:stroke`, not a bare `bt-quick-game`) — a real
@@ -171,12 +181,67 @@ export interface QuickMatchState extends QuickGameCommon {
   modifiers: ModifiersMap;
 }
 
-export type QuickGameState = QuickStrokeState | QuickRackState | QuickMatchState;
+/**
+ * Quick Skins — the golf format, backed by local storage instead of a game row.
+ *
+ * ── Why this is a FORMAT and not a bet ────────────────────────────────────
+ *
+ * Skins is available as a side bet on a stroke round, where the winner of each
+ * hole is DERIVED from net scores. That is a real thing people play, and it is
+ * not this: a skins round records who took the hole, because players pick up
+ * and there is frequently no score to derive from — `src/lib/skins.ts` says so
+ * in its own header, and it is the reason that module exists beside
+ * `sideBets.ts` rather than inside it.
+ *
+ * So the round is scored the way the format is scored (`SkinsEntryView`: tap a
+ * winner or Tied, the pot carries whole), and the money rides on the skins
+ * rather than the other way round.
+ *
+ * ── No handicaps, and that is the format ─────────────────────────────────
+ *
+ * `gtt_skins`'s own description: "no scores, no handicaps". The roster rows
+ * still carry a `strokes` field because they are the shared `DraftPlayerRow`,
+ * and `buildQuickGameFromDrafts` simply does not read it here.
+ */
+export interface QuickSkinsState extends QuickGameCommon {
+  format: "skins";
+  /**
+   * `{ [unitLabel]: outcome }` — one recorded result per hole, keyed the way a
+   * match's `outcomes` is.
+   *
+   * `result` and `winnerId` are a PAIR, not a redundancy, exactly as
+   * `skins_hole_outcomes` pairs them under a CHECK: an absent key is a hole not
+   * played, and a `tied` entry is a hole that WAS played and carried. A lone
+   * nullable winner would render those two identically, which is the one
+   * distinction this format turns on.
+   */
+  outcomes: Record<string, QuickSkinOutcome>;
+  /**
+   * Dollars per SKIN — what one hole's own value is worth, which everyone in
+   * the round splits (`quickSkinsMoney`). Zero is a real answer: a skins round
+   * played for bragging rights records nothing about money and shows none.
+   *
+   * Named and priced the same way a skins SIDE BET is (`sideStake`), so the two
+   * routes to "we are playing $10 skins" cannot mean different amounts.
+   */
+  stake: number;
+  /** `games.modifiers`'s local twin. Only `glorious_holes` exists today, and
+   *  skins reads it through `skinsGloriousConfig` rather than match play's
+   *  `gloriousConfig` (a different guard, the same `holeWeight`). */
+  modifiers: ModifiersMap;
+}
+
+/** One hole's recorded result. The impossible pairing — a tie with a winner —
+ *  is not representable, which is the table's CHECK expressed in the type. */
+export type QuickSkinOutcome = { result: "won"; winnerId: string } | { result: "tied" };
+
+export type QuickGameState = QuickStrokeState | QuickRackState | QuickMatchState | QuickSkinsState;
 
 /** Narrowing helpers — used at every reader so nothing branches on shape. */
 export const isStrokeGame = (s: QuickGameState): s is QuickStrokeState => s.format === "stroke";
 export const isRackGame = (s: QuickGameState): s is QuickRackState => s.format === "rack";
 export const isMatchGame = (s: QuickGameState): s is QuickMatchState => s.format === "match";
+export const isSkinsGame = (s: QuickGameState): s is QuickSkinsState => s.format === "skins";
 
 /** The user-facing name of each format — the ONE place these strings live, so a
  *  new reader can't hardcode "Quick Stroke Play" the way the dashboard card, the
@@ -186,6 +251,7 @@ export const QUICK_GAME_LABEL: Record<QuickGameFormat, string> = {
   stroke: "Quick Stroke Play",
   match: "Quick Match Play",
   rack: "Quick Rack n Stack",
+  skins: "Quick Skins",
 };
 
 /** The `game_type_id` each quick format scores as. Load-bearing, not cosmetic:
@@ -196,6 +262,9 @@ export const QUICK_GAME_TYPE_ID: Record<QuickGameFormat, string> = {
   stroke: "gtt_stroke_play",
   match: "gtt_match_play",
   rack: "gtt_rack_n_stack",
+  // Load-bearing here too: `skinsGloriousConfig` guards on `isSkinsFormat`, so
+  // a quick skins round must present as `gtt_skins` for the modifier to apply.
+  skins: "gtt_skins",
 };
 
 /** One editable roster row — the shared shape for both the pre-start setup
@@ -223,7 +292,9 @@ export function draftRowsFrom(state: QuickGameState): DraftPlayerRow[] {
   return state.players.map((p) => ({
     id: p.id,
     name: p.name,
-    strokes: isMatchGame(state) ? 0 : state.strokes[p.id] ?? 0,
+    // A match's strokes are per-SIDE and relative (owned by the relative
+    // control), and skins has none at all — both read 0 here.
+    strokes: isMatchGame(state) || isSkinsGame(state) ? 0 : state.strokes[p.id] ?? 0,
     side: sideOf(p.id),
   }));
 }
@@ -278,7 +349,9 @@ export function migrateQuickGameState(raw: unknown): QuickGameState | null {
 
   // Read the discriminator. Absent ⇒ v2 ⇒ stroke (what the old writer wrote).
   const rawFormat = r.format === undefined ? "stroke" : r.format;
-  if (rawFormat !== "stroke" && rawFormat !== "match" && rawFormat !== "rack") return null;
+  if (rawFormat !== "stroke" && rawFormat !== "match" && rawFormat !== "rack" && rawFormat !== "skins") {
+    return null;
+  }
 
   const course = r.course && typeof r.course === "object" ? (r.course as QuickGameCourse) : null;
   const currentHole = typeof r.currentHole === "number" && r.currentHole > 0 ? r.currentHole : 1;
@@ -336,7 +409,42 @@ export function migrateQuickGameState(raw: unknown): QuickGameState | null {
     };
   }
 
+  if (rawFormat === "skins") {
+    return {
+      ...common,
+      format: "skins",
+      outcomes: migrateSkinOutcomes(r.outcomes),
+      // A missing or nonsense stake is $0 — "we played for nothing", which is a
+      // legitimate round — rather than a number nobody agreed to.
+      stake: typeof r.stake === "number" && r.stake > 0 ? r.stake : 0,
+      modifiers: r.modifiers && typeof r.modifiers === "object" ? (r.modifiers as ModifiersMap) : {},
+    };
+  }
+
   return { ...common, format: "stroke", strokes: strokesOf(r.strokes) };
+}
+
+/**
+ * Normalize a stored skins outcome map, dropping anything that is not one of
+ * the two legal shapes.
+ *
+ * A malformed entry is DROPPED, not repaired: the two states this format turns
+ * on are "not played" and "played and tied", and a half-readable row coerced to
+ * either one is a hole silently reassigned. Absent is the honest answer, and it
+ * is the one the entry screen lets somebody fix.
+ */
+function migrateSkinOutcomes(raw: unknown): Record<string, QuickSkinOutcome> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, QuickSkinOutcome> = {};
+  for (const [label, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== "object") continue;
+    const o = v as Record<string, unknown>;
+    if (o.result === "tied") out[label] = { result: "tied" };
+    else if (o.result === "won" && typeof o.winnerId === "string" && o.winnerId.length > 0) {
+      out[label] = { result: "won", winnerId: o.winnerId };
+    }
+  }
+  return out;
 }
 
 /**
@@ -456,6 +564,9 @@ export function quickGameUnits(state: QuickGameState | null): ScoreUnit[] {
  * nothing from it is the point, not a reason to hide it.
  */
 export function quickGamePips(state: QuickGameState): Record<string, Set<string>> {
+  // "No scores, no handicaps" is the format, not an unimplemented corner — a
+  // pip on a skins card would promise a shot in a game that nets nothing.
+  if (isSkinsGame(state)) return {};
   const scIndex = strokeIndexOf(quickGameUnits(state));
   const m: Record<string, Set<string>> = {};
   const put = (id: string, n: number) => {
@@ -499,6 +610,9 @@ export function scoredParticipantIds(state: QuickGameState): string[] {
  */
 export function hasAnyScore(state: QuickGameState): boolean {
   if (isMatchGame(state) && Object.keys(state.outcomes).length > 0) return true;
+  // Skins is `outcomes`-ONLY — it never writes `values` at all, so this is not
+  // a "both sources" case like the match above but the only source there is.
+  if (isSkinsGame(state)) return Object.keys(state.outcomes).length > 0;
   return scoredParticipantIds(state).length > 0;
 }
 
@@ -552,6 +666,11 @@ export function quickFormatPlayerCountError(format: QuickGameFormat, count: numb
   }
   if (format === "rack") {
     return count >= 2 ? null : "Rack n Stack needs at least 2 players.";
+  }
+  if (format === "skins") {
+    // A skin is won OUTRIGHT against a field. Alone there is no field, every
+    // hole is yours, and there is nothing to carry.
+    return count >= 2 ? null : "Skins needs someone to win them from.";
   }
   // No message (§4). With one field on screen and Start disabled until it has
   // a name, "add at least one player" told the user what the form already
@@ -612,6 +731,8 @@ export interface QuickGameDrafts {
   bets: SideBetsState;
   /** Match only. */
   entryMode: "score" | "outcome";
+  /** Skins only — dollars per skin. 0 = playing for nothing. */
+  stake: number;
   /** Signed relative handicap: <0 → side A receives, >0 → side B. */
   relStrokes: number;
   glorious: boolean;
@@ -678,7 +799,137 @@ export function buildQuickGameFromDrafts(d: QuickGameDrafts): QuickGameState | n
     for (const p of roster.players) teams[p.id] = d.teams[p.id] ?? "A";
     return { ...common, format: "rack", strokes: roster.strokes, teams };
   }
+  if (d.format === "skins") {
+    return {
+      ...common,
+      format: "skins",
+      outcomes: {},
+      stake: Math.max(0, Math.round(d.stake)),
+      // Same guard the match arm applies, for the same reason: a modifier
+      // stored but inert is the "on but does nothing" state this build avoids.
+      modifiers: d.glorious && d.gloriousAvailable ? { glorious_holes: { holes: d.gloriousHoles } } : {},
+    };
+  }
   return { ...common, format: "stroke", strokes: roster.strokes };
+}
+
+// ── Skins ────────────────────────────────────────────────────────────────────
+
+/**
+ * A quick round is ONE card, so it is one grouping.
+ *
+ * The trip-side format runs an independent fold per grouping — that is the
+ * structural half of `tallySkins` — and a Quick round has exactly one. Named
+ * rather than passed as `""` so the scorecard, the entry view and the tally all
+ * address it the same way.
+ */
+export const QUICK_SKINS_GROUPING = "quick";
+
+/** The LIVE glorious config for a quick skins round, through the format's OWN
+ *  reader. NOT `gloriousConfig`, which returns `NO_GLORIOUS` for anything
+ *  outside match singles/doubles — the guard differs, the `holeWeight` does
+ *  not (see `skinsGloriousConfig`'s note). */
+export function quickSkinsGlorious(state: QuickSkinsState) {
+  return skinsGloriousConfig(QUICK_GAME_TYPE_ID.skins, state.modifiers);
+}
+
+/**
+ * The stored outcome map, in the row shape `src/lib/skins.ts` takes.
+ *
+ * Keyed by unit LABEL on disk (a match's `outcomes` is too) and by hole NUMBER
+ * in the fold, so this is where the two meet — once, rather than at each of the
+ * three surfaces that fold. Out-of-range labels are dropped the same way
+ * `quickMatchDecided` drops them: a round shortened to nine holes must not
+ * carry a result for the 14th.
+ */
+export function quickSkinsRows(state: QuickSkinsState): SkinsOutcomeRow[] {
+  const holeCount = quickGameUnits(state).length;
+  const rows: SkinsOutcomeRow[] = [];
+  for (const [label, o] of Object.entries(state.outcomes)) {
+    const hole = Number(label);
+    if (!Number.isFinite(hole) || hole < 1 || hole > holeCount) continue;
+    rows.push(
+      o.result === "won"
+        ? { hole, result: "won", winnerId: o.winnerId }
+        : { hole, result: "tied", winnerId: null }
+    );
+  }
+  return rows.sort((a, b) => a.hole - b.hole);
+}
+
+/** The round's fold — pots, carries, who took what. The ONE call every skins
+ *  surface here makes (entry, scorecard, standings, subtitle, money), so none
+ *  of them can price a hole differently (CLAUDE.md #8). */
+export function quickSkinsTally(state: QuickSkinsState): SkinsGroupingTally {
+  return tallyGrouping(
+    QUICK_SKINS_GROUPING,
+    quickSkinsRows(state),
+    quickGameUnits(state).length,
+    quickSkinsGlorious(state)
+  );
+}
+
+/** The board — every player ranked by skins won, through the shared
+ *  `computeSkinsStandings` so the direction comes from the ONE `ranking`
+ *  mapping and never from a literal here. */
+export function quickSkinsStandings(state: QuickSkinsState): SkinsStanding[] {
+  const tally = quickSkinsTally(state);
+  return computeSkinsStandings(
+    state.players.map((p) => ({ userId: p.id, groupingId: QUICK_SKINS_GROUPING })),
+    { [QUICK_SKINS_GROUPING]: tally }
+  );
+}
+
+/**
+ * What everybody owes, in dollars.
+ *
+ * ── The arithmetic, and why it is stated as a difference from the mean ────
+ *
+ * `stake` is what ONE skin is worth, and the field splits it — the same reading
+ * a skins SIDE BET now uses (`sideStake`), so agreeing "$10 skins" at the first
+ * tee means one amount whichever route recorded it. A hole worth `pot` skins
+ * pays its winner `stake × pot × (N−1)/N` and costs everyone else
+ * `stake × pot / N`, which over the whole round collapses to
+ *
+ *     net(p) = stake × (skins won by p − skins awarded / N)
+ *
+ * — one multiplication per player, and zero-sum by construction rather than by
+ * an assertion about a loop.
+ *
+ * A pot DESTROYED on a tied final hole is not in `awarded`, so it costs nobody:
+ * the correct answer, and the reason this reads `tally.skinsBy` rather than
+ * counting holes.
+ *
+ * Returns zeros — not an empty object — for a $0 round, because "everyone is
+ * square" and "there is no money in this round" are different facts and the
+ * caller (which hides the money entirely at a zero stake) is the one that knows
+ * which it is looking at.
+ */
+export function quickSkinsMoney(state: QuickSkinsState): {
+  netByPlayer: Record<string, number>;
+  settlement: Settlement[];
+} {
+  const tally = quickSkinsTally(state);
+  const n = state.players.length;
+  const netByPlayer: Record<string, number> = {};
+  if (n === 0) return { netByPlayer, settlement: [] };
+  const mean = tally.awarded / n;
+  for (const p of state.players) {
+    const won = tally.skinsBy[p.id] ?? 0;
+    // `+ 0` normalizes NEGATIVE ZERO, which `Math.round` produces whenever the
+    // player is below the mean at a $0 stake. It formats as "even" either way,
+    // and it is not equal to 0 under `Object.is` — so a round played for
+    // nothing would compare unequal to a round of zeros, in a test or in any
+    // memo that does the same.
+    netByPlayer[p.id] = Math.round(state.stake * (won - mean) * 100) / 100 + 0;
+  }
+  return { netByPlayer, settlement: settle(netByPlayer) };
+}
+
+/** Skins won, pluralised. A bare number reads as a hole number on a screen
+ *  full of them — the same call `SkinsPotBanner` makes. */
+export function fmtSkins(n: number): string {
+  return `${n} skin${n === 1 ? "" : "s"}`;
 }
 
 // ── Match play ───────────────────────────────────────────────────────────────
@@ -716,6 +967,24 @@ export function quickMatchGloriousAvailable(state: {
   course: QuickGameCourse | null;
 }): boolean {
   if (state.entryMode === "score") return false;
+  return unitsFromSchema(state.course?.schema).length >= 18;
+}
+
+/**
+ * Whether Glorious Finishing Holes can be OFFERED on a SKINS round.
+ *
+ * The entry-mode half of the match rule does not apply — skins records who won
+ * every hole and has no second mode to be invalid in, which is exactly why
+ * `skinsGloriousConfig` exists as a separate reader. The nine-hole half does:
+ * `holeWeight` is `hole > 18 − n` against `ROUND_HOLES`, so on a nine-hole card
+ * every hole is already past the threshold and the modifier would double the
+ * whole round rather than its finish.
+ *
+ * A SECOND function rather than a widened `quickMatchGloriousAvailable`, for
+ * the reason the config readers are two: widening it would have to drop the
+ * entry-mode guard for everyone, and that guard is the whole of the match rule.
+ */
+export function quickSkinsGloriousAvailable(state: { course: QuickGameCourse | null }): boolean {
   return unitsFromSchema(state.course?.schema).length >= 18;
 }
 
@@ -861,7 +1130,42 @@ export function quickGameSubtitle(state: QuickGameState | null): string {
   }
   if (isMatchGame(state)) return quickMatchSubtitle(state);
   if (isRackGame(state)) return quickRackSubtitle(state);
+  if (isSkinsGame(state)) return quickSkinsSubtitle(state, units);
   return quickStrokeSubtitle(state, units);
+}
+
+/**
+ * Skins: who is ahead in SKINS, and what is riding on the next hole.
+ *
+ * The pot is on the line rather than appended as decoration — a pot sitting at
+ * four going into a hole nobody has played is the most interesting fact about a
+ * skins round, and the one a card that only reported settled holes would never
+ * show. Same reasoning as `SkinsPotBanner`'s "it must be FORWARD-LOOKING".
+ */
+function quickSkinsSubtitle(state: QuickSkinsState, units: ScoreUnit[]): string {
+  const tally = quickSkinsTally(state);
+  const played = tally.lines.filter((l) => l.status !== "unplayed");
+  const thru = played.length;
+  const next = tally.lines.find((l) => l.status === "unplayed");
+  // A carried pot with nowhere left to go is not "on the 19th" — it is skins
+  // nobody will be paid, which is a different sentence (`potIsDead`).
+  const riding = tally.potIsDead
+    ? `${fmtSkins(tally.carried)} unpaid`
+    : next && next.pot > 1
+      ? `${fmtSkins(next.pot)} on ${next.hole}`
+      : null;
+
+  const best = Math.max(0, ...state.players.map((p) => tally.skinsBy[p.id] ?? 0));
+  const leaders = state.players.filter((p) => (tally.skinsBy[p.id] ?? 0) === best && best > 0);
+  const head =
+    leaders.length === 1
+      ? `${leaders[0].name.split(/\s+/)[0]} leads with ${fmtSkins(best)}`
+      : leaders.length > 1
+        ? `${leaders.length} tied on ${fmtSkins(best)}`
+        // Every hole so far has been tied — nobody has won anything, which is
+        // not the same as nobody having played.
+        : `Nobody has taken one yet`;
+  return [`${head} thru ${thru} of ${units.length}`, riding].filter(Boolean).join(" · ");
 }
 
 /**

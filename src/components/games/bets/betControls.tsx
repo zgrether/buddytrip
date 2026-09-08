@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Trash2 } from "lucide-react";
+import { Check, Coins, Trash2 } from "lucide-react";
 import { FieldLabel, Segmented } from "@/components/games/FieldChrome";
 import { Stepper } from "@/components/games/Stepper";
 import {
@@ -206,6 +206,7 @@ export function BetForm({
   sideName,
   onCancel,
   onCommit,
+  onPlaySkinsRound,
 }: {
   players: Participant[];
   draft: BetDraft;
@@ -217,6 +218,16 @@ export function BetForm({
   sideName: (side: BetSide) => string;
   onCancel: () => void;
   onCommit: (bets: SideBet[]) => void;
+  /**
+   * Offered when the person picks Skins BEFORE a round has started: switch the
+   * setup to a Quick Skins round instead.
+   *
+   * Omitted mid-round, where it would be an offer to abandon what is being
+   * played, and by any caller that has nowhere to switch TO. The nudge is a
+   * real action rather than a sentence, because "you could play the format
+   * instead" is only useful if the next tap does it.
+   */
+  onPlaySkinsRound?: () => void;
 }) {
   const sides = sidesLocked
     ? lockedSides
@@ -311,9 +322,39 @@ export function BetForm({
           />
           <div className="mt-1" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
             {draft.kind === "skins"
-              ? "Low score takes the skin. Ties carryover."
+              ? "Low NET score takes the skin. Ties carry the whole skin to the next hole."
               : "Low score wins the hole. Ties do not carryover."}
           </div>
+
+          {/* The nudge. A skins SIDE BET derives its hole winner from net
+              scores, which means everybody has to card every hole — and people
+              pick up. The FORMAT records who took the hole instead, which is
+              the whole reason `src/lib/skins.ts` exists beside this module and
+              says so in its own header. Same money either way, so this is an
+              offer about how the round is SCORED, not about the stakes. */}
+          {draft.kind === "skins" && onPlaySkinsRound && (
+            <button
+              type="button"
+              onClick={onPlaySkinsRound}
+              data-testid="side-bet-play-skins-round"
+              className="mt-2 flex w-full items-start gap-2 rounded-[10px] px-2.5 py-2 text-left"
+              style={{
+                background: "var(--color-bt-accent-faint)",
+                border: "1px solid var(--color-bt-accent-border)",
+              }}
+            >
+              <Coins size={14} className="mt-0.5 shrink-0" style={{ color: "var(--color-bt-accent)" }} />
+              <span className="min-w-0 flex-1">
+                <span className="block" style={{ fontSize: 12.5, fontWeight: 650, color: "var(--color-bt-accent)" }}>
+                  Play the whole round as skins?
+                </span>
+                <span className="mt-0.5 block leading-snug" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
+                  Quick Skins scores it by hole — tap who won or Tied, no cards to fill in when someone picks
+                  up. Same money.
+                </span>
+              </span>
+            </button>
+          )}
 
           {/* Single vs Nassau sits directly under the type it modifies, with no
               header of its own — it is a shape OF the bet above, not a separate

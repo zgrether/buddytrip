@@ -6,7 +6,7 @@ import { AddEditSheet } from "@/components/AddEditSheet";
 import { DangerConfirmModal } from "@/components/DangerZone";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { SideBetsPanel } from "@/components/games/bets/SideBetsPanel";
-import { MatchSetupFields, RosterFields } from "@/components/games/quick/setupFields";
+import { MatchSetupFields, RosterFields, SkinsSetupFields } from "@/components/games/quick/setupFields";
 import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { trpc } from "@/lib/trpc-client";
 import { GLORIOUS_HOLES_DEFAULT } from "@/lib/modifiers";
@@ -27,6 +27,7 @@ import {
   hasAnyScore,
   quickFormatPlayerCountError,
   quickMatchGloriousAvailable,
+  quickSkinsGloriousAvailable,
   readQuickGameState,
   writeQuickGameState,
   QUICK_GAME_LABEL,
@@ -59,6 +60,7 @@ export function QuickGameSetupSheet({
   onStarted,
   navigatesOnCommit = false,
   purpose = "start",
+  onSwitchFormat,
   danger,
 }: {
   format: QuickGameFormat;
@@ -91,6 +93,16 @@ export function QuickGameSetupSheet({
    * where you left off".
    */
   purpose?: "start" | "settings";
+  /**
+   * Reopen this sheet on a DIFFERENT format, abandoning the current draft.
+   *
+   * Optional because only a caller that owns which sheet is open can do it —
+   * the dashboard does, the quick-game page's own landing state is fixed to its
+   * `?format=`. Its one use today is the "play the whole round as skins?" nudge
+   * on a skins side bet: a suggestion the reader cannot act on is worse than
+   * none, so the sheet only offers it where the next tap actually switches.
+   */
+  onSwitchFormat?: (format: QuickGameFormat) => void;
   /** Destructive actions for the settings context — the caller owns them
    *  because their confirms and handlers are the round's, not the form's. */
   danger?: React.ReactNode;
@@ -108,11 +120,19 @@ export function QuickGameSetupSheet({
   const [entryMode, setEntryMode] = useState<"score" | "outcome">(
     existing && existing.format === "match" ? existing.entryMode : "score"
   );
+  /** Skins only — dollars per skin. Defaults to the side-bet form's own
+   *  default so "a $10 skin" means one amount whichever route recorded it. */
+  const [stake, setStake] = useState(existing && existing.format === "skins" ? existing.stake : 10);
   const [relStrokes, setRelStrokes] = useState(() =>
     existing && existing.format === "match" ? existing.sideB.strokes - existing.sideA.strokes : 0
   );
   const [glorious, setGlorious] = useState(
-    () => !!(existing && existing.format === "match" && existing.modifiers.glorious_holes)
+    () =>
+      !!(
+        existing &&
+        (existing.format === "match" || existing.format === "skins") &&
+        existing.modifiers.glorious_holes
+      )
   );
   const [gloriousHoles, setGloriousHoles] = useState(GLORIOUS_HOLES_DEFAULT);
   const [teams, setTeams] = useState<Record<string, Team>>(() =>
@@ -135,7 +155,13 @@ export function QuickGameSetupSheet({
         ? null
         : "Match play needs a player on each side."
       : quickFormatPlayerCountError(format, named.length);
-  const gloriousAvailable = quickMatchGloriousAvailable({ entryMode, course });
+  // Two readers, because the two formats' rules genuinely differ: match play
+  // also refuses score entry (you cannot double the value of a hole whose
+  // outcome you never recorded), and skins has no second entry mode to refuse.
+  const gloriousAvailable =
+    format === "skins"
+      ? quickSkinsGloriousAvailable({ course })
+      : quickMatchGloriousAvailable({ entryMode, course });
 
   // Side bets, from the drafts — no scores yet, so every figure is a zero and
   // every bet reads as starting at hole 1.
@@ -238,6 +264,7 @@ export function QuickGameSetupSheet({
       course,
       bets,
       entryMode,
+      stake,
       relStrokes,
       glorious,
       gloriousHoles,
@@ -258,7 +285,11 @@ export function QuickGameSetupSheet({
         values: existing.values,
         currentHole: existing.currentHole,
         finished: existing.finished,
+        // Both outcome-shaped formats keep their recorded holes across a
+        // settings save. A `values`-only carry-over would silently empty a
+        // skins card for someone who came in to change the stake.
         ...(built.format === "match" && existing.format === "match" ? { outcomes: existing.outcomes } : {}),
+        ...(built.format === "skins" && existing.format === "skins" ? { outcomes: existing.outcomes } : {}),
       } as typeof built);
     } else {
       writeQuickGameState(built);
@@ -297,7 +328,11 @@ export function QuickGameSetupSheet({
           // stroke index to allocate against. With no course there is nothing
           // for `strokeHoles` to read and the number changes no score — an
           // inert control that looks live. Pick a course and it appears.
-          showHandicaps={format !== "match" && course != null}
+          // Skins nets nothing — "no scores, no handicaps" is the format
+          // (`gtt_skins`'s own description), so a stroke here would be an inert
+          // control that looks live, which is the same reason a course-less
+          // round hides it.
+          showHandicaps={format !== "match" && format !== "skins" && course != null}
           sided={format === "match"}
           teams={format === "rack" ? teams : undefined}
           onToggleTeam={
@@ -311,6 +346,18 @@ export function QuickGameSetupSheet({
           courseBusy={courseBusy}
           courseError={courseError}
         />
+
+        {format === "skins" && (
+          <SkinsSetupFields
+            stake={stake}
+            onStake={setStake}
+            gloriousAvailable={gloriousAvailable}
+            glorious={glorious}
+            onGlorious={setGlorious}
+            gloriousHoles={gloriousHoles}
+            onGloriousHoles={setGloriousHoles}
+          />
+        )}
 
         {format === "match" && (
           <MatchSetupFields
@@ -332,7 +379,11 @@ export function QuickGameSetupSheet({
             roster — so they are a SECTION of this modal, not a modal behind a
             nav row. Hidden below two players, who have nobody to bet with
             (§10). */}
-        {betPlayers.length >= 2 && (
+        {/* No side-bet panel on a SKINS round: the round IS the bet. Its stake
+            is asked for above and its money is `quickSkinsMoney` — a second
+            skins bet layered on the same holes would be two answers to one
+            question, priced separately and settled twice. */}
+        {format !== "skins" && betPlayers.length >= 2 && (
           <SideBetsPanel
             players={betPlayers}
             result={betResult}
@@ -344,6 +395,10 @@ export function QuickGameSetupSheet({
             nassauAvailable={holeCount >= 18}
             perspectivePlayerId={bets.perspectivePlayerId ?? betPlayers[0]?.id ?? null}
             sideName={(side) => betSideName(betPlayers, side)}
+            /* Only BEFORE a round exists, and only where the caller can
+               actually change which setup is open. Mid-round (`isEdit`) it
+               would be an offer to abandon what is being played. */
+            onPlaySkinsRound={!isEdit && onSwitchFormat ? () => onSwitchFormat("skins") : undefined}
             onAdd={(added) => setBets((b) => ({ ...b, bets: [...b.bets, ...added] }))}
             onRemove={(betId) => setBets((b) => ({ ...b, bets: b.bets.filter((x) => x.id !== betId) }))}
           />
