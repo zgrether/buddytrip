@@ -89,7 +89,15 @@ function partitionTrips(trips: TripRow[]): Record<TripStatus, TripRow[]> {
   return sections;
 }
 
-export default function DashboardClient({ lastTripId }: { lastTripId: string | null }) {
+export default function DashboardClient({
+  lastTripId,
+  openSetupFormat = null,
+}: {
+  lastTripId: string | null;
+  /** From `?setup=` — a Quick Game tile whose setup sheet should open on
+   *  arrival, already validated by the server. Null on an ordinary visit. */
+  openSetupFormat?: QuickGameFormat | null;
+}) {
   const router = useRouter();
   /** Past starts EXPANDED — a finished trip is still where people go back for
    *  scores, so hiding the list behind a tap made the common case the extra
@@ -104,6 +112,38 @@ export default function DashboardClient({ lastTripId }: { lastTripId: string | n
   const [creating, setCreating] = useState(false);
   /** Which format's setup sheet is open, if any (§3). Null = none. */
   const [setupFormat, setSetupFormat] = useState<QuickGameFormat | null>(null);
+
+  /**
+   * Open the sheet `?setup=` asked for, and take the parameter back out of the
+   * URL — in that order, and one commit apart, which is the whole point.
+   *
+   * ── Why not just seed `useState(openSetupFormat)` ─────────────────────────
+   *
+   * Because the parameter has to GO. Left in place it is not a one-shot intent
+   * any more: refresh and the sheet reopens, navigate into a trip and come back
+   * and the sheet reopens, over a round you already dealt with.
+   *
+   * ── Why the URL is cleaned BEFORE the sheet mounts ────────────────────────
+   *
+   * `AddEditSheet` pushes a phantom history entry on mount so Android back
+   * closes it, and pops it on unmount only while the current entry is still
+   * ITS entry. Seeding the state and rewriting the URL in the same commit puts
+   * the rewrite AFTER that push — it would overwrite the phantom, the sheet's
+   * cleanup would then find an entry that is not its own, and back would stop
+   * closing the sheet. Deferring the open by one commit lands the phantom on
+   * top of a URL that is already clean. Same race as the one that made "Resume
+   * round" read as dead; it is not worth re-creating from the other end.
+   *
+   * `history.replaceState` with the CURRENT state object, not `router.replace`:
+   * only the URL string changes, so Next's router is not asked to re-render the
+   * page it is already on, and nothing it holds is invalidated.
+   */
+  useEffect(() => {
+    if (!openSetupFormat) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot navigation intent, deliberately deferred a commit (see above)
+    setSetupFormat(openSetupFormat);
+    window.history.replaceState(window.history.state, "", "/dashboard");
+  }, [openSetupFormat]);
 
   /**
    * Quick Golf Games — one tile per format (§1 of the per-format-slots

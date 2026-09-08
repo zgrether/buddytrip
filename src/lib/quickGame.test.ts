@@ -20,6 +20,8 @@ import {
   buildRosterFromDrafts,
   migrateQuickGameState,
   quickGameScreen,
+  isQuickGameFormat,
+  QUICK_GAME_TILE_FORMATS,
   readQuickGameState,
   writeQuickGameState,
   clearQuickGameState,
@@ -810,6 +812,92 @@ describe("migrateQuickGameState — the format is READ, never inferred", () => {
 
   it("a half-written match (one side) is rejected rather than half-populated", () => {
     expect(migrateQuickGameState({ ...matchGame(), sideB: undefined })).toBeNull();
+  });
+});
+
+describe("isQuickGameFormat — the ONE reader of an untrusted format", () => {
+  it("admits every format, tile or not", () => {
+    // `rack` has no dashboard tile and its rounds are still real — a validator
+    // that mirrored the TILE list would refuse a direct link to one.
+    for (const f of ["stroke", "match", "rack", "skins"]) {
+      expect(isQuickGameFormat(f)).toBe(true);
+    }
+  });
+
+  it("refuses anything else, including the shapes a URL can produce", () => {
+    // `?setup=` and `?format=` are both hand-editable, and Next hands a
+    // repeated param through as an ARRAY — neither may resolve to a format.
+    for (const v of ["", "Stroke", "stableford", null, undefined, 7, ["stroke"], {}]) {
+      expect(isQuickGameFormat(v)).toBe(false);
+    }
+  });
+
+  it("is what BOTH untrusted readers actually call", () => {
+    // The point of the function is that there is one of it. A second reader
+    // that casts its own param compiles, works for every format that exists
+    // today, and is the thing that drifts — so both are pinned, not just the
+    // one this change added. (Found by a mutant: casting `?format=` straight
+    // through passed everything else in this file.)
+    expect(readFileSync("src/app/quick-game/page.tsx", "utf8")).toMatch(
+      /isQuickGameFormat\(formatParam\)/
+    );
+    expect(readFileSync("src/app/dashboard/page.tsx", "utf8")).toMatch(/isQuickGameFormat\(setup\)/);
+  });
+
+  it("covers every member of QUICK_GAME_TILE_FORMATS", () => {
+    // The two lists are separate and must not drift: a tile whose format the
+    // validator rejects is a tile whose own `?setup=` link does nothing.
+    for (const f of QUICK_GAME_TILE_FORMATS) expect(isQuickGameFormat(f)).toBe(true);
+  });
+});
+
+/**
+ * Reset game / Play again send you back to the TILE, not to the round's own
+ * landing screen. A source read — weaker than tapping the button, which this
+ * suite cannot do — and here because the wiring has three ends that have to
+ * agree: what the round navigates to, what the server reads, and what the
+ * dashboard does with it. Any one of them alone still compiles.
+ */
+describe("starting over returns to the dashboard tile", () => {
+  const page = readFileSync("src/app/quick-game/page.tsx", "utf8");
+  const dashPage = readFileSync("src/app/dashboard/page.tsx", "utf8");
+  const dashClient = readFileSync("src/app/dashboard/DashboardClient.tsx", "utf8");
+
+  it("navigates to the dashboard with the format to open", () => {
+    expect(page).toMatch(/router\.push\(`\/dashboard\?setup=\$\{format\}`\)/);
+  });
+
+  it("clears the round's storage itself rather than via the persist effect", () => {
+    // `setState(null)` would render the landing for the frames before the route
+    // changes — the flash the loading gate exists to prevent, on the way out.
+    expect(page).toMatch(/function startOver\(\)[\s\S]{0,400}clearQuickGameState\(format\)/);
+    expect(page).not.toMatch(/function startOver\(\)[\s\S]{0,400}setState\(null\)/);
+  });
+
+  it("is what BOTH the danger-zone reset and Play again do", () => {
+    // Two buttons, one act. `playAgain` used to leave you on the landing and
+    // only opened the sheet if `setupOpen` happened to still be true.
+    expect(page).toMatch(/function playAgain\(\)\s*\{\s*startOver\(\);/);
+    expect(page).toMatch(/onConfirm=\{startOver\}/);
+  });
+
+  it("has the server validate the parameter before the client sees it", () => {
+    expect(dashPage).toMatch(/isQuickGameFormat\(setup\)/);
+  });
+
+  it("strips the parameter, and does it before the sheet can mount", () => {
+    // Order is the property. Rewriting the URL after the sheet has pushed its
+    // phantom history entry overwrites that entry, and back stops closing the
+    // sheet — the same race that made "Resume round" read as dead.
+    const openAt = dashClient.indexOf("setSetupFormat(openSetupFormat)");
+    const stripAt = dashClient.indexOf("window.history.replaceState");
+    expect(openAt).toBeGreaterThan(-1);
+    expect(stripAt).toBeGreaterThan(openAt);
+    // Deferred by an EFFECT rather than seeded into `useState`, which is what
+    // puts the strip a commit ahead of the sheet.
+    expect(dashClient).not.toMatch(/useState<QuickGameFormat \| null>\(openSetupFormat\)/);
+    // …and the router is not asked to re-render the page it is already on.
+    expect(dashClient).not.toMatch(/router\.replace\("\/dashboard"\)/);
   });
 });
 
