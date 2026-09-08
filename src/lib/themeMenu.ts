@@ -14,4 +14,4 @@
  * imports this AND the switch; the switch imports neither; the provider imports
  * only the switch. `theme.test.ts` guards all three directions.
  */
-export const THEME_MENU_VISIBLE = true;
+export const THEME_MENU_VISIBLE = false;

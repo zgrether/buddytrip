@@ -145,8 +145,26 @@ export function Providers({ children }: { children: React.ReactNode }) {
      * has to apply, which is the whole point of that fallback. Guarded in
      * `src/lib/theme.test.ts`.
      */
+    /* ── LIGHT MODE IS OFF ──────────────────────────────────────────────────
+     *
+     * `forcedTheme` overrides storage, system preference and every `setTheme`
+     * call, at the pre-hydration boot script AND the React effect — so a crew
+     * member who had already chosen light gets dark on their next load, with
+     * no flash. It is the ONLY lever that reverts an existing preference;
+     * hiding the menu row does not.
+     *
+     * Paired with `THEME_MENU_VISIBLE = false` in `src/lib/themeMenu.ts`, and
+     * the pairing is enforced by `theme.test.ts`'s T0 — forcing a theme while
+     * still offering the row is a menu that silently does nothing, and CI
+     * refuses it.
+     *
+     * TO PUT LIGHT MODE BACK: revert the commit that added this. Nobody's
+     * stored preference was cleared, only overridden, so anyone who had chosen
+     * light returns to it.
+     */
     <ThemeProvider
       attribute="class"
+      forcedTheme="dark"
       defaultTheme={DEFAULT_THEME}
       storageKey={THEME_STORAGE_KEY}
       themes={[...THEMES]}
