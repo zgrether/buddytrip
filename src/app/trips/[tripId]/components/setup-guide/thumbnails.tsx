@@ -24,26 +24,33 @@ import { useTheme } from "next-themes";
  * silhouette consumers (TripCard.tsx:174 and RailTripRow.tsx:209), so the dark
  * arm is the literal each constant already had and dark is byte-identical.
  *
- * DIM and DIM_BRIGHTER map onto existing tokens whose LIGHT halves are
- * right; TEXT_DIM and TEXT_DIMMER have no token that fits and mirror their
- * own alpha instead. Measured against the preview surface, dark vs light:
+ * THE LIGHT ALPHAS ARE NOT THE DARK ONES MIRRORED, AND NOT THE NEAREST
+ * TOKEN. Both were tried and both came out too faint, for the same reason:
+ * matching a LINEAR RGB delta between the tone and its ground is not matching
+ * what the eye does. A white bar on near-black and a black bar on near-white
+ * at the same delta read very differently — the light one weaker every time.
  *
- *   DIM           72 -> 59     DIM_BRIGHTER  129 -> 111
- *   TEXT_DIM     250 -> 259    TEXT_DIMMER   157 -> 163
+ * These are matched on CONTRAST RATIO against the preview surface, which is
+ * the metric that tracks perception:
  *
- * All four land at or below their dark weight — DIM most of all, at 18%
- * lighter. That measurement is why the calendar's 31 cells are safe to do
- * mechanically: the worry was that a grid of them would read as a heavy grey
- * block in light, and it reads softer than dark does instead.
+ *              dark      first try (delta-matched)    shipped (ratio-matched)
+ *   DIM        1.28      0.08 -> 1.20  (0.94x)        0.11  -> 1.28
+ *   DIM_BRIGHT 1.68      0.15 -> 1.41  (0.84x)        0.22  -> 1.68
+ *   TEXT_DIM   3.18      0.35 -> 2.42  (0.76x)        0.44  -> 3.18
+ *   TEXT_DIMR  1.95      0.22 -> 1.69  (0.86x)        0.275 -> 1.95
+ *
+ * The delta-matched pass shipped nothing visibly wrong — the bars were there —
+ * but every one was 6-24% lighter than its dark counterpart, and the eye
+ * called it before the numbers did. Keep the ratio, not the alpha.
  */
 function useThumbnailTones() {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   return {
-    DIM: isDark ? "rgba(255,255,255,0.10)" : "var(--color-bt-state-fill)",
-    DIM_BRIGHTER: isDark ? "rgba(255,255,255,0.18)" : "var(--color-bt-state-stroke)",
-    TEXT_DIM: isDark ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.35)",
-    TEXT_DIMMER: isDark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.22)",
+    DIM: isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.11)",
+    DIM_BRIGHTER: isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.22)",
+    TEXT_DIM: isDark ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.44)",
+    TEXT_DIMMER: isDark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.275)",
   };
 }
 
