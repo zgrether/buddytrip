@@ -31,8 +31,10 @@ export interface BetDraft {
    *  there is no three-way head-to-head, since "who pays whom" has no coherent
    *  answer with three sides. */
   kind: BetKind;
-  /** Stakes per hole. Head-to-head: what changes hands. Skins: what each
-   *  player puts IN — the skin itself is `stake × players`, derived. */
+  /** The stakes. Head-to-head: what each side has on the hole. Skins: what the
+   *  SKIN is worth, which everyone in splits — `sideStake` is the per-person
+   *  share, and it is the only reading the form's own "per skin" label ever
+   *  described. */
   amount: number;
   /** Where it begins — defaults to the hole you are standing on. */
   startHole: number;
@@ -128,11 +130,24 @@ export function sidesFromWhoIsIn(
 export function betDraftError(
   draft: BetDraft,
   sides: BetSide[],
-  ctx: { holeCount: number }
+  ctx: { holeCount: number; sidesLocked?: boolean }
 ): string | null {
-  if (sides.length < 2) return "Pick at least two players.";
-  if (!(draft.amount >= MIN_STAKE)) return `The stake has to be at least $${MIN_STAKE} a hole.`;
-  if (draft.amount > MAX_STAKE) return `Keep the stake under $${MAX_STAKE} a hole.`;
+  // A LOCKED-sides bet has nobody to pick — its sides are the match's — so the
+  // only way it can be short of two is the match itself being short of two, and
+  // "Pick at least two players" names an action this form does not offer. The
+  // roster above it does (CLAUDE.md's refusal rule: name something the reader
+  // can actually do, and from where they are standing).
+  if (sides.length < 2) {
+    return ctx.sidesLocked
+      ? "Put a player on each side of the match first."
+      : "Pick at least two players.";
+  }
+  // The unit follows the kind: skins asks what the SKIN is worth, head-to-head
+  // what each side has on the hole. One message saying "a hole" for both is
+  // where the two readings of `amount` started diverging.
+  const unit = draft.kind === "skins" ? "a skin" : "a hole";
+  if (!(draft.amount >= MIN_STAKE)) return `The stake has to be at least $${MIN_STAKE} ${unit}.`;
+  if (draft.amount > MAX_STAKE) return `Keep the stake under $${MAX_STAKE} ${unit}.`;
   if (draft.startHole < 1 || draft.startHole > ctx.holeCount) {
     return `This round is ${ctx.holeCount} holes — pick a start hole inside it.`;
   }
@@ -150,13 +165,26 @@ export function betDraftError(
   return null;
 }
 
-/** The bets a valid draft records — one, or Nassau's three. Callers gate on
- *  `betDraftError` first; this assumes a draft that passed it. */
+/**
+ * The bets a valid draft records — one, or Nassau's three. Callers gate on
+ * `betDraftError` first; this assumes a draft that passed it.
+ *
+ * `sidesLocked` is a MATCH round, whose two sides are the match's and whose bet
+ * is therefore a head-to-head at any roster size. Forced HERE rather than in
+ * the form, because the form does not render the kind control in that branch:
+ * a draft that arrived as skins — which is what `setWhoIsIn` produced for a 2v2,
+ * on a player count that has nothing to do with how many SIDES the bet has —
+ * had no way for anyone to see it, let alone change it. A pure rule with one
+ * enforcement point is one that the next caller of the form gets to skip.
+ */
 export function buildBetsFromDraft(
-  draft: BetDraft,
+  original: BetDraft,
   sides: BetSide[],
-  ctx: { holeCount: number; mkId: () => string }
+  ctx: { holeCount: number; mkId: () => string; sidesLocked?: boolean }
 ): SideBet[] {
+  // Through `setBetKind`, so skins' carryover goes with the kind rather than
+  // surviving on a head-to-head that has no carryover to speak of.
+  const draft = ctx.sidesLocked ? setBetKind(original, "head_to_head") : original;
   if (draft.shape === "nassau") {
     return buildNassauBets({
       mkId: ctx.mkId,

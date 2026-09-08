@@ -5,10 +5,12 @@ import { FieldLabel, Segmented } from "@/components/games/FieldChrome";
 import { Stepper } from "@/components/games/Stepper";
 import {
   betLabel,
+  betRate,
   canManuallyPress,
   betTotalForPlayer,
   formatMoney,
   formatSignedMoney,
+  sideStake,
   type BetSide,
   type SideBet,
   type SideBetsResult,
@@ -42,11 +44,28 @@ import type { Participant } from "@/components/games/types";
  * `sideBets.ts` and every change leaves by a callback.
  */
 
-/** Everyone is in by default — the common case is the whole group. Routed
- *  through `setWhoIsIn` so the KIND lands correctly: four pre-selected players
- *  open as a pot, not as a head-to-head they cannot be. */
-export function freshBetDraft(players: Participant[], currentHole: number): BetDraft {
-  return setWhoIsIn(emptyBetDraft(currentHole), players.map((p) => p.id));
+/**
+ * Everyone is in by default — the common case is the whole group. Routed
+ * through `setWhoIsIn` so the KIND lands correctly: four pre-selected players
+ * open as a pot, not as a head-to-head they cannot be.
+ *
+ * `sidesLocked` is a MATCH round, whose sides are the match's and whose bet is
+ * therefore side against side — a head-to-head, at any roster size. Without
+ * this, a 2v2 opened as SKINS purely because `setWhoIsIn` counted four players:
+ * the kind control is hidden when the sides are locked, so nothing on screen
+ * said so and nothing could change it, and the bet was recorded, labelled and
+ * priced as a four-way pot between two sides.
+ */
+export function freshBetDraft(
+  players: Participant[],
+  currentHole: number,
+  sidesLocked = false
+): BetDraft {
+  const base = emptyBetDraft(currentHole);
+  // `whoIsIn` is unused when the sides are locked, and `emptyBetDraft` is
+  // already head-to-head.
+  if (sidesLocked) return base;
+  return setWhoIsIn(base, players.map((p) => p.id));
 }
 
 /** The bets in play, recorded and derived-press alike. */
@@ -85,7 +104,11 @@ export function BetList({
         const mine = betTotalForPlayer(t, perspectivePlayerId);
         const to = t.bet.endHole == null ? holeCount : t.bet.endHole;
         const rules = [
-          `${formatMoney(t.bet.amount)}/hole`,
+          // `betRate`, not a hardcoded "/hole": a skins bet is priced per SKIN,
+          // and the recorded figure is the skin rather than a per-person stake
+          // (`sideStake`). This row printed "$10/hole" for a $10 skin, naming
+          // the wrong unit and, once the pot is split, the wrong number too.
+          betRate(t.bet),
           `holes ${t.bet.startHole}–${to}`,
           t.bet.carryover ? "carryover" : null,
           t.bet.autoPressAt != null ? `auto press at ${t.bet.autoPressAt}` : null,
@@ -205,7 +228,7 @@ export function BetForm({
         // sides in this list ever share one.
         previewIds()
       );
-  const error = betDraftError(draft, sides, { holeCount });
+  const error = betDraftError(draft, sides, { holeCount, sidesLocked });
 
   const commit = () => {
     if (error) return;
@@ -214,7 +237,10 @@ export function BetForm({
     const built = sidesLocked
       ? sides
       : sidesFromWhoIsIn(players.map((p) => p.id), draft.whoIsIn, () => `side-${Date.now().toString(36)}-${++n}`);
-    onCommit(buildBetsFromDraft(draft, built, { holeCount, mkId }));
+    // `sidesLocked` goes to the BUILDER, which owns the "a match's bet is a
+    // head-to-head" rule — the form is not the place for it, since the form is
+    // exactly what does not render in that branch. See `buildBetsFromDraft`.
+    onCommit(buildBetsFromDraft(draft, built, { holeCount, mkId, sidesLocked }));
   };
 
   return (
@@ -313,7 +339,11 @@ export function BetForm({
         </div>
       )}
 
-      {/* Stakes */}
+      {/* Stakes. The label has always said "per skin" and the arithmetic used
+          to price it per PERSON, so four people at $10 were in for $40 a hole
+          and nothing on the screen said so. `sideStake` settles it (the skin is
+          the skin) and the line below states the consequence in the only terms
+          anyone hands money over in — what each of them puts in. */}
       <div className="mt-3">
         <FieldLabel>{draft.kind === "skins" ? "Stakes (per skin)" : "Stakes (per hole)"}</FieldLabel>
         <div className="flex items-center gap-2">
@@ -346,6 +376,16 @@ export function BetForm({
             />
           </div>
         </div>
+        {draft.kind === "skins" && sides.length >= 2 && (
+          <div
+            className="mt-1"
+            style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}
+            data-testid="side-bet-skin-share"
+          >
+            {formatMoney(draft.amount)} a skin — {formatMoney(sideStake({ ...PREVIEW_BET, kind: "skins", sides, amount: draft.amount }))}{" "}
+            each from {sides.length}. A tie carries the whole skin to the next hole.
+          </div>
+        )}
       </div>
 
       {/* Start hole */}
@@ -444,6 +484,23 @@ export function BetForm({
     </div>
   );
 }
+
+/**
+ * The non-money fields `sideStake` does not read, so the form can ask it what a
+ * draft would cost each person without building a whole `SideBet`. Passing the
+ * REAL function rather than dividing here is the point: the hint and the tally
+ * cannot disagree about what a skin costs, which is the split that produced the
+ * bug this line explains (CLAUDE.md #8).
+ */
+const PREVIEW_BET = {
+  id: "preview",
+  startHole: 1,
+  endHole: null,
+  carryover: true,
+  autoPressAt: null,
+  pressOnPress: false,
+  origin: { kind: "manual" },
+} satisfies Omit<SideBet, "kind" | "sides" | "amount">;
 
 /** Distinct throwaway ids for the preview side list (see `BetForm`). */
 function previewIds(): () => string {

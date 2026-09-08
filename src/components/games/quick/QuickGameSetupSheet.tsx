@@ -18,6 +18,7 @@ import {
   EMPTY_SIDE_BETS,
   type SideBetsState,
 } from "@/lib/sideBets";
+import { betSideName, quickBetSetupSides } from "@/lib/quickGameBets";
 import type { Team } from "@/lib/rackNStack";
 import {
   buildQuickGameFromDrafts,
@@ -149,6 +150,24 @@ export function QuickGameSetupSheet({
     bets: bets.bets,
     scoring: { mode: "net", net: {} },
   });
+  /**
+   * A MATCH round's bets are side against side, here as much as in the round.
+   *
+   * This panel passed `sidesLocked={false}` for every format, which broke a
+   * match's setup-time bets two ways at once and neither was visible:
+   *   - the kind control appeared, and a 2v2 pre-selected all four players, so
+   *     the bet was built as SKINS between four one-person sides;
+   *   - those sides are not the match's sides, and an outcome resolves nothing
+   *     else (`sideValueAt` refuses a side it cannot match), so the bet sat at
+   *     $0 for eighteen holes with no error anywhere.
+   * A 1v1 escaped the second half by coincidence — one player per side happens
+   * to equal the match's sides — which is why it read as "skins shows up in
+   * match play" rather than as a bet that never settles.
+   */
+  const { sidesLocked: betSidesLocked, lockedSides: betLockedSides } = quickBetSetupSides(
+    format,
+    named.slice(0, 4)
+  );
 
   /**
    * Removing a player takes their bets with them — so if they are in any, ask
@@ -318,17 +337,13 @@ export function QuickGameSetupSheet({
             players={betPlayers}
             result={betResult}
             recordedBetIds={bets.bets.map((b) => b.id)}
-            sidesLocked={false}
-            lockedSides={[]}
+            sidesLocked={betSidesLocked}
+            lockedSides={betLockedSides}
             holeCount={holeCount}
             currentHole={1}
             nassauAvailable={holeCount >= 18}
             perspectivePlayerId={bets.perspectivePlayerId ?? betPlayers[0]?.id ?? null}
-            sideName={(side) =>
-              side.playerIds
-                .map((id) => betPlayers.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player")
-                .join(" & ")
-            }
+            sideName={(side) => betSideName(betPlayers, side)}
             onAdd={(added) => setBets((b) => ({ ...b, bets: [...b.bets, ...added] }))}
             onRemove={(betId) => setBets((b) => ({ ...b, bets: b.bets.filter((x) => x.id !== betId) }))}
           />

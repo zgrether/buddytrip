@@ -10,6 +10,9 @@ import {
   quickBetSideName,
   quickBetPerspective,
   quickNassauAvailable,
+  quickMatchDraftSides,
+  betSideName,
+  quickLastHole,
 } from "./quickGameBets";
 import { playerBetLines, EMPTY_SIDE_BETS, buildManualBet, type SideBet } from "./sideBets";
 import { QUICK_GAME_STATE_VERSION, type QuickMatchState, type QuickStrokeState } from "./quickGame";
@@ -276,5 +279,86 @@ describe("round length", () => {
     const r = quickSideBets(nine);
     expect(r.holeLines).toHaveLength(9);
     expect(r.bets[0].lines.every((l) => l.hole <= 9)).toBe(true);
+  });
+});
+
+describe("a MATCH round's bets are side against side, at setup time too", () => {
+  /**
+   * The setup screen has no round yet — the match's slots are minted on Start —
+   * so it reads the A/B split off the roster rows. It passed `sidesLocked=false`
+   * for every format instead, which is the whole of the "skins turns up in quick
+   * match play" report and a second, silent bug underneath it.
+   */
+  const rows = [
+    { id: "p1", side: "A" as const },
+    { id: "p2", side: "A" as const },
+    { id: "p3", side: "B" as const },
+    { id: "p4", side: "B" as const },
+  ];
+
+  it("pairs the roster into the match's two sides", () => {
+    expect(quickMatchDraftSides(rows).map((s) => s.playerIds)).toEqual([["p1", "p2"], ["p3", "p4"]]);
+  });
+
+  it("defaults an unassigned row to side A, exactly as buildQuickMatchSides does", () => {
+    // `r.side !== "B"` in both places. A row that has not been touched belongs
+    // to A, and the two readings of that must not drift.
+    expect(quickMatchDraftSides([{ id: "p1" }, { id: "p2", side: "B" }]).map((s) => s.playerIds)).toEqual([
+      ["p1"],
+      ["p2"],
+    ]);
+  });
+
+  it("is empty when a side has nobody — the state the setup screen refuses to Start on", () => {
+    expect(quickMatchDraftSides([{ id: "p1" }, { id: "p2" }])).toEqual([]);
+    expect(quickMatchDraftSides([])).toEqual([]);
+  });
+
+  it("settles against the match's REAL slots, which are minted later", () => {
+    // The point of the literal ids: a side is resolved by player-set equality
+    // (`matchSideOf`), never by id, so a bet agreed on the first tee still
+    // settles once Start has minted `sideA`/`sideB` with uuids of their own.
+    const draftSides = quickMatchDraftSides([
+      { id: "p1", side: "A" },
+      { id: "p2", side: "B" },
+    ]);
+    const wager = buildManualBet({
+      mkId: () => "bet-1",
+      kind: "head_to_head",
+      sides: draftSides,
+      amount: 10,
+      startHole: 1,
+      autoPressAt: null,
+      pressOnPress: false,
+    });
+    const started = matchGame({
+      // Uuid-ish slot ids, nothing like the draft's literals.
+      sideA: { id: "3f2b-a", playerIds: ["p1"], strokes: 0 },
+      sideB: { id: "9c4d-b", playerIds: ["p2"], strokes: 0 },
+      entryMode: "outcome",
+      outcomes: { "1": "side_a", "2": "side_a" },
+      bets: { ...EMPTY_SIDE_BETS, bets: [wager] },
+    });
+    expect(quickSideBets(started).totalsByPlayer.p1).toBe(20);
+  });
+});
+
+describe("naming a side", () => {
+  it("is ONE mapping, whether it is asked with a round or with a roster", () => {
+    const side = { id: "x", playerIds: ["p1", "p2"] };
+    const g = strokeGame({ players: P4 });
+    expect(betSideName(P4, side)).toBe("Zach & Buddy");
+    expect(quickBetSideName(g, side)).toBe(betSideName(g.players, side));
+  });
+
+  it("falls back rather than rendering an id for someone no longer on the roster", () => {
+    expect(betSideName(P4, { id: "x", playerIds: ["ghost"] })).toBe("Player");
+  });
+});
+
+describe("the round's last hole", () => {
+  it("comes from the course, so a nine-hole round doubles on the 9th", () => {
+    expect(quickLastHole(strokeGame())).toBe(18);
+    expect(quickLastHole(strokeGame({ course: nineHoleCourse() }))).toBe(9);
   });
 });

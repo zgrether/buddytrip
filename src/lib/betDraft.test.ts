@@ -11,6 +11,7 @@ import {
   type BetDraft,
 } from "./betDraft";
 import { betLabel } from "./sideBets";
+import { freshBetDraft } from "@/components/games/bets/betControls";
 
 /**
  * The create form's draft. Since §10 the control is a checkbox per player
@@ -163,4 +164,60 @@ describe("the ☠️ option's dependency", () => {
     expect(setPressRules(off, { autoPressAt: 2 }).pressOnPress).toBe(false);
   });
 
+});
+
+describe("a MATCH round's bet is a head-to-head, at any roster size", () => {
+  /**
+   * The reported bug: Skins turned up in quick match play. It was not the kind
+   * CONTROL leaking — that is already hidden when the sides are locked — it was
+   * the draft opening as skins because `setWhoIsIn` counts PLAYERS, and a 2v2
+   * has four of them. The bet was then recorded, labelled and priced as a
+   * four-way pot between two sides, with nothing on screen able to say so.
+   */
+  const matchSides = [
+    { id: "sa", playerIds: ["p1", "p2"] },
+    { id: "sb", playerIds: ["p3", "p4"] },
+  ];
+  const four = ["p1", "p2", "p3", "p4"].map((id) => ({ id, name: id, color: "#000" }));
+
+  it("opens head-to-head with four players on the roster", () => {
+    expect(freshBetDraft(four, 1, true).kind).toBe("head_to_head");
+    // …and the same roster in a STROKE round still opens as a pot, which is
+    // the behaviour this must not have broken.
+    expect(freshBetDraft(four, 1, false).kind).toBe("skins");
+  });
+
+  it("records a head-to-head even from a draft that says skins", () => {
+    const skinsDraft: BetDraft = setBetKind({ ...emptyBetDraft(1), whoIsIn: ["p1", "p2", "p3", "p4"] }, "skins");
+    const [locked] = buildBetsFromDraft(skinsDraft, matchSides, { holeCount: 18, mkId: () => "b", sidesLocked: true });
+    expect(locked.kind).toBe("head_to_head");
+    // Carryover goes with the kind rather than surviving on a bet that has no
+    // carryover to speak of — the rule the kind carries, not a second flag.
+    expect(locked.carryover).toBe(false);
+    expect(betLabel(locked)).toBe("Head to Head");
+
+    // Unlocked, the same draft is still a pot: this forces the kind for a
+    // match, it does not retire skins.
+    const [free] = buildBetsFromDraft(skinsDraft, matchSides, { holeCount: 18, mkId: () => "b" });
+    expect(free.kind).toBe("skins");
+  });
+
+  it("names an action the reader can take when a side is empty", () => {
+    // The locked branch has no player chips to pick from, so "Pick at least two
+    // players" pointed at a control that is not on the screen. The roster above
+    // it is where a side gets filled (CLAUDE.md's refusal rule).
+    expect(betDraftError(emptyBetDraft(1), [], { holeCount: 18, sidesLocked: true })).toBe(
+      "Put a player on each side of the match first."
+    );
+    expect(betDraftError(emptyBetDraft(1), [], { holeCount: 18 })).toBe("Pick at least two players.");
+  });
+
+  it("says what the stake buys — a skin, not a hole", () => {
+    const skins: BetDraft = { ...emptyBetDraft(1), kind: "skins", amount: 0 };
+    expect(betDraftError(skins, [{ id: "a", playerIds: ["p1"] }, { id: "b", playerIds: ["p2"] }], { holeCount: 18 }))
+      .toContain("a skin.");
+    const h2h: BetDraft = { ...emptyBetDraft(1), amount: 0 };
+    expect(betDraftError(h2h, [{ id: "a", playerIds: ["p1"] }, { id: "b", playerIds: ["p2"] }], { holeCount: 18 }))
+      .toContain("a hole.");
+  });
 });

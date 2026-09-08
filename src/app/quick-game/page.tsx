@@ -25,7 +25,7 @@ import {
 import { QuickMatchSurface } from "@/components/games/quick/QuickMatchSurface";
 import { QuickGameSetupSheet } from "@/components/games/quick/QuickGameSetupSheet";
 import type { HoleOutcomeResult } from "@/lib/matchPlay";
-import { buildDoubleBet, playerBetLines, type SideBet } from "@/lib/sideBets";
+import { answerLastHoleDoubles, playerBetLines, type DoubleOffer, type SideBet } from "@/lib/sideBets";
 import {
   quickSideBets,
   quickHasBets,
@@ -36,6 +36,7 @@ import {
   quickBetHoles,
   quickNassauAvailable,
   quickDoubleOffers,
+  quickLastHole,
 } from "@/lib/quickGameBets";
 import { SideBetStrip } from "@/components/games/bets/SideBetStrip";
 import { SideBetSheet } from "@/components/games/bets/SideBetSheet";
@@ -339,19 +340,33 @@ function QuickGamePageInner() {
               ...s.bets,
               bets: s.bets.bets.filter((b) => b.id !== betId),
               // A double recorded against a removed bet has nothing left to
-              // double, and its decline no longer means anything either.
-              declinedDoubles: s.bets.declinedDoubles.filter((id) => id !== betId),
+              // double, and the answer no longer means anything either.
+              answeredDoubles: s.bets.answeredDoubles.filter((id) => id !== betId),
             },
           }
         : s
     );
   }
-  function declineDouble(parentBetId: string) {
+  /**
+   * Answer the last-hole prompt — ONE update for the whole decision.
+   *
+   * Accepting used to be two calls (`addBets` then a decline), which is one
+   * fact written twice and the second write is the one that closes the sheet.
+   * `answerLastHoleDoubles` is pure and does both, so there is no ordering left
+   * to get wrong and no state where the double exists and the prompt still
+   * offers to make it.
+   */
+  function answerDoubles(offers: DoubleOffer[], acceptedBetIds: string[]) {
     setState((s) =>
       s
         ? {
             ...s,
-            bets: { ...s.bets, declinedDoubles: [...s.bets.declinedDoubles, parentBetId] },
+            bets: answerLastHoleDoubles(s.bets, {
+              offers,
+              acceptedBetIds,
+              lastHole: quickLastHole(s),
+              mkId: () => crypto.randomUUID(),
+            }),
           }
         : s
     );
@@ -443,7 +458,6 @@ function QuickGamePageInner() {
   const viewedHoleLine = betResult?.holeLines.find((l) => l.hole === (state?.currentHole ?? 1)) ?? null;
   const betPlayerName = (id: string) => state?.players.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player";
   const doubleOffers = state && betResult ? quickDoubleOffers(state, betResult) : [];
-  const doubleOffer = doubleOffers[0] ?? null;
 
   // One column per player. `state.players` is the roster even for a match, whose
   // bets are keyed to SIDES — `playerBetLines` resolves through each side's
@@ -483,32 +497,16 @@ function QuickGamePageInner() {
           />
         )}
         {/* The last-hole double is a PROMPT, never applied for you (§9), and it
-            asks once — declining is recorded so the round stops offering. */}
-        {!betsOpen && doubleOffer && (
+            asks once — every offer it showed is recorded as answered, taken or
+            not, so the round stops offering. ALL the live offers go into the
+            one sheet: asking them one at a time re-mounted an identical sheet
+            in the frame the last one closed, which reads as a dead button. */}
+        {!betsOpen && doubleOffers.length > 0 && (
           <LastHoleDoublePrompt
-            offer={doubleOffer}
-            trailingName={quickBetSideName(
-              state,
-              doubleOffer.bet.sides.find((sd) => sd.id === doubleOffer.trailingSideId) ?? doubleOffer.bet.sides[0]
-            )}
-            leadingName={quickBetSideName(
-              state,
-              doubleOffer.bet.sides.find((sd) => sd.id === doubleOffer.leadingSideId) ?? doubleOffer.bet.sides[1]
-            )}
-            lastHole={betHoles[betHoles.length - 1] ?? 18}
-            onAccept={() => {
-              addBets([
-                buildDoubleBet({
-                  mkId: () => crypto.randomUUID(),
-                  offer: doubleOffer,
-                  lastHole: betHoles[betHoles.length - 1] ?? 18,
-                }),
-              ]);
-              // Recorded either way: taking it must not leave the prompt open
-              // to be taken a second time on the next render.
-              declineDouble(doubleOffer.bet.id);
-            }}
-            onDecline={() => declineDouble(doubleOffer.bet.id)}
+            offers={doubleOffers}
+            sideName={(side) => quickBetSideName(state, side)}
+            lastHole={quickLastHole(state)}
+            onAnswer={(acceptedBetIds) => answerDoubles(doubleOffers, acceptedBetIds)}
           />
         )}
       </>

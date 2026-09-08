@@ -56,12 +56,12 @@ export function SideBetsPanel({
   const hasBets = result.bets.length > 0;
   const [open, setOpen] = useState(!hasBets);
   const [creating, setCreating] = useState(false);
-  const [draft, setDraft] = useState<BetDraft>(() => freshBetDraft(players, currentHole));
+  const [draft, setDraft] = useState<BetDraft>(() => freshBetDraft(players, currentHole, sidesLocked));
 
   const commit = (bets: SideBet[]) => {
     onAdd(bets);
     setCreating(false);
-    setDraft(freshBetDraft(players, currentHole));
+    setDraft(freshBetDraft(players, currentHole, sidesLocked));
   };
 
   /** The one line worth reading without expanding. "None yet" rather than a
@@ -139,7 +139,7 @@ export function SideBetsPanel({
             <button
               type="button"
               onClick={() => {
-                setDraft(freshBetDraft(players, currentHole));
+                setDraft(freshBetDraft(players, currentHole, sidesLocked));
                 setCreating(true);
               }}
               data-testid="side-bets-panel-add"

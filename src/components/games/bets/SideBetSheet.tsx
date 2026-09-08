@@ -57,7 +57,10 @@ export function SideBetSheet({
   onClose: () => void;
 }) {
   const [creating, setCreating] = useState(result.bets.length === 0);
-  const freshDraft = () => freshBetDraft(players, currentHole);
+  // `sidesLocked` reaches the DRAFT, not just the form: a match round's bet is
+  // head-to-head at any roster size, and the kind control is not rendered here
+  // to correct a draft that opened as a pot.
+  const freshDraft = () => freshBetDraft(players, currentHole, sidesLocked);
   const [draft, setDraft] = useState<BetDraft>(freshDraft);
 
   const nameOf = (id: string) => players.find((p) => p.id === id)?.name.split(/\s+/)[0] ?? "Player";
