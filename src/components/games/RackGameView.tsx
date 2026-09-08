@@ -1236,12 +1236,26 @@ export function RackGameView() {
           carrying it. `perSlotValue` is unchanged and still feeds the projection.
 
           `points_total` from the SERVER row, not the draft — the banner states
-          what the game is worth, and an unsaved edit is not yet true of it. */}
-      <ScoringStateBanner
-        status={gameQ.data?.status ?? null}
-        correctionsOpen={correctionsOpen}
-        pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
-      />
+          what the game is worth, and an unsaved edit is not yet true of it.
+
+          The wrapper is NOT decoration. `Shell` hands children through with no
+          padding (`<div className="flex-1">`), so every rack section supplies its
+          own — `FoursomeEntry` and `RackBoard` both use 12px. Rendered bare, the
+          banner went edge-to-edge while the groups below it sat inset.
+
+          12px, deliberately, and NOT match play's 16px. Match wraps its whole
+          content in one `w-full px-4 py-5`; rack has no such wrapper, so the
+          alignment that matters here is with the `GROUPS` label and cards
+          directly beneath — a 16px banner over 12px content is misaligned by 4px
+          against its own neighbours, which reads as a bug in a way that being
+          4px off another FORMAT never could. */}
+      <div style={{ padding: "12px 12px 0" }}>
+        <ScoringStateBanner
+          status={gameQ.data?.status ?? null}
+          correctionsOpen={correctionsOpen}
+          pointsTotal={(gameQ.data?.points_total as number | null) ?? null}
+        />
+      </div>
       <FoursomeEntry groups={groupViews} onEnter={(id) => { setEntryGroupId(id); setCurrentHole(currentHoleForGroup(id)); setGridOpen(false); }} />
       {/* #501 Part 3: the scoring board is read-and-score only — "Edit handicaps"
           (config) is gone. Edit handicaps in Setup mode (gear → Who's playing ·
