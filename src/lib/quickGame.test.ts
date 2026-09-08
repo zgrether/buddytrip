@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { readFileSync } from "fs";
 import {
   quickGameSubtitle,
   quickGameTitle,
@@ -18,6 +19,7 @@ import {
   hasAnyScore,
   buildRosterFromDrafts,
   migrateQuickGameState,
+  quickGameScreen,
   readQuickGameState,
   writeQuickGameState,
   clearQuickGameState,
@@ -808,6 +810,60 @@ describe("migrateQuickGameState — the format is READ, never inferred", () => {
 
   it("a half-written match (one side) is rejected rather than half-populated", () => {
     expect(migrateQuickGameState({ ...matchGame(), sideB: undefined })).toBeNull();
+  });
+});
+
+describe("quickGameScreen — which screen the page is on", () => {
+  const round = { finished: false };
+  const done = { finished: true };
+
+  it("is LOADING before the round has been read, whether or not one exists", () => {
+    // THE case, and the bug. `state` is null on the first commit for every
+    // arrival, because the round is read in an effect — so branching on `state`
+    // alone showed the LANDING ("Nothing in progress. Set one up to start
+    // scoring.") to somebody who had just tapped Resume on a round they were
+    // playing, and opened a setup sheet over it.
+    expect(quickGameScreen({ hydrated: false, state: null })).toBe("loading");
+    expect(quickGameScreen({ hydrated: false, state: round })).toBe("loading");
+    expect(quickGameScreen({ hydrated: false, state: done })).toBe("loading");
+  });
+
+  it("distinguishes 'not read yet' from 'read, and there is nothing'", () => {
+    // The same two inputs that produced "loading" above produce different
+    // answers once the read has happened — which is the whole point, and the
+    // distinction a `!state` check cannot make.
+    expect(quickGameScreen({ hydrated: true, state: null })).toBe("landing");
+    expect(quickGameScreen({ hydrated: true, state: round })).toBe("round");
+    expect(quickGameScreen({ hydrated: true, state: done })).toBe("final");
+  });
+});
+
+/**
+ * The page reads it, and reads it FIRST.
+ *
+ * A source read, and a weaker check than driving the page — this suite is
+ * `environment: "node"`, so the page can never be mounted. It is here because
+ * the alternative is no check at all on the wiring, and because the failure it
+ * guards is silent: the landing renders correctly in isolation, and only the
+ * history entry its setup sheet pushes and pops makes it a bug.
+ *
+ * Same shape and same reason as `modalPhantomPop.test.ts`'s pairing check.
+ */
+describe("the quick-game page gates its landing on the read", () => {
+  const src = readFileSync("src/app/quick-game/page.tsx", "utf8");
+
+  it("returns early while the round is still being read", () => {
+    expect(src).toMatch(/screen === "loading"/);
+  });
+
+  it("does that BEFORE the branch that can open a setup sheet", () => {
+    // Order is the property. A gate placed after the landing compiles, passes
+    // the case above, and changes nothing.
+    const gate = src.indexOf('screen === "loading"');
+    const landing = src.indexOf("QuickGameSetupSheet", src.indexOf("── Landing ──"));
+    expect(gate).toBeGreaterThan(-1);
+    expect(landing).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(landing);
   });
 });
 
