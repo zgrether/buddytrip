@@ -19,16 +19,43 @@ describe("local ↔ instant conversion", () => {
     // The property that matters: set a time, reload, see the same time. A
     // `toISOString()` slice would pass a naive equality test while displaying
     // the UTC hour, so this asserts the round trip rather than the format.
-    const iso = new Date(2026, 10, 8, 11, 0).toISOString();
-    expect(fromLocalInputValue(toLocalInputValue(iso))).toBe(iso);
+    // Instants chosen either side of the DST change, since the round trip is
+    // where a two-pass offset solve earns its keep.
+    for (const iso of ["2026-11-08T16:00:00.000Z", "2026-09-10T00:10:00.000Z"]) {
+      expect(fromLocalInputValue(toLocalInputValue(iso))).toBe(iso);
+    }
   });
 
-  it("renders the LOCAL hour, not the UTC one", () => {
-    // Constructed in local time, so the input value must show that same hour
-    // whatever zone the machine is in — which is exactly what `toISOString()`
-    // would get wrong.
-    const local = new Date(2026, 10, 8, 11, 30);
-    expect(toLocalInputValue(local.toISOString())).toContain("T11:30");
+  it("renders the TRIP zone's hour — not UTC, and not the device's", () => {
+    // 16:30Z on 2026-11-08 is 11:30 AM in Eastern (EST by November). The old
+    // version read the DEVICE's clock, which gives 16:30 on a UTC runner and a
+    // different answer again in Central — so a runner setting a deadline from
+    // home saw it read back shifted. `toISOString()` would get it wrong too.
+    expect(toLocalInputValue("2026-11-08T16:30:00.000Z")).toBe("2026-11-08T11:30");
+  });
+
+  it("honours an EXPLICIT zone, which is what makes the case above decisive", () => {
+    // The assertion above still passes on a device-local build if the machine
+    // happens to be set to Eastern. This one cannot: a build that reads the
+    // device's clock ignores this argument entirely, so it fails on any runner
+    // in any zone.
+    expect(toLocalInputValue("2026-11-08T16:30:00.000Z", "Asia/Tokyo")).toBe("2026-11-09T01:30");
+    expect(fromLocalInputValue("2026-11-09T01:30", "Asia/Tokyo")).toBe("2026-11-08T16:30:00.000Z");
+  });
+
+  it("sets the instant the runner MEANT — the deadline from the incident", () => {
+    // Wednesday 8:10 PM Eastern, ten minutes before an 8:20 kickoff. Read from
+    // Central it had said "closes 7:10 PM" beside an unmoved "8:20p".
+    expect(fromLocalInputValue("2026-09-09T20:10")).toBe("2026-09-10T00:10:00.000Z");
+    expect(formatDeadline("2026-09-10T00:10:00.000Z")).toBe("Wed, Sep 9, 8:10 PM EDT");
+  });
+
+  it("LABELS the zone, because the kickoffs beside it cannot follow the reader", () => {
+    // The abbreviation is the whole point of the change: a reader in another
+    // zone has to be able to tell that neither clock on the screen is theirs.
+    // Derived per instant, so a November deadline says EST.
+    expect(formatDeadline("2026-09-10T00:10:00.000Z")).toContain("EDT");
+    expect(formatDeadline("2026-11-08T16:30:00.000Z")).toContain("EST");
   });
 
   it("treats an empty input as no deadline, not as an invalid date", () => {

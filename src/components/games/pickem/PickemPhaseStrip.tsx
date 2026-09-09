@@ -21,13 +21,19 @@ import { PickemFinalizePrompt } from "./PickemFinalizePrompt";
  * different on every platform, with no presets and a 16px font imposed to stop
  * iOS zooming the page on focus.
  */
-function splitDeadline(iso: string | null): { date: Date | null; time: TimeValue | null } {
+export function splitDeadline(iso: string | null): { date: Date | null; time: TimeValue | null } {
   if (!iso) return { date: null, time: null };
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return { date: null, time: null };
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return { date: d, time: parseTime(hh + ":" + mm) };
+  const w = wallClockInZone(iso);
+  if (!w) return { date: null, time: null };
+  // The DATE half is a `Date` because `DatePicker` wants one, and it must carry
+  // the TRIP zone's calendar day rather than the device's — those differ for
+  // any evening deadline read from a zone west of Eastern. Constructed from the
+  // trip-zone parts at local noon: the picker reads only y/m/d off it, and noon
+  // is far enough from either midnight that no offset can roll the day over.
+  const date = new Date(w.year, w.month - 1, w.day, 12, 0, 0, 0);
+  const hh = String(w.hour).padStart(2, "0");
+  const mm = String(w.minute).padStart(2, "0");
+  return { date, time: parseTime(hh + ":" + mm) };
 }
 
 /**
@@ -35,14 +41,25 @@ function splitDeadline(iso: string | null): { date: Date | null; time: TimeValue
  * deadline, and defaulting the missing half would schedule a close at an hour
  * nobody picked.
  */
-function joinDeadline(date: Date | null, time: TimeValue | null): string | null {
+export function joinDeadline(date: Date | null, time: TimeValue | null): string | null {
   if (!date || !time) return null;
   const [h, m] = toTime24(time).split(":").map(Number);
-  const out = new Date(date);
-  out.setHours(h, m, 0, 0);
-  return Number.isFinite(out.getTime()) ? out.toISOString() : null;
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  // `setHours` would read the picked wall clock as the DEVICE's, which is the
+  // frame this surface no longer speaks: a runner in Central typing 8:10 would
+  // store 9:10 Eastern and see it read back as 9:10 beside an 8:20 kickoff.
+  // The picker's y/m/d are already the trip zone's calendar day (`splitDeadline`).
+  const ms = instantFromWallClock({
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+    hour: h,
+    minute: m,
+  });
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 import { type PickemPhase } from "@/lib/pickemLifecycle";
+import { instantFromWallClock, wallClockInZone } from "@/lib/tripTimeZone";
 
 /**
  * The runner's control: where this game IS, and the moves available from here.
@@ -652,10 +669,19 @@ function DeadlineBlock({
 }) {
   const set = deadline != null;
   /**
-   * `formatDeadline` is `toLocaleString` — the VIEWER's own timezone, which is
-   * the only correct rendering when the schema stores no timezone anywhere.
-   * Never format this server-side: the server's zone is not the reader's, and a
-   * stop time an hour out is worse than no stop time.
+   * `formatDeadline` renders in the TRIP zone and says which, because this
+   * block sits on the same screen as slate kickoffs frozen in that zone.
+   *
+   * It used to render in the VIEWER's, on the reasoning that a viewer-local
+   * instant is the only honest rendering when the schema stores no timezone.
+   * That is right about the DEADLINE and wrong about the SCREEN: the kickoffs
+   * beside it cannot follow the reader, so a deadline that does puts two clocks
+   * in two frames on one surface. Read from Central, a stop set 10 minutes
+   * before an 8:20 kickoff said "Closes 7:10 PM" — 70 minutes early, apparently.
+   *
+   * Still never format this server-side: the server's zone is not the trip's
+   * either, and the abbreviation has to be derived from the deadline's own date
+   * so it says EST in November.
    */
 
   /**

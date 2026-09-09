@@ -25,44 +25,68 @@
  *
  * ── Timezone, stated because it is where these go wrong ────────────────────
  *
- * `datetime-local` speaks LOCAL WALL CLOCK with no zone. `new Date(local)`
- * interprets it in the browser's zone, which is what the runner means — they
- * are setting "11am where the trip is", sitting at the trip. Stored as an
- * instant (`timestamptz`), rendered back through the same local conversion, so
- * a round trip is stable. Everyone on the trip is in one timezone; a runner
- * setting a deadline from another one gets their own local time, which is the
- * only interpretation available without asking where the trip is.
+ * These helpers speak a WALL CLOCK with no zone attached, and the question is
+ * whose. They used to say the DEVICE's, on the reasoning that "everyone on the
+ * trip is in one timezone" — which is false in both directions: a runner sets
+ * the deadline from home weeks earlier, and crew read it from wherever they
+ * happen to be. The deadline then moved with the reader while the slate's
+ * kickoff strings did not, and the two clocks on one screen disagreed.
+ *
+ * So the wall clock here is TRIP zone (`@/lib/tripTimeZone`), which is the
+ * frame the frozen kickoff text is already in. Stored as an instant
+ * (`timestamptz`) either way — only the interpretation of the digits changed,
+ * and a round trip is still stable.
  */
+import {
+  TRIP_TIME_ZONE,
+  formatInTripZone,
+  instantFromWallClock,
+  wallClockInZone,
+} from "@/lib/tripTimeZone";
 
-/** ISO instant → the `YYYY-MM-DDTHH:mm` a datetime-local input wants, in LOCAL
- *  time. `toISOString()` would be UTC and silently shift the displayed hour. */
-export function toLocalInputValue(iso: string | null): string {
+/** ISO instant → the `YYYY-MM-DDTHH:mm` a datetime-local input wants, as the
+ *  TRIP zone's wall clock. `toISOString()` would be UTC and silently shift the
+ *  displayed hour; the device's clock would shift it by a different amount for
+ *  every reader, which is the bug this file's header describes. */
+export function toLocalInputValue(iso: string | null, timeZone = TRIP_TIME_ZONE): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "";
+  const w = wallClockInZone(iso, timeZone);
+  if (!w) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${w.year}-${pad(w.month)}-${pad(w.day)}T${pad(w.hour)}:${pad(w.minute)}`;
 }
 
-/** The input's local wall clock → an ISO instant, or null when cleared. */
-export function fromLocalInputValue(local: string): string | null {
-  if (!local) return null;
-  const d = new Date(local);
-  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+/** The input's trip-zone wall clock → an ISO instant, or null when cleared. */
+export function fromLocalInputValue(local: string, timeZone = TRIP_TIME_ZONE): string | null {
+  // Parsed by field rather than by `new Date(local)`: that constructor reads a
+  // zone-less string in the DEVICE's zone, which is precisely the assumption
+  // being removed. A regex also refuses the garbage the old version had to
+  // catch with an isFinite check afterwards.
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
+  if (!m) return null;
+  const ms = instantFromWallClock(
+    {
+      year: Number(m[1]),
+      month: Number(m[2]),
+      day: Number(m[3]),
+      hour: Number(m[4]),
+      minute: Number(m[5]),
+    },
+    timeZone,
+  );
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
-/** How a set deadline reads back to a person. */
+/**
+ * How a set deadline reads back to a person: `Wed, Sep 9, 8:10 PM EDT`.
+ *
+ * The zone abbreviation is not decoration. This string sits on the same screen
+ * as kickoff times that are frozen in this same zone, and a reader standing in
+ * a different one needs to know that neither clock is theirs — otherwise the
+ * deadline looks an hour early rather than differently expressed.
+ */
 export function formatDeadline(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "";
-  return d.toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatInTripZone(iso);
 }
 
 /**
@@ -70,8 +94,14 @@ export function formatDeadline(iso: string | null): string {
  *
  * The settings-page row for the deadline, superseded by the block inside
  * `PickemPhaseStrip` when the lifecycle controls left settings — and rendered
- * NOWHERE since (issue #1128). The three helpers above are the only live
- * exports, which is why the file stays.
+ * NOWHERE since (issue #1128). The helpers above are why the file stays.
+ *
+ * Of the three, only `formatDeadline` currently has a live caller
+ * (`PickemPhaseStrip`); the two input helpers are exercised by tests alone,
+ * since the deadline editor moved to the shared DatePicker/TimePicker pair.
+ * They were moved onto the trip zone with it rather than left behind: a
+ * zone-naive helper sitting beside a zone-pinned one, in the file the strip
+ * imports its formatting from, is the first thing the next author would meet.
  *
  * Removed in the Start/Stop vocabulary sweep rather than as tidying. Its copy
  * said "Sheets lock automatically at…" and "no deadline — sheets stay open
