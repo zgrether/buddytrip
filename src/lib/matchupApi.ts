@@ -28,6 +28,8 @@
  * person could have typed.
  */
 
+import { TRIP_TIME_ZONE } from "./tripTimeZone";
+
 /** A league ESPN can be asked about. Adding basketball is a line in the list
  *  below, which is the point of it being config rather than a hardcoded pair —
  *  MLB was added that way and cost exactly that. */
@@ -359,19 +361,34 @@ export function upcomingFirst(matchups: Matchup[], now: number = Date.now(), lim
  * weekdays ("the Saturday game"), and the am/pm is compressed to a single
  * letter the way the rest of the slate writes times.
  *
- * Client-local by construction — there is no timezone column anywhere in this
- * schema, so the browser's zone is the only one available and rendering the
- * instant is the honest thing to do.
+ * ── Which zone, and why it is NOT the reader's ─────────────────────────────
+ *
+ * This used to render in the browser's zone, on the reasoning that with no
+ * timezone column in the schema it is the only one available. The flaw is not
+ * the zone — it is that the result gets FROZEN. Callers write this string into
+ * a `text` column and never re-render it for anybody, so "the browser's zone"
+ * is not the reader's at all: it is whichever zone the person BUILDING the list
+ * happened to be sitting in that day, imposed permanently on everyone who reads
+ * it afterwards. A list built from Charleston and the same list built from
+ * Florida stored different times for the same contests, and nothing recorded
+ * which.
+ *
+ * So it takes a zone, defaulting to the trip's. This module still does not know
+ * why that zone matters — only that a stored string needs a stable one.
  */
-export function formatKickoff(iso: string, startTimeKnown = true): string {
+export function formatKickoff(
+  iso: string,
+  startTimeKnown = true,
+  timeZone: string = TRIP_TIME_ZONE,
+): string {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "";
 
   // Built from two calls rather than one: asking for weekday+month+day together
   // yields "Sat, Sep 5", which then reads "Sat, Sep 5, 12:30p" — two commas for
   // one date.
-  const weekday = d.toLocaleString(undefined, { weekday: "short" });
-  const date = d.toLocaleString(undefined, { month: "short", day: "numeric" });
+  const weekday = d.toLocaleString("en-US", { timeZone, weekday: "short" });
+  const date = d.toLocaleString("en-US", { timeZone, month: "short", day: "numeric" });
 
   // No regex here on purpose. The meridiem separator is often U+202F (a narrow
   // no-break space), not U+0020, so a naive `" "` replace misses it — and the
@@ -383,7 +400,7 @@ export function formatKickoff(iso: string, startTimeKnown = true): string {
   // confident wrong time in front of someone.
   if (!startTimeKnown) return `${weekday} ${date}, TBD`;
 
-  const raw = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const raw = d.toLocaleTimeString("en-US", { timeZone, hour: "numeric", minute: "2-digit" });
   const upper = raw.toUpperCase();
   const pm = upper.includes("PM");
   const clock = upper.split("AM").join("").split("PM").join("").trim();

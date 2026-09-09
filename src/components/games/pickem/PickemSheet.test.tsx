@@ -437,19 +437,54 @@ describe("submitted, reset and locked", () => {
     expect(html).toContain('data-testid="pickem-row-rank"');
   });
 
+  it("SAYS WHICH CLOCK the kickoffs are on", () => {
+    /**
+     * The rows carry a kickoff each and nothing on them says whose clock it is.
+     * They cannot say: `pickem_slate_games.kickoff` is `text`, frozen when the
+     * runner built the slate, so it does not follow the reader the way the
+     * countdown does. Read from Central, a deadline ten minutes before an 8:20
+     * kickoff looked like a deadline seventy minutes before it.
+     *
+     * Anchored to the note's own testid, not to the bare string "EST" — the
+     * closed-at banner and the deadline can both emit that, and this assertion
+     * is about the LIST having a label rather than the page containing one.
+     */
+    const html = render();
+    expect(html).toContain('data-testid="pickem-sheet-zone-note"');
+    const note = html.split('data-testid="pickem-sheet-zone-note"')[1] ?? "";
+    expect(note).toMatch(/All times E[SD]T/);
+  });
+
+  it("does NOT claim a frame for a slate that carries no times", () => {
+    // Empty is not unknown: "All times EST" over rows with no kickoff on them
+    // is a label for something that is not there. A build that renders the note
+    // unconditionally passes the case above and fails this one.
+    const html = render({ slate: SLATE.map((g) => ({ ...g, kickoff: null })) });
+    expect(html).not.toContain('data-testid="pickem-sheet-zone-note"');
+    // ...and it is not passing by rendering nothing at all.
+    expect(html.split('data-testid="pickem-sheet-row"').length - 1).toBe(SLATE.length);
+  });
+
   it("SAYS WHEN PICKS CLOSED after a deadline — §8.4", () => {
     // The case the rule is about: someone opens their sheet after the clock ran
     // out. A silently read-only form reads as a broken app; naming the moment
     // reads as a rule. Nobody is notified — reminders need a scheduler — so
     // this sentence is the only explanation that exists.
-    const closedAt = new Date(2026, 10, 8, 11, 0).getTime();
+    // An explicit INSTANT, not a device-local construction: this banner renders
+    // in the trip zone (so it shares a frame with the kickoffs on the same
+    // screen), and `new Date(y, m, d, ...)` would build a different moment on
+    // every runner. 16:00Z on 2026-11-08 is 11:00 AM Eastern, EST by November.
+    const closedAt = Date.parse("2026-11-08T16:00:00.000Z");
     const html = render({
       editable: false,
       picks: filledSheet(),
       closure: { at: closedAt, reason: "deadline" as const },
     });
     expect(html).toContain("Picks closed at");
+    // 11:00 AND the zone. A device-local build on a UTC runner says "4:00 PM"
+    // and no abbreviation at all, so both halves of this fail against it.
     expect(html).toContain("11:00");
+    expect(html).toContain("EST");
     // ...and it does not claim the runner did it.
     expect(html).not.toContain("ended early");
   });
