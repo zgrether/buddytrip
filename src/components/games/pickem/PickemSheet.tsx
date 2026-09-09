@@ -28,7 +28,7 @@ import { draftLostToLock, formatCountdownParts, type PickemClosure } from "@/lib
 import { ValueUnitParts } from "@/components/ValueUnit";
 import { sheetStateColor, sheetStateLine } from "./PickemOtherPicks";
 import { paysOut, type SlateResult } from "@/lib/pickemScoring";
-import { TRIP_TIME_ZONE, tripZoneNote, zoneAbbrev } from "@/lib/tripTimeZone";
+import { TRIP_TIME_ZONE, TRIP_TIME_ZONE_LABEL, tripZoneNote } from "@/lib/tripTimeZone";
 import { isPlayedOutcome, type PickOutcome } from "./PickemSheetRow";
 
 /** "Sat 11:00 AM" — a weekday and a clock time, because a deadline people are
@@ -66,7 +66,7 @@ export function pickIsSaved(
 }
 
 /**
- * When picks closed, in the TRIP zone and labelled with it.
+ * When picks closed, in the TRIP zone and labelled "ET".
  *
  * Device-local before, which put it in a different frame from the kickoff
  * strings on the same screen — "Picks closed at Wed 8:10 PM" one state east
@@ -83,8 +83,7 @@ export function formatClosedAt(ms: number): string {
     hour: "numeric",
     minute: "2-digit",
   });
-  const abbrev = zoneAbbrev(d);
-  return abbrev ? `${stamp} ${abbrev}` : stamp;
+  return `${stamp} ${TRIP_TIME_ZONE_LABEL}`;
 }
 
 /**
@@ -488,19 +487,6 @@ export function PickemSheet({
    * Absent reads as 1, never as 0, exactly as `pickemMatchCard` has it.
    */
   const anyWeighted = useMemo(() => slate.some((g) => (g.multiplier ?? 1) > 1), [slate]);
-
-  /**
-   * "All times EDT" — derived from the DEADLINE's own date, not from today's.
-   *
-   * A slate built in October for a November weekend is EST, and a note that
-   * reads the wrong side of the DST change is worse than none: it is a
-   * confident label an hour out. Falls back to the moment the sheet opened only
-   * when no deadline is set, which is the case with no better instant to ask
-   * about — read in a lazy initializer because `Date.now()` in a render body is
-   * impure and would re-read on every re-render.
-   */
-  const [openedAt] = useState(() => Date.now());
-  const zoneNote = useMemo(() => tripZoneNote(deadlineMs ?? openedAt), [deadlineMs, openedAt]);
 
   /**
    * The sheet as a PAYLOAD — the games actually picked, and only those.
@@ -977,14 +963,20 @@ export function PickemSheet({
 
           Gated on a slate that actually has one: a slate of TBDs would be
           claiming a frame for times that are not there, which is the
-          empty-is-not-unknown mistake with a label on it. */}
-      {slate.some((g) => g.kickoff) && zoneNote && (
+          empty-is-not-unknown mistake with a label on it.
+
+          `tripZoneNote()` takes no argument by design. Its first version took
+          an instant so it could say EDT or EST, and this call site passed
+          `deadlineMs` — which is milliseconds REMAINING, not an epoch instant.
+          21 hours read as 1 January 1970, so the note said EST directly beneath
+          a deadline reading EDT. */}
+      {slate.some((g) => g.kickoff) && (
         <div className="flex justify-end px-1">
           <span
             data-testid="pickem-sheet-zone-note"
             style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}
           >
-            {zoneNote}
+            {tripZoneNote()}
           </span>
         </div>
       )}

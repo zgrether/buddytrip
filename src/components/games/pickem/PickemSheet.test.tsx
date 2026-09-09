@@ -445,18 +445,39 @@ describe("submitted, reset and locked", () => {
      * countdown does. Read from Central, a deadline ten minutes before an 8:20
      * kickoff looked like a deadline seventy minutes before it.
      *
-     * Anchored to the note's own testid, not to the bare string "EST" — the
+     * Anchored to the note's own testid, not to the bare string "ET" — the
      * closed-at banner and the deadline can both emit that, and this assertion
      * is about the LIST having a label rather than the page containing one.
      */
     const html = render();
     expect(html).toContain('data-testid="pickem-sheet-zone-note"');
     const note = html.split('data-testid="pickem-sheet-zone-note"')[1] ?? "";
-    expect(note).toMatch(/All times E[SD]T/);
+    // EXACT, not `/All times E[SD]T/`. The regex version of this assertion is
+    // what let the bug below through — it admitted both spellings, so it passed
+    // against the build it existed to catch.
+    expect(note).toContain("All times ET");
+  });
+
+  it("uses ONE spelling of the zone across the whole sheet", () => {
+    /**
+     * The regression, and it shipped to a real screen: the note derived its
+     * label from an instant, and this component's `deadlineMs` prop is
+     * milliseconds REMAINING rather than an epoch instant. 21 hours resolved to
+     * 1 January 1970 — EST — so the sheet read "All times EST" while the
+     * deadline above it read "8:10 PM EDT". Two names for one zone, which is
+     * the confusion the whole timezone change exists to remove.
+     *
+     * Asserted over the ASSEMBLED sheet rather than over the note alone,
+     * because neither half was wrong on its own — a per-component check passes
+     * against this and a person reading the screen does not.
+     */
+    const html = render({ deadlineMs: 21 * 3_600_000 });
+    expect(html).toContain("All times ET");
+    expect(html).not.toMatch(/EDT|EST/);
   });
 
   it("does NOT claim a frame for a slate that carries no times", () => {
-    // Empty is not unknown: "All times EST" over rows with no kickoff on them
+    // Empty is not unknown: "All times ET" over rows with no kickoff on them
     // is a label for something that is not there. A build that renders the note
     // unconditionally passes the case above and fails this one.
     const html = render({ slate: SLATE.map((g) => ({ ...g, kickoff: null })) });
@@ -481,10 +502,10 @@ describe("submitted, reset and locked", () => {
       closure: { at: closedAt, reason: "deadline" as const },
     });
     expect(html).toContain("Picks closed at");
-    // 11:00 AND the zone. A device-local build on a UTC runner says "4:00 PM"
-    // and no abbreviation at all, so both halves of this fail against it.
+    // 11:00 AND the zone label. A device-local build on a UTC runner says
+    // "4:00 PM" and no label at all, so both halves of this fail against it.
     expect(html).toContain("11:00");
-    expect(html).toContain("EST");
+    expect(html).toContain("11:00 AM ET");
     // ...and it does not claim the runner did it.
     expect(html).not.toContain("ended early");
   });

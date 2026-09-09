@@ -3,7 +3,7 @@ import {
   TRIP_TIME_ZONE,
   wallClockInZone,
   instantFromWallClock,
-  zoneAbbrev,
+  TRIP_TIME_ZONE_LABEL,
   formatInTripZone,
   tripZoneNote,
 } from "./tripTimeZone";
@@ -54,31 +54,51 @@ describe("formatting an instant", () => {
     // The real deadline from the incident: Wednesday 8:10 PM Eastern, ten
     // minutes before an 8:20 kickoff. Read in Central it showed 7:10 PM beside
     // an unmoved "8:20p", which reads as 70 minutes early rather than 10.
-    expect(formatInTripZone("2026-09-10T00:10:00.000Z")).toBe("Wed, Sep 9, 8:10 PM EDT");
+    expect(formatInTripZone("2026-09-10T00:10:00.000Z")).toBe("Wed, Sep 9, 8:10 PM ET");
   });
 
   it("crosses the DATE boundary in the pinned zone, not the device's", () => {
     // 3:30am UTC on the 9th is still the EVENING OF THE 8TH in Eastern. A
     // device-local build on a UTC runner says "Wed, Sep 9, 3:30 AM" — a
     // different day, which is the failure that actually confuses a reader.
-    expect(formatInTripZone("2026-09-09T03:30:00.000Z")).toBe("Tue, Sep 8, 11:30 PM EDT");
+    expect(formatInTripZone("2026-09-09T03:30:00.000Z")).toBe("Tue, Sep 8, 11:30 PM ET");
   });
 
-  it("says EST in winter and EDT in summer — the abbreviation is DERIVED", () => {
-    // A hardcoded "EDT" (or a fixed -4 offset) is wrong for five months of the
-    // year, and the trip week is close enough to the November change that this
-    // is not hypothetical.
-    expect(zoneAbbrev("2026-09-09T00:10:00.000Z")).toBe("EDT");
-    expect(zoneAbbrev("2026-12-09T00:10:00.000Z")).toBe("EST");
-    expect(tripZoneNote("2026-09-09T00:10:00.000Z")).toBe("All times EDT");
-    expect(tripZoneNote("2026-12-09T00:10:00.000Z")).toBe("All times EST");
+  it("says ET on BOTH sides of the DST change — one label, never two", () => {
+    /**
+     * The regression this pins, and it shipped: the label used to be derived
+     * per instant so it could say EDT or EST. The sheet's note then got handed
+     * `deadlineMs` — milliseconds REMAINING, not an epoch instant — so 21 hours
+     * resolved to 1 January 1970 and the note read "All times EST" directly
+     * beneath a deadline reading "8:10 PM EDT". Two spellings of one zone on
+     * one screen.
+     *
+     * Asserted as EXACT strings, not `/E[SD]T/`. The regex version of this is
+     * what let the bug through: it admitted both spellings, so it passed
+     * against precisely the build it existed to catch.
+     */
+    expect(TRIP_TIME_ZONE_LABEL).toBe("ET");
+    expect(tripZoneNote()).toBe("All times ET");
+    // Summer and winter instants, same label, and neither offset spelling
+    // anywhere in the output.
+    for (const iso of ["2026-09-10T00:10:00.000Z", "2026-12-09T00:10:00.000Z"]) {
+      expect(formatInTripZone(iso)).toContain(" ET");
+      expect(formatInTripZone(iso)).not.toMatch(/EDT|EST/);
+    }
+  });
+
+  it("still converts the INSTANT across the DST change — only the label is fixed", () => {
+    // The label being constant must not be mistaken for the offset being
+    // constant. 8:10 PM Eastern is a different UTC instant either side of
+    // November 1, and these two must not render the same clock time.
+    expect(formatInTripZone("2026-11-01T00:10:00.000Z")).toBe("Sat, Oct 31, 8:10 PM ET");
+    expect(formatInTripZone("2026-11-02T01:10:00.000Z")).toBe("Sun, Nov 1, 8:10 PM ET");
   });
 
   it("treats a missing or unparseable instant as nothing to show", () => {
     // A deadline that throws on render is worse than one that does not display.
     expect(formatInTripZone(null)).toBe("");
     expect(formatInTripZone("not-a-date")).toBe("");
-    expect(zoneAbbrev("not-a-date")).toBe("");
     expect(wallClockInZone("not-a-date")).toBeNull();
   });
 });
