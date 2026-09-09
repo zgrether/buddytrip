@@ -259,6 +259,28 @@ describe("formatKickoff", () => {
   // runner's machine or the day the suite runs.
   const at = (iso: string) => formatKickoff(iso);
 
+  it("renders in the TRIP zone, not the machine's — the string gets FROZEN", () => {
+    /**
+     * The property that makes the stored slate deterministic. This string is
+     * written into a `text` column and never re-rendered, so if it followed the
+     * builder's machine then the same contest stored a different time depending
+     * on where the runner was sitting — and the surfaces that label the slate
+     * "All times EDT" would be asserting something nothing enforces.
+     *
+     * 00:30Z on Sep 6 is 8:30 PM EASTERN on Sep 5 — a different day as well as a
+     * different hour, so a device-local build on a UTC runner fails on both
+     * halves rather than on a near miss.
+     */
+    expect(at("2026-09-06T00:30:00Z")).toBe("Sat Sep 5, 8:30p");
+  });
+
+  it("honours an EXPLICIT zone, which is what makes the case above decisive", () => {
+    // The assertion above still passes on a device-local build if the machine
+    // is already set to Eastern. A build that reads the machine ignores this
+    // third argument, so this one fails on any runner in any zone.
+    expect(formatKickoff("2026-09-06T00:30:00Z", true, "Asia/Tokyo")).toBe("Sun Sep 6, 9:30a");
+  });
+
   it("carries the DATE, not just a weekday", () => {
     // The whole reason it changed: this returns the next several games, spread
     // over WEEKS. Three rows reading "Sat" name three different Saturdays and
