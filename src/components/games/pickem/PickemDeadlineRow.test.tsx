@@ -47,15 +47,21 @@ describe("local ↔ instant conversion", () => {
     // Wednesday 8:10 PM Eastern, ten minutes before an 8:20 kickoff. Read from
     // Central it had said "closes 7:10 PM" beside an unmoved "8:20p".
     expect(fromLocalInputValue("2026-09-09T20:10")).toBe("2026-09-10T00:10:00.000Z");
-    expect(formatDeadline("2026-09-10T00:10:00.000Z")).toBe("Wed, Sep 9, 8:10 PM EDT");
+    expect(formatDeadline("2026-09-10T00:10:00.000Z")).toBe("Wed, Sep 9, 8:10 PM ET");
   });
 
   it("LABELS the zone, because the kickoffs beside it cannot follow the reader", () => {
-    // The abbreviation is the whole point of the change: a reader in another
-    // zone has to be able to tell that neither clock on the screen is theirs.
-    // Derived per instant, so a November deadline says EST.
-    expect(formatDeadline("2026-09-10T00:10:00.000Z")).toContain("EDT");
-    expect(formatDeadline("2026-11-08T16:30:00.000Z")).toContain("EST");
+    // The label is the whole point of the change: a reader in another zone has
+    // to be able to tell that neither clock on the screen is theirs.
+    //
+    // ONE spelling on both sides of the DST change — "ET" names the zone, not
+    // its current offset. A derived EDT/EST label put two names for one zone on
+    // a single screen once already.
+    expect(formatDeadline("2026-09-10T00:10:00.000Z")).toContain(" ET");
+    expect(formatDeadline("2026-11-08T16:30:00.000Z")).toContain(" ET");
+    for (const iso of ["2026-09-10T00:10:00.000Z", "2026-11-08T16:30:00.000Z"]) {
+      expect(formatDeadline(iso)).not.toMatch(/EDT|EST/);
+    }
   });
 
   it("treats an empty input as no deadline, not as an invalid date", () => {

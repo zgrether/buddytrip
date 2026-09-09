@@ -46,11 +46,32 @@
  */
 
 /**
- * IANA zone, not a fixed offset — `America/New_York` is EDT in September and
- * EST in November, and `zoneAbbrev` follows that on its own. A hardcoded "EDT"
- * would be a lie every winter.
+ * IANA zone, not a fixed offset: `America/New_York` carries its own DST rules,
+ * so every instant conversion below is correct on both sides of the November
+ * change without anything here knowing when that is.
  */
 export const TRIP_TIME_ZONE = "America/New_York";
+
+/**
+ * What the screen CALLS that zone — "ET", the whole year.
+ *
+ * ── Why a constant, when the offset is not one ─────────────────────────────
+ *
+ * This started out derived per instant, on the reasoning that "EDT" is a lie
+ * from November to March. True, and it produced a worse problem: the label then
+ * varies across a boundary the reader does not care about, and every surface
+ * showing it needs an instant to derive it from. One of them was handed the
+ * wrong instant and said EST beside a deadline reading EDT — two spellings of
+ * one zone on one screen, which is precisely the "one concept, two names"
+ * confusion this whole change exists to remove.
+ *
+ * "ET" names the ZONE rather than its current offset. It is correct in January
+ * and in July, it is how every football schedule writes a kickoff, and it needs
+ * no argument — so there is no instant to pass and nothing to pass wrongly.
+ *
+ * Display-string tier. No stored value has ever carried an abbreviation.
+ */
+export const TRIP_TIME_ZONE_LABEL = "ET";
 
 /** The wall clock a zone shows at some instant. Month is 1-based. */
 export interface WallClock {
@@ -128,29 +149,11 @@ export function instantFromWallClock(wall: WallClock, timeZone = TRIP_TIME_ZONE)
 }
 
 /**
- * The zone's abbreviation at an instant — "EDT" or "EST", chosen by the date.
+ * How a pick'em instant reads to a person: `Wed, Sep 9, 8:10 PM ET`.
  *
- * Falls back to the empty string rather than a guess: an unlabelled time is
- * ambiguous, but a WRONGLY labelled one is worse, and this is the one piece
- * here that depends on Intl having the zone's abbreviations at all.
- */
-export function zoneAbbrev(iso: string | Date | number, timeZone = TRIP_TIME_ZONE): string {
-  const ms = iso instanceof Date ? iso.getTime() : typeof iso === "number" ? iso : new Date(iso).getTime();
-  if (!Number.isFinite(ms)) return "";
-  const name = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" })
-    .formatToParts(new Date(ms))
-    .find((p) => p.type === "timeZoneName")?.value;
-  // A zone with no short name formats as "GMT-4", which is not a label anyone
-  // reads as a timezone — better to say nothing than to print that.
-  return name && !name.startsWith("GMT") ? name : "";
-}
-
-/**
- * How a pick'em instant reads to a person: `Wed, Sep 9, 8:10 PM EDT`.
- *
- * The abbreviation is part of the string rather than a separate element,
- * because the two are one fact and a caller that renders them apart is a
- * caller that can render one without the other.
+ * The label is part of the string rather than a separate element, because the
+ * two are one fact and a caller that renders them apart is a caller that can
+ * render one without the other.
  */
 export function formatInTripZone(iso: string | null, timeZone = TRIP_TIME_ZONE): string {
   if (!iso) return "";
@@ -164,18 +167,20 @@ export function formatInTripZone(iso: string | null, timeZone = TRIP_TIME_ZONE):
     hour: "numeric",
     minute: "2-digit",
   });
-  const abbrev = zoneAbbrev(d, timeZone);
-  return abbrev ? `${stamp} ${abbrev}` : stamp;
+  return `${stamp} ${TRIP_TIME_ZONE_LABEL}`;
 }
 
 /**
- * The sentence that tells a reader which frame the times on this screen are
- * in. Derived, never a literal: written as "Eastern" it would be wrong for
- * half the year, and written as "EDT" it would be wrong for the other half.
+ * The sentence telling a reader which frame the times on this screen are in.
  *
- * Takes the instant it is describing so a slate in November says EST.
+ * Takes NO instant, and that is the point rather than a simplification. The
+ * version that did took one so it could say EDT or EST — and a caller handed it
+ * `deadlineMs`, which is milliseconds REMAINING and not an epoch instant, so
+ * 21 hours read as 1 January 1970 and the note said EST beside a deadline
+ * reading EDT. A well-formed, confident, wrong label.
+ *
+ * A function with no argument cannot be given the wrong one.
  */
-export function tripZoneNote(at: string | Date | number = Date.now(), timeZone = TRIP_TIME_ZONE): string {
-  const abbrev = zoneAbbrev(at, timeZone);
-  return abbrev ? `All times ${abbrev}` : "";
+export function tripZoneNote(): string {
+  return `All times ${TRIP_TIME_ZONE_LABEL}`;
 }
