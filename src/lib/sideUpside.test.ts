@@ -13,6 +13,15 @@ import type { BoardRow } from "./pickemBoard";
  * BBMI's live shape: 16 games, one resolved, JohnnyD took it, Taj submitted
  * nothing. The engine said `over: false` and the card read "1 UP · THRU 1" on a
  * finished match.
+ *
+ * ── THE CAP IS NOW PER UNIT, and these tests moved with it ────────────────
+ *
+ * It shipped as a whole-match TOTAL, which is only true at the final state —
+ * the engine replays unit by unit and applied that total as the ceiling at
+ * unit 1 too. On 2026-09-13 that closed a live BBMI match at its first game and
+ * gave it to the wrong player. The cap is a function of the unit now, summed
+ * over what was unplayed at each step. Every call below passes an accessor
+ * instead of an object; the INTENT of each case is unchanged.
  */
 
 const oneWin: DecidedHole[] = [{ hole: 1, result: "W" }];
@@ -29,7 +38,7 @@ describe("the per-side upside cap", () => {
     const open = matchState(oneWin, 16);
     expect(open.over, "without a cap this is the old, wrong answer").toBe(false);
 
-    const closed = matchState(oneWin, 16, undefined, { b: 0 });
+    const closed = matchState(oneWin, 16, undefined, () => ({ a: 1, b: 0 }));
     expect(closed.over).toBe(true);
     expect(closed.closed).toBe(true);
     expect(closed.leader).toBe("A");
@@ -39,7 +48,7 @@ describe("the per-side upside cap", () => {
   /** Symmetric: the same holds when the ABSENT side is A. */
   it("works from either side", () => {
     const bLeads: DecidedHole[] = [{ hole: 1, result: "L" }];
-    const st = matchState(bLeads, 16, undefined, { a: 0 });
+    const st = matchState(bLeads, 16, undefined, () => ({ a: 0, b: 1 }));
     expect(st.over).toBe(true);
     expect(st.leader).toBe("B");
   });
@@ -53,7 +62,13 @@ describe("the per-side upside cap", () => {
     for (const holes of [9, 16, 18]) {
       for (const n of [1, 3, 7]) {
         const decided: DecidedHole[] = Array.from({ length: n }, (_, i) => ({ hole: i + 1, result: "W" as const }));
-        expect(matchState(decided, holes)).toEqual(matchState(decided, holes, undefined, {}));
+        expect(matchState(decided, holes)).toEqual(matchState(decided, holes, undefined, undefined));
+        // A cap that constrains NOTHING — each side can take every unplayed unit
+        // in full (weight 1 under NO_GLORIOUS) — must also reproduce golf exactly.
+        // Stronger than passing `undefined` twice: this one walks the summing path.
+        expect(matchState(decided, holes)).toEqual(
+          matchState(decided, holes, undefined, () => ({ a: 1, b: 1 }))
+        );
       }
     }
   });
@@ -66,28 +81,38 @@ describe("the per-side upside cap", () => {
   it("cannot inflate the ceiling beyond the real swing", () => {
     const nearlyDone: DecidedHole[] = Array.from({ length: 17 }, (_, i) => ({ hole: i + 1, result: "W" as const }));
     const uncapped = matchState(nearlyDone, 18);
-    const absurd = matchState(nearlyDone, 18, undefined, { a: 999, b: 999 });
+    const absurd = matchState(nearlyDone, 18, undefined, () => ({ a: 999, b: 999 }));
     expect(absurd).toEqual(uncapped);
   });
 
   /** Dormie measures against the trailing side's share too, not the raw swing. */
   it("does not call a match dormie when the trailing side has no upside", () => {
-    const st = matchState(oneWin, 16, undefined, { b: 0 });
+    const st = matchState(oneWin, 16, undefined, () => ({ a: 1, b: 0 }));
     expect(st.dormie).toBe(false); // it is decided, not dormie
   });
 
   /** The track and the state must agree about when it closed — one card, one
    *  answer, which is why the cap is threaded rather than re-derived. */
   it("carries the cap into matchTrack, so the cells and the margin agree", () => {
-    const { track, st } = matchTrack(oneWin, 16, undefined, { b: 0 });
+    const { track, st } = matchTrack(oneWin, 16, undefined, () => ({ a: 1, b: 0 }));
     expect(st.over).toBe(true);
     expect(track.filter((c) => c.dead).length).toBe(15);
   });
 });
 
 describe("the pick'em adapter supplies it", () => {
+  /**
+   * A row in the board's own shape. `aPick`/`bPick` matter now: the adapter
+   * derives each unit's stake from the PICKS (via `upsideFor`) rather than from
+   * `upsideA`/`upsideB`, which the board zeroes once a game resolves — right for
+   * `matchStanding`, wrong for a replay that has to know what a since-resolved
+   * game was worth while it was still to play.
+   */
   const row = (id: string, over: Partial<BoardRow> = {}): BoardRow =>
-    ({ slateGameId: id, result: null, swing: 0, aPoints: 0, bPoints: 0, upsideA: 1, upsideB: 1, zeroKind: null, ...over }) as unknown as BoardRow;
+    ({
+      slateGameId: id, result: null, multiplier: 1, swing: 0, aPoints: 0, bPoints: 0,
+      aPick: "home", bPick: "away", upsideA: 1, upsideB: 1, zeroKind: null, ...over,
+    }) as unknown as BoardRow;
 
   /**
    * THE WHOLE POINT, end to end: an absent sheet gives every unplayed row
@@ -98,12 +123,15 @@ describe("the pick'em adapter supplies it", () => {
   it("sums each side's ceiling from the rows, so an absent sheet closes the match", () => {
     const slate = Array.from({ length: 16 }, (_, i) => ({ id: `g${i + 1}` }));
     const rows: BoardRow[] = [
-      row("g1", { result: "home", swing: 3, aPoints: 3 }),
-      // Taj has no sheet: he can gain nothing on any remaining game.
-      ...Array.from({ length: 15 }, (_, i) => row(`g${i + 2}`, { upsideA: 1, upsideB: 0 })),
+      row("g1", { result: "home", swing: 3, aPoints: 3, bPick: null }),
+      // Taj has no sheet: no pick row on any game, so he can gain nothing.
+      ...Array.from({ length: 15 }, (_, i) => row(`g${i + 2}`, { bPick: null })),
     ];
     const model = pickemCardModel(slate, rows);
-    expect(model.upside).toEqual({ a: 15, b: 0 });
+    // Per unit now, and zero for the absent sheet on EVERY unit — including the
+    // resolved one, which is what makes the replay honest.
+    expect(model.upside(1)).toEqual({ a: 1, b: 0 });
+    expect(model.upside(16)).toEqual({ a: 1, b: 0 });
 
     const st = matchState(model.results, model.unitCount, model.weightOf, model.upside);
     expect(st.over).toBe(true);
@@ -119,7 +147,7 @@ describe("the pick'em adapter supplies it", () => {
       ...Array.from({ length: 15 }, (_, i) => row(`g${i + 2}`)),
     ];
     const model = pickemCardModel(slate, rows);
-    expect(model.upside).toEqual({ a: 15, b: 15 });
+    expect(model.upside(2)).toEqual({ a: 1, b: 1 });
     expect(matchState(model.results, model.unitCount, model.weightOf, model.upside).over).toBe(false);
   });
 });
