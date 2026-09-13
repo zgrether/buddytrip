@@ -1,6 +1,6 @@
 import type { DecidedHole } from "./matchPlay";
 import type { UnitWeight } from "./gloriousHoles";
-import type { BoardRow } from "./pickemBoard";
+import { upsideFor, type BoardRow } from "./pickemBoard";
 
 /**
  * A pick'em head-to-head, in the shape the MATCH-PLAY card already reads.
@@ -51,19 +51,32 @@ export interface PickemCardModel {
   /** Slate length — the engine's `holeCount`. */
   unitCount: number;
   /**
-   * What each side can still GAIN — the engine's per-side ceiling.
+   * What each side could gain on ONE unit — the engine's per-side ceiling,
+   * which sums it over the units still unplayed at each step.
    *
    * Golf omits it: both players are on the tee, so either can take any unplayed
    * hole and the symmetric swing is right. Pick'em has a case golf does not — a
    * player who submitted no sheet scores nothing on every remaining game, so
    * their opponent's lead is unassailable from the first game they win.
    *
-   * Without this the engine reported `over: false` and the card read
+   * Without it the engine reported `over: false` and the card read
    * "1 UP · THRU 1" on a finished match. The fix belongs here rather than in a
    * display branch: the state was wrong, and every other consumer of it was
    * wrong in the same way.
+   *
+   * ── IT WAS A TOTAL, AND A TOTAL IS ONLY TRUE AT THE END ──────────────────
+   *
+   * The first version summed the stake across games unplayed NOW and handed the
+   * engine one number. The engine replays unit by unit, so that number became
+   * the ceiling at unit 1 as well — and a match whose last game both sides had
+   * picked the same way carried a total of zero, which read as "nothing left to
+   * play for" from the very first game. It closed at unit 1 and awarded the
+   * match to whoever won that game (#1381's sibling; Grether/Tyler, 2026-09-13).
+   *
+   * Per unit, the no-sheet case still falls out without a branch: no picks means
+   * a stake of 0 on every unit, so the sum is 0 from the first game.
    */
-  upside: { a?: number; b?: number };
+  upside: (unit: number) => { a: number; b: number };
 }
 
 /** A slate game, in the shape the board already holds. */
@@ -80,8 +93,7 @@ export function pickemCardModel(
   const results: DecidedHole[] = [];
   const decidedStake: Record<number, "void" | "none"> = {};
   const weights = new Map<number, number>();
-  let upsideA = 0;
-  let upsideB = 0;
+  const stakes = new Map<number, { a: number; b: number }>();
 
   slate.forEach((game, i) => {
     const unit = i + 1;
@@ -94,24 +106,36 @@ export function pickemCardModel(
     weights.set(unit, game.multiplier ?? 1);
 
     const row = byGame.get(game.id);
+
+    /**
+     * The stake THIS unit carries, per side — computed for EVERY unit, played or
+     * not, because the engine replays the match and needs the ceiling as it
+     * stood at each step. `row.upsideA`/`upsideB` cannot serve: `buildBoardRows`
+     * zeroes them once a game resolves, which is right for `matchStanding`
+     * (summing what is still live) and wrong for a replay, where a game that has
+     * since resolved was still to play at unit 1.
+     *
+     * `upsideFor` is the same collapse the board applies, reused rather than
+     * re-derived — two sides on the SAME pick can never move the margin between
+     * them, so the stake is 0 however that game turns out. A missing ROW yields
+     * two null picks, which takes the same branch and contributes nothing: a
+     * game the board has not returned is not one anyone can gain on.
+     *
+     * Bases are 1/0 on pick EXISTENCE, matching `buildBoardRows`' own
+     * confidence-off arm — this adapter is only ever fed that case (see header).
+     */
+    const stake = upsideFor(
+      row?.aPick ?? null,
+      row?.bPick ?? null,
+      row?.aPick ? 1 : 0,
+      row?.bPick ? 1 : 0,
+      game.multiplier ?? 1
+    );
+    stakes.set(unit, { a: stake.upsideA, b: stake.upsideB });
+
     // No row, or no result yet — an UNPLAYED unit. Absent from `results`, which
     // is how the engine already distinguishes "still to come" from "drawn".
-    if (!row || row.result == null) {
-      /**
-       * An unplayed game's contribution to each side's CEILING, summed from the
-       * row's own `upsideA`/`upsideB` — the same fields `matchStanding` sums for
-       * `trailingUpside`, read rather than re-derived. A side with no sheet
-       * contributes 0 on every game, which is what closes the match out.
-       *
-       * A missing ROW contributes nothing to either side, which is correct: a
-       * game the board has not returned is not a game anyone can gain on.
-       */
-      if (row) {
-        upsideA += row.upsideA;
-        upsideB += row.upsideB;
-      }
-      return;
-    }
+    if (!row || row.result == null) return;
 
     /**
      * `swing` is the signed points this game moved the match, and its sign
@@ -141,7 +165,7 @@ export function pickemCardModel(
     weightOf: (unit: number) => weights.get(unit) ?? 1,
     decidedStake,
     unitCount: slate.length,
-    upside: { a: upsideA, b: upsideB },
+    upside: (unit: number) => stakes.get(unit) ?? { a: 0, b: 0 },
   };
 }
 

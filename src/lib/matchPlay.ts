@@ -238,8 +238,8 @@ function unplayedHoles(holeCount: number, played: Set<number>): number[] {
  * same engine rather than a second one that resembles it.
  */
 /**
- * A per-side ceiling on what is still gainable — the second assumption removed
- * from this engine, after #1311 removed the per-unit one.
+ * A PER-UNIT, per-side ceiling on what is still gainable — the second
+ * assumption removed from this engine, after #1311 removed the per-unit one.
  *
  * ── Why the symmetric model was not enough ────────────────────────────────
  *
@@ -253,20 +253,39 @@ function unplayedHoles(holeCount: number, played: Set<number>): number[] {
  * from the first game they win. `matchState` reported `over: false` and the card
  * read "1 UP · THRU 1" on a match that was finished.
  *
- * A cap is the total that side can still gain across the remaining units. Give
- * `{ b: 0 }` for an absent sheet. Omitted means "no constraint beyond the
- * physical swing", which is golf, unchanged.
+ * ── WHY PER-UNIT AND NOT A TOTAL, which is what this was first ────────────
+ *
+ * It shipped as a scalar — `{ a?, b? }`, the whole-match total a side could
+ * still gain. That total is only true at the FINAL state, and this engine
+ * replays the match unit by unit: the same number was applied as the ceiling at
+ * unit 1, when everything was still to play.
+ *
+ * Lived on bbmi.app, BBMI 2026 pick'em, 2026-09-13. Grether led Tyler 9-8 with
+ * one game left that BOTH had picked the same way, so neither could gain and the
+ * total was `{a: 0, b: 0}` — correct for the end state. Applied at unit 1 it
+ * said nothing was left to play for, so the engine closed the match at the first
+ * game that moved the needle and handed it to Tyler, who won that game and the
+ * match by nothing. Three of eight matches named the wrong winner; seven of
+ * eight closed early.
+ *
+ * So the ceiling is a FUNCTION of the unit, summed over the units still unplayed
+ * at each step — the same shape `remainingSwing` already has, and for the same
+ * reason. That is not a new mechanism; it is this one finished.
+ *
+ * The no-sheet case it was added for needs no branch of its own: a side with no
+ * picks has a stake of 0 on every unit, so the sum is 0 from the first game and
+ * the match closes exactly where it should.
  *
  * ── `Math.min` with the swing, deliberately ───────────────────────────────
  *
  * A cap can only ever TIGHTEN the ceiling. A caller passing something larger
  * than the units can physically produce cannot inflate the match into staying
  * open, so a wrong cap fails safe in the direction that keeps today's answer.
+ *
+ * Omitted means "no constraint beyond the physical swing", which is golf,
+ * unchanged — and every golf and server call site omits it.
  */
-export interface SideUpside {
-  a?: number;
-  b?: number;
-}
+export type SideUpside = (unit: number) => { a: number; b: number };
 
 export function matchState(
   decided: DecidedHole[],
@@ -286,9 +305,23 @@ export function matchState(
    * fact that two functions independently needed it is the argument for it
    * living in the engine rather than beside it (#1317).
    */
-  const trailingCeiling = (swingLeft: number, d: number) => {
-    const upA = Math.min(upside?.a ?? swingLeft, swingLeft);
-    const upB = Math.min(upside?.b ?? swingLeft, swingLeft);
+  const trailingCeiling = (swingLeft: number, d: number, unplayed: number[]) => {
+    let upA = swingLeft;
+    let upB = swingLeft;
+    if (upside) {
+      // Sum the stake still on the table, unit by unit — the units UNPLAYED AT
+      // THIS STEP, never a whole-match total. `remainingSwing` walks the same
+      // list for the same reason one line above.
+      let a = 0;
+      let b = 0;
+      for (const u of unplayed) {
+        const x = upside(u);
+        a += x.a;
+        b += x.b;
+      }
+      upA = Math.min(a, swingLeft);
+      upB = Math.min(b, swingLeft);
+    }
     return d > 0 ? upB : d < 0 ? upA : Math.max(upA, upB);
   };
   for (const { hole, result } of decided) {
@@ -298,15 +331,17 @@ export function matchState(
     if (result === "W") diff += w;
     else if (result === "L") diff -= w;
     const holesLeftRaw = holeCount - count; // raw units still to play (margin Y)
-    const swingLeft = remainingSwing(unplayedHoles(holeCount, played), weightOf); // weighted (§4)
-    const ceiling = trailingCeiling(swingLeft, diff);
+    const unplayedNow = unplayedHoles(holeCount, played);
+    const swingLeft = remainingSwing(unplayedNow, weightOf); // weighted (§4)
+    const ceiling = trailingCeiling(swingLeft, diff, unplayedNow);
     const up = Math.abs(diff);
     if (holesLeftRaw > 0 && up > ceiling) return finalize(count, diff, holesLeftRaw, ceiling, true, true);
     if (holesLeftRaw === 0) break;
   }
   const holesLeftRaw = holeCount - count;
-  const swingLeft = remainingSwing(unplayedHoles(holeCount, played), weightOf);
-  return finalize(count, diff, holesLeftRaw, trailingCeiling(swingLeft, diff), holesLeftRaw === 0, false);
+  const unplayedEnd = unplayedHoles(holeCount, played);
+  const swingLeft = remainingSwing(unplayedEnd, weightOf);
+  return finalize(count, diff, holesLeftRaw, trailingCeiling(swingLeft, diff, unplayedEnd), holesLeftRaw === 0, false);
 }
 
 function finalize(
