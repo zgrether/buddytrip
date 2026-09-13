@@ -3,7 +3,7 @@
 import { PointsAtStake } from "./PointsAtStake";
 import { Table2 } from "lucide-react";
 import { matchState, type DecidedHole, type SideUpside } from "@/lib/matchPlay";
-import { NO_GLORIOUS, isGloriousHole, type GloriousConfig } from "@/lib/gloriousHoles";
+import { NO_GLORIOUS, isGloriousHole, type Weighting } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { SidePlayer } from "./MatchSides";
 import { fitName, CARD_NAME_CAPACITY_EM } from "@/lib/nameLadder";
@@ -103,8 +103,26 @@ interface MatchCardProps {
   b: Participant;
   /** Decided holes, A's perspective — {hole, W/L/H}, in play order. */
   results: DecidedHole[];
-  /** Glorious Finishing Holes weight (2× the last N). Omit for standard match play. */
-  glorious?: GloriousConfig;
+  /**
+   * How much each unit is worth, handed straight to `matchState`.
+   *
+   * Golf passes a `GloriousConfig` (2× the last N). A caller that weights PER
+   * UNIT passes a `UnitWeight` instead — the `weightOf` seam #1311 put in the
+   * engine.
+   *
+   * ── THIS WAS `GloriousConfig`, AND THAT IS THE BUG IT CAUSED ─────────────
+   *
+   * The seam reached `matchState` and stopped here. Pick'em, whose units carry
+   * a per-game multiplier, had no prop that could carry it, so it passed only
+   * `isWeightedUnit` — which draws the segment bar and never reaches the
+   * engine. Every pick'em card was therefore scored UNWEIGHTED: a 2× game
+   * counted 1, and on 2026-09-13 a match Grether led 9-8 read "AS", because
+   * unweighted the sides were level at 4-4.
+   *
+   * The prop was narrower than the parameter it feeds, so the only way to use
+   * the seam was a prop that did not exist.
+   */
+  glorious?: Weighting;
   label?: string;
   /** Team colors (Slice D). Omit for the neutral standalone default. */
   leftColor?: string;
@@ -220,7 +238,12 @@ export function MatchCard({
   /* Golf answers "is this unit weighted?" from its trailing window; a caller
      that weights per unit passes its own predicate. One default, so the loop
      below never branches on which format it is drawing. */
-  const weightedUnit = isWeightedUnit ?? ((unit: number) => isGloriousHole(unit, glorious));
+  const weightedUnit =
+    isWeightedUnit ??
+    ((unit: number) =>
+      // A per-unit weighting says "weighted" by being worth more than one; a
+      // glorious config says it by naming the trailing window.
+      typeof glorious === "function" ? glorious(unit) > 1 : isGloriousHole(unit, glorious));
   const teams = !!(leftColor && rightColor);
   const lc = leftColor || WIN_GREEN; // left emphasis color
   const rc = rightColor || WIN_GREEN; // right emphasis color

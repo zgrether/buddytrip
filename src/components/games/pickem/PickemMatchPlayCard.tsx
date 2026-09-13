@@ -79,8 +79,11 @@ export function PickemMatchPlayCard({
       b={{ id: "b", name: bName, color: bColor ?? "" }}
       results={model.results}
       holeCount={model.unitCount}
-      /* The seam. Golf passes a trailing-window config and nothing here;
-           pick'em passes the multiplier off each game's own row. */
+      /* THE SEAM, and both halves of it. `glorious` is what the ENGINE weights
+         by; `isWeightedUnit` is only what the segment bar DRAWS by. Passing the
+         selector alone scored every pick'em card unweighted — a 2x game counted
+         1 — which read as "AS" on a match that was won by exactly that game. */
+      glorious={model.weightOf}
       isWeightedUnit={pickemWeightedUnit(model)}
       decidedStake={model.decidedStake}
       /* THE CLOSE-OUT, not a display branch. A side with no sheet gains nothing
