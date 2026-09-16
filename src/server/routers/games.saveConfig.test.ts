@@ -135,8 +135,9 @@ afterAll(async () => {
  * "config changed" on every poll, and Save would reject at random with "this game
  * changed on another device".
  *
- * `readGameConfigHash` fans out over four queries; the three LIST reads
- * (game_participants / play_groups / game_matches) each need a total ORDER BY or the
+ * `readGameConfigHash` reads one document from `game_config_hash_input` (migration 188);
+ * its LIST aggregates
+ * (game_participants / play_groups / game_matches, among others) each need a total ORDER BY or the
  * row order — and therefore the hash — is at Postgres's discretion. They order by
  * `user_id`, `id`, `id`; the schema makes each unique within a game
  * (UNIQUE(game_id, user_id) + the two primary keys), so each is a total order. These
