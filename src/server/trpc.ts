@@ -37,7 +37,7 @@ export interface AuthUser {
 export interface TRPCContext {
   supabase: SupabaseClient;
   user: AuthUser | null;
-  membershipCache: Map<string, TripRoleString>;
+  membershipCache: Map<string, Promise<TripRoleString>>;
 }
 
 /**

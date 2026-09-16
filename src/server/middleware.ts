@@ -130,7 +130,7 @@ async function resolveCompetitionRole(
   ctx: {
     supabase: { from: (t: string) => unknown };
     user: { id: string } | null;
-    membershipCache: Map<string, TripRole>;
+    membershipCache: Map<string, Promise<TripRole>>;
   },
   tripId: string
 ): Promise<CompetitionRole> {
@@ -268,7 +268,7 @@ export async function canEditGame(
   ctx: {
     supabase: { from: (t: string) => unknown };
     user: { id: string } | null;
-    membershipCache: Map<string, TripRole>;
+    membershipCache: Map<string, Promise<TripRole>>;
   },
   tripId: string,
   gameId: string
@@ -356,19 +356,53 @@ export function requireGameRunAction() {
 // against the same tripId reuses the first SELECT's result. The cache
 // lives on ctx and dies with the request, so it can't drift across
 // trips or sessions.
+//
+// ── The cache holds the IN-FLIGHT PROMISE, not the resolved role ────────────
+// tRPC's resolveResponse runs a batch's calls concurrently (Promise.all), so
+// when this cached the ROLE — `get` before the await, `set` after it — every
+// procedure in a batch checked the map before the first SELECT had returned,
+// all missed, and each ran its own identical query. The cache only ever helped
+// SEQUENTIAL calls within one procedure. Measured in production: 14,891 gate
+// reads/day, at least 7,074 of them duplicates inside one request.
+//
+// So the promise is stored synchronously, before anything awaits, and a
+// concurrent caller joins it. A REJECTED lookup is evicted, which keeps the
+// old rule that only a successful answer is reused: a failed check (see below)
+// must not turn into a dead request context, and a later call in the same
+// request gets a fresh query. Callers that were already sharing the promise
+// all see the same rejection, which is the answer the query gave.
+//
+// Deliberately request-scoped only. Caching across requests would keep
+// honouring a role after it was revoked.
 // ---------------------------------------------------------------------------
 
-export async function resolveTripRole(
+export function resolveTripRole(
   ctx: {
     supabase: { from: (t: string) => unknown };
     user: { id: string } | null;
-    membershipCache: Map<string, TripRole>;
+    membershipCache: Map<string, Promise<TripRole>>;
   },
   tripId: string
 ): Promise<TripRole> {
   const cached = ctx.membershipCache.get(tripId);
   if (cached) return cached;
 
+  const lookup = lookupTripRole(ctx, tripId);
+  ctx.membershipCache.set(tripId, lookup);
+  lookup.catch(() => {
+    // Only evict our own entry — never one a later retry has since installed.
+    if (ctx.membershipCache.get(tripId) === lookup) ctx.membershipCache.delete(tripId);
+  });
+  return lookup;
+}
+
+async function lookupTripRole(
+  ctx: {
+    supabase: { from: (t: string) => unknown };
+    user: { id: string } | null;
+  },
+  tripId: string
+): Promise<TripRole> {
   const { data: member, error } = await (
     ctx.supabase.from("trip_members") as unknown as {
       select: (s: string) => {
@@ -466,7 +500,5 @@ export async function resolveTripRole(
     });
   }
 
-  const role = member.role as TripRole;
-  ctx.membershipCache.set(tripId, role);
-  return role;
+  return member.role as TripRole;
 }

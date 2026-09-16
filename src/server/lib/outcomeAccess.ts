@@ -20,7 +20,7 @@ import { memberCanScoreUnit, type ScoreUnitMatch, type ScoreUnitSide } from "@/l
 type OutcomeCtx = {
   supabase: { from: (t: string) => unknown };
   user: { id: string } | null;
-  membershipCache: Map<string, TripRole>;
+  membershipCache: Map<string, Promise<TripRole>>;
 };
 
 export async function canWriteOutcome(
