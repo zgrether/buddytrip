@@ -60,7 +60,8 @@ const GAME_CONFIG_COLS =
  * allowlist — a new column trips the test until someone classifies it. That's the
  * mechanical form of "everything the RPC writes must be in the hash": four fields went
  * silent by hand before it (`.from("matches")`, game_delegates, point_value /
- * handicap_strokes, play_groups.tee_time). Keep these strings ≡ the selects below.
+ * handicap_strokes, play_groups.tee_time). Keep these strings ≡ the column lists in
+ * `game_config_hash_input` (migration 188); the coverage guard fails when they differ.
  */
 export const HASH_COLS = {
   games: GAME_CONFIG_COLS,
@@ -109,122 +110,52 @@ export const HASH_COLS = {
  * Compute the config fingerprint — the ONE place the hash is built, so the
  * `configHash` query (cross-device sync) and `saveConfig`'s optimistic-
  * concurrency check produce byte-identical hashes for the same state (same
- * select, same ordering, same `computeConfigHash`). A client captures its base
- * hash via `configHash`; `saveConfig` recomputes it here at save time and rejects
- * a mismatch. Returns null when the game doesn't exist.
+ * input, same `computeConfigHash`). A client captures its base hash via
+ * `configHash`; `saveConfig` recomputes it here at save time and rejects a
+ * mismatch. Returns null when the game doesn't exist (or the caller can't see it).
+ *
+ * ── One call, not eight (migration 188) ─────────────────────────────────────
+ * The input used to be eight parallel PostgREST reads, one per hashed table, so
+ * every ~20s poll on every open game view cost ~9 Supabase requests with the
+ * membership gate. `game_config_hash_input` returns the same document in one
+ * SECURITY INVOKER call — RLS still decides, as the caller — and the hash is
+ * still computed HERE, in JS. `configHash.coverage.test.ts` pins that the
+ * function's keys equal `HASH_COLS` and that its document hashes identically to
+ * the PostgREST reads it replaced, so a hash a client held across the deploy
+ * stayed valid.
+ *
+ * ── Why each non-obvious column is in the input (history the SQL inherits) ───
+ *  • `game_matches`, not "matches": the old spelling errored on every call, only
+ *    the games read's error was checked, and `[]` was hashed for six weeks — so
+ *    pairings never moved the fingerprint (CLAUDE.md #16's landmine).
+ *  • `game_matches.point_value`: 084 made the override an in-place write that
+ *    keeps `id` stable, which removed the accidental coverage id churn had given.
+ *  • `game_delegates.user_id` ONLY: the list is DELETE+INSERT on every save, so
+ *    `granted_by` / `created_at` would churn the hash on an unchanged set.
+ *  • `play_groups.tee_time` (085): the groups clean-replace writes it.
+ *  • bracket members read UNDER their entrant — the table has no `game_id` — and
+ *    ordered at both levels, because an embed is still a list (#16's total order).
+ *  • `bracket_matches.winner_entrant_id` excluded: a pick is the bracket's score.
+ *  • reads for tables a format doesn't use return `[]` / null for every game;
+ *    a conditional read would need the format first, for nothing.
  */
 async function readGameConfigHash(
   supabase: SupabaseClient,
   tripId: string,
   gameId: string
 ): Promise<string | null> {
-  const [gameRes, partsRes, groupsRes, matchesRes, delegatesRes, entrantsRes, drawRes, pickemRes] =
-    await Promise.all([
-    supabase.from("games").select(HASH_COLS.games).eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
-    supabase.from("game_participants").select(HASH_COLS.game_participants).eq("game_id", gameId).order("user_id", { ascending: true }),
-    // `tee_time` MUST be selected (085) — the FOURTH "everything the RPC writes must be
-    // in the hash" instance (after .from("matches"), game_delegates, point_value).
-    // save_game_config's groups clean-replace writes play_groups.tee_time; without it a
-    // tee-time-only change would pass the concurrency check and never propagate
-    // cross-device. Semantic content, so no churn trap (unlike created_at, which stays
-    // out — a clean-replace re-mints it, and `id`, on a REAL grouping change only).
-    supabase.from("play_groups").select(HASH_COLS.play_groups).eq("game_id", gameId).order("id", { ascending: true }),
-    // `game_matches` — NOT "matches" (no such relation exists). The old spelling
-    // errored on every call and, because only gameRes.error was checked, the error
-    // was swallowed and `[]` was hashed: pairings never contributed to the
-    // fingerprint. That silently broke BOTH consumers — cross-device sync never saw
-    // a matchup change (CLAUDE.md #16 claims it does), and saveConfig's concurrency
-    // check would pass while another device's pairings were being clobbered.
-    // `point_value` (the per-match override) MUST be selected — the third instance of
-    // "everything the RPC writes must be in the hash" (after the `.from("matches")` and
-    // game_delegates gaps). Before migration 084, a point_value change went through the
-    // clean-replace, which minted a fresh `id` (which IS hashed), so the change was
-    // caught cross-device BY ACCIDENT via id churn. 084's in-place field write keeps the
-    // id stable, removing that accidental coverage — so without point_value here a stale
-    // device could silently revert an override past the concurrency check. It's semantic
-    // content (not a re-minted timestamp), so no churn trap like game_delegates had.
-    // handicap_strokes needs no addition — it's already hashed directly via the
-    // game_participants + play_groups selects above, so the in-place handicap write moves
-    // the hash on its own.
-    supabase.from("game_matches").select(HASH_COLS.game_matches).eq("game_id", gameId).order("id", { ascending: true }),
-    // `game_delegates` — the LAST field save_game_config writes that the hash didn't
-    // see, so a cross-device delegate change (incl. 083's mid-round add) was invisible
-    // to BOTH consumers, same class as the `.from("matches")` bug above.
-    // SELECT user_id ONLY — never granted_by / created_at. save_game_config replaces
-    // the whole delegate list with DELETE+INSERT on every org save, re-minting
-    // granted_by (auth.uid()) and created_at (DEFAULT now()) each time, so hashing
-    // those would churn the fingerprint on every save even when the delegate SET is
-    // unchanged — false conflicts + phantom cross-device "config changed". user_id is
-    // the semantic content and a total order (PK is game_id, user_id).
-    supabase.from("game_delegates").select(HASH_COLS.game_delegates).eq("game_id", gameId).order("user_id", { ascending: true }),
-    // ── The bracket pool (115) ────────────────────────────────────────────────
-    // Members ride the entrants read as an EMBEDDED select rather than a sixth
-    // top-level query. Two reasons, both structural: `bracket_entrant_members` has
-    // no `game_id` to filter this call by, and its rows only mean anything under
-    // the entrant that owns them. Ordering is explicit at BOTH levels — by `seed`
-    // (UNIQUE per game) outside and `user_id` (half the PK) inside — because #16's
-    // rule is that every list the hash folds in needs a total order, and an embed
-    // is still a list.
-    //
-    // Runs for every game, not just brackets — same as `game_delegates`, which is
-    // read for games that have none. It's an indexed point lookup returning zero
-    // rows, and it shares the parallel batch, so it costs a connection rather than
-    // a round-trip. A conditional read would need the game's format first, which
-    // means making this sequential to save nothing.
-    supabase
-      .from("bracket_entrants")
-      .select(`${HASH_COLS.bracket_entrants}, bracket_entrant_members(${HASH_COLS.bracket_entrant_members})`)
-      .eq("game_id", gameId)
-      .order("seed", { ascending: true })
-      .order("user_id", { referencedTable: "bracket_entrant_members", ascending: true }),
-    // ── The draw (115) ────────────────────────────────────────────────────────
-    // `winner_entrant_id` is NOT selected, and that is the same call CLAUDE.md #16
-    // makes for `game_matches.result` / `margin` / `status`: a pick is the
-    // bracket's SCORE, not its config. Hashing it would fire a full config refetch
-    // on every open device each time anyone advanced a match, and — worse — would
-    // make `saveConfig`'s optimistic-concurrency check fail for an organizer whose
-    // settings page was open while someone recorded a result, refusing a rename
-    // because of a score. Picks propagate the way every other result does, by
-    // broadcast (#20), which is phase 3's job.
-    //
-    // (game_id, bracket, round, slot) is UNIQUE, so ordering by the last three
-    // under the game filter is the total order.
-    supabase
-      .from("bracket_matches")
-      .select(HASH_COLS.bracket_matches)
-      .eq("game_id", gameId)
-      .order("bracket", { ascending: true })
-      .order("round", { ascending: true })
-      .order("slot", { ascending: true }),
-    // ── Pick'em's settings (157/158) ──────────────────────────────────────────
-    // Runs for every game, like `game_delegates` and the bracket reads: an
-    // indexed point lookup returning zero rows for the other formats, sharing
-    // the parallel batch. `maybeSingle` because a game switched to pick'em has
-    // no config row until the first save.
-    supabase.from("pickem_games").select(HASH_COLS.pickem_games).eq("game_id", gameId).maybeSingle(),
-  ]);
-  // Check EVERY query: a child failure must throw, never quietly hash an empty set
-  // (that's what hid the bug above).
-  const failed =
-    gameRes.error ?? partsRes.error ?? groupsRes.error ?? matchesRes.error ?? delegatesRes.error ??
-    entrantsRes.error ?? drawRes.error ?? pickemRes.error;
-  if (failed) {
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${failed.message}` });
-  }
-  if (!gameRes.data) return null;
-  return computeConfigHash({
-    game: gameRes.data,
-    participants: partsRes.data ?? [],
-    groups: groupsRes.data ?? [],
-    matches: matchesRes.data ?? [],
-    delegates: delegatesRes.data ?? [],
-    bracketEntrants: entrantsRes.data ?? [],
-    bracketDraw: drawRes.data ?? [],
-    // Null for every non-pick'em game, and for a pick'em game that has never
-    // been saved — a stable absence rather than an invented default, which
-    // would make the hash lie about a game with no config row.
-    pickem: pickemRes.data ?? null,
+  const { data, error } = await supabase.rpc("game_config_hash_input", {
+    p_trip_id: tripId,
+    p_game_id: gameId,
   });
+  // A failure must throw, never quietly hash an empty document — that is the
+  // shape that hid the `.from("matches")` bug above.
+  if (error) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read config: ${error.message}` });
+  }
+  const input = data as { game: unknown } | null;
+  if (!input || input.game === null || input.game === undefined) return null;
+  return computeConfigHash(input);
 }
 
 /**
