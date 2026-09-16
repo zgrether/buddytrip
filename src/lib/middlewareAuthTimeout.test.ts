@@ -249,9 +249,12 @@ describe("the rule: a timeout must never sign anyone out", () => {
   });
 
   it("still races the auth call rather than awaiting it bare", () => {
-    // The regression that would undo all of this is someone reinstating
-    // `await supabase.auth.getUser()` directly.
+    // The regression that would undo all of this is someone reinstating a bare
+    // `await supabase.auth.getUser()` — or, since the move to local verification,
+    // a bare `getClaims()`. The auth decision lives in `resolveMiddlewareUser`,
+    // and it is the RACED call.
     expect(source).toContain("resolveWithTimeout");
-    expect(source).not.toMatch(/await\s+supabase\.auth\.getUser\(\)/);
+    expect(source).not.toMatch(/await\s+supabase\.auth\.(getUser|getClaims)\(\)/);
+    expect(source).toMatch(/resolveWithTimeout\(\s*\(\)\s*=>\s*resolveMiddlewareUser\(supabase\.auth\)/);
   });
 });

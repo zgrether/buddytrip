@@ -17,6 +17,7 @@ import { isObviouslyBogusPath } from "./botPaths";
 // Read rather than duplicated: a hand-copied regex that drifts from the real one
 // is a test that passes while the app is broken.
 const MIDDLEWARE_SRC = readFileSync(resolve(__dirname, "..", "middleware.ts"), "utf8");
+const MIDDLEWARE_USER_SRC = readFileSync(resolve(__dirname, "middlewareUser.ts"), "utf8");
 
 const MATCHER_SOURCE = (() => {
   const m = MIDDLEWARE_SRC.match(/matcher:\s*\[\s*(?:\/\/[^\n]*\n\s*)*"((?:[^"\\]|\\.)*)"/);
@@ -31,7 +32,7 @@ const isMatched = (pathname: string) => matcher.test(pathname);
 describe("middleware matcher", () => {
   /**
    * The #689 constraint, and the reason this file exists. `/api/trpc` MUST stay in
-   * the matcher: middleware is the confirmed token-refresh path, and `getUser()`
+   * the matcher: middleware is the confirmed token-refresh path, and `getClaims()`
    * rotates cookies for a user whose access token expired while they only polled.
    * Excluding it would strand the browser on a consumed refresh token — a hard
    * mid-round logout. (What #689 changed was the RESPONSE for an unauthenticated
@@ -182,14 +183,17 @@ describe("middleware auth path is unchanged", () => {
     expect(MIDDLEWARE_SRC).toMatch(/supabaseResponse\.cookies\.getAll\(\)\.forEach/);
   });
 
-  it("getUser() — not getSession() — is still what validates the session", () => {
-    // The call is now RACED against a timeout rather than awaited bare
-    // (`middlewareAuthTimeout.ts`), so the old literal `await supabase.auth
-    // .getUser()` is gone. The invariant it protected is not: getUser()
-    // re-verifies against the auth server, getSession() only decodes a cookie
-    // locally and Supabase flags it insecure server-side.
-    expect(MIDDLEWARE_SRC).toContain("supabase.auth.getUser()");
+  it("the session is VERIFIED — getClaims(), never a bare getSession()", () => {
+    // This guard was "getUser() — not getSession()". The invariant it protected
+    // was never "make a network call"; it was "do not trust a cookie that merely
+    // decodes". getClaims() keeps that — it verifies the token's signature
+    // against the project JWKS — without the /user round trip, and the library
+    // behaviour is pinned in `supabaseGetClaims.contract.test.ts`. The call moved
+    // into `middlewareUser.ts`, so both files are read.
+    expect(MIDDLEWARE_SRC).toContain("resolveMiddlewareUser(supabase.auth)");
+    expect(MIDDLEWARE_USER_SRC).toContain("auth.getClaims()");
     expect(MIDDLEWARE_SRC).not.toContain("auth.getSession()");
+    expect(MIDDLEWARE_USER_SRC).not.toContain("getSession()");
   });
 
   // This asserted the two lines were ADJACENT (`url.pathname = "/login"`
@@ -227,9 +231,9 @@ describe("middleware auth path is unchanged", () => {
   it("the bogus 404 runs BEFORE the auth check, not after", () => {
     // Anchored on the auth call itself rather than the `await` that used to
     // precede it — a scanner path must still cost one edge invocation and no
-    // auth round-trip, whether or not that call is raced.
+    // auth work, whether or not that call is raced.
     const bogusAt = MIDDLEWARE_SRC.indexOf("isObviouslyBogusPath(request.nextUrl.pathname)");
-    const authAt = MIDDLEWARE_SRC.indexOf("supabase.auth.getUser()");
+    const authAt = MIDDLEWARE_SRC.indexOf("resolveMiddlewareUser(supabase.auth)");
     expect(bogusAt).toBeGreaterThan(-1);
     expect(authAt).toBeGreaterThan(-1);
     expect(bogusAt).toBeLessThan(authAt);
@@ -241,6 +245,8 @@ describe("middleware auth path is unchanged", () => {
     // `middlewareAuthTimeout.test.ts`; this is the reminder at the site the
     // other auth guards live at.
     expect(MIDDLEWARE_SRC).toContain("resolveWithTimeout");
-    expect(MIDDLEWARE_SRC).not.toMatch(/awaits+supabase.auth.getUser()/);
+    // Was a regex whose backslashes had been eaten in transit, so it matched a
+    // string no source could contain and could never fail. Backslash-free now.
+    expect(MIDDLEWARE_SRC).not.toContain("await supabase.auth.");
   });
 });
