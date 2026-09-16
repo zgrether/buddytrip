@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { getRealtimeClient } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc-client";
+import { coalesceInvalidation } from "@/lib/invalidationCoalescer";
 
 /**
  * useRealtimeGame — pushes a game's CONFIG changes to every viewer live (mirrors
@@ -71,6 +72,76 @@ export const GAME_REALTIME_SUBSCRIPTIONS = [
   { table: "pickem_slate_games", column: "game_id" },
 ] as const;
 
+type GameInput = { tripId: string; gameId: string };
+type Invalidator = { invalidate: (input: GameInput) => unknown };
+
+/** The narrow slice of tRPC utils a refresh may touch — structural, so the contract is
+ *  testable without a React tree (same shape as `ScoreEventUtils`). */
+export type GameRefreshUtils = {
+  games: { getById: Invalidator; configHash: Invalidator; listOrganizers: Invalidator };
+  matches: { listByGame: Invalidator };
+  pickem: { get: Invalidator };
+};
+
+/**
+ * What one `postgres_changes` event (or the SUBSCRIBED backfill) does to the cache.
+ *
+ * ── COALESCED, and the storm this exists for ────────────────────────────────
+ *
+ * The subscription is per ROW. A settings save rewrites rows — a points-only save on
+ * a 16-player, 8-match game emits 25 events, a structural one (the clean-replace
+ * branch) 49 — and every device with the game open runs this once per event. Fired
+ * inline, each run invalidated five queries, and TanStack's invalidate cancels and
+ * restarts an in-flight fetch (`cancelRefetch` defaults true), so every event reached
+ * the server as a fresh request: 25–49 `games.configHash` calls per viewer per save,
+ * and the batched link carrying `games.getById` up to 48 times in ONE request. That is
+ * the 21× batch in the 09-11 stall.
+ *
+ * Measured on a local two-to-seven-device probe (production build, local Supabase):
+ * per viewer 25→1 / 49→1 `configHash` calls; at six viewers the burst's HTTP requests
+ * went 224→18 and 384→18, and 228 membership-gate fetch failures on the local stack
+ * went to 0. Convergence now lands ~2.1–2.4s after the last event, where before it
+ * was ~0.5s for one viewer and up to ~8.8s for six under the storm.
+ *
+ * WHAT IS INVALIDATED IS UNCHANGED — same five queries, same invalidate-only posture
+ * (no setData). Only the timing changed, exactly as `makeScoreEventHandler` did for
+ * score events. The cost is ≤ `COALESCE_WINDOW_MS` of added latency on a remote
+ * config change, against a ~20s poll behind it.
+ *
+ * KEYS carry query + trip + game. The coalescer dedupes by key, so a key without the
+ * game would let one game's refresh silently swallow another's that landed in the
+ * same window — `useRealtimeGame.coalesce.test.ts` pins that. The `rtGame:` prefix
+ * keeps these distinct from the score-event keys sharing the same module-wide window;
+ * where both invalidate the same query for the same game it costs one extra
+ * invalidate, which is the safe direction.
+ */
+export function makeGameRefresh(utils: GameRefreshUtils, tripId: string, gameId: string): () => void {
+  const input = { tripId, gameId };
+  return () => {
+    coalesceInvalidation(`rtGame:getById:${tripId}:${gameId}`, () => {
+      void utils.games.getById.invalidate(input);
+    });
+    coalesceInvalidation(`rtGame:matches:${tripId}:${gameId}`, () => {
+      void utils.matches.listByGame.invalidate(input);
+    });
+    coalesceInvalidation(`rtGame:configHash:${tripId}:${gameId}`, () => {
+      void utils.games.configHash.invalidate(input);
+    });
+    coalesceInvalidation(`rtGame:organizers:${tripId}:${gameId}`, () => {
+      void utils.games.listOrganizers.invalidate(input);
+    });
+    // `pickem.get` is the ONLY query any pick'em surface reads — the sheet,
+    // the phase strip, the settings mirror, Run and the board all come off
+    // it. Without this line the subscription above fires and nothing on
+    // screen changes, which is #1042 exactly: a handler invalidating three
+    // queries the format reads none of. Harmless for other formats — an
+    // invalidate on a query with no observer is a no-op.
+    coalesceInvalidation(`rtGame:pickem:${tripId}:${gameId}`, () => {
+      void utils.pickem.get.invalidate(input);
+    });
+  };
+}
+
 export function useRealtimeGame(tripId: string | undefined, gameId: string | null | undefined) {
   const utils = trpc.useUtils();
 
@@ -78,19 +149,7 @@ export function useRealtimeGame(tripId: string | undefined, gameId: string | nul
     if (!tripId || !gameId) return;
 
     const supabase = getRealtimeClient();
-    const refresh = () => {
-      utils.games.getById.invalidate({ tripId, gameId });
-      utils.matches.listByGame.invalidate({ tripId, gameId });
-      utils.games.configHash.invalidate({ tripId, gameId });
-      utils.games.listOrganizers.invalidate({ tripId, gameId });
-      // `pickem.get` is the ONLY query any pick'em surface reads — the sheet,
-      // the phase strip, the settings mirror, Run and the board all come off
-      // it. Without this line the subscription above fires and nothing on
-      // screen changes, which is #1042 exactly: a handler invalidating three
-      // queries the format reads none of. Harmless for other formats — an
-      // invalidate on a query with no observer is a no-op.
-      utils.pickem.get.invalidate({ tripId, gameId });
-    };
+    const refresh = makeGameRefresh(utils, tripId, gameId);
 
     // One channel, one shared handler — any config write on any of the five tables
     // converges the view.
@@ -104,7 +163,8 @@ export function useRealtimeGame(tripId: string | undefined, gameId: string | nul
     }
     // Backfill on (re)connect: a change during a dead zone would otherwise stay stale
     // until the next hash poll. Refetching on the SUBSCRIBED tick self-heals (mirrors
-    // useRealtimeMembers / useRealtimeChat).
+    // useRealtimeMembers / useRealtimeChat). Coalesced like every other refresh, so a
+    // reconnect costs at most one window of added latency.
     channel.subscribe((status) => {
       if (status === "SUBSCRIBED") refresh();
     });
