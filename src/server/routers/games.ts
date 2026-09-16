@@ -23,7 +23,12 @@ import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
 import { seedScrambleTeamGroups } from "@/server/lib/scrambleTeamGroups";
-import { notifyGameFinished, notifyCupClinchedIfDecided, reconcileClinchClaim } from "../lib/gameFinishNotify";
+import {
+  notifyGameFinished,
+  notifyCupClinchedIfDecided,
+  reconcileClinchClaim,
+  gameFinishedPushFailureLine,
+} from "../lib/gameFinishNotify";
 import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
 import { bracketPlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
@@ -1316,15 +1321,27 @@ export const gamesRouter = router({
         });
       }
 
-      // ── Push (Phase 3, `scores` category) ────────────────────────────────
+      // ── Push (Phase 3, `scores` category), then the clinch check ──────────
       // AFTER the write and after its error check, so a notification can only
       // follow a finalize that actually succeeded. Both helpers swallow their
       // own errors and neither is inside the try/catch of the domain write, so
       // a push failure CANNOT roll back a finished game.
       //
-      // AWAITED, not fire-and-forget: an un-awaited promise can be killed when
-      // a serverless function freezes after the response, which would make
-      // delivery intermittent in exactly the way that is hardest to diagnose.
+      // BOTH run after the response, in ONE `afterResponse` callback, in the
+      // order they always ran: the game push first, then the clinch check. The
+      // game push used to be awaited inline, so the caller waited on its two
+      // admin reads (audience, summary) and the fan-out: 1.0–1.6s typical at
+      // BBMI 2026, 5.1s on Day 4, when the two reads were slowed by the
+      // realtime-refetch contention #1384 removed. Nothing in the response
+      // depends on it. `after()` is the waitUntil-style handling an un-awaited
+      // promise would lack (#829; see `afterResponse`), so delivery is not left
+      // to a function that may freeze. Out of a request scope (tests) the
+      // callback runs inline and is awaited, so callers observe the same end
+      // state as before.
+      //
+      // Once the response stops waiting, nothing connects a failed push to the
+      // finalize that triggered it — the sender's own lines name a user and a
+      // category, never the game. `gameFinishedPushFailureLine` is that link.
       //
       // The TRANSITION guard is what keeps `finish`'s re-runnability from
       // becoming a notification bug: a correction cycle (openCorrection → edit
@@ -1332,49 +1349,49 @@ export const gamesRouter = router({
       // both golf formats in play have openCorrection wired, so that is a real
       // sequence on the day rather than a hypothetical. Only the genuine
       // pending/active → complete transition notifies.
-      if (!wasAlreadyComplete) {
-        await notifyGameFinished({
-          tripId: ctx.tripId,
-          gameId: input.gameId,
-          gameName: (game.name as string | null) ?? null,
-          gameTypeId: (game.game_type_id as string | null) ?? null,
-          competitionId: (game.competition_id as string | null) ?? null,
-          // The resolved strategy, passed WHOLE. It used to be two booleans
-          // derived here (`isManual` / `isStroke`), which was the notification
-          // layer's per-format table spelled out in this file — so a bracket's
-          // audience was right and its result line was silently empty, because
-          // the second boolean had no way to say "entrant". One value; the
-          // registry over there answers every question from it (#930).
-          strategy,
-          actorUserId: ctx.user!.id,
-        });
-      }
-
+      //
       // The clinch check deliberately runs on EVERY finalize, not only on the
       // transition: a re-finish after a score correction can be the write that
       // decides the cup, and gating it on the transition would lose exactly that
       // case. Its own exactly-once guard is the conditional claim on
       // `competitions.clinch_notified_team_id` (migration 099), so running it
       // more often is safe — it is the correct place for that responsibility,
-      // rather than borrowing the game push's guard.
-      //
-      // Deferred past the response (`afterResponse`), not skipped and not
-      // un-awaited. It runs on every finalize exactly as before — the paragraph
-      // above is the reason and it still holds — but the caller no longer waits
-      // for it. Measured: of `games.finish`'s 16 sequential DB round trips on a
-      // match re-lock, SEVEN are this check (it recomputes the whole leaderboard
-      // and writes a `push_send_log` row even when the outcome is
-      // `no_clincher`), and nothing in the response depends on its result. See
-      // `afterResponse` for why `after()` rather than a bare `void` — #829
-      // called that out.
-      if (game.competition_id) {
-        await afterResponse(() =>
-          notifyCupClinchedIfDecided({
-            tripId: ctx.tripId,
-            competitionId: game.competition_id as string,
-            actorUserId: ctx.user!.id,
-          })
-        );
+      // rather than borrowing the game push's guard. Measured before it was
+      // deferred: of `games.finish`'s 16 sequential DB round trips on a match
+      // re-lock, SEVEN were this check (it recomputes the whole leaderboard and
+      // writes a `push_send_log` row even when the outcome is `no_clincher`).
+      const competitionId = (game.competition_id as string | null) ?? null;
+      const actorUserId = ctx.user!.id;
+      const tripId = ctx.tripId;
+      if (!wasAlreadyComplete || competitionId) {
+        await afterResponse(async () => {
+          if (!wasAlreadyComplete) {
+            const send = await notifyGameFinished({
+              tripId,
+              gameId: input.gameId,
+              gameName: (game.name as string | null) ?? null,
+              gameTypeId: (game.game_type_id as string | null) ?? null,
+              competitionId,
+              // The resolved strategy, passed WHOLE. It used to be two booleans
+              // derived here (`isManual` / `isStroke`), which was the notification
+              // layer's per-format table spelled out in this file — so a bracket's
+              // audience was right and its result line was silently empty, because
+              // the second boolean had no way to say "entrant". One value; the
+              // registry over there answers every question from it (#930).
+              strategy,
+              actorUserId,
+            });
+            const failure = gameFinishedPushFailureLine(
+              { tripId, gameId: input.gameId, competitionId },
+              send
+            );
+            if (failure) console.error(failure);
+          }
+
+          if (competitionId) {
+            await notifyCupClinchedIfDecided({ tripId, competitionId, actorUserId });
+          }
+        });
       }
 
       // `warning` is additive and null for every strategy but "matches" — every
