@@ -9,6 +9,7 @@ import {
   AUTH_TIMEOUT_MS,
   AUTH_SLOW_MS,
 } from "@/lib/middlewareAuthTimeout";
+import { resolveMiddlewareUser } from "@/lib/middlewareUser";
 
 export async function middleware(request: NextRequest) {
   // Credential scanners, 404'd at the edge BEFORE anything else. They were being
@@ -17,7 +18,7 @@ export async function middleware(request: NextRequest) {
   // we leak AWS keys. 76 distinct such paths in one 3-hour production window.
   //
   // Deliberately the FIRST thing in the function — ahead of the Supabase client and
-  // `getUser()` — so a bogus path costs one edge invocation and no auth round-trip.
+  // the auth check — so a bogus path costs one edge invocation and no auth work.
   // Nothing legitimate reaches here: the rules key on shapes the App Router cannot
   // produce, never on observed scanner names (see `botPaths.ts` for why, and for the
   // tRPC batch-URL case that makes the dotfile rule `startsWith`, not `includes`).
@@ -52,12 +53,15 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Validate the session against the auth server. getUser() re-verifies the JWT
-  // (and refreshes it, writing fresh cookies via setAll above) rather than
-  // trusting whatever the cookie decodes to. getSession() only reads the cookie
-  // locally — so an orphaned/expired auth cookie read as "logged in" and
-  // bounced users off /login into a redirect dead-end. Supabase also flags
-  // server-side getSession() as insecure for exactly this reason.
+  // Validate the session. `resolveMiddlewareUser` uses getClaims(), which
+  // refreshes an expired session (writing the rotated cookies via setAll above)
+  // and then VERIFIES the access token's signature locally against the project
+  // JWKS — never trusting whatever the cookie merely decodes to, which is what
+  // getSession() alone did and why an orphaned/expired cookie once read as
+  // "logged in". It replaced a getUser() network round trip on every request;
+  // the refresh, the no-/user and the dead-token behaviours are pinned against
+  // the installed libraries in `supabaseGetClaims.contract.test.ts`, and the
+  // signed-out window it accepts is explained in `middlewareUser.ts`.
   //
   // ── RACED AGAINST THE CLOCK, AND CAUGHT IF IT THROWS ───────────────────
   // Un-timed, this call is the whole function's failure mode: production hit
@@ -70,7 +74,7 @@ export async function middleware(request: NextRequest) {
   // slow — was a 500 on every page and every tRPC call at once. The race now
   // catches it and reports it as a stall with `cause: "rejected"`.
   const resolved = await resolveWithTimeout(
-    () => supabase.auth.getUser(),
+    () => resolveMiddlewareUser(supabase.auth),
     AUTH_TIMEOUT_MS
   );
 
@@ -113,9 +117,7 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  const {
-    data: { user },
-  } = resolved.value;
+  const user = resolved.value;
 
   // Redirect unauthenticated users to /login (except for public routes).
   // The root route `/` serves the marketing page for unauthenticated visitors
@@ -136,7 +138,7 @@ export async function middleware(request: NextRequest) {
     // invocation plus a complete page render, returning nothing usable
     // (~1,150 /login renders in one measured 30-minute window, the single
     // largest CPU line item). The route STAYS in the matcher: middleware is the
-    // confirmed token-refresh path (§6.3) — getUser() above rotates cookies via
+    // confirmed token-refresh path (§6.3) — getClaims() above rotates cookies via
     // setAll for a user whose access token expired while they only polled, and
     // excluding /api/trpc would delete that, stranding the browser on a
     // consumed refresh token (Supabase rotates them) = a hard mid-round logout.
@@ -161,7 +163,7 @@ export async function middleware(request: NextRequest) {
         },
       };
       // Carry over anything setAll wrote. On a definitively dead session
-      // getUser() → _removeSession() → SIGNED_OUT → setAll writes cookie
+      // getClaims() → failed refresh → _removeSession() → SIGNED_OUT → setAll writes cookie
       // DELETIONS onto supabaseResponse; the old redirect discarded them, so the
       // browser kept re-sending a known-dead token on every request. (A rotated
       // -cookie refresh can't land here — a successful refresh returns a user.)

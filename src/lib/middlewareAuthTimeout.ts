@@ -1,10 +1,10 @@
 /**
- * The middleware's escape hatch from a hung `getUser()`, plus the instrument
+ * The middleware's escape hatch from a hung auth call, plus the instrument
  * that tells us why it hung.
  *
  * ── The failure this exists for ────────────────────────────────────────────
  *
- * `src/middleware.ts` awaits `supabase.auth.getUser()` on every matched
+ * `src/middleware.ts` awaited `supabase.auth.getUser()` on every matched
  * request — including every `/api/trpc/*` call — with no timeout and no
  * fallback. Observed in production 2026-08-27: bursts of `504
  * MIDDLEWARE_INVOCATION_TIMEOUT`, six concurrent requests failing in the same
@@ -61,14 +61,14 @@
  * ── The cost, stated rather than discovered later ──────────────────────────
  *
  * Middleware is the confirmed token-refresh path (`DATA_FRESHNESS_AUDIT.md`
- * §6.3): `getUser()` rotates cookies via `setAll` for someone whose access
+ * §6.3): the auth call (`getClaims()` since the move off `getUser()`) rotates cookies via `setAll` for someone whose access
  * token expired while they were only polling. A timeout skips that refresh, so
  * the client may hit a 401 on its next call and recover through `authExpiry`
  * instead. Strictly better than a 25-second dead page or a forced logout — but
  * it is a real behaviour change on the auth path and wants watching.
  */
 
-/** How long `getUser()` gets before the request proceeds without it.
+/** How long the auth call gets before the request proceeds without it.
  *
  *  2.5s is chosen against measurement, not taste: Supabase's own logs put
  *  `/user` between 5ms and 247ms, so 2.5s is an order of magnitude beyond the
