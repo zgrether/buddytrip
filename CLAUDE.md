@@ -363,6 +363,14 @@ seam, never on a calendar.
   A green result from an instrument never observed to go red is not evidence; it is an
   absence of evidence wearing evidence's clothes.
 
+  **Source guards are tests too, and need the same red-proof.** A `not.toMatch` guard in
+  `botPaths.test.ts` had lost its regex escapes in transit and was searching for
+  `awaits+`, which no source file can contain. It could never fail, and it sat there
+  looking like protection until the October middleware work (#1385) found it. That made
+  four inert tests in one month. A `not.` assertion is the easiest kind to make inert,
+  because matching nothing looks exactly like passing. Break the source once and watch
+  the guard go red.
+
 - **A FIXTURE THAT DOES NOT SEND WHAT THE REAL CALLER SENDS MEASURES A PATH
   THAT DOES NOT EXIST — and it reports a confident, well-formed number while it
   does it.** This is not a wrong measurement. It is a CORRECT measurement of

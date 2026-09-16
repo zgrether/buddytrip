@@ -73,6 +73,23 @@ R1's shape has changed under it — see §2. What remains:
 
 ### PARKED behind launch (per the ranking)
 
+- **Measure whether the configHash poll catches config changes Realtime missed.
+  Build it before BBMI 2027, not before.** The condition worth measuring is
+  sixteen phones on a golf course with patchy coverage. Normal use (one or two
+  people on wifi) only measures the easy case. Decided 2026-09-16.
+  - **Decision metric, written down so it is not re-derived:** a poll that finds
+    a hash mismatch while the game's `game:{gameId}` channel reports
+    `SUBSCRIBED` is a **silent socket death**. The socket looked alive and
+    delivered nothing. Mismatches while the channel is not subscribed are the
+    backstop doing its job (#19), and are not the finding.
+  - **Shape:** config channel only, kept separate from score updates. Log lines
+    only (one tag, game id and counts, no user ids or config contents). No
+    table, no migration, no retention policy.
+  - **Temporary, with its exit written into the PR:** removed by the PR that
+    acts on the result.
+  - The polling interval (`GAME_SYNC_INTERVAL_MS`, ~20s) stays as it is until
+    then. It was always the smallest lever.
+
 - **A slate-blue team colour would collide with `--color-bt-text-dim` on halved.**
   Latent, not live — no colour in `TEAM_COLORS` is slate-blue today (`#3b82f6`
   Blue is the closest and is far brighter). `MatchCard`'s TEAM path paints a
