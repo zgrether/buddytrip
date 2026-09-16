@@ -59,6 +59,14 @@ export interface SendPushToUsersResult {
   /** Per-device sends that failed for a reason OTHER than a dead endpoint
    *  (those are counted in `removedDead` and pruned). */
   failed: number;
+  /**
+   * The first failure's message — a delivery status, or the unexpected error that
+   * ended the run — or null. The same value `push_send_log.error` records, exposed
+   * so a caller running AFTER its response (`games.finish`) can log a failure
+   * against the thing that triggered it: an unexpected error can leave `failed`
+   * at 0, so the count alone cannot say a send broke.
+   */
+  error: string | null;
 }
 
 export interface SendPushToUsersOptions {
@@ -104,6 +112,7 @@ export async function sendPushToUsers(
     notConfigured: false,
     subscriptionsFound: 0,
     failed: 0,
+    error: null,
   };
   let errorMessage: string | null = null;
 
@@ -111,6 +120,7 @@ export async function sendPushToUsers(
   // natural while the recording below still runs on EVERY path — an exit that
   // skipped the record would put back exactly the blind spot this adds.
   await runSend();
+  result.error = errorMessage;
 
   // Recording is best-effort and last: `recordPushAttempt` swallows its own
   // failures, and this extra guard covers the client construction itself. The

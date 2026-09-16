@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { gameHref } from "@/lib/gameRoutes";
 import type { ResolvedResultStrategy } from "@/lib/resultStrategy";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
-import { sendPushToUsers } from "./sendPushToUsers";
+import { sendPushToUsers, type SendPushToUsersResult } from "./sendPushToUsers";
 import { recordPushAttempt } from "./recordPushAttempt";
 
 /**
@@ -680,8 +680,15 @@ export interface NotifyGameFinishedInput {
  * pending/active → complete TRANSITION. A re-finish of an already-complete game
  * notifies nobody. The clinch half carries its own separate guard, below,
  * because it can become true on a finalize that is not itself a transition.
+ *
+ * Returns the send's summary, or null when something threw before the send
+ * could report one. `games.finish` runs this after its response, so the return
+ * value is the only way its caller can still tell a finalize's push broke —
+ * see `gameFinishedPushFailureLine`.
  */
-export async function notifyGameFinished(input: NotifyGameFinishedInput): Promise<void> {
+export async function notifyGameFinished(
+  input: NotifyGameFinishedInput
+): Promise<SendPushToUsersResult | null> {
   try {
     const admin = input.admin ?? createAdminClient();
 
@@ -706,7 +713,7 @@ export async function notifyGameFinished(input: NotifyGameFinishedInput): Promis
           ? formatBracketSummary(entries)
           : formatResultSummary(entries);
 
-    await sendPushToUsers(audience, "game_results", {
+    return await sendPushToUsers(audience, "game_results", {
       ...COPY.gameFinal(input.gameName, summary),
       url: gameUrl(input.tripId, input.gameId, input.gameTypeId, input.competitionId),
       // Coalesce per game: a correction → re-finish replaces the earlier notice
@@ -724,7 +731,45 @@ export async function notifyGameFinished(input: NotifyGameFinishedInput): Promis
     });
   } catch (err) {
     console.error("[notifyGameFinished] failed", { gameId: input.gameId, err });
+    return null;
   }
+}
+
+/**
+ * The log line for a finalize whose "game is final" push FAILED, or null when it
+ * did not.
+ *
+ * `games.finish` used to await the push, so a failure sat in the same invocation
+ * as the finalize that caused it. Deferred past the response, nothing ties the
+ * two together any more: the sender's own lines carry a user id and a category,
+ * never the game. This line does, and it is one tag to search for.
+ *
+ * Failed means: the notifier threw (`null`), any device send failed for a reason
+ * other than a dead endpoint, or the run ended on an unexpected error (which can
+ * leave `failed` at 0). An empty audience, preferences switched off, and VAPID
+ * not being configured are all correct outcomes and do not log.
+ */
+export function gameFinishedPushFailureLine(
+  where: { tripId: string; gameId: string; competitionId: string | null },
+  send: SendPushToUsersResult | null
+): string | null {
+  if (send && send.failed === 0 && send.error === null) return null;
+  return JSON.stringify({
+    tag: "game-finished-push-failed",
+    tripId: where.tripId,
+    gameId: where.gameId,
+    competitionId: where.competitionId,
+    ...(send
+      ? {
+          stage: "send",
+          recipients: send.recipients,
+          subscriptionsFound: send.subscriptionsFound,
+          sent: send.sent,
+          failed: send.failed,
+          error: send.error,
+        }
+      : { stage: "notifier" }),
+  });
 }
 
 /**
