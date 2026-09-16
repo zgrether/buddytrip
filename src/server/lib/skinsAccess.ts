@@ -31,7 +31,7 @@ import { canEditGame, type TripRole } from "@/server/middleware";
 type SkinsCtx = {
   supabase: { from: (t: string) => unknown };
   user: { id: string } | null;
-  membershipCache: Map<string, TripRole>;
+  membershipCache: Map<string, Promise<TripRole>>;
 };
 
 export async function canWriteSkinsHole(

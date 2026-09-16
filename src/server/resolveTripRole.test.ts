@@ -51,7 +51,7 @@ function fakeCtx(result: MaybeSingleResult) {
         },
       },
       user: { id: "user-1" },
-      membershipCache: new Map<string, TripRole>(),
+      membershipCache: new Map<string, Promise<TripRole>>(),
     },
   };
 }
@@ -141,5 +141,92 @@ describe("resolveTripRole — a failed check is not a refusal", () => {
     await resolveTripRole(ctx, "trip-1").catch(() => {});
     await resolveTripRole(ctx, "trip-1").catch(() => {});
     expect(calls).toEqual(["trip_members", "trip_members"]);
+  });
+});
+
+/**
+ * The batch race. tRPC resolves a batch's calls CONCURRENTLY, so the property
+ * that matters is what happens when several gate checks start before the first
+ * SELECT has returned. Each fake query is held open until the test releases it,
+ * so "concurrent" is guaranteed by construction rather than by timing.
+ */
+function heldCtx() {
+  const pending: Array<(r: MaybeSingleResult) => void> = [];
+  const tripsQueried: string[] = [];
+  const ctx = {
+    supabase: {
+      from: () => ({
+        select: () => ({
+          eq: (_c: string, tripId: string) => ({
+            eq: () => ({
+              maybeSingle: () => {
+                tripsQueried.push(tripId);
+                return new Promise<MaybeSingleResult>((res) => pending.push(res));
+              },
+            }),
+          }),
+        }),
+      }),
+    },
+    user: { id: "user-1" },
+    membershipCache: new Map<string, Promise<TripRole>>(),
+  };
+  const releaseAll = (r: MaybeSingleResult) => pending.splice(0).forEach((res) => res(r));
+  return { ctx, tripsQueried, releaseAll };
+}
+
+describe("resolveTripRole — concurrent checks in one request share one query", () => {
+  it("five gate checks started together run ONE SELECT and all get the role", async () => {
+    const { ctx, tripsQueried, releaseAll } = heldCtx();
+    const checks = Array.from({ length: 5 }, () => resolveTripRole(ctx, "trip-1"));
+    // All five have started and none has an answer yet — the race the old
+    // resolved-value cache lost, since each would have missed and queried.
+    expect(tripsQueried).toEqual(["trip-1"]);
+    releaseAll({ data: { role: "Member" }, error: null });
+    await expect(Promise.all(checks)).resolves.toEqual(["Member", "Member", "Member", "Member", "Member"]);
+    expect(tripsQueried).toEqual(["trip-1"]);
+  });
+
+  it("different trips in one batch are still checked separately", async () => {
+    const { ctx, tripsQueried, releaseAll } = heldCtx();
+    const a = resolveTripRole(ctx, "trip-a");
+    const b = resolveTripRole(ctx, "trip-b");
+    const a2 = resolveTripRole(ctx, "trip-a");
+    expect(tripsQueried).toEqual(["trip-a", "trip-b"]);
+    releaseAll({ data: { role: "Owner" }, error: null });
+    await Promise.all([a, b, a2]);
+  });
+
+  it("a FAILED check is shared by the callers already waiting, then EVICTED", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { ctx, tripsQueried, releaseAll } = heldCtx();
+    const first = resolveTripRole(ctx, "trip-1");
+    const second = resolveTripRole(ctx, "trip-1");
+    releaseAll({ data: null, error: { code: "PGRST003", message: "pool timeout" } });
+
+    // Both waiters get the gate-unavailable answer, never a membership accusation.
+    for (const p of [first, second]) {
+      await expect(p).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR", message: GATE_UNAVAILABLE_MESSAGE });
+    }
+    expect(tripsQueried).toEqual(["trip-1"]);
+
+    // Eviction: the rejected promise is gone, so the next check asks again
+    // and can succeed rather than replaying the failure for the whole request.
+    expect(ctx.membershipCache.has("trip-1")).toBe(false);
+    const retry = resolveTripRole(ctx, "trip-1");
+    expect(tripsQueried).toEqual(["trip-1", "trip-1"]);
+    releaseAll({ data: { role: "Organizer" }, error: null });
+    await expect(retry).resolves.toBe("Organizer");
+  });
+
+  it("a genuine refusal is evicted too — only a successful answer is reused", async () => {
+    const { ctx, tripsQueried, releaseAll } = heldCtx();
+    const refused = resolveTripRole(ctx, "trip-1");
+    releaseAll({ data: null, error: null });
+    await expect(refused).rejects.toMatchObject({ code: "FORBIDDEN", message: NOT_A_MEMBER_MESSAGE });
+    expect(ctx.membershipCache.has("trip-1")).toBe(false);
+    void resolveTripRole(ctx, "trip-1").catch(() => {});
+    expect(tripsQueried).toEqual(["trip-1", "trip-1"]);
+    releaseAll({ data: null, error: null });
   });
 });
