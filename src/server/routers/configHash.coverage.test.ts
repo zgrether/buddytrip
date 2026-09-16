@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { HASH_COLS } from "./games";
 import { buildDraw } from "../../lib/bracket";
+import { canonicalize, computeConfigHash } from "../../lib/configHash";
 
 /**
  * The OBSERVATIONAL hash-coverage guard — the mechanical backstop for "everything the
@@ -133,6 +135,22 @@ beforeAll(async () => {
   });
   await ctx.caller().games.addOrganizer({ tripId, gameId, userId: member });
 
+  // Values whose JSON SPELLING could differ between PostgREST's serializer and
+  // `jsonb_build_object` (migration 188): a fractional numeric, a numeric with a
+  // trailing zero, a timestamptz, a text tee time. The parity test below is only
+  // as good as the shapes put in front of it, and a null column proves nothing.
+  {
+    const up = await ctx.admin
+      .from("games")
+      .update({ points_total: 4.5, tee_time: "08:30", pairings_published_at: "2026-09-12T17:43:00.123456+00:00" })
+      .eq("id", gameId);
+    if (up.error) throw new Error(`seed game values: ${up.error.message}`);
+    const pv = await ctx.admin.from("game_matches").update({ point_value: 1.250 }).eq("game_id", gameId);
+    if (pv.error) throw new Error(`seed point_value: ${pv.error.message}`);
+    const tt = await ctx.admin.from("play_groups").update({ tee_time: "09:10" }).eq("game_id", gameId);
+    if (tt.error) throw new Error(`seed group tee_time: ${tt.error.message}`);
+  }
+
   // A populated BRACKET game (115). Separate from the match-play game above
   // because the two are mutually exclusive: a bracket is a non-golf format, so
   // the game seeded for game_matches/play_groups can never carry entrants, and a
@@ -235,5 +253,149 @@ describe("configHash coverage — every column of a hashed table is classified",
     // silently hashing nothing). Keeps the select honest against the schema.
     const stale = cols(table).filter((c) => !live.includes(c));
     expect(stale, `stale HASH_COLS entry for ${table} — column not in the live schema`).toEqual([]);
+  });
+});
+
+// ── The single-call input (migration 188) ───────────────────────────────────
+//
+// `game_config_hash_input` returns the eight reads as one document, and its
+// column lists are written out in SQL. That is a SECOND copy of HASH_COLS, and a
+// second copy is how the four silent gaps above happened. So the same guard now
+// closes both links: live schema ↔ HASH_COLS (above), and HASH_COLS ↔ the
+// function's output (here). A column added to a hashed table fails the first
+// until it is classified, and fails this one until the function returns it.
+
+type HashInput = {
+  game: Record<string, unknown> | null;
+  participants: Record<string, unknown>[];
+  groups: Record<string, unknown>[];
+  matches: Record<string, unknown>[];
+  delegates: Record<string, unknown>[];
+  bracketEntrants: (Record<string, unknown> & { bracket_entrant_members: Record<string, unknown>[] })[];
+  bracketDraw: Record<string, unknown>[];
+  pickem: Record<string, unknown> | null;
+};
+
+async function rpcInput(client: SupabaseClient, forGame: string, forTrip = tripId): Promise<HashInput> {
+  const { data, error } = await client.rpc("game_config_hash_input", { p_trip_id: forTrip, p_game_id: forGame });
+  expect(error).toBeNull();
+  return data as HashInput;
+}
+
+/**
+ * The PostgREST reads the function replaced, kept here as the PARITY REFERENCE:
+ * same selects, same orderings, same null/empty defaults as `readGameConfigHash`
+ * had before 188. If the function's document hashes differently from this one,
+ * every hash an open client holds is invalidated on deploy, and every settings
+ * page open at that moment refuses its next Save as a conflict.
+ */
+async function postgrestInput(client: SupabaseClient, forGame: string): Promise<HashInput> {
+  const [g, parts, groups, matches, delegates, entrants, draw, pickem] = await Promise.all([
+    client.from("games").select(HASH_COLS.games).eq("id", forGame).eq("trip_id", tripId).maybeSingle(),
+    client.from("game_participants").select(HASH_COLS.game_participants).eq("game_id", forGame).order("user_id", { ascending: true }),
+    client.from("play_groups").select(HASH_COLS.play_groups).eq("game_id", forGame).order("id", { ascending: true }),
+    client.from("game_matches").select(HASH_COLS.game_matches).eq("game_id", forGame).order("id", { ascending: true }),
+    client.from("game_delegates").select(HASH_COLS.game_delegates).eq("game_id", forGame).order("user_id", { ascending: true }),
+    client
+      .from("bracket_entrants")
+      .select(`${HASH_COLS.bracket_entrants}, bracket_entrant_members(${HASH_COLS.bracket_entrant_members})`)
+      .eq("game_id", forGame)
+      .order("seed", { ascending: true })
+      .order("user_id", { referencedTable: "bracket_entrant_members", ascending: true }),
+    client
+      .from("bracket_matches")
+      .select(HASH_COLS.bracket_matches)
+      .eq("game_id", forGame)
+      .order("bracket", { ascending: true })
+      .order("round", { ascending: true })
+      .order("slot", { ascending: true }),
+    client.from("pickem_games").select(HASH_COLS.pickem_games).eq("game_id", forGame).maybeSingle(),
+  ]);
+  for (const r of [g, parts, groups, matches, delegates, entrants, draw, pickem]) expect(r.error).toBeNull();
+  return {
+    game: (g.data as Record<string, unknown> | null) ?? null,
+    participants: (parts.data ?? []) as Record<string, unknown>[],
+    groups: (groups.data ?? []) as Record<string, unknown>[],
+    matches: (matches.data ?? []) as Record<string, unknown>[],
+    delegates: (delegates.data ?? []) as Record<string, unknown>[],
+    bracketEntrants: (entrants.data ?? []) as HashInput["bracketEntrants"],
+    bracketDraw: (draw.data ?? []) as Record<string, unknown>[],
+    pickem: (pickem.data as Record<string, unknown> | null) ?? null,
+  };
+}
+
+/** Where each hashed table's rows sit in the function's document. */
+function sampleFor(table: keyof typeof HASH_COLS, doc: HashInput): Record<string, unknown> | null | undefined {
+  switch (table) {
+    case "games": return doc.game;
+    case "game_participants": return doc.participants[0];
+    case "play_groups": return doc.groups[0];
+    case "game_matches": return doc.matches[0];
+    case "game_delegates": return doc.delegates[0];
+    case "bracket_entrants": {
+      const e = doc.bracketEntrants[0];
+      if (!e) return undefined;
+      // The embed key is the read path, not a column.
+      const { bracket_entrant_members: _members, ...cols } = e;
+      void _members;
+      return cols;
+    }
+    case "bracket_entrant_members": return doc.bracketEntrants[0]?.bracket_entrant_members[0];
+    case "bracket_matches": return doc.bracketDraw[0];
+    case "pickem_games": return doc.pickem;
+  }
+}
+
+const gameFor = (table: string) =>
+  table.startsWith("bracket_") ? bracketGameId : table.startsWith("pickem_") ? pickemGameId : gameId;
+
+describe("game_config_hash_input returns exactly HASH_COLS (migration 188)", () => {
+  it.each(TABLES)("%s: the function's keys equal HASH_COLS", async (table) => {
+    const doc = await rpcInput(ctx.authedClient("owner"), gameFor(table));
+    const row = sampleFor(table, doc);
+    expect(row, `the function returned no ${table} row for a game seeded with one`).toBeTruthy();
+    expect(Object.keys(row!).sort()).toEqual([...cols(table)].sort());
+  });
+});
+
+describe("game_config_hash_input hashes identically to the reads it replaced", () => {
+  it.each([
+    ["match play (participants, groups, matches, delegates, fractional numerics, a timestamp)", () => gameId],
+    ["bracket (entrants with members, a draw with a bye)", () => bracketGameId],
+    ["pick'em (its config row)", () => pickemGameId],
+  ])("%s", async (_label, id) => {
+    const client = ctx.authedClient("owner");
+    const [viaRpc, viaPostgrest] = await Promise.all([rpcInput(client, id()), postgrestInput(client, id())]);
+    // The canonical strings first, so a mismatch shows WHICH value is spelled
+    // differently rather than two opaque 8-hex digests.
+    expect(canonicalize(viaRpc)).toBe(canonicalize(viaPostgrest));
+    expect(computeConfigHash(viaRpc)).toBe(computeConfigHash(viaPostgrest));
+    // Premise: the document is not trivially empty, or equality proves nothing.
+    expect(viaRpc.game).not.toBeNull();
+  });
+
+  it("a game the caller cannot see comes back as game: null, like the games read did", async () => {
+    // SECURITY INVOKER (CLAUDE.md #28): RLS decides, as it did for the PostgREST
+    // reads. A game in a trip the caller is not on must not be readable through
+    // the function either.
+    const otherTrip = await ctx.createTrip("hash input — not a member");
+    const og = (await ctx.caller().games.create({ tripId: otherTrip, gameTypeId: "gtt_match_play", name: "Private" })) as { id: string };
+    const { data: tm } = await ctx.admin
+      .from("trip_members")
+      .select("user_id")
+      .eq("trip_id", otherTrip)
+      .eq("user_id", ctx.getUser("outsider").id);
+    expect(tm ?? [], "premise: the outsider is not on this trip").toEqual([]);
+
+    const asOutsider = await rpcInput(ctx.authedClient("outsider"), og.id, otherTrip);
+    expect(asOutsider.game).toBeNull();
+    const asOwner = await rpcInput(ctx.authedClient("owner"), og.id, otherTrip);
+    expect(asOwner.game).not.toBeNull();
+    await ctx.admin.from("games").delete().eq("id", og.id);
+  });
+
+  it("the wrong trip id returns game: null, like the trip-scoped games read did", async () => {
+    const doc = await rpcInput(ctx.authedClient("owner"), gameId, "not-this-trip");
+    expect(doc.game).toBeNull();
   });
 });
