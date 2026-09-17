@@ -152,16 +152,32 @@ describe("the effective emit/listen contract (all migrations, not one filename)"
 
   it("broadcasts as a PUBLIC topic, which is only safe with a data-free payload", () => {
     expect(effective.body).toMatch(/jsonb_build_object\(\s*'gameId'[^)]*'competitionId'[^)]*\)/);
-    // The payload must carry the two ids and nothing else. If this fails because
-    // a field was added, remove the field — the topic is public and #15 depends
-    // on us not applying payload data to the cache.
+    // The payload carries the two ids and the event KIND, and nothing else. If
+    // this fails because a field was added, remove the field — the topic is
+    // public and #15 depends on us not applying payload data to the cache.
+    // (`kind` was added deliberately by 189, #1284, and is pinned below to be a
+    // literal about the trigger rather than a value from the row.)
     const payload = effective.body.match(/jsonb_build_object\(([^)]*)\)/)?.[1] ?? "";
     const keys = [...payload.matchAll(/'([a-zA-Z]+)',/g)].map((m) => m[1]);
     expect(
       keys.sort(),
       `${effective.name} puts extra fields in a PUBLIC broadcast payload. The topic is ` +
         `private => false, so this is what an unauthenticated listener receives. Remove the field.`,
-    ).toEqual(["competitionId", "gameId"]);
+    ).toEqual(["competitionId", "gameId", "kind"]);
+  });
+
+  it("the event KIND is a literal chosen from the TRIGGER's table — never a value read off the row", () => {
+    // `kind` rides a PUBLIC payload, so it is only safe while it can hold nothing
+    // but a signal type. Pin the one assignment: a CASE over TG_TABLE_NAME whose
+    // every result is a quoted literal. A version that read `v_row`, NEW or OLD
+    // could put row data on the wire and would fail here.
+    const assignments = [...effective.body.matchAll(/v_kind\s*:=\s*([^;]*);/g)].map((m) => m[1]);
+    expect(assignments, `${effective.name} must assign v_kind exactly once`).toHaveLength(1);
+    const expr = assignments[0];
+    expect(expr).toMatch(/^CASE\s+WHEN\s+TG_TABLE_NAME\s*=\s*'games'\s+THEN\s+'game'\s+ELSE\s+'score'\s+END$/);
+    expect(expr).not.toMatch(/v_row|NEW|OLD/);
+    // …and the payload's `kind` is that variable, not an expression of its own.
+    expect(effective.body).toMatch(/'kind',\s*v_kind\s*\)/);
   });
 
   it("still has a live trigger on every table whose writes move the board", () => {

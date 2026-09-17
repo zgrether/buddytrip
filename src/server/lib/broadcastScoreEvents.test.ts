@@ -182,6 +182,8 @@ describe("096 broadcast trigger — score writes", () => {
     for (const p of received) {
       expect(p.gameId).toBe(compGameId);
       expect(p.competitionId).toBe(competitionId);
+      // 189 (#1284): a score table says so.
+      expect(p.kind).toBe("score");
     }
   }, 60_000);
 
@@ -210,7 +212,7 @@ describe("096 broadcast trigger — score writes", () => {
     // field, not to widen this assertion: the payload is what an unauthenticated
     // listener gets, and it is also what CLAUDE.md #15 depends on us NOT applying
     // to the cache.
-    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId", "id"]);
+    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId", "id", "kind"]);
 
     const serialized = JSON.stringify(received[0]);
     expect(serialized).not.toContain(`"value"`);
@@ -268,6 +270,8 @@ describe("096 broadcast trigger — game lifecycle", () => {
     await waitFor(3);
     expect(received).toHaveLength(3);
     expect(received.every((p) => p.gameId === compGameId)).toBe(true);
+    // 189 (#1284): a games-row change is the other kind.
+    expect(received.map((p) => p.kind)).toEqual(["game", "game", "game"]);
   }, 60_000);
 
   it("stays silent on a games UPDATE that the board does not care about", async (t) => {
@@ -297,6 +301,7 @@ describe("096 broadcast trigger — game lifecycle", () => {
     expect(received).toHaveLength(1);
     expect(received[0].gameId).toBe(compGameId);
     expect(received[0].competitionId).toBe(competitionId);
+    expect(received[0].kind).toBe("game");
   }, 60_000);
 
   it("does not re-broadcast when a lifecycle column is written to its current value", async (t) => {
@@ -344,6 +349,7 @@ describe("109 broadcast trigger — a game appears or disappears", () => {
     expect(received).toHaveLength(1);
     expect(received[0].gameId).toBe(id);
     expect(received[0].competitionId).toBe(competitionId);
+    expect(received[0].kind).toBe("game");
 
     await ctx.admin.from("games").delete().eq("id", id);
   }, 60_000);
@@ -371,6 +377,7 @@ describe("109 broadcast trigger — a game appears or disappears", () => {
     expect(received[0].gameId).toBe(id);
     // Resolved from OLD.competition_id, since the row no longer exists to look up.
     expect(received[0].competitionId).toBe(competitionId);
+    expect(received[0].kind).toBe("game");
   }, 60_000);
 
   it("stays silent for a STANDALONE game on both insert and delete", async (t) => {
@@ -458,6 +465,8 @@ describe("118 broadcast trigger — a bracket pick", () => {
     await waitFor(3);
     expect(received.length).toBe(3);
     expect(received.every((p) => p.gameId === compGameId && p.competitionId === competitionId)).toBe(true);
+    // A bracket pick is a result: 189 (#1284) calls it a score.
+    expect(received.every((p) => p.kind === "score")).toBe(true);
 
     await ctx.admin.from("bracket_matches").delete().eq("id", matchId);
     await ctx.admin.from("bracket_entrants").delete().eq("game_id", compGameId);
@@ -484,7 +493,7 @@ describe("118 broadcast trigger — a bracket pick", () => {
     //
     // The 096 twin's warning applies here verbatim: if this fails because
     // someone added a field, REMOVE the field rather than widening this.
-    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId", "id"]);
+    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId", "id", "kind"]);
 
     await ctx.admin.from("bracket_matches").delete().eq("id", matchId);
     await ctx.admin.from("bracket_entrants").delete().eq("game_id", compGameId);
@@ -575,6 +584,8 @@ describe("173 broadcast trigger — a Matches result", () => {
     await waitFor(4);
     expect(received.length).toBe(4);
     expect(received.every((p) => p.gameId === compGameId && p.competitionId === competitionId)).toBe(true);
+    // A Matches result: 189 (#1284) calls it a score.
+    expect(received.every((p) => p.kind === "score")).toBe(true);
 
     await ctx.admin.from("game_matches").delete().eq("id", matchId);
   }, 60_000);
@@ -589,7 +600,7 @@ describe("173 broadcast trigger — a Matches result", () => {
     await ctx.admin.from("game_matches").update({ result: "a_win" }).eq("id", matchId);
     await waitFor(1);
     expect(received).toHaveLength(1);
-    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId", "id"]);
+    expect(Object.keys(received[0]).sort()).toEqual(["competitionId", "gameId", "id", "kind"]);
 
     await ctx.admin.from("game_matches").delete().eq("id", matchId);
   }, 60_000);
@@ -708,6 +719,8 @@ describe("160 broadcast trigger — a pick'em result", () => {
     expect(received.every((p) => p.gameId === compGameId && p.competitionId === competitionId)).toBe(
       true
     );
+    // A pick'em result: 189 (#1284) calls it a score.
+    expect(received.every((p) => p.kind === "score")).toBe(true);
 
     await ctx.admin.from("pickem_slate_games").delete().eq("game_id", compGameId);
   }, 60_000);
@@ -787,7 +800,7 @@ describe("160 broadcast trigger — a pick'em result", () => {
     //
     // If this fails because someone ADDED a field, remove the field rather than
     // widening this.
-    expect(Object.keys(payload).sort()).toEqual(["competitionId", "gameId", "id"]);
+    expect(Object.keys(payload).sort()).toEqual(["competitionId", "gameId", "id", "kind"]);
     expect(JSON.stringify(payload)).not.toContain("away");
     expect(JSON.stringify(payload)).not.toContain("Alabama");
 
