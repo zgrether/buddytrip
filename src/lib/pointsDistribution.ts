@@ -218,6 +218,53 @@ export function liveMatchPointsPerMatch(
 }
 
 /**
+ * Does this game award its points MATCH BY MATCH — so a placement split can
+ * never describe what it pays (#1381)?
+ *
+ * Golf match play and non-golf Matches both finalize through
+ * `writeTeamMatchPoints`: each decided match pays its own value, and the team
+ * totals are the sum. A `placement` distribution on such a game is not a
+ * different payout — it is a value no finalize reads and every board arm
+ * misreads, which is how BBMI 2026's Cornhole paid the loser 8–0.
+ *
+ * NOT `pointsDivideByMatchRows`. Pick'em also writes match rows, but it is
+ * awarded by its own engine arm and never carries a split, so it is not the
+ * question here; and rack pays per SLOT under its own shape. One question, one
+ * predicate — the same discipline that predicate's own comment asks for.
+ */
+export function awardsPerMatch(
+  gameTypeId: string | null | undefined,
+  competitionFormat?: string | null
+): boolean {
+  return gameTypeId === "gtt_match_play" || isMatchesGame(gameTypeId, competitionFormat);
+}
+
+/**
+ * The per-match share a Matches game pays, or NULL when it CANNOT be known.
+ *
+ * `liveMatchPointsPerMatch` answers 0 for a game with no total, no legacy value
+ * and no overrides — and 0 renders exactly like "no match decided yet", so a
+ * misconfigured game read as one that had not started (#1381: the inversion was
+ * invisible for hours because the board showed 0–0). Null is the honest answer
+ * for "there is nothing to divide", and callers render it as no projection
+ * rather than as a projection of nothing.
+ *
+ * Deliberately independent of the distribution's SHAPE: the finalize write
+ * (`games.finish`'s `matches` arm) pays from `points_total` whatever the shape,
+ * so a projection that gated on `per_match` projected 0 for a game that would
+ * then pay real points.
+ */
+export function projectableMatchShare(
+  pointsTotal: number | null | undefined,
+  matches: { sideAId: string | null; sideBId: string | null; pointValue: number | null }[],
+  legacyValue?: number | null
+): number | null {
+  const hasOverride = matches.some((m) => m.sideAId != null && m.sideBId != null && m.pointValue != null);
+  if (pointsTotal == null && legacyValue == null && !hasOverride) return null;
+  return liveMatchPointsPerMatch(pointsTotal, matches, legacyValue);
+}
+
+/**
  * #1031 — the LIVE per-slot award value (A2b rack-n-stack), recomputed from the
  * game's CURRENT slot count. Rack shares match play's shape (a Save-time
  * snapshot in `points_distribution.value`, going stale the instant the grouped

@@ -5,60 +5,41 @@ import { computeLiveProjections } from "./liveProjection";
 /**
  * THE `points_distribution` CONVENTION COLLAPSE — one class, three doors.
  *
- * `standingsByGame` folds two opposite conventions into one number with
+ * `standingsByGame` USED TO fold two opposite conventions into one number with
  * `position ?? raw_score`: `position` ranks LOW-wins, `raw_score` is points and
- * ranks HIGH-wins. Past that line nothing can tell them apart, and each arm
- * picks its `direction` independently with nothing checking the two agree.
+ * ranks HIGH-wins. Past that line nothing could tell them apart, and each arm
+ * picked its `direction` independently with nothing checking the two agreed.
  *
- * The `isPlacement` arm ranks `low_wins`. Hand it a legitimate winner-takes-all
- * `[8]` on a game whose rows carry `position = NULL` and it pays the whole pot
+ * The `isPlacement` arm ranks `low_wins`. Handed a legitimate winner-takes-all
+ * `[8]` on a game whose rows carry `position = NULL`, it paid the whole pot
  * to the side that won LEAST. That is #1245's exact mechanism in the arm
  * immediately below the one #1245 patched.
  *
  * Lived on bbmi.app, BBMI 2026, 2026-09-12: Cornhole won 3 matches of 4 and the
- * board paid 8-0 to the other side. Repaired in DATA (the row now carries
- * `per_match`); the CODE is untouched, so the collapse is still there and this
- * file pins it.
+ * board paid 8-0 to the other side. Repaired in DATA that day (the row now
+ * carries `per_match`) and FIXED IN CODE by #1381: the rows' convention now
+ * travels with the standings and `reconcileConvention` ranks by it, so the
+ * `isPlacement` arm can no longer re-rank points as places.
  *
  * ── Why a fake client rather than the local stack ───────────────────────────
  *
  * The condition under test is a COLUMN VALUE (`points_distribution`'s shape)
- * against a specific set of standings. A seeded local game can express that,
- * but the thing that makes this test worth having is that it reproduces the
- * PRODUCTION guard line byte for byte — which needs production's own ids. The
- * fake is what lets the real row values sit in front of the real function.
+ * against a specific set of standings. The ids are BBMI 2026's own, so the case
+ * pinned here is the production case, not a reconstruction of it.
  *
- * ── The ids are real, and that is the point ─────────────────────────────────
+ * ── The characterization tests are gone, as they said they would be ────────
  *
- * The competition/game/team ids below are BBMI 2026's. `GUARD_LINE` is the
- * verbatim string this code emitted into the Vercel runtime log while the bug
- * was live. Asserting the whole line — not a substring of it — is what makes
- * this a fidelity oracle rather than a restatement of the code: nothing about
- * the fixture can drift without the assertion noticing.
- *
- * ── WHAT TO DO WHEN THE COLLAPSE IS FIXED ───────────────────────────────────
- *
- * Two tests below are CHARACTERIZATION tests — they assert the CURRENT, WRONG
- * behaviour, and they are named so. They will go red the moment the fix lands.
- * That is deliberate and it is the forcing function: when they fail, delete
- * them and keep `pays the winner` (which must stay green either way).
+ * This file used to pin the WRONG behaviour (placement paid the loser 8-0, the
+ * guard line emitted verbatim, the dev-mode throw, the 0-0 projection), each
+ * named so it would go red when the collapse was fixed and be deleted. They
+ * went red and were replaced by the correct behaviour below. `per_match pays
+ * the WINNER` was the lasting guard and stays.
  */
 
 const COMPETITION = "f1769d45-8c7f-4a86-9b4a-ba0b3277c8e4";
 const GAME = "63a0b359-9f99-4382-aa12-9f19cf74b4c0"; // Cornhole
 const WINNER = "56a19ee9-5e81-4171-9590-255028e47a76"; // won 3 of 4 matches
 const LOSER = "aa3858b3-a0e3-4d04-abdc-5c4085dcac70"; // won 1 of 4
-
-/** The exact line production logged while the bug was live. */
-const GUARD_LINE =
-  "[leaderboard] ranking-convention mismatch: game 63a0b359-9f99-4382-aa12-9f19cf74b4c0 " +
-  "has results with a NULL position (so its values are raw_score POINTS) but is being ranked " +
-  "low_wins, which will award the LOWEST scorer first. Evidence: " +
-  '{"competitionId":"f1769d45-8c7f-4a86-9b4a-ba0b3277c8e4",' +
-  '"gameId":"63a0b359-9f99-4382-aa12-9f19cf74b4c0","direction":"low_wins",' +
-  '"standings":[{"entityId":"56a19ee9-5e81-4171-9590-255028e47a76","value":6},' +
-  '{"entityId":"aa3858b3-a0e3-4d04-abdc-5c4085dcac70","value":2}],' +
-  '"distribution":[8],"pointsTotal":8}';
 
 const PLAYERS = [
   ["u1", WINNER], ["u2", WINNER], ["u3", WINNER], ["u4", WINNER],
@@ -92,7 +73,9 @@ function table(rows: Record<string, unknown>[]) {
   return api;
 }
 
-function fakeClient(distribution: unknown) {
+type Overrides = { results?: Record<string, unknown>[] };
+
+function fakeClient(distribution: unknown, overrides: Overrides = {}) {
   const play_groups = MATCH_SHAPE.flatMap((m) => [m.a, m.b]).map((id) => ({
     game_id: GAME, id, handicap_strokes: null,
   }));
@@ -117,7 +100,7 @@ function fakeClient(distribution: unknown) {
     }],
     team_assignments: PLAYERS.map(([user_id, team_id]) => ({ user_id, team_id, competition_id: COMPETITION })),
     // position NULL + points in raw_score: exactly what `writeTeamMatchPoints` writes.
-    game_results: [
+    game_results: overrides.results ?? [
       { game_id: GAME, entity_id: WINNER, entity_type: "team", position: null, raw_score: 6 },
       { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2 },
     ],
@@ -140,70 +123,123 @@ function fakeClient(distribution: unknown) {
   };
 }
 
-/** Run the roll-up with the guard on its PRODUCTION branch (log, don't throw). */
-async function payout(distribution: unknown) {
+/** Run the roll-up in a given NODE_ENV, capturing error and warn lines. */
+async function payoutIn(env: "production" | "test", distribution: unknown, overrides: Overrides = {}) {
   const prev = process.env.NODE_ENV;
-  const lines: string[] = [];
+  const errors: string[] = [];
+  const warns: string[] = [];
   const realError = console.error;
+  const realWarn = console.warn;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (process.env as any).NODE_ENV = "production";
-  console.error = (...a: unknown[]) => { lines.push(String(a[0])); };
+  (process.env as any).NODE_ENV = env;
+  console.error = (...a: unknown[]) => { errors.push(String(a[0])); };
+  console.warn = (...a: unknown[]) => { warns.push(String(a[0])); };
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const out = await computeCompetitionLeaderboard(fakeClient(distribution) as any, COMPETITION);
+    const out = await computeCompetitionLeaderboard(fakeClient(distribution, overrides) as any, COMPETITION);
     const cell = (teamId: string) => out.cells.find((c) => c.gameId === GAME && c.teamId === teamId)?.points ?? null;
-    return { winner: cell(WINNER), loser: cell(LOSER), totals: out.teamTotals, guardLines: lines };
+    return { winner: cell(WINNER), loser: cell(LOSER), totals: out.teamTotals, errors, warns };
   } finally {
     console.error = realError;
+    console.warn = realWarn;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (process.env as any).NODE_ENV = prev;
   }
 }
 
-describe("points_distribution convention collapse", () => {
-  it("per_match pays the WINNER — the guard that must stay green through the fix", async () => {
-    const r = await payout({ type: "per_match", value: 2 });
+describe("points_distribution convention — carried to the ranking (#1381)", () => {
+  it("per_match pays the WINNER, and a game whose config agrees with its rows logs nothing", async () => {
+    const r = await payoutIn("production", { type: "per_match", value: 2 });
     expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: 6, loser: 2 });
     expect(r.totals).toEqual({ [WINNER]: 6, [LOSER]: 2 });
-    expect(r.guardLines).toEqual([]);
+    expect(r.errors).toEqual([]);
+    expect(r.warns).toEqual([]);
   });
 
-  it("CHARACTERIZATION (current WRONG behaviour) — placement pays the LOSER 8-0", async () => {
-    // When the collapse is fixed this flips to { winner: 6, loser: 2 }. Delete
-    // this test then; `per_match pays the WINNER` above is the lasting guard.
-    const r = await payout({ type: "placement", values: [8] });
-    expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: 0, loser: 8 });
+  it("THE CORNHOLE CASE: a placement [8] over points rows pays the points as scored — 6 to the winner", async () => {
+    // Before #1381 this paid { winner: 0, loser: 8 } — the BBMI 2026 inversion.
+    const r = await payoutIn("production", { type: "placement", values: [8] });
+    expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: 6, loser: 2 });
+    expect(r.totals).toEqual({ [WINNER]: 6, [LOSER]: 2 });
   });
 
-  it("CHARACTERIZATION (current WRONG behaviour) — emits production's guard line verbatim", async () => {
-    // Byte-for-byte the line bbmi.app logged on 2026-09-12. Delete with the test
-    // above when the collapse is fixed — a correct arm emits nothing here.
-    const r = await payout({ type: "placement", values: [8] });
-    expect(r.guardLines).toEqual([GUARD_LINE]);
+  it("…and it does not THROW outside production: the ranking is correct now, so a dev run must not blank the board", async () => {
+    const r = await payoutIn("test", { type: "placement", values: [8] });
+    expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: 6, loser: 2 });
   });
 
-  it("the guard THROWS outside production, so a dev run cannot miss it", async () => {
+  it("…but the reconciliation SAYS so, with the values, because the game's config disagrees with its results", async () => {
+    const r = await payoutIn("production", { type: "placement", values: [8] });
+    expect(r.errors).toEqual([]);
+    expect(r.warns).toHaveLength(1);
+    const line = r.warns[0];
+    expect(line.startsWith(`[leaderboard] ranking-convention reconciled: game ${GAME}'s results are raw_score POINTS`)).toBe(true);
+    const evidence = JSON.parse(line.slice(line.indexOf("Evidence: ") + "Evidence: ".length));
+    expect(evidence).toEqual({
+      competitionId: COMPETITION,
+      gameId: GAME,
+      convention: "points",
+      armDirection: "low_wins",
+      rankedAs: "points",
+      standings: [
+        { entityId: WINNER, value: 6 },
+        { entityId: LOSER, value: 2 },
+      ],
+      distribution: { type: "placement", values: [8] },
+      pointsTotal: 8,
+    });
+  });
+
+  it("POSITION rows reaching a points arm are paid by PLACE — the mirror of the same collapse", async () => {
+    // Positions 1 and 2 under a per_match arm used to pass straight through as
+    // "points": the winner got 1 and the loser 2. By place, winner takes the total.
+    const r = await payoutIn("production", { type: "per_match", value: 2 }, {
+      results: [
+        { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 1 },
+        { game_id: GAME, entity_id: LOSER, entity_type: "team", position: 2, raw_score: 2 },
+      ],
+    });
+    expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: 8, loser: 0 });
+    expect(r.warns).toHaveLength(1);
+    expect(r.warns[0]).toContain("results are POSITIONS but its arm ranks high_wins");
+  });
+
+  it("MIXED rows pay nothing, keep the pool, and log in production", async () => {
+    const r = await payoutIn("production", { type: "per_match", value: 2 }, {
+      results: [
+        { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 6 },
+        { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2 },
+      ],
+    });
+    expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: null, loser: null });
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toContain(`ranking-convention unreadable: game ${GAME}`);
+  });
+
+  it("MIXED rows THROW outside production, so a dev run cannot miss an unreadable write", async () => {
     await expect(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      computeCompetitionLeaderboard(fakeClient({ type: "placement", values: [8] }) as any, COMPETITION)
-    ).rejects.toThrow(GUARD_LINE);
+      payoutIn("test", { type: "per_match", value: 2 }, {
+        results: [
+          { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 6 },
+          { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2 },
+        ],
+      })
+    ).rejects.toThrow(`ranking-convention unreadable: game ${GAME}`);
   });
 });
 
 /**
- * SAME ROOT CAUSE, SECOND DOOR. `liveProjection` gates the per-match award on
- * `isPerMatch`, so a placement-carrying matches game projects zero for every
- * side — and a game that CANNOT compute a projection renders identically to one
- * with nothing yet to project. That is why the payout inversion was invisible
- * for hours before finalize: the board showed 0-0, which reads as "not started".
- *
- * `NonGolfGameView.tsx`'s `matchesPointsPerMatch` is the client mirror of this
- * (`if (dist?.type !== "per_match") return 0`) and fails the same way.
+ * SAME ROOT CAUSE, SECOND AND THIRD DOORS. The live projection gated the award
+ * on `isPerMatch`, so a placement-carrying Matches game projected 0-0 while
+ * live — and 0-0 reads as "not started", which is why the inversion stayed
+ * invisible until finalize. The projection now mirrors its writer (which pays
+ * from `points_total` whatever the shape), and a game with nothing to divide
+ * projects NOTHING rather than zero.
  */
-describe("points_distribution convention collapse — live projection", () => {
-  const input = (isPerMatch: boolean, legacyValue: number | null) => ({
+describe("points_distribution convention — live projection (#1381)", () => {
+  const input = (isPerMatch: boolean, legacyValue: number | null, pointsTotal: number | null = 8) => ({
     id: GAME, gameTypeId: "gtt_generic_yard", competitionFormat: "matches",
-    pointsTotal: 8, isPerMatch, legacyValue, outcomeMode: false,
+    pointsTotal, isPerMatch, legacyValue, outcomeMode: false,
   });
 
   it("per_match projects the real split — the positive control", async () => {
@@ -214,12 +250,19 @@ describe("points_distribution convention collapse — live projection", () => {
     expect(out[GAME]).toEqual({ [WINNER]: 6, [LOSER]: 2 });
   });
 
-  it("CHARACTERIZATION (current WRONG behaviour) — placement projects 0-0 while live", async () => {
-    // Delete when the collapse is fixed; the control above is the lasting guard.
+  it("a placement-carrying Matches game projects the SAME split — not 0-0", async () => {
     const out = await computeLiveProjections(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fakeClient({ type: "placement", values: [8] }) as any, COMPETITION, [input(false, null)]
     );
-    expect(out[GAME]).toEqual({ [WINNER]: 0, [LOSER]: 0 });
+    expect(out[GAME]).toEqual({ [WINNER]: 6, [LOSER]: 2 });
+  });
+
+  it("with nothing to divide (no total, no legacy value, no overrides) it projects NOTHING, not 0-0", async () => {
+    const out = await computeLiveProjections(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      fakeClient(null) as any, COMPETITION, [input(false, null, null)]
+    );
+    expect(GAME in out).toBe(false);
   });
 });

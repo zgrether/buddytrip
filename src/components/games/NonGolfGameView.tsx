@@ -35,7 +35,7 @@ import {
   type DraftMatchInput,
 } from "@/lib/configDraft";
 import type { PointsMatch } from "@/components/games/MatchPointsRow";
-import { isPlacement, effectiveDistribution, liveMatchPointsPerMatch, type PointsDistribution } from "@/lib/pointsDistribution";
+import { isPlacement, isPerMatch, effectiveDistribution, projectableMatchShare, type PointsDistribution } from "@/lib/pointsDistribution";
 import { tallyMatchAwards, type SideRef as MatchSideRef } from "@/lib/matchAwards";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
 import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
@@ -589,19 +589,25 @@ export function NonGolfGameView() {
   // calls, never read from the persisted `points_distribution.value` snapshot,
   // for the exact reason golf's own comment gives: a match dropping out of
   // the pairing outside a settings Save must not leave this stale.
-  const matchesPointsPerMatch = useMemo(() => {
+  //
+  // NOT gated on the distribution being `per_match` (#1381): this mirrors the
+  // finalize write, which pays from `points_total` whatever the shape. The gate
+  // made a placement-carrying Matches game project 0–0 while live — the client
+  // half of the board inversion. `matchesShare` is NULL when nothing can be
+  // divided; the projection then renders as absent, not as a projection of zero.
+  const matchesShare = useMemo(() => {
     const dist = game?.points_distribution as PointsDistribution | null | undefined;
-    if (dist?.type !== "per_match") return 0;
-    return liveMatchPointsPerMatch(
+    return projectableMatchShare(
       (game?.points_total as number | null) ?? null,
       (serverMatchRows as { side_a: ServerSide; side_b: ServerSide; point_value: number | null }[]).map((mm) => ({
         sideAId: mm.side_a?.id ?? null,
         sideBId: mm.side_b?.id ?? null,
         pointValue: mm.point_value ?? null,
       })),
-      dist.value
+      isPerMatch(dist) ? dist.value : null
     );
   }, [game?.points_distribution, game?.points_total, serverMatchRows]);
+  const matchesPointsPerMatch = matchesShare ?? 0;
 
   // The settings-side `matchesPointsMatches` above is keyed by DRAFT INDEX
   // because a not-yet-saved match has no server id; declaring a result is the
@@ -703,7 +709,7 @@ export function NonGolfGameView() {
   // side's team via its play_group's first member) mirrors the server-side
   // version in `matchAwards.ts`/`liveProjection.ts` exactly.
   const matchesProjection = useMemo(() => {
-    if (!isMatches) return null;
+    if (!isMatches || matchesShare == null) return null;
     const pgTeam = new Map<string, string>();
     for (const [pg, members] of membersOfSide) {
       const first = members[0];
@@ -722,7 +728,7 @@ export function NonGolfGameView() {
       sideTeam,
       matchesPointsPerMatch
     );
-  }, [isMatches, serverMatchRows, membersOfSide, teamByUser, matchesPointsPerMatch]);
+  }, [isMatches, serverMatchRows, membersOfSide, teamByUser, matchesShare, matchesPointsPerMatch]);
 
   // ── The bracket's play surface (phase 3) ────────────────────────────────────
   // The DRAW as stored, resolved into occupants HERE. The server returns the
@@ -974,6 +980,25 @@ export function NonGolfGameView() {
    */
   function applyFormat(next: CompetitionFormat | null) {
     setFormatDraft(next);
+    // ── The distribution does not survive a switch across the Matches line ──
+    // (#1381.) It cleared every structural slice on a switch and never touched
+    // `pointsDistribution`, so a placement split authored under Simple rode into
+    // a Matches game — which pays per match whatever the column says — and every
+    // board surface then misread it. Crossing IN, a split is meaningless (the
+    // payload mints `per_match` from the total). Crossing OUT, `per_match` is
+    // meaningless (only Matches divides by match rows). Either way the honest
+    // value is none, and the next save writes the right one.
+    const currentDist = configDraft.pointsDistribution;
+    const intoMatches = next === MATCHES_COMPETITION_FORMAT;
+    if (intoMatches && currentDist?.type === "placement") setPointsDistDraft(null);
+    if (!intoMatches && configDraft.competitionFormat === MATCHES_COMPETITION_FORMAT && currentDist?.type === "per_match") {
+      setPointsDistDraft(null);
+    }
+    // Back to the format the SERVER holds: its own distribution comes back with
+    // it. Without this, Simple → Matches → Simple left the split cleared against
+    // a server that still has it, and the page read dirty forever — the exact
+    // round-trip failure the bracket config below guards against.
+    if (next === serverConfigDraft.competitionFormat) setPointsDistDraft(undefined);
     // Leaving Bracket for anything else: an UNTOUCHED auto-staged default
     // must not survive the switch — only a config the user actually edited
     // gets to (see the "OUT of a bracket" comment above for why a REAL one

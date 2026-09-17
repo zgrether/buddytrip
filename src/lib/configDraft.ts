@@ -792,15 +792,24 @@ export function nonGolfDraftToPayload(
   // `writeTeamMatchPoints` gates the award write on (via `computeCompetitionLeaderboard`'s
   // read of the SAME column), so an unminted distribution is not a smaller
   // award — it is the award path never firing at all.
+  //
+  // ── A Matches game ALWAYS saves `per_match` (#1381) ─────────────────────────
+  // This minted only when the stored value was null or already per_match, so an
+  // authored `placement` — a split made under another format, surviving a switch
+  // to Matches — was preserved on every save and never healed. That is how BBMI
+  // 2026's Cornhole carried `[8]` into a match-by-match game. A Matches game
+  // pays per match whatever the column says, so a split here is never an
+  // intention to keep: it is replaced on the next save. With no total there is
+  // nothing to mint from, so the stale split is dropped rather than kept.
   let distribution = draft.pointsDistribution;
-  if (
-    draft.pointsTotal != null &&
-    draft.competitionFormat === MATCHES_COMPETITION_FORMAT &&
-    (distribution == null || distribution.type === "per_match")
-  ) {
-    const filled = draft.matches.filter(isDraftMatchFilled);
-    const overrides = filled.map((m) => m.pointValue).filter((v): v is number => v != null);
-    distribution = { type: "per_match", value: evenShare(draft.pointsTotal, overrides, filled.length) };
+  if (draft.competitionFormat === MATCHES_COMPETITION_FORMAT) {
+    if (draft.pointsTotal != null) {
+      const filled = draft.matches.filter(isDraftMatchFilled);
+      const overrides = filled.map((m) => m.pointValue).filter((v): v is number => v != null);
+      distribution = { type: "per_match", value: evenShare(draft.pointsTotal, overrides, filled.length) };
+    } else if (distribution?.type === "placement") {
+      distribution = null;
+    }
   }
 
   let payload = baseDraftToPayload(draft, distribution, baseline);
