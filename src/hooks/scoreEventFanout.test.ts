@@ -283,7 +283,8 @@ describe("score-event fan-out — the instrument", () => {
     const h = await mountAllObservers();
     const handler = makeScoreEventHandler(h.utils, TRIP, COMP);
 
-    handler(GAME);
+    // A SCORE event, as migration 189 labels every result-table write (#1284).
+    handler(GAME, "score");
 
     /**
      * EVERY WAIT HERE IS EXPRESSED IN `COALESCE_WINDOW_MS`, and that is not
@@ -317,6 +318,43 @@ describe("score-event fan-out — the instrument", () => {
      * expectation is updated in the same PR — which is the entire point of
      * having it: the diff shows the number moving.
      */
+    //
+    // #1284 MOVED IT: 20 → 15. `faceBootstrap` (5 reads) left the score path —
+    // a score write cannot change anything it holds, and the one games-row flip a
+    // score can cause (pending → active) broadcasts its own `kind: "game"`
+    // event. The case below pins that the old 20 still applies to every event
+    // that CAN change it.
+    expect(r.keys).toEqual([
+      "bracketDraw",
+      "leaderboard",
+      "matches.listByGame",
+      "scores.listByGame",
+    ]);
+    expect(r.reads).toBe(15);
+
+    h.unsubscribe();
+  });
+
+  /**
+   * THE OTHER HALF OF #1284, and the compatibility guarantee: a GAME event, an
+   * event from before migration 189 (no `kind`), and a reconnect backfill all
+   * still cost the full 20 — `faceBootstrap` included. If this dropped, a
+   * go-live or a reorder would stop reaching the face.
+   */
+  it.each([
+    ["a GAME event", "game" as const],
+    ["an event with NO kind (pre-189, or unrecognised)", null],
+  ])("%s still refetches faceBootstrap — the full 20", async (_label, kind) => {
+    const h = await mountAllObservers();
+    makeScoreEventHandler(h.utils, TRIP, COMP)(GAME, kind);
+
+    await new Promise((r) => setTimeout(r, COALESCE_WINDOW_MS + 100));
+    await vi.waitFor(
+      () => expect(Object.values(h.fetches).some((n) => n > 0)).toBe(true),
+      { timeout: COALESCE_WINDOW_MS + 2000 }
+    );
+
+    const r = report(h.fetches);
     expect(r.keys).toEqual([
       "bracketDraw",
       "faceBootstrap",
@@ -379,7 +417,7 @@ describe("score-event fan-out — the instrument", () => {
       matches: { listByGame: { invalidate: inv("matches.listByGame") } },
     } as unknown as Parameters<typeof makeScoreEventHandler>[0];
 
-    makeScoreEventHandler(utils, TRIP, COMP)(GAME);
+    makeScoreEventHandler(utils, TRIP, COMP)(GAME, null);
     await new Promise((r) => setTimeout(r, COALESCE_WINDOW_MS + 100));
 
     const r = report(fetches);
