@@ -73,6 +73,33 @@ R1's shape has changed under it — see §2. What remains:
 
 ### PARKED behind launch (per the ranking)
 
+- **Trip concurrency is a breadth problem, not a depth one.** Moved here from #1282
+  (closed 2026-09-17: strategy, with nothing to pick up as an issue). The 2026-09-04
+  outage was DEPTH: one competition's fan-out exhausted the pool, and fan-out
+  reduction fixed it. Several trips on the same weekend are BREADTH: many
+  well-behaved, uncoordinated workloads on one shared pool, with no admission
+  control and no per-trip fairness. The first trip to arrive can starve the others,
+  and nothing reports it. The answers are architectural and different from each other:
+  transaction-mode pooling (Supavisor), per-tenant limits, read replicas (the load is
+  reads), and compute tier as an owned variable rather than a one-off raise.
+  - **What is known:** the 2026-09-17 free-tier load test (one trip, the worst BBMI
+    minute, `backups/downgrade-load-test-2026-09-17/`) served 1x with 0 errors and
+    p95 ~0.5s at 1 CPU, and breached p95 (~3s) at 0.25 CPU. That is one trip. The
+    multi-trip number has never been taken.
+  - **What has never been priced:** standalone games add independent small workloads,
+    which is exactly the breadth shape. The per-client cost constant now exists; the
+    arithmetic has not been done.
+  - **Becomes live when:** more than one trip is expected on the same weekend, or
+    before choosing a compute tier for BBMI 2027.
+
+- **High-contrast theme: demoted by evidence, not rejected.** `LIGHT_MODE_SURVEY.md:256`
+  recommended it as "the real answer to the sun". Zach tested light mode in daylight
+  after the repairs (#1364, #1365) and it held, so it is no longer urgent. What it
+  would be is already written down there (`:248-254`): a third set of token values,
+  roughly a day, needing no other repair first. The string-valued theme switch keeps
+  it possible. **Becomes live when:** a player reports light mode unreadable outdoors,
+  or before a trip somewhere brighter than BBMI 2026.
+
 - **Measure whether the configHash poll catches config changes Realtime missed.
   Build it before BBMI 2027, not before.** The condition worth measuring is
   sixteen phones on a golf course with patchy coverage. Normal use (one or two
