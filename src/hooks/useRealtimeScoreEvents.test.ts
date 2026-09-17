@@ -65,7 +65,7 @@ vi.mock("@/lib/supabase", () => ({
 
 vi.mock("@/lib/trpc-client", () => ({ trpc: { useUtils: () => ({}) } }));
 
-const { acquire, scoreEventsTopic, SCORE_EVENT, makeScoreEventHandler } = await import(
+const { acquire, scoreEventsTopic, SCORE_EVENT, makeScoreEventHandler, parseScoreEventKind } = await import(
   "./useRealtimeScoreEvents"
 );
 
@@ -133,7 +133,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   it("invalidates faceBootstrap AND leaderboard — #10, never the child alone", () => {
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", null);
     flushWindow();
 
     // The bug this pins: invalidating only `leaderboard` is SILENTLY undone,
@@ -144,10 +144,57 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     expect(calls).toContain('leaderboard.invalidate({"tripId":"trip-1","competitionId":"comp-1"})');
   });
 
+  /**
+   * #1284 — the event KIND decides whether faceBootstrap is refetched.
+   *
+   * faceBootstrap holds the competition, roles, teams, assignments and games
+   * ROWS, none of which a score write changes (the games-row status flip a first
+   * score causes broadcasts its own `kind: "game"` event). So a score event
+   * skips it; everything else keeps #10's pairing.
+   */
+  it("a SCORE event refreshes the score path but NOT faceBootstrap (#1284)", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", "score");
+    flushWindow();
+
+    expect(calls.some((c) => c.startsWith("faceBootstrap."))).toBe(false);
+    expect(calls).toContain('leaderboard.invalidate({"tripId":"trip-1","competitionId":"comp-1"})');
+    expect(calls).toContain('scores.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+    expect(calls).toContain('bracketDraw.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+    expect(calls).toContain('matches.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+  });
+
+  it.each([
+    ["a GAME event", "game" as const, "g-1"],
+    ["an event with NO kind — pre-189 or unrecognised", null, "g-1"],
+    ["a reconnect backfill", null, null],
+  ])("%s keeps #10's pairing: faceBootstrap AND leaderboard", (_label, kind, gameId) => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(gameId, kind);
+    flushWindow();
+
+    expect(calls).toContain('faceBootstrap.invalidate({"tripId":"trip-1"})');
+    expect(calls).toContain('leaderboard.invalidate({"tripId":"trip-1","competitionId":"comp-1"})');
+  });
+
+  it("a score and a game event in ONE window still refetch faceBootstrap exactly once", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const h = makeScoreEventHandler(utils as any, "trip-1", "comp-1");
+    // The first score of a game: the score row, then the status flip it causes.
+    h("g-1", "score");
+    h("g-1", "game");
+    flushWindow();
+
+    expect(calls.filter((c) => c.startsWith("faceBootstrap.invalidate"))).toHaveLength(1);
+  });
+
   it("routes the score change through INVALIDATION ONLY — #15, no cache write", () => {
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", null);
     flushWindow();
 
     expect(calls).toContain('scores.invalidate({"tripId":"trip-1","gameId":"g-1"})');
@@ -164,7 +211,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   it("invalidates the whole scores key on a reconnect backfill (unknown game)", () => {
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null);
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null, null);
     flushWindow();
     expect(calls).toContain("scores.invalidate()");
   });
@@ -188,7 +235,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   it("invalidates the BRACKET DRAW — a pick is a result and nothing else refetches it", () => {
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", null);
     flushWindow();
 
     expect(calls).toContain(
@@ -202,7 +249,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   it("invalidates the whole bracket-draw key on a reconnect backfill too", () => {
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null);
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null, null);
     flushWindow();
     expect(calls).toContain("bracketDraw.invalidate()");
   });
@@ -222,7 +269,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   it("invalidates MATCHES' listByGame — a declared result is a result and nothing else refetches it remotely", () => {
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", null);
     flushWindow();
 
     expect(calls).toContain('matches.invalidate({"tripId":"trip-1","gameId":"g-1"})');
@@ -232,7 +279,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   it("invalidates the whole matches key on a reconnect backfill too", () => {
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null);
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null, null);
     flushWindow();
     expect(calls).toContain("matches.invalidate()");
   });
@@ -254,7 +301,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   it("covers every key the local pick path refreshes", () => {
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1");
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", null);
     flushWindow();
 
     // What BracketScoringSurface invalidates after a local pick / finalize.
@@ -282,7 +329,7 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handlers = [0, 1, 2].map(() => makeScoreEventHandler(utils as any, "trip-1", "comp-1"));
 
-    for (let i = 0; i < 73; i++) for (const h of handlers) h("g-1");
+    for (let i = 0; i < 73; i++) for (const h of handlers) h("g-1", null);
     expect(calls, "nothing should fire before the window closes").toEqual([]);
 
     flushWindow();
@@ -307,8 +354,8 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const h = makeScoreEventHandler(utils as any, "trip-1", "comp-1");
-    h("g-1");
-    h("g-2");
+    h("g-1", null);
+    h("g-2", null);
     flushWindow();
 
     // Collapsing these onto one key would drop a real refetch for a second game
@@ -321,8 +368,8 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     const { calls, utils } = fakeUtils();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const h = makeScoreEventHandler(utils as any, "trip-1", "comp-1");
-    h("g-1");
-    h(null); // reconnect: "something moved while you were away, refetch all"
+    h("g-1", null);
+    h(null, null); // reconnect: "something moved while you were away, refetch all"
     flushWindow();
 
     // The backfill is strictly BROADER than the per-game invalidation. If both
@@ -344,8 +391,8 @@ describe("useRealtimeScoreEvents — shared channel registry", () => {
 
     // ...and both surfaces receive the event.
     created[0].emit({ gameId: "g-1", competitionId: "comp-1" });
-    expect(a).toHaveBeenCalledWith("g-1");
-    expect(b).toHaveBeenCalledWith("g-1");
+    expect(a).toHaveBeenCalledWith("g-1", null);
+    expect(b).toHaveBeenCalledWith("g-1", null);
 
     relA();
     relB();
@@ -361,7 +408,7 @@ describe("useRealtimeScoreEvents — shared channel registry", () => {
 
     expect(removed).toHaveLength(0);
     created[0].emit({ gameId: "g-2", competitionId: "comp-1" });
-    expect(b).toHaveBeenCalledWith("g-2"); // the survivor still gets updates
+    expect(b).toHaveBeenCalledWith("g-2", null); // the survivor still gets updates
     expect(a).not.toHaveBeenCalled(); // the departed one does not
 
     relB();
@@ -384,7 +431,7 @@ describe("useRealtimeScoreEvents — shared channel registry", () => {
     expect(removed).toHaveLength(1);
 
     created[1].emit({ gameId: "g-3", competitionId: "comp-1" });
-    expect(b).toHaveBeenCalledWith("g-3");
+    expect(b).toHaveBeenCalledWith("g-3", null);
 
     relB();
   });
@@ -407,8 +454,8 @@ describe("useRealtimeScoreEvents — shared channel registry", () => {
 
     // null = "something moved while we were away, but we don't know which game",
     // which the hook turns into a whole-key invalidate.
-    expect(a).toHaveBeenCalledWith(null);
-    expect(b).toHaveBeenCalledWith(null);
+    expect(a).toHaveBeenCalledWith(null, null);
+    expect(b).toHaveBeenCalledWith(null, null);
 
     a.mockClear();
     created[0].subCb?.("CHANNEL_ERROR");
@@ -470,13 +517,37 @@ describe("useRealtimeScoreEvents — shared channel registry", () => {
     expect(removed).toHaveLength(2);
   });
 
+  it("passes the event KIND through to every listener (#1284)", () => {
+    const a = vi.fn();
+    const rel = acquire(TOPIC, a);
+    created[0].emit({ gameId: "g-1", competitionId: "comp-1", kind: "score" });
+    created[0].emit({ gameId: "g-2", competitionId: "comp-1", kind: "game" });
+    expect(a).toHaveBeenNthCalledWith(1, "g-1", "score");
+    expect(a).toHaveBeenNthCalledWith(2, "g-2", "game");
+    rel();
+  });
+
+  it("an unrecognised or malformed KIND arrives as null, never as a string it did not send", () => {
+    const a = vi.fn();
+    const rel = acquire(TOPIC, a);
+    created[0].emit({ gameId: "g-1", kind: "lifecycle" });
+    created[0].emit({ gameId: "g-1", kind: 7 });
+    created[0].emit({ gameId: "g-1", kind: "SCORE" });
+    expect(a).toHaveBeenNthCalledWith(1, "g-1", null);
+    expect(a).toHaveBeenNthCalledWith(2, "g-1", null);
+    expect(a).toHaveBeenNthCalledWith(3, "g-1", null);
+    expect(parseScoreEventKind(undefined)).toBeNull();
+    expect(parseScoreEventKind({ kind: "game" })).toBe("game");
+    rel();
+  });
+
   it("tolerates a payload with no gameId rather than throwing", () => {
     const a = vi.fn();
     const rel = acquire(TOPIC, a);
     created[0].emit(undefined);
     created[0].emit({});
-    expect(a).toHaveBeenNthCalledWith(1, null);
-    expect(a).toHaveBeenNthCalledWith(2, null);
+    expect(a).toHaveBeenNthCalledWith(1, null, null);
+    expect(a).toHaveBeenNthCalledWith(2, null, null);
     rel();
   });
 });

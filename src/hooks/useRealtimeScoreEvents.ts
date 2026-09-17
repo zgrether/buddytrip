@@ -66,7 +66,22 @@ import { coalesceInvalidation } from "@/lib/invalidationCoalescer";
  * channel per topic per client, torn down only on the LAST release.
  */
 
-type Handler = (gameId: string | null) => void;
+/**
+ * What KIND of change a broadcast reports (migration 189, #1284): `"game"` when a
+ * `games` row moved (go-live, finalize, correction, reorder, insert, delete),
+ * `"score"` for every result table. NULL when unknown — an event from before
+ * 189, a value this client does not recognise, or a reconnect backfill — and
+ * every consumer must treat null as "anything could have changed".
+ */
+export type ScoreEventKind = "score" | "game";
+
+/** Strict on purpose: only the two literals 189 can send are believed. */
+export function parseScoreEventKind(payload: unknown): ScoreEventKind | null {
+  const kind = (payload as { kind?: unknown } | null | undefined)?.kind;
+  return kind === "score" || kind === "game" ? kind : null;
+}
+
+type Handler = (gameId: string | null, kind: ScoreEventKind | null) => void;
 
 type Entry = {
   channel: RealtimeChannel;
@@ -103,7 +118,8 @@ export function acquire(topic: string, handler: Handler): () => void {
       // The trigger sends {gameId, competitionId}; realtime.send adds its own
       // opaque message `id`. Nothing else is read from the payload, on purpose.
       const gameId = (message?.payload as { gameId?: string } | undefined)?.gameId ?? null;
-      for (const h of [...created.handlers]) h(gameId);
+      const kind = parseScoreEventKind(message?.payload);
+      for (const h of [...created.handlers]) h(gameId, kind);
     });
 
     // Backfill on (re)connect. A score entered while this client was in a dead
@@ -111,7 +127,7 @@ export function acquire(topic: string, handler: Handler): () => void {
     // self-heal useRealtimeGame does on its SUBSCRIBED tick.
     channel.subscribe((status) => {
       if (status === "SUBSCRIBED") {
-        for (const h of [...created.handlers]) h(null);
+        for (const h of [...created.handlers]) h(null, null);
         return;
       }
       /**
@@ -220,7 +236,7 @@ export function makeScoreEventHandler(
   tripId: string,
   competitionId: string,
 ): Handler {
-  return (gameId) => {
+  return (gameId, kind) => {
     // COALESCED, not fired directly — see `invalidationCoalescer.ts`. Migration
     // 096's `FOR EACH ROW` triggers make one reset emit ~73 broadcasts (measured),
     // and every handler on the channel runs for each one, so the naive version
@@ -235,9 +251,22 @@ export function makeScoreEventHandler(
     // #10 — faceBootstrap IN ADDITION TO the child query, never instead of.
     // Dropping either leaves a surface stale: the face re-seeds from the
     // bootstrap, while the standalone game routes read the child key directly.
-    coalesceInvalidation(`faceBootstrap:${tripId}`, () => {
-      void utils.competitions.faceBootstrap.invalidate({ tripId });
-    });
+    //
+    // ── …EXCEPT for a SCORE event (#1284) ─────────────────────────────────────
+    // `faceBootstrap` carries the competition, roles, teams, assignments and the
+    // `games` ROWS — no results (the leaderboard left it in #1285). A score write
+    // reaches a games row only through the pending → active flip on a game's
+    // first score, and that flip fires its OWN `games_lifecycle_broadcast`, which
+    // arrives here as `kind: "game"`. So a score event cannot have changed
+    // anything this query holds, and refetching it on every hole was ~5 reads per
+    // score per client for nothing. #10's pairing still holds for every event
+    // that CAN change it: a game event, and an unknown kind — which is how an
+    // event from before migration 189, or a reconnect backfill, arrives.
+    if (kind !== "score") {
+      coalesceInvalidation(`faceBootstrap:${tripId}`, () => {
+        void utils.competitions.faceBootstrap.invalidate({ tripId });
+      });
+    }
     coalesceInvalidation(`leaderboard:${tripId}:${competitionId}`, () => {
       void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
     });

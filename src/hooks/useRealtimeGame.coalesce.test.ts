@@ -116,7 +116,7 @@ describe("makeGameRefresh — coalesced config refresh", () => {
     };
     const onScore = makeScoreEventHandler(scoreUtils as never, "trip-1", "comp-1");
 
-    onScore("game-1");
+    onScore("game-1", null);
     refresh();
     vi.advanceTimersByTime(COALESCE_WINDOW_MS);
 
