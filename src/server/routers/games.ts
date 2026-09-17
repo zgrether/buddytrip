@@ -18,7 +18,7 @@ import type { StrokeStanding } from "@/lib/strokePlay";
 import { type ScorecardSchema } from "@/lib/courseIndex";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
-import { isPlacement, liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
+import { isPlacement, liveMatchPointsPerMatch, awardsPerMatch } from "@/lib/pointsDistribution";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
@@ -156,6 +156,45 @@ async function readGameConfigHash(
   const input = data as { game: unknown } | null;
   if (!input || input.game === null || input.game === undefined) return null;
   return computeConfigHash(input);
+}
+
+/**
+ * Refuse a placement split on a game that pays MATCH BY MATCH (#1381).
+ *
+ * Golf match play and non-golf Matches finalize through `writeTeamMatchPoints`
+ * — each decided match pays its own value — so a split on one is a payout no
+ * finalize reads, and every board surface misread it (BBMI 2026 Cornhole: won 3
+ * of 4, paid 8–0 the other way). `formatOverride` is the format a save is
+ * establishing in the same write; `undefined` means "use the stored one".
+ *
+ * The message names what to do instead, because a person can reach it: an API
+ * caller, or a page whose draft predates the client-side clear.
+ */
+async function refuseSplitOnPerMatchGame(
+  supabase: SupabaseClient,
+  tripId: string,
+  gameId: string,
+  formatOverride: string | null | undefined
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("games")
+    .select("game_type_id, competition_format")
+    .eq("id", gameId)
+    .eq("trip_id", tripId)
+    .maybeSingle();
+  if (error) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the game: ${error.message}` });
+  }
+  if (!data) return; // the write below reports a missing game in its own terms
+  const format = formatOverride !== undefined ? formatOverride : (data.competition_format as string | null);
+  if (awardsPerMatch(data.game_type_id as string | null, format)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "This game pays match by match, so its points can't be split by place. " +
+        "Set the game's total points instead — each match gets its share of it.",
+    });
+  }
 }
 
 /**
@@ -1366,7 +1405,24 @@ export const gamesRouter = router({
       if (input.name !== undefined) patch.name = input.name;
       if (input.teeTime !== undefined) patch.tee_time = input.teeTime;
       if (input.scheduleItemId !== undefined) patch.schedule_item_id = input.scheduleItemId;
-      if (input.competitionFormat !== undefined) patch.competition_format = input.competitionFormat;
+      if (input.competitionFormat !== undefined) {
+        patch.competition_format = input.competitionFormat;
+        // #1381: a format switch that makes the game pay match by match cannot
+        // leave a placement split behind — that stale split is how BBMI 2026
+        // Cornhole paid the loser. Same write, so there is no window between.
+        if (input.competitionFormat === "matches") {
+          const { data: current, error: currentErr } = await ctx.supabase
+            .from("games")
+            .select("points_distribution")
+            .eq("id", input.gameId)
+            .eq("trip_id", ctx.tripId)
+            .maybeSingle();
+          if (currentErr) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the game: ${currentErr.message}` });
+          }
+          if (isPlacement(current?.points_distribution)) patch.points_distribution = null;
+        }
+      }
       if (input.rulesForToday !== undefined) patch.rules_for_today = input.rulesForToday;
       if (input.modifiers !== undefined) patch.modifiers = input.modifiers;
       if (input.entryMode !== undefined) {
@@ -1828,6 +1884,17 @@ export const gamesRouter = router({
         // that can't be applied. The sum check still needs a total, so it stays
         // conditional below.
         if (isPlacement(p.pointsDistribution)) {
+          // #1381 — a game that pays MATCH BY MATCH cannot hold a split at all.
+          // `validatePlacement` only asks whether a split sums and fits, and
+          // `[8]` over a total of 8 passes both, which is how Cornhole saved one.
+          // The format this save establishes wins over the stored one: both are
+          // written in the same transaction.
+          await refuseSplitOnPerMatchGame(
+            ctx.supabase,
+            ctx.tripId,
+            input.gameId,
+            (input.payload as { competitionFormat?: string | null }).competitionFormat
+          );
           // The pool THIS save establishes is the ceiling, not the one on disk —
           // the two are written in the same transaction. Absent → stored.
           const capacity = await placeCapacityForGame(
@@ -2203,6 +2270,7 @@ export const gamesRouter = router({
       const { data: game } = await ctx.supabase
         .from("games").select("points_total, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
       if (input.distribution?.type === "placement") {
+        await refuseSplitOnPerMatchGame(ctx.supabase, ctx.tripId, input.gameId, undefined);
         const total = (game?.points_total as number | null) ?? null;
         // Entity count folded into the SAME call — this path already reads the
         // game, so the places-vs-entities half costs one more query here rather

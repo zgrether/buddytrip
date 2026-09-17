@@ -6,7 +6,7 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { playerStats, rackProjectedTeamPoints, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
-import { liveMatchPointsPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
+import { liveMatchPointsPerMatch, liveRackPointsPerSlot, projectableMatchShare } from "@/lib/pointsDistribution";
 import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
 import { isMatchesGame } from "@/lib/resultStrategy";
 import { tallyMatchAwards } from "@/lib/matchAwards";
@@ -344,13 +344,24 @@ function projectMatches(g: LiveProjectionInput, data: GameProjectionData): Recor
 
   // #1031's rule, same as golf's projectMatch: the even share is derived LIVE
   // from the CURRENT assigned matches, never a persisted snapshot.
-  const pointsPerMatch = g.isPerMatch
-    ? liveMatchPointsPerMatch(
-        g.pointsTotal,
-        matches.map((m) => ({ sideAId: m.side_a?.id ?? null, sideBId: m.side_b?.id ?? null, pointValue: m.point_value ?? null })),
-        g.legacyValue
-      )
-    : 0;
+  //
+  // ── NOT gated on `isPerMatch` (#1381) ──────────────────────────────────────
+  // A projection mirrors its WRITER, and this format's writer — `games.finish`'s
+  // `matches` arm — pays from `points_total` whatever the distribution's shape.
+  // Gating on `per_match` projected 0–0 for a game that would then pay real
+  // points, and 0–0 reads as "not started", which is how BBMI 2026's Cornhole
+  // inversion stayed invisible until finalize. Golf's `projectMatch` above keeps
+  // its gate for the same reason in reverse: golf's writer (`matchPlay.ts`) only
+  // writes team rows for a `per_match` game.
+  //
+  // Null when there is nothing to divide: "cannot project" must not render as a
+  // projection of nothing.
+  const pointsPerMatch = projectableMatchShare(
+    g.pointsTotal,
+    matches.map((m) => ({ sideAId: m.side_a?.id ?? null, sideBId: m.side_b?.id ?? null, pointValue: m.point_value ?? null })),
+    g.legacyValue
+  );
+  if (pointsPerMatch == null) return null;
 
   return tallyMatchAwards(matches, sideTeam, pointsPerMatch);
 }

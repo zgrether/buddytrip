@@ -285,21 +285,22 @@ describe("non-golf Matches in a match-play cup", () => {
 });
 
 /**
- * The convention invariant itself.
+ * The convention, carried to the ranking (#1381, after #1245).
  *
- * The two cases above already exercise it in the SILENT direction — both run a
- * game whose results carry null positions, and if the guard misfired on a
- * `high_wins` path they would throw rather than assert a number. What is left is
- * the direction that matters: that it actually fires, and that it says enough to
- * act on.
+ * This used to be an INVARIANT that threw when points rows reached a `low_wins`
+ * arm. #1381 promoted it: the rows' convention now travels with the standings
+ * and `reconcileConvention` ranks by it, so the same state is now PAID CORRECTLY
+ * — and still reported, with the evidence, because a game configured against
+ * its own results is worth knowing about. The two cases above exercise the
+ * silent direction (rows and arm agree); these exercise the reconciliation.
  */
-describe("ranking-convention invariant", () => {
-  it("fires — with the game id and the actual scores, not just a verdict", async () => {
-    // A SYNTHETIC state. The fix means nothing produces this any more, which is
-    // the point of an invariant: it guards a state that should not occur, so the
-    // test has to manufacture one. A manual game with no match rows takes the
-    // winner-take-all `low_wins` path, and these rows carry POINTS with no
-    // position — the exact pairing #1245 was.
+describe("ranking-convention reconciliation", () => {
+  it("pays the points as scored — and reports it with the game id and the actual scores, not just a verdict", async () => {
+    // A SYNTHETIC state: nothing the app writes produces it, so the test has to
+    // manufacture one. A manual game with no match rows takes the winner-take-all
+    // `low_wins` path, and these rows carry POINTS with no position — the exact
+    // pairing #1245 was. Before #1381 this threw; before #1245 it paid the side
+    // that scored 0.
     const comp = await ctx.createCompetition(tripId, "Invariant Cup");
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
@@ -317,17 +318,30 @@ describe("ranking-convention invariant", () => {
       { id: crypto.randomUUID(), game_id: g.id, entity_id: teamB, entity_type: "team", position: null, raw_score: 35 },
     ]);
 
-    const read = ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    await expect(read).rejects.toThrow(/ranking-convention mismatch/);
+    const warns: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (...a: unknown[]) => { warns.push(String(a[0])); };
+    let lb: Awaited<ReturnType<ReturnType<typeof ctx.caller>["competitions"]["leaderboard"]>>;
+    try {
+      lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    } finally {
+      console.warn = realWarn;
+    }
 
-    // The EVIDENCE, not the conclusion. A message naming only the rule tells you
-    // one fired; these tell you which game and what it was about to do — and
-    // every instrument failure this project has recorded was a report that
-    // asserted a conclusion with none of this behind it.
-    await expect(read).rejects.toThrow(new RegExp(g.id));
-    await expect(read).rejects.toThrow(/low_wins/);
-    await expect(read).rejects.toThrow(/"value":35/);
-    await expect(read).rejects.toThrow(new RegExp(`"entityId":"${teamB}"`));
+    // The payout: the side that scored 35 gets 35, the side that scored 0 gets 0.
+    expect(lb.teamTotals[teamB]).toBe(35);
+    expect(lb.teamTotals[teamA]).toBe(0);
+
+    // The EVIDENCE, not the conclusion. Exactly one line, naming this game, the
+    // arm's direction, and the values it ranked — every instrument failure this
+    // project has recorded was a report that asserted a conclusion with none of
+    // this behind it.
+    const line = warns.filter((w) => w.includes("ranking-convention reconciled"));
+    expect(line).toHaveLength(1);
+    expect(line[0]).toContain(g.id);
+    expect(line[0]).toContain('"armDirection":"low_wins"');
+    expect(line[0]).toContain('"value":35');
+    expect(line[0]).toContain(`"entityId":"${teamB}"`);
   });
 
   it("stays silent on a placement game, which legitimately ranks low_wins", async () => {
@@ -351,8 +365,17 @@ describe("ranking-convention invariant", () => {
       { id: crypto.randomUUID(), game_id: g.id, entity_id: teamB, entity_type: "team", position: 2, raw_score: 2 },
     ]);
 
-    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    const warns: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (...a: unknown[]) => { warns.push(String(a[0])); };
+    let lb: Awaited<ReturnType<ReturnType<typeof ctx.caller>["competitions"]["leaderboard"]>>;
+    try {
+      lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    } finally {
+      console.warn = realWarn;
+    }
     expect(lb.teamTotals[teamA]).toBe(8);
     expect(lb.teamTotals[teamB]).toBe(0);
+    expect(warns.filter((w) => w.includes("ranking-convention"))).toEqual([]);
   });
 });

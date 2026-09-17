@@ -22,72 +22,100 @@ function matchFormat(_gameTypeId: string | null): MatchFormat {
 }
 
 /**
- * THE CONVENTION INVARIANT (#1245).
+ * THE CONVENTION, CARRIED TO THE RANKING (#1245 → #1381).
  *
- * A `game_results` row carries its value in one of two fields, and they rank
- * OPPOSITE ways: `position` is `low_wins`, `raw_score` is points already decided
- * and is `high_wins`. `standingsByGame` collapses them with `position ??
- * raw_score`, so past that line a value cannot say which it is — and the
- * `direction` each arm returns is chosen independently, with nothing checking
- * the two agree.
+ * A team `game_results` row carries its value in one of two fields, and they
+ * rank OPPOSITE ways: `position` is a RANK (`low_wins`), `raw_score` is POINTS
+ * already decided (`high_wins`). For months those were folded into one number
+ * with `position ?? raw_score`, and every arm below chose a `direction` on its
+ * own. They disagreed twice, both times paying a cup's pot to the side that won
+ * LEAST: #1245 in the winner-take-all arm (a Matches game's points read as
+ * positions), and #1381 in the `isPlacement` arm directly below it (BBMI 2026
+ * Cornhole: won 3 of 4, board paid 8–0 the other way). The first fix patched one
+ * arm; the second bug was the same collapse in the next.
  *
- * They disagreed for non-golf Matches: points ranked `low_wins` meant a team
- * that won 35 read as "position 35" and the side that won nothing took the cup.
- * The arithmetic was plausible at every step, which is exactly why no test and
- * no reader caught it — this is the check that makes the pairing observable.
+ * So the rows' convention now travels with the standings, and this is the ONE
+ * place that turns it into a ranking — whichever arm a game lands in:
  *
- * ── Why it logs in production instead of throwing ──────────────────────────
+ *  - rows carry POINTS → the points ARE the award. Ranked `high_wins` and passed
+ *    through as the synthetic distribution (the mechanism the `per_match`,
+ *    pick'em and bracket arms already use). A placement split on such a game
+ *    describes a payout no finalize wrote, so it cannot re-rank points into it.
+ *  - rows carry POSITIONS → a ranking to pay by the game's schedule. Ranked
+ *    `low_wins` against the arm's distribution, or — when the arm had treated
+ *    them as points — `effectiveDistribution` (the game's split, else winner
+ *    takes the total, the default every format uses).
+ *  - rows MIXED → a write nobody can interpret. Pays nothing and keeps its pool.
  *
- * A strictly dev-only invariant would have fired ZERO times for the person who
- * hit this: it was found on bbmi.app, and Playground is production. But a throw
- * here blanks a live board, and a false positive mid-trip costs more than the
- * bug it guards. So: loud in dev and test, evidence in production.
- *
- * This runs SERVER-side, so the production line goes to the Vercel runtime log
- * rather than to a member's phone console — findable without knowing to look.
- *
- * ── It logs the VALUES, not the verdict ────────────────────────────────────
- *
- * "A standing built from raw_score reached a low_wins path" says a rule fired.
- * The game id, the actual scores and the direction say what to fix. A message
- * that states its conclusion without the evidence is indistinguishable from one
- * that was never computed.
- *
- * Measured before shipping: across production's 24 games and 44 team result
- * rows this fires on exactly one — the bug. Match play, rack and pick'em all
- * carry null positions and already rank `high_wins`; every placement game has
- * real positions.
+ * ── When it has to override an arm, it SAYS so ──────────────────────────────
+ * Production rows all agree with their arms today (measured 2026-09-17: every
+ * position-row game ranks low_wins, every points-row game high_wins, none
+ * mixed), so a reconciliation means a game is configured against its own
+ * results. That is worth a log line with the values in it — but not a throw: the
+ * ranking below is now CORRECT, and blanking a board to report a bug that has
+ * been handled would cost more than the report. Mixed rows are the exception —
+ * nothing correct can be computed, so they throw outside production and log in
+ * it, as the old invariant did.
  */
-function assertRankingConventionMatches(
-  liveGames: LiveGame[],
-  scoredByRawScore: Set<string>,
-  competitionId: string
-) {
-  for (const g of liveGames) {
-    if (g.direction !== "low_wins") continue;
-    if (!scoredByRawScore.has(g.id)) continue;
-    if (g.standings.length === 0) continue;
+export type RowConvention = "positions" | "points" | "mixed";
 
-    const detail = {
-      competitionId,
-      gameId: g.id,
-      direction: g.direction,
-      // The numbers, in the order the ranking will read them.
-      standings: g.standings.map((s) => ({ entityId: s.entityId, value: s.value })),
-      distribution: g.distribution,
-      pointsTotal: g.pointsTotal,
-    };
+export function rowConvention(rows: { position: number | null }[]): RowConvention {
+  const withPosition = rows.filter((r) => r.position != null).length;
+  if (withPosition === rows.length) return "positions";
+  if (withPosition === 0) return "points";
+  return "mixed";
+}
+
+export function reconcileConvention(
+  armed: LiveGame,
+  convention: RowConvention | undefined,
+  ctx: { competitionId: string; rawDistribution: PointsDistribution | null; pointsTotal: number | null }
+): LiveGame {
+  // No rows yet, or the arm returned no standings to rank: nothing to reconcile.
+  if (!convention || armed.standings.length === 0) return armed;
+
+  const evidence = (to: string) =>
+    JSON.stringify({
+      competitionId: ctx.competitionId,
+      gameId: armed.id,
+      convention,
+      armDirection: armed.direction,
+      rankedAs: to,
+      standings: armed.standings.map((s) => ({ entityId: s.entityId, value: s.value })),
+      distribution: ctx.rawDistribution,
+      pointsTotal: ctx.pointsTotal,
+    });
+
+  if (convention === "mixed") {
     const message =
-      `[leaderboard] ranking-convention mismatch: game ${g.id} has results with a NULL position ` +
-      `(so its values are raw_score POINTS) but is being ranked low_wins, which will award the ` +
-      `LOWEST scorer first. Evidence: ${JSON.stringify(detail)}`;
-
-    if (process.env.NODE_ENV === "production") {
-      console.error(message);
-    } else {
-      throw new Error(message);
-    }
+      `[leaderboard] ranking-convention unreadable: game ${armed.id} has team results carrying BOTH ` +
+      `positions and raw_score points, so neither ranking is sound — awarding nothing. Evidence: ${evidence("nothing")}`;
+    if (process.env.NODE_ENV === "production") console.error(message);
+    else throw new Error(message);
+    return { ...armed, distribution: null, standings: [] };
   }
+
+  if (convention === "points" && armed.direction === "low_wins") {
+    const sorted = [...armed.standings].sort((a, b) => b.value - a.value);
+    console.warn(
+      `[leaderboard] ranking-convention reconciled: game ${armed.id}'s results are raw_score POINTS but its ` +
+        `arm ranks low_wins — paying the points as scored. The game's configuration disagrees with its ` +
+        `results. Evidence: ${evidence("points")}`
+    );
+    return { ...armed, distribution: sorted.map((s) => s.value), standings: sorted, direction: "high_wins" };
+  }
+
+  if (convention === "positions" && armed.direction === "high_wins") {
+    const schedule = effectiveDistribution(ctx.rawDistribution, ctx.pointsTotal);
+    console.warn(
+      `[leaderboard] ranking-convention reconciled: game ${armed.id}'s results are POSITIONS but its arm ` +
+        `ranks high_wins — paying by place. The game's configuration disagrees with its results. ` +
+        `Evidence: ${evidence("positions")}`
+    );
+    return { ...armed, distribution: schedule.length > 0 ? schedule : null, direction: "low_wins" };
+  }
+
+  return armed;
 }
 
 /**
@@ -343,22 +371,48 @@ export async function computeCompetitionLeaderboard(
   // team ids, awarding points to entities no team column will ever match.
   const standingsByGame = new Map<string, { entityId: string; value: number }[]>();
   const entrantStandingsByGame = new Map<string, { entityId: string; value: number }[]>();
-  // PROVENANCE, captured HERE because this is the only line that still knows it.
-  // `position ?? raw_score` is where the two conventions become one number, and
-  // after it nothing can tell them apart — which is how #1245 went unnoticed.
-  // Recording which field a game's rows came from costs one Set and lets the
-  // invariant below check the convention against the ranking direction.
-  const scoredByRawScore = new Set<string>();
+  // ── PROVENANCE IS CARRIED, NOT INFERRED (#1381, after #1245) ────────────────
+  // A team row carries its value in `position` (a RANK, low wins) or in
+  // `raw_score` (POINTS already decided, high wins). This used to fold the two
+  // into one number with `position ?? raw_score`, after which nothing could say
+  // which it was, and each arm below picked a direction on its own. #1245 was
+  // that collapse in the winner-take-all arm; #1381 was the same collapse one arm
+  // down, in `isPlacement`. Patching arms one at a time is how the second one
+  // shipped, so the convention now travels WITH the standings and
+  // `reconcileConvention` ranks by it, whatever arm a game lands in.
+  const teamRowsByGame = new Map<string, { entityId: string; position: number | null; rawScore: number | null }[]>();
   for (const r of results ?? []) {
-    const target = (r.entity_type as string) === "entrant" ? entrantStandingsByGame : standingsByGame;
     const gid = r.game_id as string;
-    const arr = target.get(gid) ?? [];
-    arr.push({ entityId: r.entity_id as string, value: (r.position ?? r.raw_score ?? 0) as number });
-    target.set(gid, arr);
-    if ((r.entity_type as string) !== "entrant" && r.position == null) scoredByRawScore.add(gid);
+    if ((r.entity_type as string) === "entrant") {
+      // Entrant rows are a bracket's placements and are ranked by the bracket arm
+      // against its own field; they never meet the team conventions below.
+      const arr = entrantStandingsByGame.get(gid) ?? [];
+      arr.push({ entityId: r.entity_id as string, value: (r.position ?? r.raw_score ?? 0) as number });
+      entrantStandingsByGame.set(gid, arr);
+      continue;
+    }
+    const arr = teamRowsByGame.get(gid) ?? [];
+    arr.push({
+      entityId: r.entity_id as string,
+      position: (r.position as number | null) ?? null,
+      rawScore: (r.raw_score as number | null) ?? null,
+    });
+    teamRowsByGame.set(gid, arr);
+  }
+  const conventionByGame = new Map<string, RowConvention>();
+  for (const [gid, rows] of teamRowsByGame) {
+    const convention = rowConvention(rows);
+    conventionByGame.set(gid, convention);
+    standingsByGame.set(
+      gid,
+      rows.map((row) => ({
+        entityId: row.entityId,
+        value: (convention === "points" ? row.rawScore : row.position ?? row.rawScore) ?? 0,
+      }))
+    );
   }
 
-  const liveGames: LiveGame[] = allGames.map((g) => {
+  const armFor = (g: (typeof allGames)[number]): LiveGame => {
     const rawDist = g.points_distribution as PointsDistribution | null;
     const standings = standingsByGame.get(g.id as string) ?? [];
 
@@ -528,9 +582,12 @@ export async function computeCompetitionLeaderboard(
     // winner (position 1)", ranked `low_wins`. That is only sound for a game
     // whose results carry a position. A game with per-match rows is scored by
     // `writeTeamMatchPoints`, which deliberately writes `position = null` and
-    // puts POINTS in `raw_score` — and `standingsByGame` collapses the two with
-    // `position ?? raw_score`, so the points arrive here wearing a position's
-    // clothes and nothing can tell them apart.
+    // puts POINTS in `raw_score` — and `standingsByGame` USED TO collapse the two
+    // with `position ?? raw_score`, so the points arrived here wearing a
+    // position's clothes and nothing could tell them apart. (Since #1381 the
+    // convention travels with the standings and `reconcileConvention` ranks by
+    // it; this guard stays because it keeps the game in the arm that also sizes
+    // its pool correctly.)
     //
     // Ranked `low_wins`, a team that won 35 reads as "position 35" and a team
     // that won nothing reads as "position 0" — so WINNING DEMOTED YOU, and the
@@ -615,6 +672,10 @@ export async function computeCompetitionLeaderboard(
       // Available uses the owner-set total (counts even before distribution —
       // stable clinch). A legacy game with no total (null) falls back to the
       // distribution sum via rollUp's awardedForGame.
+      //
+      // `low_wins` is right for the rows this split is FOR — positions. A game
+      // whose rows carry points instead (a per-match game holding a split, #1381)
+      // is re-ranked by `reconcileConvention`, not by this arm guessing.
       return {
         id: g.id as string,
         distribution: rawDist.values,
@@ -636,9 +697,19 @@ export async function computeCompetitionLeaderboard(
       direction: "low_wins" as const,
       pointsTotal: (g.points_total as number | null) ?? undefined,
     };
-  });
+  };
 
-  assertRankingConventionMatches(liveGames, scoredByRawScore, competitionId);
+  // Every TEAM-standings arm passes through the reconciliation; the bracket arm
+  // ranks its own entrant field and is left as it chose.
+  const liveGames: LiveGame[] = allGames.map((g) => {
+    const armed = armFor(g);
+    if (isBracketGame(g.game_type_id as string | null, g.competition_format as string | null)) return armed;
+    return reconcileConvention(armed, conventionByGame.get(g.id as string), {
+      competitionId,
+      rawDistribution: (g.points_distribution as PointsDistribution | null) ?? null,
+      pointsTotal: (g.points_total as number | null) ?? null,
+    });
+  });
 
   const roll = rollUp(liveGames, teamIds, { defendingTeamId: comp?.defending_team_id ?? null });
 

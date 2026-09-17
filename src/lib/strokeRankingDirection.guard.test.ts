@@ -20,9 +20,11 @@ import { join } from "node:path";
  * NEW site that sorts stroke results by a direction it decided for itself. A
  * source scan is the only thing that sees a site nobody has written yet.
  *
- * #1245 is the precedent. Its guard (`assertRankingConventionMatches`) fires
- * only when `position` is NULL, and a stroke game always writes a real one — so
- * that guard is structurally blind to this format and cannot be leaned on.
+ * #1245 is the precedent. Its guard — since #1381, `reconcileConvention` in
+ * `competitionLeaderboard.ts` — acts only when a game's rows and its ranking arm
+ * DISAGREE about the convention (points vs positions). A stroke game writes real
+ * positions and is ranked by place, so rows and arm always agree and a direction
+ * decided wrongly INSIDE a stroke ranking is structurally invisible to it.
  */
 
 const ROOT = join(process.cwd(), "src");
