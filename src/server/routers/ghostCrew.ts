@@ -410,6 +410,15 @@ export const ghostCrewRouter = router({
             p_real_id: existingUser.id,
           });
           if (mergeErr) {
+            // #1024 — the placeholder and the account both scored the same hole
+            // somewhere. Migration 190's pre-check refuses that with a sentence
+            // written for the owner, so pass it through as-is: a state they can
+            // resolve, not a fault. The pre-check runs before the merge; a 23505 from
+            // some OTHER collision inside the merge would also land here, with
+            // Postgres's wording — still a conflict, just a less readable one.
+            if (mergeErr.code === "23505") {
+              throw new TRPCError({ code: "CONFLICT", message: mergeErr.message });
+            }
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
               message: `Failed to link existing account: ${mergeErr.message}`,
