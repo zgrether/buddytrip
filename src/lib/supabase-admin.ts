@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { ADMIN_FETCH_TIMEOUT_MS, fetchWithTimeout } from "./fetchWithTimeout";
 
 /**
  * Service-role Supabase client for server-authored privileged writes that RLS
@@ -20,7 +21,13 @@ export function createAdminClient(): SupabaseClient {
   cached = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
+    {
+      auth: { persistSession: false, autoRefreshToken: false },
+      // #1258: the LOOSER bound. This client owns the multi-statement results
+      // write (#1398), which is not safe to interrupt between its delete and its
+      // insert — so it waits longer than the caller-facing clients do.
+      global: { fetch: fetchWithTimeout(ADMIN_FETCH_TIMEOUT_MS) },
+    }
   );
   return cached;
 }
