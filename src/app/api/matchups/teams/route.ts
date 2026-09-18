@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { leagueById, normalizeTeams, teamsUrl, type MatchupTeam } from "@/lib/matchupApi";
 
+/** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
+ *  not less, is on the tRPC route — that is the one whose value also bounds
+ *  `afterResponse` work. */
+export const maxDuration = 60;
+
 /**
  * GET /api/matchups/teams?league=cfb
  *
