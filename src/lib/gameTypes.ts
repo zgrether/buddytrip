@@ -36,6 +36,42 @@ import type { ScorecardSchema } from "@/lib/courseIndex";
  *  (finishing order entered by hand — cornhole, trivia, generic games). */
 export type ResultStrategy = "stroke_total" | "match_play" | "rack_n_stack" | "pickem" | "skins";
 
+/**
+ * What a finished game's results ARE — the shape the award function reads.
+ *
+ * `head_to_head`: two sides meet and one wins or they halve. `ranked`: a field
+ * finishes in an order and points fall by placement.
+ *
+ * A format declares the kinds it CAN produce, usually exactly one. Where it can
+ * produce both, the GAME's own configuration pins which is in play — `roll_up`
+ * for pick'em, `competition_format` for the manual types (a non-golf `matches`
+ * game is head-to-head; the same type in `placement` is ranked). The format
+ * says what is possible, the instance says what is actual.
+ *
+ * NOT a direction. Which way a result RANKS is a property of the result ROW —
+ * `position` is a rank, `raw_score` is points already decided — and it is
+ * recorded there (PR 2), not here. Measured on main 2026-09-22: a bracket runs
+ * `low_wins` over entrants and `high_wins` over teams IN ONE GAME, and pick'em
+ * runs opposite directions in different cups. No per-format value can be true
+ * for both, which is why direction was struck from this declaration.
+ */
+export type ResultKind = "head_to_head" | "ranked";
+
+/**
+ * Where a game may live. NOT the same axis as `ScoringModel`.
+ *
+ * `compatibleScoringModels` answers "which `competitions.scoring_model` can
+ * score this", has two values, and cannot express a game with no competition at
+ * all. This answers "what container may hold this", and `side_game` is the
+ * absence of a container rather than a kind of one.
+ *
+ * The two are deliberately NOT merged. `games.create`'s server guard began
+ * reading `compatibleScoringModels` on 2026-09-22 and PR 4 adds more refusals
+ * over it; changing a value set under a live guard is how a format gets
+ * silently admitted or refused. Reconciling them is filed, not done.
+ */
+export type GameContainer = "side_game" | "head_to_head" | "points_race";
+
 /** Creation Type tier the dialog groups formats under. */
 export type GameCategory = "golf" | "card" | "yard" | "bar" | "other";
 
@@ -86,6 +122,68 @@ export interface GameTypeDefinition {
    * play and computes in a match-play cup (raw stroke does not).
    */
   compatibleScoringModels: ScoringModel[] | null;
+
+  // ── Declared properties (PR 1 of the composable-competitions plan) ──────
+  //
+  // DECLARED HERE, READ NOWHERE YET — by design. PR 1 is inert: it states the
+  // model, later PRs switch consumers onto it. Each property names its intended
+  // consumer so a later audit can tell "not yet read" from "never read" — the
+  // distinction `compatibleCompetitionFormats` did not survive (this file's
+  // header: retired as "dead metadata — read by nothing").
+  //
+  // THE COMMITMENT: if a property still has no consumer when PR 9 merges it is
+  // DELETED, not kept for future readers. That is what the four structural axes
+  // above were kept for, and they are still unread.
+  //
+  // Deliberately NOT projected onto `GameType` — that shape is the add-game
+  // dialog's contract and nothing in the dialog reads these. The PR that needs
+  // one on the client adds it to the projection then.
+
+  /**
+   * The result kinds this format can produce. CONSUMER: **PR 3** (one award
+   * function — it dispatches on kind rather than inferring from payout shape).
+   *
+   * Usually one entry. Two means the game's own configuration pins which is in
+   * play; see `ResultKind`. A format declaring both is not vague — it is a
+   * format whose instances genuinely differ, and the row is the checker.
+   */
+  resultKinds: ResultKind[];
+
+  /**
+   * Would a different roster have produced a different result?
+   * CONSUMER: **PR 8** (ruling 18 — a correction re-attributes past results
+   * only where the result did not depend on team composition).
+   *
+   * `true` for head-to-head formats (pairings depend on teams) and team formats
+   * like scramble. `false` for individually scored ranked formats — stroke,
+   * Stableford, skins — where the same scores would have been shot whoever was
+   * on which team.
+   *
+   * READ `true` AS "MAY BE", NOT "IS". The manual types are head-to-head in a
+   * `matches` game and ranked in a `placement` one, so the honest per-format
+   * answer is conditional, and `true` is the SAFE direction for ruling 18: it
+   * refuses a correction that might be team-dependent rather than
+   * re-attributing one that is. If PR 8 needs the sharper per-instance answer
+   * this becomes a per-kind value there — flagged now so it is a decision
+   * rather than a surprise.
+   */
+  teamDependent: boolean;
+
+  /**
+   * Which containers may hold this format. CONSUMERS: **PR 5** (opens
+   * head-to-head formats to points races) and **PR 6** (a side game has no
+   * points row; rack is never offered as one).
+   *
+   * DECLARES THE TARGET, NOT TODAY'S CODE. PR 1 is inert, so nothing reads this
+   * yet; `match_play` listing `points_race` is what PR 5 will open, and it
+   * deliberately does NOT match `compatibleScoringModels` until then. A test
+   * asserting the two agree would be asserting that PR 5 has not happened.
+   *
+   * Ruling 2 ("head to head: match formats and rack only") is enforced on the
+   * GAME's `competition_format` by PR 4, not on the type — a `gtt_generic_card`
+   * game configured as `matches` IS a match format.
+   */
+  allowedContainers: GameContainer[];
 }
 
 /** The competition scoring-model axis (W-NONGOLF-02) — `competitions.scoring_model`. */
@@ -183,6 +281,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: false,
     maxPlayersPerSide: null,
     compatibleScoringModels: ["points"],
+    // Individually scored: the same strokes would have been shot whoever was on which team.
+    resultKinds: ["ranked"],
+    teamDependent: false,
+    allowedContainers: ["side_game", "points_race"],
   },
   gtt_scramble: {
     id: "gtt_scramble",
@@ -230,6 +332,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: false,
     maxPlayersPerSide: null,
     compatibleScoringModels: ["points"],
+    // A TEAM format — the team plays one ball, so the roster IS the result.
+    resultKinds: ["ranked"],
+    teamDependent: true,
+    allowedContainers: ["side_game", "points_race"],
   },
   gtt_skins: {
     id: "gtt_skins",
@@ -275,6 +381,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: false,
     maxPlayersPerSide: null,
     compatibleScoringModels: ["points"],
+    // Individually scored per hole; team membership changes nothing about who won a skin.
+    resultKinds: ["ranked"],
+    teamDependent: false,
+    allowedContainers: ["side_game", "points_race"],
   },
   gtt_match_play: {
     // Refactor A1 — the unified match-play type (was gtt_match_play_singles +
@@ -305,6 +415,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // single match supports.
     maxPlayersPerSide: 2,
     compatibleScoringModels: ["match_play"],
+    // `points_race` is PR 5's opening (ruling 5); today `compatibleScoringModels` still says match_play only.
+    resultKinds: ["head_to_head"],
+    teamDependent: true,
+    allowedContainers: ["side_game", "head_to_head", "points_race"],
   },
   gtt_rack_n_stack: {
     id: "gtt_rack_n_stack",
@@ -326,6 +440,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: true,
     maxPlayersPerSide: null,
     compatibleScoringModels: ["match_play"],
+    // The ONLY format with no `side_game`: ruling 12 makes it a head-to-head fixture whose two sides ARE the competition's two teams, and ruling 27 says it is never offered as a side game. PR 5 keeps it head-to-head only.
+    resultKinds: ["head_to_head"],
+    teamDependent: true,
+    allowedContainers: ["head_to_head"],
   },
   gtt_generic_card: {
     id: "gtt_generic_card",
@@ -343,6 +461,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: null,
     maxPlayersPerSide: null,
     compatibleScoringModels: null,
+    // A manual type is head-to-head as a `matches` game and ranked as a `placement` one — the instance pins it.
+    resultKinds: ["head_to_head", "ranked"],
+    teamDependent: true,
+    allowedContainers: ["side_game", "head_to_head", "points_race"],
   },
   gtt_generic_yard: {
     id: "gtt_generic_yard",
@@ -360,6 +482,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: null,
     maxPlayersPerSide: null,
     compatibleScoringModels: null,
+    // As `gtt_generic_card` — Cornhole is the worked example, and it was a `matches` game.
+    resultKinds: ["head_to_head", "ranked"],
+    teamDependent: true,
+    allowedContainers: ["side_game", "head_to_head", "points_race"],
   },
   gtt_pickem: {
     id: "gtt_pickem",
@@ -398,6 +524,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // Phase 2 builds the match_play path; the points path is Phase 7 and is
     // the same sheet with different copy.
     compatibleScoringModels: ["match_play", "points"],
+    // BOTH, genuinely: sheet-versus-sheet matches and a points total, switched by `roll_up`. The case that made `resultKinds` a set rather than a value.
+    resultKinds: ["head_to_head", "ranked"],
+    teamDependent: true,
+    allowedContainers: ["side_game", "head_to_head", "points_race"],
   },
   gtt_generic_bar: {
     id: "gtt_generic_bar",
@@ -415,6 +545,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: null,
     maxPlayersPerSide: null,
     compatibleScoringModels: null,
+    // As `gtt_generic_card`.
+    resultKinds: ["head_to_head", "ranked"],
+    teamDependent: true,
+    allowedContainers: ["side_game", "head_to_head", "points_race"],
   },
   gtt_manual: {
     id: "gtt_manual",
@@ -432,6 +566,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: false,
     maxPlayersPerSide: null,
     compatibleScoringModels: null,
+    // As `gtt_generic_card`.
+    resultKinds: ["head_to_head", "ranked"],
+    teamDependent: true,
+    allowedContainers: ["side_game", "head_to_head", "points_race"],
   },
 };
 
