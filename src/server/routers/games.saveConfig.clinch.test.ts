@@ -78,7 +78,7 @@ async function saveLever(mutate: (d: ConfigDraft) => ConfigDraft): Promise<void>
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("saveConfig clinch Trip");
-  competitionId = await ctx.createCompetition(tripId, "Reconcile Cup", { scoringModel: "points" });
+  competitionId = await ctx.createCompetition(tripId, "Reconcile Cup", { scoringModel: "match_play" });
   teamWin = await ctx.createTeam(competitionId, "Winner", { shortName: "WIN" });
   teamLose = await ctx.createTeam(competitionId, "Loser", { shortName: "LOS" });
 

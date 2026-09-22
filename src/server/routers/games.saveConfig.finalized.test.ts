@@ -122,7 +122,7 @@ beforeAll(async () => {
   await ctx.addTripMember(tripId, "member", "Member");
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
-  competitionId = await ctx.createCompetition(tripId, "saveConfig finalized Cup");
+  competitionId = await ctx.createCompetition(tripId, "saveConfig finalized Cup", { scoringModel: "points" });
   finalizedGameId = await makeFinalizedGame();
 }, 90_000);
 

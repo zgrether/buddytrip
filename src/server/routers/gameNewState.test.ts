@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
 import { isNew } from "../lib/gameReadiness";
+import { GAME_TYPES, isGameTypeForScoringModel } from "@/lib/gameTypes";
 
 /**
  * NEW vs CONFIGURING — the behavioural half.
@@ -25,12 +26,16 @@ const NON_GOLF = "gtt_generic_card";
 describe("isNew — New vs Configuring", () => {
   let ctx: TestContext;
   let tripId: string;
-  let competitionId: string;
+  // Two cups, one per scoring model (#1304): a game is created in the cup its
+  // format belongs to, so no fixture builds a state games.create refuses.
+  let pointsCup: string;
+  let matchCup: string;
+  const cupOf = new Map<string, string>();
   const createdCourses: string[] = [];
 
   /** The board's answer for one game, read the way the board reads it. */
   async function sectionInputs(gameId: string) {
-    const lb = await computeCompetitionLeaderboard(ctx.admin, competitionId);
+    const lb = await computeCompetitionLeaderboard(ctx.admin, cupOf.get(gameId)!);
     const g = lb.games.find((x) => x.id === gameId);
     expect(g, `game ${gameId} missing from the leaderboard payload`).toBeTruthy();
     return g!;
@@ -45,6 +50,8 @@ describe("isNew — New vs Configuring", () => {
    */
   async function addGameAsModalDoes(gameTypeId: string, name: string) {
     const isMatch = gameTypeId === MATCH_PLAY;
+    const type = GAME_TYPES.find((t) => t.id === gameTypeId)!;
+    const competitionId = isGameTypeForScoringModel(type, "points") ? pointsCup : matchCup;
     const g = await ctx.caller().games.create({
       tripId,
       gameTypeId,
@@ -53,6 +60,7 @@ describe("isNew — New vs Configuring", () => {
       pointsDistribution: isMatch ? { type: "per_match", value: 0 } : null,
       pointsTotal: isMatch ? null : 0,
     });
+    cupOf.set(g.id as string, competitionId);
     return g.id as string;
   }
 
@@ -61,7 +69,8 @@ describe("isNew — New vs Configuring", () => {
     tripId = await ctx.createTrip("New-state split");
     // Sequentially, never Promise.all (CLAUDE.md local-stack conventions).
     await ctx.addTripMember(tripId, "member");
-    competitionId = await ctx.createCompetition(tripId, "New-state cup");
+    pointsCup = await ctx.createCompetition(tripId, "New-state points cup", { scoringModel: "points" });
+    matchCup = await ctx.createCompetition(tripId, "New-state match cup", { scoringModel: "match_play" });
   });
 
   afterAll(async () => {
