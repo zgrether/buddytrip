@@ -19,7 +19,7 @@ import { type ScorecardSchema } from "@/lib/courseIndex";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { isPlacement, liveMatchPointsPerMatch, awardsPerMatch } from "@/lib/pointsDistribution";
-import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
+import { GAME_TYPES, getGameTypeDefinition, formatRefusalForScoringModel, type ScoringModel } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
 import { seedScrambleTeamGroups } from "@/server/lib/scrambleTeamGroups";
@@ -377,6 +377,28 @@ export const gamesRouter = router({
       // `(display_order, created_at)`, so a tie breaks by creation order — the
       // exact order they would have had anyway — and the next reorder rewrites
       // both. A lock here would buy nothing a tiebreak doesn't.
+      // #1304 — a format must suit its competition's scoring model. The add-game
+      // menu already filters on this (CompetitionGamesPanel), so no user sees a
+      // change; this closes the door for a direct call. It is the ONE door:
+      // `game_type_id` and `competition_id` are written here and nowhere else,
+      // and `scoring_model` has no update path, so a create-time check covers
+      // every way into the state.
+      if (input.competitionId) {
+        const { data: comp, error: compErr } = await ctx.supabase
+          .from("competitions")
+          .select("scoring_model")
+          .eq("id", input.competitionId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle();
+        if (compErr) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the competition: ${compErr.message}` });
+        }
+        const refusal = comp
+          ? formatRefusalForScoringModel(input.gameTypeId, comp.scoring_model as ScoringModel | null)
+          : null;
+        if (refusal) throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
+      }
+
       let displayOrder: number | null = null;
       if (input.competitionId) {
         const { data: last } = await ctx.supabase

@@ -3,6 +3,7 @@ import {
   GAME_TYPES,
   isGameTypeForScoringModel,
   gameTypesForScoringModel,
+  formatRefusalForScoringModel,
 } from "./gameTypes";
 
 /**
@@ -105,5 +106,51 @@ describe("gameTypesForScoringModel — the offered menu", () => {
 
   it("a null scoring-model offers the whole catalog", () => {
     expect(gameTypesForScoringModel(null)).toHaveLength(GAME_TYPES.length);
+  });
+});
+
+describe("formatRefusalForScoringModel — the server's half of the same rule (#1304)", () => {
+  it("refuses EXACTLY what the add-game menu does not offer — every format, both cup kinds", () => {
+    // One predicate, two consumers. If these ever disagree, the server refuses
+    // something the menu offers (a dead button) or admits something it hides.
+    for (const model of ["match_play", "points"] as const) {
+      const offered = new Set(gameTypesForScoringModel(model).map(id));
+      for (const t of GAME_TYPES) {
+        const refusal = formatRefusalForScoringModel(t.id, model);
+        expect(refusal === null, `${t.id} in a ${model} cup`).toBe(offered.has(t.id));
+      }
+    }
+  });
+
+  it("names the cup, the format, and what the cup DOES take", () => {
+    expect(formatRefusalForScoringModel("gtt_match_play", "points")).toBe(
+      "A Points cup can't hold Match Play. It takes: " +
+        gameTypesForScoringModel("points").map((t) => t.name).join(", ") + "."
+    );
+    const r = formatRefusalForScoringModel("gtt_stroke_play", "match_play")!;
+    expect(r.startsWith("A Match Play cup can't hold Stroke Play.")).toBe(true);
+    // The list is the menu's list, so the reader can act on it.
+    expect(r).toContain("Rack-n-Stack");
+    expect(r).not.toContain("Scramble");
+  });
+
+  it("the known refusals, spelled out so a catalog re-tag shows up as a named failure", () => {
+    expect(formatRefusalForScoringModel("gtt_match_play", "points")).not.toBeNull();
+    expect(formatRefusalForScoringModel("gtt_rack_n_stack", "points")).not.toBeNull();
+    for (const golf of ["gtt_stroke_play", "gtt_scramble", "gtt_skins"]) {
+      expect(formatRefusalForScoringModel(golf, "match_play"), golf).not.toBeNull();
+    }
+    // Pick'em belongs to both; manual/non-golf fit anywhere.
+    for (const any of ["gtt_pickem", "gtt_manual", "gtt_generic_card", "gtt_generic_yard", "gtt_generic_bar"]) {
+      expect(formatRefusalForScoringModel(any, "points"), any).toBeNull();
+      expect(formatRefusalForScoringModel(any, "match_play"), any).toBeNull();
+    }
+  });
+
+  it("is permissive where the menu is: no scoring model, or an id the catalog does not know", () => {
+    expect(formatRefusalForScoringModel("gtt_match_play", null)).toBeNull();
+    expect(formatRefusalForScoringModel("gtt_match_play", undefined)).toBeNull();
+    // Not a compatibility question — the insert's foreign key answers it.
+    expect(formatRefusalForScoringModel("gtt_not_a_format", "points")).toBeNull();
   });
 });
