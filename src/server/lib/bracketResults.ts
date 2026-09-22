@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import type { BracketDrawMatch } from "@/lib/bracket";
-import { resolveDraw, matchKey, drawComplete, type WinnerBySeed } from "@/lib/bracketAdvance";
-import { bracketPlacements } from "@/lib/bracketPlacements";
+import { matchKey, drawComplete, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { resolveAnyDraw, placementsForDraw } from "@/lib/bracketFormat";
 import { readBracketDraw } from "./bracketDraw";
 
 /**
@@ -72,7 +72,14 @@ export async function deriveBracketPlacements(
   const winners: WinnerBySeed = {};
   for (const m of matches) winners[matchKey(m)] = seedOf(m.winner_entrant_id);
 
-  const resolved = resolveDraw(draw, winners);
+  // THE LIVE BUG (Phase 0 F1). This called `resolveDraw` unconditionally, which
+  // handles `main` + `consolation` and DROPS a double draw's `lower`/`final`
+  // rows. `drawComplete` right below is `resolved.every(m => !m.playable)`, so
+  // the undecided lower-bracket rows were never in the set it checked — the gate
+  // could not see the matches it exists to check, passed, and the bracket posted
+  // with 4 of 15 matches undecided. Both dispatches now read the DRAW; see
+  // `bracketFormat.ts` for why the draw decides and not the config.
+  const resolved = resolveAnyDraw(draw, winners);
   if (!drawComplete(resolved)) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
@@ -80,7 +87,7 @@ export async function deriveBracketPlacements(
     });
   }
 
-  const placements = bracketPlacements(resolved);
+  const placements = placementsForDraw(draw, resolved);
   // `drawComplete` and a placeable draw are not quite the same claim: the pure
   // rule returns [] when there is no decided final to place anyone against.
   // Refusing here rather than writing an empty result keeps the game finishable
