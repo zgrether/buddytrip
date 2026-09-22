@@ -98,6 +98,8 @@ function mount() {
 
   return {
     qc, utils, server,
+    /** What `LiveFaceClient` renders from: `const { data: boot, isLoading: loading }`. */
+    face: () => ({ boot: obsB.getCurrentResult().data, loading: obsB.getCurrentResult().isLoading }),
     openGate: () => { gate.resolve(); },
     /** A settle's `invalidateQueries(faceBootstrap)` — starts a fetch that parks. */
     startBootstrapRefetch: () => { gate = deferred<void>(); void qc.invalidateQueries({ queryKey: B }); },
@@ -184,6 +186,47 @@ describe("cancelRosterWriters — the faceBootstrap door", () => {
    * If this ever goes GREEN, the test above has stopped being able to fail and
    * is no longer evidence of anything — fix this file, do not delete it.
    */
+  /**
+   * THE SYMPTOM THIS FIX MUST NOT TRADE FOR THE OLD ONE.
+   *
+   * The fix cancels an in-flight `faceBootstrap` — the query the cup face
+   * itself renders from. `LiveFaceClient.tsx:188` shows a spinner on
+   * `isLoading`, so if a cancel could clear that query's data, editing a roster
+   * from the cup face would blank the hero and standings for a beat.
+   *
+   * It cannot, and this pins WHY rather than trusting it: `cancelQueries`
+   * defaults to `revert: true`, which restores the state captured at FETCH
+   * START (`query.js:240,248-250`) — a state that already had data. And
+   * `isLoading` is `isPending && isFetching`, false whenever data is cached.
+   * Asserted on the observer the face actually reads, mid-flight and after,
+   * because "it should still have data" is the kind of claim that stops being
+   * true when someone changes a query option.
+   */
+  it("cancelling the bootstrap never blanks the cup face", async () => {
+    const m = mount();
+    await m.qc.prefetchQuery({ queryKey: A });
+    const boot0 = m.qc.prefetchQuery({ queryKey: B });
+    m.openGate();
+    await boot0;
+    await flush();
+
+    expect(m.face().boot).toBeDefined();
+
+    m.startBootstrapRefetch();                     // the face is now refetching
+    await flush();
+    expect(m.face(), "mid-flight: data kept, no spinner").toMatchObject({ loading: false });
+    expect(m.face().boot).toBeDefined();
+
+    await cancelRosterWriters(m.utils, KEY);       // a roster edit from the face
+    await flush();
+    expect(m.face(), "after the cancel: still no spinner").toMatchObject({ loading: false });
+    expect(m.face().boot, "after the cancel: the face still has its data").toBeDefined();
+
+    m.openGate();
+    await flush();
+    m.stop();
+  });
+
   it("CHARACTERIZATION — cancelling only the list loses the member (the bug)", async () => {
     const roster = await runRace((m) => m.qc.cancelQueries({ queryKey: A }).then(() => {}));
     expect(roster).toEqual(["P1"]);
