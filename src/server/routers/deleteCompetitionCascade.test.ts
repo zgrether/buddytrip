@@ -67,7 +67,7 @@ describe("delete_competition_cascade (migration 079)", () => {
     };
     check("game_participants", await ctx.admin.from("game_participants").insert({ id: genId("gp"), game_id: gStroke, user_id: ownerId, created_at: now }));
     check("score_entries", await ctx.admin.from("score_entries").insert({ id: genId("se"), game_id: gStroke, participant_id: ownerId, participant_type: "user", unit_label: "1", value: 4, annotations: {}, submitted_by: ownerId, submitted_at: now }));
-    check("game_results", await ctx.admin.from("game_results").insert({ id: genId("gr"), game_id: gStroke, entity_id: ownerId, entity_type: "user", position: 1, computed_at: now }));
+    check("game_results", await ctx.admin.from("game_results").insert({ id: genId("gr"), game_id: gStroke, entity_id: ownerId, entity_type: "user", value_kind: "rank", position: 1, computed_at: now }));
     check("game_delegates", await ctx.admin.from("game_delegates").insert({ game_id: gStroke, user_id: memberId }));
     check("game_matches", await ctx.admin.from("game_matches").insert({ id: mId, game_id: gMatch, match_number: 1 }));
     check("match_hole_outcomes", await ctx.admin.from("match_hole_outcomes").insert({ id: genId("mho"), game_id: gMatch, match_id: mId, hole_number: 1, result: "side_a", submitted_by: ownerId, submitted_at: now }));

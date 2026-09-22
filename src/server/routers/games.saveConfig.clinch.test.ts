@@ -98,8 +98,8 @@ beforeAll(async () => {
   });
   if (g.error) throw new Error(`seed banked game: ${g.error.message}`);
   const r = await ctx.admin.from("game_results").insert([
-    { id: crypto.randomUUID(), game_id: bankedGameId, entity_id: teamWin, entity_type: "team", position: 1, raw_score: 1 },
-    { id: crypto.randomUUID(), game_id: bankedGameId, entity_id: teamLose, entity_type: "team", position: 2, raw_score: 2 },
+    { id: crypto.randomUUID(), game_id: bankedGameId, entity_id: teamWin, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
+    { id: crypto.randomUUID(), game_id: bankedGameId, entity_id: teamLose, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
   ]);
   if (r.error) throw new Error(`seed results: ${r.error.message}`);
 

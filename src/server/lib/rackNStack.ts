@@ -154,6 +154,9 @@ export async function computeRackNStackResults(
     raw_score: perMatch ? teamPoints[teamId] * value : null,
     points: teamPoints[teamId],
     position: perMatch ? null : position(teamId),
+    // The declaration follows the same branch the two shapes already follow —
+    // one condition, not a second one that has to agree with it.
+    value_kind: perMatch ? ("points" as const) : ("rank" as const),
     competition_points_earned: null,
   }));
   // #776: atomic replace (delete + insert commit together, or not at all).

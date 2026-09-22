@@ -101,7 +101,7 @@ const SEEDERS: Record<string, (c: () => TestContext, g: () => string) => Seeder>
         const r = await c().admin.from("game_results").insert({
           id,
           game_id: g(),
-          entity_type: "user",
+          entity_type: "user", value_kind: "points",
           entity_id: c().getUser("owner").id,
           points: 1,
         });

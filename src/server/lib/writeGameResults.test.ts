@@ -29,7 +29,7 @@ function okRpc() {
 
 const BASE = {
   gameId: "game-1",
-  rows: [{ id: "r1", entity_id: "u1", entity_type: "user" as const, position: 1 }],
+  rows: [{ id: "r1", entity_id: "u1", entity_type: "user" as const, position: 1, value_kind: "rank" as const }],
   scope: { kind: "all" as const },
 };
 
@@ -124,5 +124,80 @@ describe("writeGameResults — scope is passed through faithfully", () => {
       "write_game_results",
       expect.objectContaining({ p_rows: [] })
     );
+  });
+});
+
+/**
+ * THE CREDITED UNIT IS FILLED ONCE, HERE — NOT AT SEVEN CALL SITES.
+ *
+ * `credited_team_id` on a `team` row is deliberately redundant with its
+ * `entity_id`: the point of migration 191's column is that "who gets these
+ * points" is ONE question with ONE answer for every format, including the
+ * bracket, whose rows name an entrant rather than a team. Redundant data that
+ * seven callers each restate is how six stay right and the seventh drifts, so
+ * the restatement happens where it cannot.
+ *
+ * These assert the ARGUMENT SENT TO THE RPC, which is the only place the
+ * derivation is observable without a database. The stubbed `rpc` is the same
+ * one the failure cases above use.
+ */
+describe("writeGameResults — the credited unit", () => {
+  it("fills a team row's credit from its own entity_id", async () => {
+    const { client, rpc } = okRpc();
+    await writeGameResults(client, {
+      gameId: "game-1",
+      scope: { kind: "all" },
+      rows: [{ id: "r1", entity_id: "team-A", entity_type: "team", raw_score: 3, value_kind: "points" }],
+    });
+    // The exact value, not "is defined": a derivation that filled the GAME id,
+    // or the first team it saw, would satisfy a presence check.
+    expect(rpc.mock.calls[0][1].p_rows[0].credited_team_id).toBe("team-A");
+  });
+
+  it("leaves a side-level row's credit NULL — a side is not a cup credit", async () => {
+    const { client, rpc } = okRpc();
+    await writeGameResults(client, {
+      gameId: "game-1",
+      scope: { kind: "all" },
+      rows: [
+        { id: "r1", entity_id: "u1", entity_type: "user", position: 1, value_kind: "rank" },
+        { id: "r2", entity_id: "pg1", entity_type: "play_group", position: 2, value_kind: "rank" },
+      ],
+    });
+    const sent = rpc.mock.calls[0][1].p_rows;
+    // `undefined`, not `"u1"`. A user row carrying its own id here would make
+    // the column mean two different things and would put a person's id in a
+    // column every reader treats as a team — migration 191's comment says so.
+    expect(sent[0].credited_team_id).toBeUndefined();
+    expect(sent[1].credited_team_id).toBeUndefined();
+  });
+
+  it("does not overwrite a credit the caller set on a non-team row", async () => {
+    // No caller does this today. It is pinned because the derivation is a
+    // `map` over every row, and the cheap way to write it — assign
+    // unconditionally — would silently discard a value a future format passes.
+    const { client, rpc } = okRpc();
+    await writeGameResults(client, {
+      gameId: "game-1",
+      scope: { kind: "all" },
+      rows: [
+        { id: "r1", entity_id: "pg1", entity_type: "play_group", position: 1, value_kind: "rank", credited_team_id: "team-B" },
+      ],
+    });
+    expect(rpc.mock.calls[0][1].p_rows[0].credited_team_id).toBe("team-B");
+  });
+
+  it("passes value_kind through untouched — the writer declares, this does not guess", async () => {
+    // The decisive case: a row declaring "points" while carrying a position.
+    // Nothing here may "helpfully" correct it — `resolveConvention` on the read
+    // side is what reports that contradiction, and it can only do so if the
+    // write preserved it.
+    const { client, rpc } = okRpc();
+    await writeGameResults(client, {
+      gameId: "game-1",
+      scope: { kind: "all" },
+      rows: [{ id: "r1", entity_id: "team-A", entity_type: "team", position: 1, value_kind: "points" }],
+    });
+    expect(rpc.mock.calls[0][1].p_rows[0].value_kind).toBe("points");
   });
 });

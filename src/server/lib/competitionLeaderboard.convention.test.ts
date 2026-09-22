@@ -27,6 +27,17 @@ import { computeLiveProjections } from "./liveProjection";
  * against a specific set of standings. The ids are BBMI 2026's own, so the case
  * pinned here is the production case, not a reconstruction of it.
  *
+ * ── The fixture rows carry `value_kind` because the real writers do ───────
+ *
+ * Migration 191 made it NOT NULL, so a row without one cannot exist in the
+ * database. Leaving it off here would have kept every case green while
+ * silently measuring `resolveConvention`'s UNDECLARED fallback instead of the
+ * path production takes — a fixture that does not send what the real caller
+ * sends, reporting a confident number about a path that does not exist. The
+ * MIXED cases declare one of each ON PURPOSE: rows disagreeing with each other
+ * is what `mixed` means, and it is still distinct from a row disagreeing with
+ * itself (`conflicted`, covered in `resultConvention.test.ts`).
+ *
  * ── The characterization tests are gone, as they said they would be ────────
  *
  * This file used to pin the WRONG behaviour (placement paid the loser 8-0, the
@@ -101,8 +112,8 @@ function fakeClient(distribution: unknown, overrides: Overrides = {}) {
     team_assignments: PLAYERS.map(([user_id, team_id]) => ({ user_id, team_id, competition_id: COMPETITION })),
     // position NULL + points in raw_score: exactly what `writeTeamMatchPoints` writes.
     game_results: overrides.results ?? [
-      { game_id: GAME, entity_id: WINNER, entity_type: "team", position: null, raw_score: 6 },
-      { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2 },
+      { game_id: GAME, entity_id: WINNER, entity_type: "team", position: null, raw_score: 6, value_kind: "points" },
+      { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2, value_kind: "points" },
     ],
     game_matches: MATCH_SHAPE.map((m) => ({
       id: m.id, game_id: GAME, point_value: null, result: m.result,
@@ -195,8 +206,8 @@ describe("points_distribution convention — carried to the ranking (#1381)", ()
     // "points": the winner got 1 and the loser 2. By place, winner takes the total.
     const r = await payoutIn("production", { type: "per_match", value: 2 }, {
       results: [
-        { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 1 },
-        { game_id: GAME, entity_id: LOSER, entity_type: "team", position: 2, raw_score: 2 },
+        { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 1, value_kind: "rank" },
+        { game_id: GAME, entity_id: LOSER, entity_type: "team", position: 2, raw_score: 2, value_kind: "rank" },
       ],
     });
     expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: 8, loser: 0 });
@@ -207,8 +218,8 @@ describe("points_distribution convention — carried to the ranking (#1381)", ()
   it("MIXED rows pay nothing, keep the pool, and log in production", async () => {
     const r = await payoutIn("production", { type: "per_match", value: 2 }, {
       results: [
-        { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 6 },
-        { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2 },
+        { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 6, value_kind: "rank" },
+        { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2, value_kind: "points" },
       ],
     });
     expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: null, loser: null });
@@ -220,8 +231,8 @@ describe("points_distribution convention — carried to the ranking (#1381)", ()
     await expect(
       payoutIn("test", { type: "per_match", value: 2 }, {
         results: [
-          { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 6 },
-          { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2 },
+          { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 6, value_kind: "rank" },
+          { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2, value_kind: "points" },
         ],
       })
     ).rejects.toThrow(`ranking-convention unreadable: game ${GAME}`);

@@ -314,8 +314,8 @@ describe("ranking-convention reconciliation", () => {
     gameIds.push(g.id);
     await ctx.admin.from("games").update({ points_total: 35 }).eq("id", g.id);
     await ctx.admin.from("game_results").insert([
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamA, entity_type: "team", position: null, raw_score: 0 },
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamB, entity_type: "team", position: null, raw_score: 35 },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamA, entity_type: "team", value_kind: "points", position: null, raw_score: 0 },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamB, entity_type: "team", value_kind: "points", position: null, raw_score: 35 },
     ]);
 
     const warns: string[] = [];
@@ -361,8 +361,8 @@ describe("ranking-convention reconciliation", () => {
     gameIds.push(g.id);
     await ctx.admin.from("games").update({ points_total: 8 }).eq("id", g.id);
     await ctx.admin.from("game_results").insert([
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamA, entity_type: "team", position: 1, raw_score: 1 },
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamB, entity_type: "team", position: 2, raw_score: 2 },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamA, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: teamB, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
     ]);
 
     const warns: string[] = [];

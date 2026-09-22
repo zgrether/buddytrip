@@ -145,6 +145,9 @@ export async function computeSkinsResults(
         entity_type: "user" as const,
         raw_score: s.skins,
         position: s.position,
+        // RANK, as stroke. `raw_score` is the skins COUNT — the material the
+        // standing is made of, not the standing.
+        value_kind: "rank" as const,
         competition_points_earned: null,
       })),
       ...teamStandings.map((t) => ({
@@ -153,6 +156,7 @@ export async function computeSkinsResults(
         entity_type: "team" as const,
         raw_score: t.total,
         position: t.position,
+        value_kind: "rank" as const,
         competition_points_earned: null,
       })),
     ],

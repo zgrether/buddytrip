@@ -67,8 +67,8 @@ async function manualGame(
 /** A finished manual game: team A first, team B second. */
 async function finishFirstSecond(gameId: string, ta: string, tb: string) {
   await ctx.admin.from("game_results").insert([
-    { id: crypto.randomUUID(), game_id: gameId, entity_id: ta, entity_type: "team", position: 1, raw_score: 1 },
-    { id: crypto.randomUUID(), game_id: gameId, entity_id: tb, entity_type: "team", position: 2, raw_score: 2 },
+    { id: crypto.randomUUID(), game_id: gameId, entity_id: ta, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
+    { id: crypto.randomUUID(), game_id: gameId, entity_id: tb, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
   ]);
 }
 
@@ -102,8 +102,8 @@ describe("match-play cup — a manual game with NO split of its own is unchanged
     const gameId = await manualGame(comp, "Tied Cornhole", { points_total: 8, points_distribution: null });
     // Both at position 1 is how a tie is recorded; placementPoints averages [8,0].
     await ctx.admin.from("game_results").insert([
-      { id: crypto.randomUUID(), game_id: gameId, entity_id: ta, entity_type: "team", position: 1, raw_score: 1 },
-      { id: crypto.randomUUID(), game_id: gameId, entity_id: tb, entity_type: "team", position: 1, raw_score: 1 },
+      { id: crypto.randomUUID(), game_id: gameId, entity_id: ta, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
+      { id: crypto.randomUUID(), game_id: gameId, entity_id: tb, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
     ]);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });

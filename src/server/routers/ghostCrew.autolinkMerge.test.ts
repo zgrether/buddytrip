@@ -89,7 +89,7 @@ async function seedGhostCompetition() {
   const gr = await ctx.admin.from("game_results").insert({
     id: rid("gr"),
     game_id: gameId,
-    entity_type: "user",
+    entity_type: "user", value_kind: "points",
     entity_id: ghostId,
     raw_score: 4,
   });
