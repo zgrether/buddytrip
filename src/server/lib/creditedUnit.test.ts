@@ -240,11 +240,23 @@ describe("a bracket records WHO IT PAID, not just who competed", () => {
     const creditOf = new Map(rows.map((r) => [r.entity_id, r.credited_team_id]));
     expect(creditOf.get(entrantId(gameId, 1))).toBe(cup.teamB);
 
-    // Seed 1 won, so its 4 points now land on B. All four entrants are on B,
-    // so A is paid nothing at all — a total the pre-move fixture cannot produce.
+    /**
+     * And the TOTALS move with it, to an exact pair the pre-move fixture cannot
+     * produce.
+     *
+     * `[4, 2, 1, 1]` over chalk: seed 1 takes 4, seed 2 takes 2, and seeds 3
+     * and 4 tie at third, so `placementPoints` averages indices 2 and 3 —
+     * `(1 + 1) / 2` — and each takes 1.
+     *
+     *   entrants as seeded (1,3 = A · 2,4 = B) → A 5, B 3
+     *   seed 1 moved to B                      → A 1, B 7
+     *
+     * Asserted as both exact numbers rather than "A is zero" or "B is more than
+     * zero": seed 3 is still on team A and still scores, so A is NOT emptied by
+     * this move, and a `> 0` on B would be satisfied by the unmoved fixture too.
+     */
     const totals = await totalsOf(cup);
-    expect(totals[cup.teamA] ?? 0).toBe(0);
-    expect(totals[cup.teamB]).toBeGreaterThan(0);
+    expect({ a: totals[cup.teamA] ?? 0, b: totals[cup.teamB] ?? 0 }).toEqual({ a: 1, b: 7 });
   });
 });
 
