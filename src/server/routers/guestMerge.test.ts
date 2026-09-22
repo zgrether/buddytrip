@@ -63,12 +63,12 @@ describe("merge_guest_to_real_user — scoring tables (audit #5)", () => {
     const seeds = await Promise.all([
       ctx.admin.from("game_participants").insert({ id: gpId, game_id: gameId, user_id: ghostId, created_at: now }),
       ctx.admin.from("score_entries").insert({ id: seUserId, game_id: gameId, participant_id: ghostId, participant_type: "user", unit_label: "1", value: 4, annotations: {}, submitted_by: ghostId, submitted_at: now }),
-      ctx.admin.from("game_results").insert({ id: grUserId, game_id: gameId, entity_id: ghostId, entity_type: "user", position: 1, computed_at: now }),
+      ctx.admin.from("game_results").insert({ id: grUserId, game_id: gameId, entity_id: ghostId, entity_type: "user", value_kind: "rank", position: 1, computed_at: now }),
       ctx.admin.from("match_hole_outcomes").insert({ id: mhoId, game_id: gameId, match_id: matchId, hole_number: 1, result: "side_a", submitted_by: ghostId, submitted_at: now }),
       // ── polymorphic NON-user rows whose id EQUALS the ghost's — the guard test:
       //    a naive "WHERE = ghost" without the type filter would wrongly rewrite these.
       ctx.admin.from("score_entries").insert({ id: sePgId, game_id: gameId, participant_id: ghostId, participant_type: "play_group", unit_label: "2", value: 5, annotations: {}, submitted_at: now }),
-      ctx.admin.from("game_results").insert({ id: grTeamId, game_id: gameId, entity_id: ghostId, entity_type: "team", position: 1, computed_at: now }),
+      ctx.admin.from("game_results").insert({ id: grTeamId, game_id: gameId, entity_id: ghostId, entity_type: "team", value_kind: "rank", position: 1, computed_at: now }),
     ]);
     const seedErr = seeds.find((r) => r.error);
     if (seedErr?.error) throw new Error(`seed scoring rows: ${seedErr.error.message}`);

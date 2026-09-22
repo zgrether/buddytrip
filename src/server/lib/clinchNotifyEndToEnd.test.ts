@@ -53,8 +53,8 @@ async function seedFinalizedGame(name: string, typeId: string, first: string, se
   if (g.error) throw new Error(`seed game ${name}: ${g.error.message}`);
   gameIds.push(id);
   const r = await ctx.admin.from("game_results").insert([
-    { id: crypto.randomUUID(), game_id: id, entity_id: first, entity_type: "team", position: 1, raw_score: 1 },
-    { id: crypto.randomUUID(), game_id: id, entity_id: second, entity_type: "team", position: 2, raw_score: 2 },
+    { id: crypto.randomUUID(), game_id: id, entity_id: first, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
+    { id: crypto.randomUUID(), game_id: id, entity_id: second, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
   ]);
   if (r.error) throw new Error(`seed results ${name}: ${r.error.message}`);
   return id;
@@ -166,8 +166,8 @@ describe("cup clinched — the assembled notify path", () => {
     });
     gameIds.push(id2);
     await ctx.admin.from("game_results").insert([
-      { id: crypto.randomUUID(), game_id: id, entity_id: a, entity_type: "team", position: 1, raw_score: 1 },
-      { id: crypto.randomUUID(), game_id: id, entity_id: b, entity_type: "team", position: 2, raw_score: 2 },
+      { id: crypto.randomUUID(), game_id: id, entity_id: a, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
+      { id: crypto.randomUUID(), game_id: id, entity_id: b, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
     ]);
 
     await notifyCupClinchedIfDecided({

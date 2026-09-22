@@ -143,6 +143,9 @@ export async function writeTeamMatchPoints(
     entity_type: "team" as const,
     raw_score: teamPoints.get(teamId) ?? 0,
     position: null as number | null,
+    // POINTS. The tally IS the result of the contest — there is no schedule to
+    // rank against, which is why `position` is null rather than unset.
+    value_kind: "points" as const,
     competition_points_earned: null as null,
   }));
   await writeGameResults(supabase, {

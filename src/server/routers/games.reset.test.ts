@@ -54,7 +54,7 @@ async function makeMatchGame(name: string): Promise<string> {
   });
   if (gmErr) throw new Error(`game_matches insert failed: ${gmErr.message}`);
   await ctx.admin.from("game_results").insert({
-    id: genId("gr"), game_id: id, entity_id: ownerId, entity_type: "user", position: 1, raw_score: 1,
+    id: genId("gr"), game_id: id, entity_id: ownerId, entity_type: "user", value_kind: "rank", position: 1, raw_score: 1,
   });
   return id;
 }

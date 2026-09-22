@@ -82,7 +82,7 @@ async function playAndFinish(gameId: string) {
     participant_type: "user", unit_label: "1", value: 4, submitted_by: ctx.user.id,
   }));
   await ck("result", ctx.admin.from("game_results").insert({
-    id: crypto.randomUUID(), game_id: gameId, entity_type: "user", entity_id: ctx.user.id, position: 1,
+    id: crypto.randomUUID(), game_id: gameId, entity_type: "user", value_kind: "rank", entity_id: ctx.user.id, position: 1,
   }));
   await ck("finish", ctx.admin.from("games").update({ status: "complete" }).eq("id", gameId));
 }

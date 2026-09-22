@@ -233,8 +233,8 @@ async function makeMatchGame(name: string, holes = 18): Promise<string> {
     result: "a_win", margin: "18up", status: "complete",
   });
   await ctx.admin.from("game_results").insert([
-    { id: genId("gr"), game_id: id, entity_id: owner, entity_type: "user", position: 1, raw_score: 18 },
-    { id: genId("gr"), game_id: id, entity_id: member, entity_type: "user", position: 2, raw_score: 0 },
+    { id: genId("gr"), game_id: id, entity_id: owner, entity_type: "user", value_kind: "rank", position: 1, raw_score: 18 },
+    { id: genId("gr"), game_id: id, entity_id: member, entity_type: "user", value_kind: "rank", position: 2, raw_score: 0 },
   ]);
   return id;
 }

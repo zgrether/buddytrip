@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
+import type { ResultValueKind } from "@/lib/resultRow";
 
 /**
  * The ONE write path for `game_results` (#776).
@@ -35,6 +36,22 @@ export interface GameResultRow {
   /** Rack's team tally. Null for every other format. */
   points?: number | null;
   competition_points_earned?: number | null;
+  /**
+   * WHAT THIS ROW CARRIES — required, because `game_results.value_kind` is NOT
+   * NULL (migration 191) and there is no default to fall back on.
+   *
+   * Deliberately not optional and deliberately not derived from whether
+   * `position` is set. Both would reproduce the inference the column exists to
+   * replace, and an optional field is exactly how a new writer skips it — which
+   * this table has a history of, since `writeManualResults` is a SECOND writer
+   * that does not use this type at all.
+   */
+  value_kind: ResultValueKind;
+  /**
+   * The cup team this row pays, as at finalize. Omit it and `writeGameResults`
+   * fills it for you on a `team` row — see the note at the call.
+   */
+  credited_team_id?: string | null;
 }
 
 /** Match play's per-match result columns, folded into the same transaction so a
@@ -115,9 +132,29 @@ export async function writeGameResults(
 ): Promise<void> {
   const mode: WriteFailureMode = input.onFailure ?? "log";
 
+  /**
+   * A TEAM row's credit is itself, and that is resolved HERE rather than at
+   * seven call sites.
+   *
+   * `credited_team_id` on a team row is deliberately redundant with
+   * `entity_id` — the point of the column is that "who gets these points" is
+   * ONE question with ONE answer for every format, including the bracket, whose
+   * rows name an entrant. Redundant data that seven callers each restate is how
+   * six of them stay right and the seventh drifts, so the restatement happens
+   * once, where it cannot.
+   *
+   * `user` / `play_group` rows keep whatever the caller passed, which is
+   * nothing: a side-level row is one side's own record, not a cup credit, and
+   * NULL is that meaning rather than an absent one (migration 191's comment on
+   * the column says so where a reader of the schema will find it).
+   */
+  const rows = input.rows.map((r) =>
+    r.entity_type === "team" ? { ...r, credited_team_id: r.entity_id } : r
+  );
+
   const { error } = await supabase.rpc("write_game_results", {
     p_game_id: input.gameId,
-    p_rows: input.rows,
+    p_rows: rows,
     p_scope: input.scope.kind,
     p_entity_ids: input.scope.kind === "entity_ids" ? input.scope.entityIds : null,
     p_entity_type: input.scope.kind === "entity_type" ? input.scope.entityType : null,

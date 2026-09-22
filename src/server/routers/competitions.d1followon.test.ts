@@ -133,8 +133,8 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
 
     // Realized awarded points (adapter output): Blue won both of the 2 matches.
     await ctx.admin.from("game_results").insert([
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", raw_score: 2, position: null, competition_points_earned: null },
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: tb, entity_type: "team", raw_score: 0, position: null, competition_points_earned: null },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", value_kind: "points", raw_score: 2, position: null, competition_points_earned: null },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: tb, entity_type: "team", value_kind: "points", raw_score: 0, position: null, competition_points_earned: null },
     ]);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
@@ -178,8 +178,8 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
     // 2 matches played: 1 halve (each gets 0.5) + A wins 1 (A gets 1).
     // A total = 1.5, B total = 0.5.
     await ctx.admin.from("game_results").insert([
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", raw_score: 1.5, position: null, competition_points_earned: null },
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: tb, entity_type: "team", raw_score: 0.5, position: null, competition_points_earned: null },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", value_kind: "points", raw_score: 1.5, position: null, competition_points_earned: null },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: tb, entity_type: "team", value_kind: "points", raw_score: 0.5, position: null, competition_points_earned: null },
     ]);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
@@ -229,8 +229,8 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
     gameIds.push(g.id);
 
     await ctx.admin.from("game_results").insert([
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", raw_score: 5, position: null, competition_points_earned: null },
-      { id: crypto.randomUUID(), game_id: g.id, entity_id: tb, entity_type: "team", raw_score: 3, position: null, competition_points_earned: null },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", value_kind: "points", raw_score: 5, position: null, competition_points_earned: null },
+      { id: crypto.randomUUID(), game_id: g.id, entity_id: tb, entity_type: "team", value_kind: "points", raw_score: 3, position: null, competition_points_earned: null },
     ]);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });

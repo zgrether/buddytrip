@@ -244,6 +244,51 @@ async function writeManualResults(
   const { error: delErr } = await supabase.from("game_results").delete().eq("game_id", gameId);
   if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
   if (placements.length === 0) return 0;
+
+  /**
+   * ── The credited unit, snapshotted (migration 191) ───────────────────────
+   *
+   * A TEAM row's credit is itself. An ENTRANT row's is the cup team the entrant
+   * plays for, and THIS is the read that stops happening at board time: the
+   * bracket was the one format whose finished result did not record who it
+   * paid, so `competitionLeaderboard` resolved it live through
+   * `bracket_entrants.team_id` on every poll.
+   *
+   * That column is not movable after a finalize today, but only incidentally:
+   * `save_game_config` is its only writer and `v_bracket_dirty` includes
+   * `team_id`, so HAS_PICKS refuses the edit once a winner exists — a guard
+   * that exists to protect the DRAW and happens to protect the credit. Reading
+   * it here, once, at the moment the result is decided, is what makes that
+   * coincidence stop mattering.
+   *
+   * A NULL is a real answer and not a failed one: an entrant on no cup team is
+   * a state the roll-up already handles by skipping it
+   * (`teamPointsFromEntrants`), which is what lets a bracket with one
+   * unassigned competitor still score everyone else.
+   */
+  let creditedTeamOf = (entityId: string): string | null => entityId;
+  if (entityType === "entrant") {
+    const { data: entrants, error: entErr } = await supabase
+      .from("bracket_entrants")
+      .select("id, team_id")
+      .eq("game_id", gameId);
+    // A FAILED read is not "nobody has a team" — writing NULLs on an error
+    // would record, permanently and silently, that a finished bracket paid no
+    // team at all. The same distinction `competitionLeaderboard`'s
+    // `entrantReadError` makes on the read side, on the write side where it is
+    // not recoverable by the next poll.
+    if (entErr) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: `Failed to read the bracket's entrants: ${entErr.message}`,
+      });
+    }
+    const teamById = new Map(
+      ((entrants ?? []) as { id: string; team_id: string | null }[]).map((e) => [e.id, e.team_id ?? null])
+    );
+    creditedTeamOf = (entityId: string) => teamById.get(entityId) ?? null;
+  }
+
   const rows = placements.map((p) => ({
     id: crypto.randomUUID(),
     game_id: gameId,
@@ -251,6 +296,12 @@ async function writeManualResults(
     entity_type: entityType,
     position: p.position,
     raw_score: p.position,
+    // RANK, always — this writer only ever records a finishing order. The
+    // mirror into `raw_score` directly above is exactly why the row has to say
+    // so: every one of these rows carries both columns, so a reader testing
+    // `raw_score != null` reads a placement as points.
+    value_kind: "rank" as const,
+    credited_team_id: creditedTeamOf(p.entityId),
   }));
   const { error: insErr } = await supabase.from("game_results").insert(rows);
   if (insErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to save results: ${insErr.message}` });

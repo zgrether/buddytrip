@@ -246,6 +246,9 @@ export async function computeStrokePlayResults(
         entity_type: (isScramble ? "play_group" : "user") as "user" | "play_group",
         raw_score: s.rawScore,
         position: s.position,
+        // RANK. `raw_score` here is the player's gross/net total — a real number
+        // and not the cup currency; the standing is what this game pays by.
+        value_kind: "rank" as const,
         competition_points_earned: null,
       })),
       ...teamStandings.map((t) => ({
@@ -254,6 +257,7 @@ export async function computeStrokePlayResults(
         entity_type: "team" as const,
         raw_score: t.total,
         position: t.position,
+        value_kind: "rank" as const,
         competition_points_earned: null,
       })),
     ],

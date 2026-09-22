@@ -215,7 +215,7 @@ async function play(gameId: string, matchId: string) {
     hole_number: 1, result: "side_a", submitted_by: owner,
   }));
   await ck("result", ctx.admin.from("game_results").insert({
-    id: crypto.randomUUID(), game_id: gameId, entity_type: "user", entity_id: owner, position: 1,
+    id: crypto.randomUUID(), game_id: gameId, entity_type: "user", value_kind: "rank", entity_id: owner, position: 1,
   }));
   await ck("match result", ctx.admin.from("game_matches")
     .update({ result: "a_win", margin: "2&1", status: "complete" }).eq("id", matchId));

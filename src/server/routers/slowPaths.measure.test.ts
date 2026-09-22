@@ -159,8 +159,8 @@ async function makeMatchGame(name: string, holes = 18): Promise<string> {
     result: "a_win", margin: "18up", status: "complete",
   });
   await ctx.admin.from("game_results").insert([
-    { id: genId("gr"), game_id: id, entity_id: ownerId, entity_type: "user", position: 1, raw_score: 18 },
-    { id: genId("gr"), game_id: id, entity_id: memberId, entity_type: "user", position: 2, raw_score: 0 },
+    { id: genId("gr"), game_id: id, entity_id: ownerId, entity_type: "user", value_kind: "rank", position: 1, raw_score: 18 },
+    { id: genId("gr"), game_id: id, entity_id: memberId, entity_type: "user", value_kind: "rank", position: 2, raw_score: 0 },
   ]);
   return id;
 }
@@ -191,7 +191,7 @@ async function makeStrokeGame(name: string, holes = 18): Promise<string> {
   }
   await ctx.admin.from("score_entries").insert(entries);
   await ctx.admin.from("game_results").insert(
-    players.map((u, i) => ({ id: genId("gr"), game_id: id, entity_id: u, entity_type: "user", position: i + 1, raw_score: 72 }))
+    players.map((u, i) => ({ id: genId("gr"), game_id: id, entity_id: u, entity_type: "user", value_kind: "rank", position: i + 1, raw_score: 72 }))
   );
   return id;
 }

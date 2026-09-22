@@ -57,13 +57,92 @@ function matchFormat(_gameTypeId: string | null): MatchFormat {
  * nothing correct can be computed, so they throw outside production and log in
  * it, as the old invariant did.
  */
-export type RowConvention = "positions" | "points" | "mixed";
+export type RowConvention = "positions" | "points" | "mixed" | "conflicted";
 
+/**
+ * What the rows CONTAIN — the original reading, unchanged.
+ *
+ * `position`-only on purpose: `writeManualResults` and pick'em's placement arm
+ * both MIRROR a rank into `raw_score`, so a test involving `raw_score` would
+ * classify every manual placement as points. (Measured on production
+ * 2026-09-22: 26 of 30 non-golf team rows carry both columns.)
+ */
 export function rowConvention(rows: { position: number | null }[]): RowConvention {
   const withPosition = rows.filter((r) => r.position != null).length;
   if (withPosition === rows.length) return "positions";
   if (withPosition === 0) return "points";
   return "mixed";
+}
+
+/**
+ * What the rows DECLARE — `game_results.value_kind`, stamped by the writer at
+ * finalize (migration 191, #826).
+ *
+ * `"undeclared"` is not a fourth convention: the column is NOT NULL, so it can
+ * only mean a row reached this read without one, which the schema says is
+ * impossible. Kept, and kept distinct from `"mixed"`, because "the schema says
+ * this cannot happen" is a claim about the schema and not about the row in
+ * front of you — a hand-edited row, a restored backup, or a writer added
+ * against an older database all produce it, and silently inferring a value for
+ * such a row is exactly the guess this column removed.
+ */
+export function declaredConvention(
+  rows: { valueKind: string | null }[]
+): RowConvention | "undeclared" {
+  if (rows.length === 0) return "undeclared";
+  const kinds = new Set(rows.map((r) => r.valueKind));
+  if (kinds.size > 1) return "mixed";
+  const only = [...kinds][0];
+  if (only === "rank") return "positions";
+  if (only === "points") return "points";
+  return "undeclared";
+}
+
+/**
+ * The reading the ranking uses, and the report when the two disagree.
+ *
+ * **The declaration wins where there is one.** That is the whole point of
+ * storing it: the row says what it carries rather than the board guessing from
+ * which column is null.
+ *
+ * **A disagreement ranks NOTHING, like `mixed`** — and for the same reason. A
+ * row declaring points while carrying a position does not contain a number the
+ * declaration knows how to read; ranking it either way picks one of two
+ * mutually exclusive stories about the same game. It gets its OWN state and its
+ * own message rather than being folded into `mixed`, because "the rows disagree
+ * with each other" and "a row disagrees with itself" send a reader to different
+ * places, and a widened condition under an unchanged message is how a refusal
+ * starts naming the wrong object.
+ *
+ * **This cannot currently fire, and that is stated rather than assumed.** Every
+ * one of the eight writers stamps the kind its own columns take — checked one
+ * by one while adding them — and the 191 backfill derived it from those same
+ * columns, so declared and contained agree on every production row by
+ * construction. What it guards is the NEXT writer.
+ */
+export function resolveConvention(
+  gameId: string,
+  declared: RowConvention | "undeclared",
+  contained: RowConvention
+): RowConvention {
+  if (declared === "undeclared") {
+    console.warn(
+      `[leaderboard] result rows carry no value_kind: game ${gameId} has team results written ` +
+        `without the declaration migration 191 makes NOT NULL. Falling back to reading the columns ` +
+        `(${contained}). This should be unreachable — check for a writer that bypasses ` +
+        `write_game_results / writeManualResults.`
+    );
+    return contained;
+  }
+  if (declared !== contained) {
+    console.error(
+      `[leaderboard] result rows contradict their own declaration: game ${gameId} declares ` +
+        `${declared} but its columns read ${contained} — awarding nothing, because neither ` +
+        `ranking is sound. One of the two is a writer bug; the row is the evidence.`
+    );
+    return "conflicted";
+  }
+  return declared;
 }
 
 export function reconcileConvention(
@@ -90,6 +169,22 @@ export function reconcileConvention(
     const message =
       `[leaderboard] ranking-convention unreadable: game ${armed.id} has team results carrying BOTH ` +
       `positions and raw_score points, so neither ranking is sound — awarding nothing. Evidence: ${evidence("nothing")}`;
+    if (process.env.NODE_ENV === "production") console.error(message);
+    else throw new Error(message);
+    return { ...armed, distribution: null, standings: [] };
+  }
+
+  /**
+   * Same OUTCOME as mixed, different FACT — and the message has to say which.
+   * `mixed` is rows disagreeing with each other; this is a row disagreeing with
+   * itself, which points at the writer rather than at the game's configuration.
+   * `resolveConvention` has already logged the specific contradiction; this is
+   * the ranking half of it.
+   */
+  if (convention === "conflicted") {
+    const message =
+      `[leaderboard] ranking-convention contradicted: game ${armed.id}'s team results declare one ` +
+      `value_kind and carry the other, so neither ranking is sound — awarding nothing. Evidence: ${evidence("nothing")}`;
     if (process.env.NODE_ENV === "production") console.error(message);
     else throw new Error(message);
     return { ...armed, distribution: null, standings: [] };
@@ -242,10 +337,16 @@ export async function computeCompetitionLeaderboard(
           // Splitting the rows by type below is what keeps a bracket's entrant
           // placements out of another game's team standings and vice versa —
           // reading them as one list would rank entrant ids against team ids.
-          .select("game_id, entity_id, entity_type, position, raw_score")
+          // `value_kind` is what the row DECLARES it carries and
+          // `credited_team_id` is who it pays — both stamped at finalize
+          // (migration 191). They replace two derivations that used to happen
+          // here on every poll: guessing the convention from column nullness,
+          // and resolving a bracket entrant's team through
+          // `bracket_entrants.team_id` as it stands NOW.
+          .select("game_id, entity_id, entity_type, position, raw_score, value_kind, credited_team_id")
           .in("game_id", gameIds)
           .in("entity_type", ["team", "entrant"])
-      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null }[] }),
+      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[] }),
     gameIds.length
       ? supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[] }),
@@ -283,18 +384,44 @@ export async function computeCompetitionLeaderboard(
   ]);
   const results = resultsRes.data;
   /**
-   * entrant id → cup team. Built across every bracket in the competition at
-   * once; entrant ids are unique per game (they carry the game id), so one flat
-   * map cannot collide across games.
+   * Did the RESULTS read fail, as opposed to returning nothing?
    *
-   * A missing entry means the entrant has no team — a standalone-style entrant
-   * in a cup game. `teamPointsFromEntrants` skips those rather than dropping
-   * them from the record, which is what lets a bracket with an unassigned
-   * competitor still score everyone else correctly.
+   * Checked here because migration 191 moved what the bracket's roll-up depends
+   * on. It used to take its entrant→team map from `bracket_entrants`, and
+   * `entrantReadError` below was the "unknown, not zero" guard on exactly that.
+   * The credit now rides on the result row, so that guard would have gone INERT
+   * while still reading like protection — a thing this codebase has found nine
+   * times and has a rule about. The guard moves to the read it now guards.
+   *
+   * Deliberately NOT extended to the other arms in this PR. Every format's
+   * standings have always come from this same unchecked read, so a failure has
+   * always made every finished game render as unposted, silently — a real
+   * finding, wider than this change, and filed as #1411 rather than folded in.
    */
-  const teamByEntrant = new Map<string, string | null>(
-    ((entrantRowsRes.data ?? []) as { id: string; game_id: string; team_id: string | null }[]).map((e) => [e.id, e.team_id ?? null])
-  );
+  const resultsReadError = (resultsRes as { error?: { message: string } | null }).error ?? null;
+  if (resultsReadError) {
+    console.error("[competitionLeaderboard] results read failed — every game will show as unposted", {
+      competitionId,
+      error: resultsReadError.message,
+    });
+  }
+  /**
+   * ── `teamByEntrant` USED TO BE BUILT HERE, AND IS GONE ───────────────────
+   *
+   * It mapped entrant id → `bracket_entrants.team_id` AS OF THIS READ, and the
+   * bracket arm rolled a finished game's points onto teams through it. That
+   * made the bracket the one format whose finished result resolved its credited
+   * unit through current state (ruling 15). Migration 191 stamps
+   * `game_results.credited_team_id` at finalize, and the arm reads it off the
+   * row instead.
+   *
+   * The QUERY stays: `entrant_count` below is what drives the board's
+   * New/Configuring split, and a seeded entrant is a configuration act whether
+   * or not anything has been played. Only the team column stopped being read
+   * here — `select("id, game_id, team_id")` is deliberately left whole so the
+   * shape still matches what `bracketPool` returns and the next reader does not
+   * have to widen it back.
+   */
   /** Seeded entrants per bracket game — a configuration act, so it feeds `isNew`. */
   const entrantCountByGame = new Map<string, number>();
   for (const e of (entrantRowsRes.data ?? []) as { game_id: string }[]) {
@@ -370,7 +497,10 @@ export async function computeCompetitionLeaderboard(
   // positions landing in `standingsByGame` would be ranked as if entrant ids were
   // team ids, awarding points to entities no team column will ever match.
   const standingsByGame = new Map<string, { entityId: string; value: number }[]>();
-  const entrantStandingsByGame = new Map<string, { entityId: string; value: number }[]>();
+  const entrantStandingsByGame = new Map<
+    string,
+    { entityId: string; value: number; creditedTeamId: string | null }[]
+  >();
   // ── PROVENANCE IS CARRIED, NOT INFERRED (#1381, after #1245) ────────────────
   // A team row carries its value in `position` (a RANK, low wins) or in
   // `raw_score` (POINTS already decided, high wins). This used to fold the two
@@ -380,14 +510,23 @@ export async function computeCompetitionLeaderboard(
   // down, in `isPlacement`. Patching arms one at a time is how the second one
   // shipped, so the convention now travels WITH the standings and
   // `reconcileConvention` ranks by it, whatever arm a game lands in.
-  const teamRowsByGame = new Map<string, { entityId: string; position: number | null; rawScore: number | null }[]>();
+  const teamRowsByGame = new Map<
+    string,
+    { entityId: string; position: number | null; rawScore: number | null; valueKind: string | null }[]
+  >();
   for (const r of results ?? []) {
     const gid = r.game_id as string;
     if ((r.entity_type as string) === "entrant") {
       // Entrant rows are a bracket's placements and are ranked by the bracket arm
-      // against its own field; they never meet the team conventions below.
+      // against its own field; they never meet the team conventions below. The
+      // credit rides along because it is a property of THIS ROW, not of the
+      // entrant as it stands today.
       const arr = entrantStandingsByGame.get(gid) ?? [];
-      arr.push({ entityId: r.entity_id as string, value: (r.position ?? r.raw_score ?? 0) as number });
+      arr.push({
+        entityId: r.entity_id as string,
+        value: (r.position ?? r.raw_score ?? 0) as number,
+        creditedTeamId: (r.credited_team_id as string | null) ?? null,
+      });
       entrantStandingsByGame.set(gid, arr);
       continue;
     }
@@ -396,12 +535,16 @@ export async function computeCompetitionLeaderboard(
       entityId: r.entity_id as string,
       position: (r.position as number | null) ?? null,
       rawScore: (r.raw_score as number | null) ?? null,
+      valueKind: (r.value_kind as string | null) ?? null,
     });
     teamRowsByGame.set(gid, arr);
   }
   const conventionByGame = new Map<string, RowConvention>();
   for (const [gid, rows] of teamRowsByGame) {
-    const convention = rowConvention(rows);
+    // Declared beats contained, and a disagreement between them ranks nothing.
+    // Both readings are kept: the declaration is the answer, the columns are
+    // the check on it.
+    const convention = resolveConvention(gid, declaredConvention(rows), rowConvention(rows));
     conventionByGame.set(gid, convention);
     standingsByGame.set(
       gid,
@@ -451,9 +594,11 @@ export async function computeCompetitionLeaderboard(
      * bracket-specific guess about what the organizer meant.
      */
     if (isBracketGame(g.game_type_id as string | null, g.competition_format as string | null)) {
-      // A failed entrant read is "unknown", not "nobody scored" — see the note on
-      // `entrantReadError`. Empty standings here give the pre-decision shape.
-      const entrantStandings = entrantReadError ? [] : entrantStandingsByGame.get(g.id as string) ?? [];
+      // A failed RESULTS read is "unknown", not "nobody scored". Empty standings
+      // here give the pre-decision shape — the game keeps its pool and awards
+      // nothing until the next poll recovers. (This gated on `entrantReadError`
+      // until 191; see the note beside `resultsReadError` for why it moved.)
+      const entrantStandings = resultsReadError ? [] : entrantStandingsByGame.get(g.id as string) ?? [];
       // `effectiveDistribution`, NOT `isPlacement(...) ? values : []`. The empty
       // array awarded 0 to every entrant, and this branch returns before the
       // winner-take-all flatten below — so a bracket with no authored split paid
@@ -463,7 +608,29 @@ export async function computeCompetitionLeaderboard(
         entrantStandings,
         "low_wins"
       );
-      const teamPoints = teamPointsFromEntrants(pointsByEntrant, teamByEntrant);
+      /**
+       * ── THE CREDIT COMES OFF THE ROW, NOT OFF THE ENTRANT (ruling 15) ─────
+       *
+       * This used to be `teamByEntrant`, built from `bracket_entrants.team_id`
+       * as it stands at READ time — the one place a finished result's credited
+       * unit was still being resolved through current state. Migration 191
+       * records it on the result row at finalize, and the 191 backfill derived
+       * the existing rows from that same column, so this is provably the same
+       * answer for every row in production today and a different one only after
+       * the entrant's team moves.
+       *
+       * A NULL is still an entrant on no cup team, which
+       * `teamPointsFromEntrants` skips — unchanged, and the reason a bracket
+       * with one unassigned competitor still scores everyone else.
+       *
+       * The old `teamByEntrant` map is gone entirely — see the note where it
+       * used to be built. The `bracket_entrants` query itself stays, because
+       * the entrant COUNT still drives the board's New/Configuring split.
+       */
+      const creditByEntrant = new Map<string, string | null>(
+        entrantStandings.map((e) => [e.entityId, e.creditedTeamId])
+      );
+      const teamPoints = teamPointsFromEntrants(pointsByEntrant, creditByEntrant);
       const sorted = [...teamPoints.entries()]
         .map(([entityId, value]) => ({ entityId, value }))
         .sort((a, b) => b.value - a.value);

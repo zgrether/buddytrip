@@ -499,7 +499,7 @@ describe("save_pickem_config / set_pickem_phase", () => {
     await ctx.admin.from("game_results").insert({
       id: `gr-${gameId}`,
       game_id: gameId,
-      entity_type: "user",
+      entity_type: "user", value_kind: "rank",
       entity_id: ctx.getUser("owner").id,
       raw_score: 1,
       position: 1,

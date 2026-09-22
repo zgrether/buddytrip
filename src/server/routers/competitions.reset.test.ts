@@ -50,8 +50,8 @@ async function makeStrokeGame(): Promise<string> {
     { id: gid("se"), game_id: id, participant_id: memberId, participant_type: "user", unit_label: "1", value: 5 },
   ]);
   await ctx.admin.from("game_results").insert([
-    { id: gid("gr"), game_id: id, entity_id: ownerId, entity_type: "user", position: 1, raw_score: 4 },
-    { id: gid("gr"), game_id: id, entity_id: memberId, entity_type: "user", position: 2, raw_score: 5 },
+    { id: gid("gr"), game_id: id, entity_id: ownerId, entity_type: "user", value_kind: "rank", position: 1, raw_score: 4 },
+    { id: gid("gr"), game_id: id, entity_id: memberId, entity_type: "user", value_kind: "rank", position: 2, raw_score: 5 },
   ]);
   return id;
 }
@@ -78,7 +78,7 @@ async function makeMatchGame(): Promise<string> {
   });
   if (gmErr) throw new Error(`game_matches insert failed: ${gmErr.message}`);
   await ctx.admin.from("game_results").insert({
-    id: gid("gr"), game_id: id, entity_id: ownerId, entity_type: "user", position: 1, raw_score: 1,
+    id: gid("gr"), game_id: id, entity_id: ownerId, entity_type: "user", value_kind: "rank", position: 1, raw_score: 1,
   });
   return id;
 }
@@ -110,8 +110,8 @@ async function makeManualGame(): Promise<string> {
     competition_format: "head_to_head", rules_for_today: "best of 3",
   });
   await ctx.admin.from("game_results").insert([
-    { id: gid("gr"), game_id: id, entity_id: teamA, entity_type: "team", position: 1, raw_score: 1 },
-    { id: gid("gr"), game_id: id, entity_id: teamB, entity_type: "team", position: 2, raw_score: 2 },
+    { id: gid("gr"), game_id: id, entity_id: teamA, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
+    { id: gid("gr"), game_id: id, entity_id: teamB, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
   ]);
   return id;
 }

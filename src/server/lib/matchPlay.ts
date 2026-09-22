@@ -68,6 +68,9 @@ interface MatchSideResultRow {
   entity_type: "user" | "play_group";
   raw_score: null;
   position: number;
+  /** Always `"rank"` — the narrowing is the documentation, as with `raw_score`
+   *  and `position` above. A match-play side row cannot carry points. */
+  value_kind: "rank";
   competition_points_earned: null;
 }
 
@@ -331,6 +334,10 @@ function mkResult(
     entity_type: sideType === "play_group" ? "play_group" : "user",
     raw_score: null,
     position,
+    // RANK: a side's finishing position within the game. These are side-level
+    // rows and carry no cup credit — the team credit is `matchAwards`' separate
+    // `entity_type: "team"` write.
+    value_kind: "rank",
     competition_points_earned: null,
   };
 }

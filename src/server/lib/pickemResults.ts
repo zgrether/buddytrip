@@ -258,6 +258,11 @@ export async function computePickemResults(
           entity_type: "team" as const,
           position: r.position,
           raw_score: r.position,
+          // RANK — a points cup's rows carry POSITIONS, and the payout is
+          // derived against the schedule at board time. The mirror into
+          // `raw_score` is what makes this declaration load-bearing: a reader
+          // testing `raw_score != null` would call these points.
+          value_kind: "rank" as const,
         }))
       : outcome.write.rows.map((r) => ({
           id: crypto.randomUUID(),
@@ -265,6 +270,8 @@ export async function computePickemResults(
           entity_type: "team" as const,
           position: null,
           raw_score: r.points,
+          // POINTS — the figure IS the result of the contest.
+          value_kind: "points" as const,
         }));
 
   await writeGameResults(supabase, {

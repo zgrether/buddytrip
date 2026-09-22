@@ -180,7 +180,7 @@ describe("#951 — removal refuses rather than orphaning participation", () => {
     const resultGame = await makeGameWith(target, { withScore: false, name: "Has A Result" });
     await seed("game_results", {
       id: crypto.randomUUID(), game_id: resultGame, entity_id: target,
-      entity_type: "user", position: 1,
+      entity_type: "user", value_kind: "rank", position: 1,
     });
 
     const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: target });
