@@ -396,7 +396,7 @@ export const gamesRouter = router({
         const refusal = comp
           ? formatRefusalForScoringModel(input.gameTypeId, comp.scoring_model as ScoringModel | null)
           : null;
-        if (refusal) throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
+        void refusal; // RED-PROOF MUTANT: guard removed — do not merge
       }
 
       let displayOrder: number | null = null;
