@@ -332,8 +332,9 @@ seam, never on a calendar.
 - **BEFORE BELIEVING A GREEN RESULT, PROVE THE INSTRUMENT CAN PRODUCE A RED ONE.**
   That is the compressed form of the two rules above and of five other incidents in this
   file, and it is worth having as one sentence because the family keeps arriving through
-  new doors. **Eight instances now, every one found by checking the checker and none by
-  reading the check.**
+  new doors. **Nine instances now. Eight were found by checking the checker and none by
+  reading the check; the ninth was prevented by asking, before writing it, what would
+  have to be true for the guard to fail — see the last entry below.**
 
   The shape is always the same: an assertion or a harness that is INCAPABLE of failing,
   reporting success indistinguishable from a real one. An em-dash regex satisfied by the
@@ -396,6 +397,40 @@ seam, never on a calendar.
   four inert tests in one month. A `not.` assertion is the easiest kind to make inert,
   because matching nothing looks exactly like passing. Break the source once and watch
   the guard go red.
+
+  **AND THE CHEAPER VERSION OF ALL OF THIS — ASK BEFORE YOU WRITE, NOT AFTER.**
+  Every instance above was caught by breaking something and watching. That works and
+  it is not the first line of defence, because one whole class can be ruled out at
+  the moment of writing:
+
+  > **Before writing a guard, ask what would have to be true for it to FAIL. If the
+  > answer is "the build is already broken", it is not a guard.**
+
+  **A runtime check that duplicates the type system is inert BY CONSTRUCTION.** It
+  cannot fail on a tree that compiles, so it can only ever be green, and it looks
+  exactly like protection — in the file, in the diff, and in CI.
+
+  Worked instance (PR 1 of the composable-competitions plan). Three properties were
+  added to `GameTypeDefinition`, and the plan called for "a completeness guard —
+  every format declares every property". Writing it the obvious way would have
+  produced a test asserting each format HAS the fields. But adding the fields had
+  already made `tsc` refuse a format that omits one — it printed ten errors naming
+  ten formats. **The presence check was decorative before it was written.**
+
+  The guard was rewritten to check what the type system PERMITS and the model does
+  not: an empty array (`resultKinds: []` type-checks and means "this format produces
+  nothing" — and `[]` is truthy, so a consumer branching on it sails past), a
+  duplicate entry (`["ranked","ranked"]` would satisfy a naive "declares both"
+  check), and a format absent from the catalog. Three mutants then killed one test
+  each.
+
+  **Sixth inert instrument this month, and the second caught before it shipped — but
+  the first caught before it was WRITTEN.** That is the distinction worth keeping:
+  the other eight were found by checking the checker, which costs a mutation run and
+  only works once the thing exists. This one cost a question. Ask it of every guard,
+  and of every assertion whose subject the compiler, a schema, or a `NOT NULL`
+  already owns: those are the places where a test can be true, about the right
+  thing, and still incapable of failing.
 
 - **A FIXTURE THAT DOES NOT SEND WHAT THE REAL CALLER SENDS MEASURES A PATH
   THAT DOES NOT EXIST — and it reports a confident, well-formed number while it
