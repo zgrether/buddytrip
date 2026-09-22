@@ -33,8 +33,9 @@ import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
 import { bracketPlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
 import { BRACKET_SIDES, type BracketDrawMatch } from "@/lib/bracket";
-import { resolveDraw, matchKey, orphanedByPick, applyPickCascadingWith, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { matchKey, orphanedByPick, applyPickCascadingWith, type WinnerBySeed } from "@/lib/bracketAdvance";
 import { resolveDoubleDraw } from "@/lib/bracketDoubleAdvance";
+import { isDoubleElimination, resolveAnyDraw } from "@/lib/bracketFormat";
 import { readBracketDraw } from "../lib/bracketDraw";
 import { deriveBracketPlacements } from "../lib/bracketResults";
 import { resolveResultStrategy } from "@/lib/resultStrategy";
@@ -695,8 +696,12 @@ export const gamesRouter = router({
       // its map from `main` alone, so the target is simply not there. Read off the draw
       // itself rather than the game row: the persisted structure is the authority for how
       // it must be resolved, and it cannot disagree with itself.
-      const isDouble = draw.some((m) => m.bracket === "lower" || m.bracket === "final");
-      const resolved = isDouble ? resolveDoubleDraw(draw, winners) : resolveDraw(draw, winners);
+      //
+      // That reasoning was right and was local to this procedure; it is now the only
+      // answer anywhere (`bracketFormat.ts`). The finalize path asked nothing at all,
+      // which is Phase 0 F1.
+      const isDouble = isDoubleElimination(draw);
+      const resolved = resolveAnyDraw(draw, winners);
       const target = resolved.find(
         (m) => m.bracket === input.bracket && m.round === input.round && m.slot === input.slot
       );

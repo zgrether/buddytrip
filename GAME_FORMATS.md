@@ -288,9 +288,18 @@ collapse stays saveable — never offered.
 > pick broadcast. Left as it stood, this paragraph described a decision that no longer held,
 > in a document whose whole job is to say what is live.
 >
-> **Still deferred:** best-of-N and live-results engines, and the bracket's own **double
-> elimination** (the format entry offers it disabled — a losers' bracket, a grand final, and a
-> competitor who can lose once and still win are a second surface, not a flag).
+> **Still deferred:** best-of-N and live-results engines.
+>
+> **Double elimination is NO LONGER deferred, and this paragraph said it was.** It read
+> *"the format entry offers it disabled — a losers' bracket, a grand final, and a competitor
+> who can lose once and still win are a second surface, not a flag."* Every clause of that is
+> now false: `BracketSettingsRows.tsx:200` offers **Double** as a live option,
+> `resolveDoubleDraw` (`bracketDoubleAdvance.ts:172`) and `doubleBracketPlacements`
+> (`bracketDoublePlacements.ts:67`) are the second surface it correctly said was needed, and
+> production has played a double bracket. The prediction was right — it WAS a second surface
+> and not a flag — and it was simply built; what was left behind was a doc saying it had not
+> been. Corrected by PR 0 of the composable-competitions plan, which found it while fixing a
+> double bracket that finalized as single.
 
 **The bracket is a SCHEDULER, not a scoring engine.** It produces placements; the existing
 placement distribution values them — the same path the manual arm writes, not a second one.

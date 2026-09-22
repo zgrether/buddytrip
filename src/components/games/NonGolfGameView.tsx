@@ -40,10 +40,11 @@ import { tallyMatchAwards, type SideRef as MatchSideRef } from "@/lib/matchAward
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
 import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
 import { BracketScoringSurface } from "@/components/games/bracket/BracketScoringSurface";
-import { resolveDraw, matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
 import type { BracketSide } from "@/lib/bracket";
 import { resolveDoubleDraw, lossesBySeed, isMustWin } from "@/lib/bracketDoubleAdvance";
-import { doubleBracketPlacements, doublePositionsAwarded, doubleSettledPlaces } from "@/lib/bracketDoublePlacements";
+import { isDoubleElimination, resolveAnyDraw, placementsForDraw } from "@/lib/bracketFormat";
+import { doublePositionsAwarded, doubleSettledPlaces } from "@/lib/bracketDoublePlacements";
 import { stakesFromPositions } from "@/lib/bracketStakes";
 import { DEFAULT_BRACKET_CONFIG, isDefaultBracketConfig, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
@@ -55,7 +56,7 @@ import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
 import { placementsFrom, pointsForPlacements } from "@/lib/placementGroups";
 import { reconcileOrderDraft } from "@/lib/teamDraft";
-import { bracketPlacements, teamPointsFromEntrants } from "@/lib/bracketPlacements";
+import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { gameLockState } from "@/lib/gameLifecycle";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
@@ -740,21 +741,29 @@ export function NonGolfGameView() {
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId && isBracket },
   );
   /**
-   * Single or double elimination, chosen HERE rather than inside either resolver.
+   * Single or double elimination. The strategy choice is still made at a
+   * composition root rather than inside any resolver — that rule stands, and
+   * `resolveDraw` / `resolveDoubleDraw` / the two placement rules each still know
+   * only their own format. What changed is WHICH root: it was this line, and it
+   * is now `bracketFormat.ts`, so the server shares it.
    *
-   * This is the composition root, and picking a strategy is what it is for. The rule
-   * the spec sets is that a MODULE must not have to ask which format it is in — so
-   * `resolveDraw`, `resolveDoubleDraw`, and the two placement rules each know only
-   * their own format, and this line is the one place that knows both exist.
+   * It also changed SOURCE, and that is the fix. This read
+   * `bracketConfig.elimination`; `games.bracketPick` read the draw. Two answers
+   * that can disagree — a config edited after the draw was built describes a tree
+   * nobody is playing — and the finalize path asked neither, which is Phase 0 F1.
+   * The persisted structure wins: config BUILDS a draw, it does not INTERPRET one.
    */
-  const isDouble = (configDraft.bracketConfig?.elimination ?? "single") === "double";
+  const bracketDraw = useMemo(() => {
+    const rows = (drawQ.data ?? []) as { bracket: BracketSide; round: number; slot: number; aSeed: number | null; bSeed: number | null; winnerSeed: number | null }[];
+    return rows.map((r) => ({ bracket: r.bracket, round: r.round, slot: r.slot, aSeed: r.aSeed, bSeed: r.bSeed }));
+  }, [drawQ.data]);
+  const isDouble = isDoubleElimination(bracketDraw);
   const resolvedDraw = useMemo(() => {
     const rows = (drawQ.data ?? []) as { bracket: BracketSide; round: number; slot: number; aSeed: number | null; bSeed: number | null; winnerSeed: number | null }[];
     const winners: WinnerBySeed = {};
     for (const r of rows) winners[matchKey(r)] = r.winnerSeed;
-    const draw = rows.map((r) => ({ bracket: r.bracket, round: r.round, slot: r.slot, aSeed: r.aSeed, bSeed: r.bSeed }));
-    return isDouble ? resolveDoubleDraw(draw, winners) : resolveDraw(draw, winners);
-  }, [drawQ.data, isDouble]);
+    return resolveAnyDraw(bracketDraw, winners);
+  }, [drawQ.data, bracketDraw]);
 
   /** Lives per seed, for the board's per-side must-win marker. Bracket-local — this
    *  must not travel to the competition layer (glossary). */
@@ -815,10 +824,24 @@ export function NonGolfGameView() {
    * visible while active or correcting, which is exactly when someone is
    * looking at it.
    *
-   * This runs the SAME three functions the server runs (`bracketPlacements` →
+   * This runs the SAME three functions the server runs (`placementsForDraw` →
    * `placementPoints` → `teamPointsFromEntrants`), so the preview and the record
    * cannot diverge — CLAUDE.md #8, and the reason the roll-up is a shared pure
    * helper rather than server-only code.
+   *
+   * ── THAT SENTENCE USED TO BE FALSE, AND ON BOTH COUNTS (Phase 0 F1) ───────
+   *
+   * It named `bracketPlacements`, and for a DOUBLE bracket this preview did not
+   * call it — line 838 branched to `doubleBracketPlacements`. Meanwhile the
+   * server called `bracketPlacements` unconditionally, and reached it through
+   * `resolveDraw`, which drops a double draw's `lower`/`final` rows entirely.
+   *
+   * So the two paths differed in the RESOLVER and in the PLACEMENT RULE, and the
+   * comment asserting they could not diverge was the only thing standing where a
+   * check should have been. Fixing the resolver alone would have produced a
+   * quieter wrong build — finalize stops early, and still posts single-elim
+   * placements — which is why `bracketFormat.ts` pairs the two dispatches and
+   * makes the mismatched pairing unrepresentable.
    *
    * Null until the draw is finished, which is also when `games.finish` would
    * refuse it: a half-played bracket has no placements to value, and showing a
@@ -826,7 +849,7 @@ export function NonGolfGameView() {
    */
   const bracketProjection = useMemo<Record<string, number> | null>(() => {
     if (!isBracket) return null;
-    const placements = isDouble ? doubleBracketPlacements(resolvedDraw) : bracketPlacements(resolvedDraw);
+    const placements = placementsForDraw(bracketDraw, resolvedDraw);
     if (placements.length === 0) return null;
     // Shared with the SERVER roll-up (`effectiveDistribution`) — a null split
     // pays the total to first place, so the projection and the board agree.
@@ -843,7 +866,7 @@ export function NonGolfGameView() {
   // `points_total` is in the trigger set because the projection now derives from
   // it via `effectiveDistribution` (CLAUDE.md #9 — enumerate the FULL set, not
   // the obvious one). Caught by the React Compiler lint, not by me.
-  }, [isBracket, isDouble, resolvedDraw, game?.points_distribution, game?.points_total, teamBySeed]);
+  }, [isBracket, bracketDraw, resolvedDraw, game?.points_distribution, game?.points_total, teamBySeed]);
 
   const filledEntrants = useMemo(
     () => configDraft.bracketEntrants.filter((e) => e.length > 0),
