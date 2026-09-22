@@ -209,6 +209,22 @@ scores + rosters. The match count = **`min(grouped-A, grouped-B)`** — a *conse
 in the groups, never an authored input (you fill groups; the pairable count falls out).
 `total_points` is the authored invariant; the per-slot value = **even share** over that count.
 
+**Two teams, in a Match Play cup.** Rack is a **two-team** format: every slot is one team's
+k-th player against the other team's k-th, so there is no slot for a third team, and "which two
+teams is this rack between" has no answer to infer in a three-team cup. It belongs to a
+**Match Play** competition (`compatibleScoringModels: ["match_play"]` in `gameTypes.ts`,
+refused server-side when a game is created in a Points cup), and a Match Play competition is
+created with exactly two teams. A rack game outside a two-team competition is a
+configuration error, not a case to score.
+
+> **Team count — the code does not enforce it yet.** The slot model is two-team by
+> construction (`computeRackNStackResults`, `server/lib/rackNStack.ts`, gives slots A/B to the
+> first two team ids), but a third team is **not refused**: its players are skipped, and a
+> result row is still written for it with no points (`raw_score` is `NaN` under per-match).
+> What holds the rule today is upstream — the two-team lock when a Match Play competition is
+> created, and the add-team control being hidden on one. Neither is a server-side refusal on
+> adding a team later. No production rack game sits outside a two-team competition.
+
 **Scoring — short-handed (INTENT: even distribution over the live pairable count).** When
 teams are uneven, sort each team, pair slot-k vs slot-k; the deeper team's **worst-scoring
 surplus slot(s)** go **unpaired** — a **positional, identity-neutral tail-drop** (never a
