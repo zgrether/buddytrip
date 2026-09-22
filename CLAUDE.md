@@ -332,7 +332,7 @@ seam, never on a calendar.
 - **BEFORE BELIEVING A GREEN RESULT, PROVE THE INSTRUMENT CAN PRODUCE A RED ONE.**
   That is the compressed form of the two rules above and of five other incidents in this
   file, and it is worth having as one sentence because the family keeps arriving through
-  new doors. **Seven instances now, every one found by checking the checker and none by
+  new doors. **Eight instances now, every one found by checking the checker and none by
   reading the check.**
 
   The shape is always the same: an assertion or a harness that is INCAPABLE of failing,
@@ -355,6 +355,32 @@ seam, never on a calendar.
     That recurrence is the argument for the one-sentence version: the specific instance
     did not generalise, and a rule you have to re-derive per instrument is a rule that
     only fires for the instrument it was written about.
+
+  **EIGHTH INSTANCE, AND THE FIRST CAUGHT BEFORE IT MISLED ANYONE.** Investigating the
+  roster-add race, a harness swept 18 tap-timing combinations and reported **"dropped=[]"
+  for every one** — a clean bill of health for a surface with a live bug on it. It was
+  measuring ITSELF: the harness subscribed its observers and began tapping in the same
+  tick, and `observer.subscribe()` does not invoke its listener on subscription, so the
+  FIRST notification it ever saw arrived at invalidate time carrying stale data. The
+  mount-time seed that the real component does during its first render never happened.
+
+  What separates this from the seven above is only that the green was DISBELIEVED. It was
+  disbelieved for one reason: a known-bad control had been written alongside it — the same
+  harness with the 2026-07-11 trailing-edge guard removed — and the control went red at
+  1.4-3.6s while the real build read clean. **Two arms, and only one of them credible, is
+  what made the second one suspect.**
+
+  Before it was fixed, the same harness also produced a confident WRONG ROOT CAUSE: a
+  `cancelQueries` revert rolling the cache back past optimistic adds, complete with a
+  plausible trace. Instrumenting the revert directly showed it never fired once. The
+  artifact was upstream of the trace, so the trace was honest about a sequence the app
+  never runs — the fixture-fidelity rule's failure mode, reached through a harness rather
+  than a payload.
+
+  **The generalisable part: write the control FIRST, and write it as a permanent arm of
+  the file rather than a thing you ran once.** `rosterCacheSync.test.ts` carries its red
+  proof as a standing characterization test, so the day the positive test stops being able
+  to fail, something says so. A green run is evidence only in the presence of a red one.
 
   **How to apply, and it is cheap:** make the instrument fail ON PURPOSE once, before
   trusting it. Break the code and watch the test go red; feed the harness a run you KNOW

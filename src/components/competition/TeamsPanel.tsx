@@ -40,6 +40,7 @@ import { RowNumber } from "@/components/games/RowNumber";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
+import { cancelRosterWriters } from "@/lib/rosterCacheSync";
 import {
   identityDiffers,
   orderDiffers,
@@ -213,7 +214,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
   const assign = trpc.teamAssignments.assign.useMutation({
     onMutate: async (vars) => {
       beginMutation(true); // team-size change → leaderboard points move
-      await utils.teamAssignments.list.cancel(queryKey);
+      await cancelRosterWriters(utils, queryKey);
       const previous = utils.teamAssignments.list.getData(queryKey);
       utils.teamAssignments.list.setData(queryKey, (old) => {
         const list = (old as Assignment[] | undefined) ?? [];
@@ -252,7 +253,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
   const remove = trpc.teamAssignments.remove.useMutation({
     onMutate: async (vars) => {
       beginMutation(true); // team-size change → leaderboard points move
-      await utils.teamAssignments.list.cancel(queryKey);
+      await cancelRosterWriters(utils, queryKey);
       const previous = utils.teamAssignments.list.getData(queryKey);
       utils.teamAssignments.list.setData(queryKey, (old) => {
         const list = (old as Assignment[] | undefined) ?? [];
@@ -275,7 +276,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
   const reorder = trpc.teamAssignments.reorder.useMutation({
     onMutate: async (vars) => {
       beginMutation(false); // sort_order only — team size/points unaffected
-      await utils.teamAssignments.list.cancel(queryKey);
+      await cancelRosterWriters(utils, queryKey);
       const previous = utils.teamAssignments.list.getData(queryKey);
       const orderIndex = new Map(vars.orderedUserIds.map((id, i) => [id, i]));
       utils.teamAssignments.list.setData(queryKey, (old) => {
@@ -303,7 +304,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
   const setCaptain = trpc.teamAssignments.setCaptain.useMutation({
     onMutate: async (vars) => {
       beginMutation(false); // captain flag only — team size/points unaffected
-      await utils.teamAssignments.list.cancel(queryKey);
+      await cancelRosterWriters(utils, queryKey);
       const previous = utils.teamAssignments.list.getData(queryKey);
       utils.teamAssignments.list.setData(queryKey, (old) => {
         const list = (old as Assignment[] | undefined) ?? [];
