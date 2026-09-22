@@ -509,6 +509,35 @@ export function gameTypesForScoringModel(
   return catalog.filter((t) => isGameTypeForScoringModel(t, scoringModel));
 }
 
+const SCORING_MODEL_LABEL: Record<ScoringModel, string> = {
+  match_play: "Match Play",
+  points: "Points",
+};
+
+/**
+ * Why a competition of this scoring-model cannot hold this format, or null when
+ * it can (#1304). The SAME predicate the add-game menu filters with — so the
+ * server refuses exactly what the menu never offers, and the two cannot drift.
+ *
+ * The sentence names what the cup DOES take, derived from the catalog, because
+ * the only reader who can reach it is one whose menu disagreed with the server —
+ * an API caller, or a stale client — and "not allowed" alone leaves them nowhere.
+ *
+ * An unregistered id returns null: it is not a compatibility question, and the
+ * insert's foreign key reports it in its own terms.
+ */
+export function formatRefusalForScoringModel(
+  gameTypeId: string,
+  scoringModel: ScoringModel | null | undefined,
+  catalog: GameType[] = GAME_TYPES,
+): string | null {
+  const type = catalog.find((t) => t.id === gameTypeId);
+  if (!type || isGameTypeForScoringModel(type, scoringModel)) return null;
+  const model = scoringModel as ScoringModel;
+  const takes = gameTypesForScoringModel(model, catalog).map((t) => t.name).join(", ");
+  return `A ${SCORING_MODEL_LABEL[model]} cup can't hold ${type.name}. It takes: ${takes}.`;
+}
+
 // ── Lookups (the server readers' synchronous replacement for the DB query) ────
 
 /** The definition for a game type id, or undefined if the id is unregistered. */

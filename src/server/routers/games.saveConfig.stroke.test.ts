@@ -100,7 +100,7 @@ beforeAll(async () => {
   await ctx.addTripMember(tripId, "member", "Member");
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
-  competitionId = await ctx.createCompetition(tripId, "saveConfig stroke Cup");
+  competitionId = await ctx.createCompetition(tripId, "saveConfig stroke Cup", { scoringModel: "points" });
 });
 afterAll(async () => {
   if (gameIds.length > 0) {

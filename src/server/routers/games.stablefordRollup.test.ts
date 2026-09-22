@@ -90,7 +90,7 @@ async function insertCard(gameId: string, participantId: string, card: number[])
 
 /** A two-team cup with one stroke game, both players rostered and grouped. */
 async function fixture(name: string, scoringConfig: Record<string, unknown>) {
-  const competitionId = await ctx.createCompetition(tripId, `${name} Cup`);
+  const competitionId = await ctx.createCompetition(tripId, `${name} Cup`, { scoringModel: "points" });
   compIds.push(competitionId);
 
   const teamA = await ctx.createTeam(competitionId, "Steady", { color: "#ff0000" });

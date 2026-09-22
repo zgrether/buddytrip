@@ -136,7 +136,7 @@ beforeAll(async () => {
   await ctx.addTripMember(tripId, "member", "Member");
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
-  competitionId = await ctx.createCompetition(tripId, "Skins Cup");
+  competitionId = await ctx.createCompetition(tripId, "Skins Cup", { scoringModel: "points" });
 
   const par = [4, 5, 3, 4, 4, 3, 5, 4, 4, 4, 3, 5, 4, 4, 3, 4, 5, 4];
   const idx = [7, 3, 15, 1, 11, 5, 17, 9, 13, 8, 4, 16, 2, 12, 6, 18, 10, 14];
