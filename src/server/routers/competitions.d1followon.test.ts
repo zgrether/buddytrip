@@ -246,6 +246,9 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
       { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", value_kind: "points", raw_score: 5, position: null, competition_points_earned: null },
       { id: crypto.randomUUID(), game_id: g.id, entity_id: tb, entity_type: "team", value_kind: "points", raw_score: 3, position: null, competition_points_earned: null },
     ]);
+    // FINISHED: these rows are a finalize's output, and since #1416 the board
+    // banks a game only once it is. (The fixture used to leave it live.)
+    await ctx.admin.from("games").update({ status: "complete" }).eq("id", g.id);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
