@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { projectGame, type GameProjectionData, type LiveProjectionInput } from "./liveProjection";
+import type { PickemClock } from "@/lib/pickemLifecycle";
 
 /**
  * Live projection mapping (leaderboard grid Phase 2, Path A). The pure rollups
@@ -324,5 +325,134 @@ describe("projectGame — cannot project", () => {
       }
     );
     expect(out).toEqual({ kind: "cannot", reason: "no_teams" });
+  });
+});
+
+/**
+ * PICK'EM — what finalize would pay if it ran now (3c).
+ *
+ * Hand-worked from the scoring rules, not read back from a run. Slate: s1 home
+ * (×1), s2 away (×2), s3 unresolved → VOID, exactly as finalize writes it.
+ *   alice (blue): s1 home c3 → 3 · s2 home c1 → 0 (wrong) · s3 → void  = 3
+ *   bob   (red):  s1 away c1 → 0 (wrong) · s2 away c3 → 3×2 = 6 · s3 → void = 6
+ *
+ * Each resolution is given numbers the OTHERS cannot produce, so a build that
+ * resolves the wrong way (reads `pointsMode` from the wrong place, ignores
+ * `roll_up`, drops overrides) fails on a value rather than passing on a
+ * coincidence.
+ */
+describe("projectGame — pick'em", () => {
+  const REVEALED: PickemClock = { picksOpenedAt: "2026-09-01T00:00:00Z", picksDeadline: null, picksLockedAt: "2026-09-02T00:00:00Z" };
+  const slate = [
+    { id: "s1", multiplier: 1, result: "home" },
+    { id: "s2", multiplier: 2, result: "away" },
+    { id: "s3", multiplier: 1, result: null },
+  ];
+  const pick = (user_id: string, slate_game_id: string, p: "home" | "away", confidence: number) => ({
+    user_id, slate_game_id, pick: p, confidence,
+  });
+  const twoSheets = [
+    pick("alice", "s1", "home", 3), pick("alice", "s2", "home", 1), pick("alice", "s3", "away", 2),
+    pick("bob", "s1", "away", 1), pick("bob", "s2", "away", 3), pick("bob", "s3", "home", 2),
+  ];
+
+  const pickem = (o: {
+    pointsTotal: number | null;
+    pointsMode?: boolean;
+    rollUp?: "team_totals" | "individual_matches";
+    distribution?: { type: "placement"; values: number[] } | null;
+    clock?: PickemClock | null;
+    picks?: ReturnType<typeof pick>[];
+    matches?: GameProjectionData["matches"];
+    teams?: Record<string, string>;
+  }) =>
+    projectGame(
+      { id: "pk", gameTypeId: "gtt_pickem", pointsTotal: o.pointsTotal, isPerMatch: false, pointsDistribution: o.distribution ?? null },
+      {
+        schema: null,
+        modifiers: null,
+        matches: o.matches ?? [],
+        parts: [],
+        playGroups: [],
+        gross: new Map(),
+        outcomes: [],
+        userTeam: userTeam(o.teams ?? { alice: "blue", bob: "red" }),
+        pointsMode: o.pointsMode ?? false,
+        pickem:
+          o.clock === null
+            ? null
+            : {
+                clock: o.clock ?? REVEALED,
+                cfg: { roll_up: o.rollUp ?? "team_totals", use_confidence: true },
+                slate,
+                picks: o.picks ?? twoSheets,
+              },
+      }
+    );
+
+  it("match-play cup, team totals: the higher total takes the whole 8", () => {
+    expect(pickem({ pointsTotal: 8 })).toEqual({ kind: "projected", byTeam: { blue: 0, red: 8 } });
+  });
+
+  it("points cup: paid by the SCHEDULE — [6, 2] gives red 6 and blue 2, which team totals never could", () => {
+    expect(
+      pickem({ pointsTotal: 8, pointsMode: true, distribution: { type: "placement", values: [6, 2] } })
+    ).toEqual({ kind: "projected", byTeam: { blue: 2, red: 6 } });
+  });
+
+  describe("individual matches — each match paid its own value", () => {
+    // Four players. m1 alice v bob (bob wins, 6 v 3); m2 carol v dave, overridden
+    // to 6 (carol wins, 3 v 0). Even share for m1 = (8 − 6) ÷ 1 = 2.
+    //   carol (blue): s1 home c1 → 1 · s2 away c1 → 1×2 = 2  = 3
+    //   dave  (red):  s1 away c3 → 0 · s2 home c2 → 0        = 0
+    const four = [
+      ...twoSheets,
+      pick("carol", "s1", "home", 1), pick("carol", "s2", "away", 1),
+      pick("dave", "s1", "away", 3), pick("dave", "s2", "home", 2),
+    ];
+    const matches = [
+      { id: "m1", side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" }, point_value: null },
+      { id: "m2", side_a: { type: "user", id: "carol" }, side_b: { type: "user", id: "dave" }, point_value: 6 },
+    ] as GameProjectionData["matches"];
+    const teams = { alice: "blue", bob: "red", carol: "blue", dave: "red" };
+
+    it("m1 pays red its even share of 2, m2 pays blue its override of 6", () => {
+      expect(pickem({ pointsTotal: 8, rollUp: "individual_matches", picks: four, matches, teams })).toEqual({
+        kind: "projected",
+        byTeam: { blue: 6, red: 2 },
+      });
+    });
+
+    it("…and the SAME sheets under team totals tie 6–6 and split 4–4 — roll_up is what decides", () => {
+      expect(pickem({ pointsTotal: 8, rollUp: "team_totals", picks: four, matches, teams })).toEqual({
+        kind: "projected",
+        byTeam: { blue: 4, red: 4 },
+      });
+    });
+  });
+
+  it("BEFORE REVEAL → picks_hidden, even though the sheets it was handed would project", () => {
+    // Opened, deadline in the future, not locked: `picksRevealed` is false. The
+    // board runs under the viewer's RLS, so these sheets are exactly what a
+    // captain could see and a member could not.
+    const open = { picksOpenedAt: "2026-09-01T00:00:00Z", picksDeadline: "2999-01-01T00:00:00Z", picksLockedAt: null };
+    expect(pickem({ pointsTotal: 8, clock: open })).toEqual({ kind: "cannot", reason: "picks_hidden" });
+  });
+
+  it("…and after the DEADLINE, with no hand-lock, it projects — past the deadline is revealed", () => {
+    const pastDeadline = { picksOpenedAt: "2026-09-01T00:00:00Z", picksDeadline: "2026-09-02T00:00:00Z", picksLockedAt: null };
+    expect(pickem({ pointsTotal: 8, clock: pastDeadline })?.kind).toBe("projected");
+  });
+
+  it("never opened (no pickem_games row) → picks_hidden", () => {
+    expect(pickem({ pointsTotal: 8, clock: null })).toEqual({ kind: "cannot", reason: "picks_hidden" });
+  });
+
+  it("team totals worth 0 → no_points (production's 'pick pick' is this game)", () => {
+    expect(pickem({ pointsTotal: 0 })).toEqual({ kind: "cannot", reason: "no_points" });
+  });
+
+  it("a points cup worth nothing → no_points (the #1410 schedule, `[]`)", () => {
+    expect(pickem({ pointsTotal: 0, pointsMode: true })).toEqual({ kind: "cannot", reason: "no_points" });
   });
 });

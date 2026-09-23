@@ -6,9 +6,18 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { rollupMatchPlay, type ProjMatch, type CannotProjectReason } from "@/lib/gameProjection";
 import { playerStats, rackProjectedTeamPoints, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
-import { liveMatchPointsPerMatch, liveRackPointsPerSlot, projectableMatchShare } from "@/lib/pointsDistribution";
+import {
+  liveMatchPointsPerMatch,
+  liveRackPointsPerSlot,
+  projectableMatchShare,
+  payingSchedule,
+  type PointsDistribution,
+} from "@/lib/pointsDistribution";
 import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
-import { isMatchesGame } from "@/lib/resultStrategy";
+import { isMatchesGame, isPickemGame } from "@/lib/resultStrategy";
+import { picksRevealed, type PickemClock } from "@/lib/pickemLifecycle";
+import { pickemFinalize, pickemResolution } from "@/lib/pickemFinalize";
+import { buildPickemFinalizeInput, type PickemFinalizeRows } from "@/server/lib/pickemResults";
 import { tallyMatchAwards } from "@/lib/matchAwards";
 
 /**
@@ -32,10 +41,16 @@ import { tallyMatchAwards } from "@/lib/matchAwards";
  *    mirrors the decided path's `teamPoints × value`). Both the board and the rack
  *    game page call that shared helper, so they can't diverge.
  *
- * Match singles/doubles, rack, and non-golf **Matches** (`competition_format =
- * 'matches'`) live games project; stroke has no on-page rollup and every other
- * non-golf shape (placement, Simple win/tie) posts straight to complete with
- * nothing to preview in between.
+ * Match singles/doubles, rack, non-golf **Matches** (`competition_format =
+ * 'matches'`) and **pick'em** (3c) live games project. Stroke, scramble and
+ * skins do NOT yet, and that is a decision rather than a gap: their arms would
+ * land in points cups, which show no projection on any surface, so they move to
+ * PR 9 with the points-race bars (#1120; #1416 must be settled first). Non-golf
+ * placement and Simple win/tie post straight to complete with nothing to
+ * preview in between.
+ *
+ * A format that projects can still be unable to, and says so: see
+ * `ProjectionOutcome` and `CannotProjectReason`.
  *
  * Matches' projection is simpler than golf's: there is no partial "leading"
  * state to credit (a match is declared or it isn't — see `matchAwards.ts`'s
@@ -79,6 +94,17 @@ export interface LiveProjectionInput {
   /** Refactor B3: an outcome-mode match projects from recorded hole outcomes,
    *  not gross scores (it has none). Unused by rack. */
   outcomeMode?: boolean;
+  /** The raw `games.points_distribution` — pick'em only, where a points cup
+   *  pays by the schedule `effectiveDistribution` derives from it (3c). */
+  pointsDistribution?: PointsDistribution | null;
+}
+
+/** A pick'em game's own rows, from the bulk reads (3c). */
+export interface PickemProjectionData {
+  clock: PickemClock;
+  cfg: PickemFinalizeRows["cfg"];
+  slate: PickemFinalizeRows["slate"];
+  picks: PickemFinalizeRows["picks"];
 }
 
 /** The per-game data the pure projection needs — built from the bulk reads by
@@ -101,6 +127,12 @@ export interface GameProjectionData {
   outcomes: { match_id: string; hole_number: number; result: HoleOutcomeRow["result"] }[];
   /** user_id → team_id (competition-level). */
   userTeam: Map<string, string>;
+  /** Pick'em only: its config, clock, slate and sheets. Absent = no
+   *  `pickem_games` row, which is a game whose picks never opened. */
+  pickem?: PickemProjectionData | null;
+  /** The COMPETITION is a points cup (`scoring_model = 'points'`). Pick'em
+   *  resolves by placement there and by head-to-head otherwise. */
+  pointsMode?: boolean;
 }
 
 /** gameId → (teamId → projected points). Only games with a projection appear. */
@@ -156,6 +188,7 @@ function noPointsToAward(
  *  non-golf placement); anything else says what it projects or why it can't. */
 export function projectGame(input: LiveProjectionInput, data: GameProjectionData): ProjectionOutcome | null {
   const t = input.gameTypeId;
+  if (isPickemGame(t, input.competitionFormat)) return projectPickem(input, data);
   // Matches decides FIRST — same reason `NonGolfScoreboard` checks it before
   // `winLoseTie`: `gameTypeId` alone (a generic non-golf card type) says
   // nothing about how this game resolves, only `competition_format` does.
@@ -168,12 +201,60 @@ export function projectGame(input: LiveProjectionInput, data: GameProjectionData
 export async function computeLiveProjections(
   supabase: SupabaseClient,
   competitionId: string,
-  games: LiveProjectionInput[]
+  games: LiveProjectionInput[],
+  opts: { pointsMode?: boolean } = {}
 ): Promise<LiveProjectionResult> {
   const out: LiveProjections = {};
   const cannotProject: Record<string, CannotProjectReason> = {};
   if (games.length === 0) return { projections: out, cannotProject };
   const gameIds = games.map((g) => g.id);
+  // Pick'em's own tables, read only when a pick'em game is live — the common
+  // board has none and should not pay three empty queries for it.
+  const pickemIds = games.filter((g) => isPickemGame(g.gameTypeId, g.competitionFormat)).map((g) => g.id);
+  const none = Promise.resolve({ data: [] as Record<string, unknown>[] });
+  const [pickemCfgRes, pickemSlateRes, pickemPicksRes] = await Promise.all(
+    pickemIds.length === 0
+      ? [none, none, none]
+      : [
+          supabase
+            .from("pickem_games")
+            .select("game_id, picks_opened_at, picks_deadline, picks_locked_at, roll_up, use_confidence")
+            .in("game_id", pickemIds),
+          supabase.from("pickem_slate_games").select("game_id, id, multiplier, result").in("game_id", pickemIds),
+          // EVERY sheet the policy returns — the same shape `computePickemResults`
+          // reads. Past reveal that is the field; before it, `projectPickem`
+          // refuses before reading a row of it.
+          supabase
+            .from("pickem_picks")
+            .select("game_id, user_id, slate_game_id, pick, confidence")
+            .in("game_id", pickemIds),
+        ]
+  );
+  const byGame = <T extends Record<string, unknown>>(rows: T[] | null | undefined) => {
+    const m = new Map<string, T[]>();
+    for (const r of rows ?? []) {
+      const gid = r.game_id as string;
+      (m.get(gid) ?? m.set(gid, []).get(gid)!).push(r);
+    }
+    return m;
+  };
+  const pickemCfgByGame = byGame(pickemCfgRes.data as Record<string, unknown>[] | null);
+  const pickemSlateByGame = byGame(pickemSlateRes.data as Record<string, unknown>[] | null);
+  const pickemPicksByGame = byGame(pickemPicksRes.data as Record<string, unknown>[] | null);
+  const pickemDataFor = (gameId: string): PickemProjectionData | null => {
+    const cfg = pickemCfgByGame.get(gameId)?.[0];
+    if (!cfg) return null;
+    return {
+      clock: {
+        picksOpenedAt: (cfg.picks_opened_at as string | null) ?? null,
+        picksDeadline: (cfg.picks_deadline as string | null) ?? null,
+        picksLockedAt: (cfg.picks_locked_at as string | null) ?? null,
+      },
+      cfg: { roll_up: cfg.roll_up, use_confidence: cfg.use_confidence },
+      slate: (pickemSlateByGame.get(gameId) ?? []) as PickemProjectionData["slate"],
+      picks: (pickemPicksByGame.get(gameId) ?? []) as PickemProjectionData["picks"],
+    };
+  };
 
   // Bulk reads, scoped to the live game ids only (a completed game's per-hole
   // scores never load). One wave, parallel — the board compute's cost stays a
@@ -281,6 +362,8 @@ export async function computeLiveProjections(
       gross: grossByGame.get(g.id) ?? new Map(),
       outcomes: outcomesByGame.get(g.id) ?? [],
       userTeam,
+      pickem: pickemIds.includes(g.id) ? pickemDataFor(g.id) : null,
+      pointsMode: opts.pointsMode ?? false,
     });
     if (proj?.kind === "projected") out[g.id] = proj.byTeam;
     else if (proj?.kind === "cannot") cannotProject[g.id] = proj.reason;
@@ -418,6 +501,65 @@ function projectMatches(g: LiveProjectionInput, data: GameProjectionData): Proje
   if (pointsPerMatch == null) return cannot("no_points");
 
   return projected(tallyMatchAwards(matches, sideTeam, pointsPerMatch));
+}
+
+/**
+ * Pick'em → what `games.finish` would pay if it ran NOW (3c, rulings 13 and 14).
+ *
+ * Not a re-derivation: the SAME `buildPickemFinalizeInput` finalize builds from,
+ * into the SAME `pickemFinalize`. Unresolved contests are scored as void, which
+ * is what finalize writes over them before it scores.
+ *
+ * ── GATED ON REVEAL, before anything is read out of the sheets ─────────────
+ * The board is computed under the VIEWER's RLS (`competitions.leaderboard` →
+ * `ctx.supabase`). Before reveal, `pickem_picks_select` returns a plain member
+ * their OWN sheet only, and a captain the sheets they may proxy — so a
+ * projection here would be wrong, and wrong differently per viewer; for a
+ * captain it would also imply other people's unrevealed picks. Finalize refuses
+ * the same state for its own reason (`computePickemResults`' gate), and this
+ * mirrors its predicate rather than asking a second question.
+ *
+ * Not reachable through normal UI today: the results panel exists only once
+ * picks are locked (`pickemSurface`), so a pick'em game is never "started"
+ * before reveal. `set_pickem_result` has no reveal gate of its own, though, so
+ * the direct-RPC path can reach it, and the leak would be real if it did.
+ */
+function projectPickem(g: LiveProjectionInput, data: GameProjectionData): ProjectionOutcome {
+  const pk = data.pickem;
+  if (!pk || !picksRevealed(pk.clock)) return cannot("picks_hidden");
+
+  // The competition's teams, from the same roster map every arm uses. A team
+  // with nobody on it is absent here and named 0 by the board's fill.
+  const members = new Map<string, string[]>();
+  for (const [userId, teamId] of data.userTeam) {
+    (members.get(teamId) ?? members.set(teamId, []).get(teamId)!).push(userId);
+  }
+  const input = buildPickemFinalizeInput({
+    game: { points_total: g.pointsTotal, points_distribution: g.pointsDistribution ?? null },
+    cfg: pk.cfg,
+    slate: pk.slate,
+    picks: pk.picks,
+    matches: data.matches.map((m) => ({ side_a: m.side_a, side_b: m.side_b, point_value: m.point_value ?? null })),
+    competition: {
+      pointsMode: data.pointsMode ?? false,
+      teams: [...members.entries()].map(([id, memberIds]) => ({ id, memberIds })),
+    },
+  });
+
+  // Nothing to award, asked per RESOLUTION because each pays from a different
+  // place: a points cup from its schedule, team totals from the total alone
+  // (overrides mean nothing there), individual matches from the total or a
+  // paired override.
+  const resolution = pickemResolution(input);
+  const nothing =
+    resolution === "placement"
+      ? payingSchedule(input.distribution) == null
+      : resolution === "simple"
+        ? !((input.pointsTotal ?? 0) > 0)
+        : noPointsToAward(input.pointsTotal, null, data.matches);
+  if (nothing) return cannot("no_points");
+
+  return projected(Object.fromEntries(pickemFinalize(input).awards));
 }
 
 /** Rack → the same read-model `computeRackNStackResults` builds, but in

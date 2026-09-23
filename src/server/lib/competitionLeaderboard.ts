@@ -1039,22 +1039,20 @@ export async function computeCompetitionLeaderboard(
   // (Path A), read-only, and rides this payload's existing 30s poll (no new
   // fetch on the client, converges across devices for free). Stroke/non-golf and
   // not-yet-started games have no projection → their rows keep the plain layout.
-  // ── The pill is gated on STARTED, and that is the pick'em decision ──────
+  // ── The pill is gated on STARTED — and pick'em has now joined (3c) ──────
   //
-  // Pick'em was asked to join the format allowlist. It should not, and the
-  // allowlist is not even the operative gate: `projectGame` returns null for
-  // anything that is not match play or rack, so joining the list alone would
-  // change nothing without a pick'em projection function written.
+  // This comment used to argue pick'em should NOT join the allowlist, and the
+  // argument was about one state: a locked game with zero results, where every
+  // sheet scores 0 and the pill would read 0 to each side — "pick'em is worth
+  // nothing" where "pick'em has not started" was true. That argument still
+  // holds and is still honoured, by the same line it named: `started` (a
+  // pick'em game is started on its first slate result, migration 161), so
+  // there is no pill until the first result, then a real one.
   //
-  // What such a function WOULD compute for a locked game with zero results is
-  // the argument against it: every sheet scores 0, so the pill would read 0 to
-  // each side. Next to golf games mid-round that says "pick'em is worth
-  // nothing" rather than "pick'em has not started" — and the two are
-  // indistinguishable on screen, which is the kind of dishonesty that matters.
-  //
-  // `started` already draws that line, so it draws this one too: no pill until
-  // the first result, then a real one. Migration 161's predicate doing a second
-  // job it was already suited for.
+  // What changed is that there is now a real one to show. `projectPickem`
+  // runs finalize's own builder into `pickemFinalize` (rulings 13 and 14), is
+  // gated on reveal because this board is computed under the viewer's RLS, and
+  // says `cannot` with a reason rather than projecting a pot of nothing.
   const liveProjectionInputs: LiveProjectionInput[] = allGames
     .filter((g) => {
       const t = g.game_type_id as string | null;
@@ -1062,7 +1060,7 @@ export async function computeCompetitionLeaderboard(
       return (
         g.status === "active" &&
         startedByGame.has(g.id as string) &&
-        ((t != null && MATCH_PLAY_TYPES.has(t)) || t === RACK_TYPE || isMatchesGame(t, cf))
+        ((t != null && MATCH_PLAY_TYPES.has(t)) || t === RACK_TYPE || isMatchesGame(t, cf) || isPickemGame(t, cf))
       );
     })
     .map((g) => {
@@ -1083,9 +1081,13 @@ export async function computeCompetitionLeaderboard(
         // Refactor B3: an outcome-mode match projects from recorded outcomes,
         // not gross scores (it has none).
         outcomeMode: (g.entry_mode as string | null) === "outcome",
+        // Pick'em's points cup pays by the schedule derived from this.
+        pointsDistribution: dist,
       };
     });
-  const live = await computeLiveProjections(supabase, competitionId, liveProjectionInputs);
+  const live = await computeLiveProjections(supabase, competitionId, liveProjectionInputs, {
+    pointsMode: scoringModel === "points",
+  });
   const cannotProject = live.cannotProject;
   // Every cup team, explicitly, on every projected game. An arm reports only the
   // teams it met, and the row used to supply the rest with `?? 0` — a number the

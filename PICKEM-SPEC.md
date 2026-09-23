@@ -244,6 +244,26 @@ The runner marks each contest as it finishes: **away**, **home**, **push** or
 - **The first result freezes the scoring settings** (migration 157) and refuses
   a reopen (migration 165).
 
+### The cup board's projection
+
+Once a pick'em game is **live** (status active and its first result in), the
+competition board shows what finalize would pay **if it ran now**
+(`projectPickem`, `src/server/lib/liveProjection.ts`). It is not a second
+calculation: it runs finalize's own input builder (`buildPickemFinalizeInput`)
+into `pickemFinalize`, with unresolved contests void exactly as finalize voids
+them — so the board and the posted result cannot disagree about the same slate.
+
+- **Gated on reveal.** The board is computed under the viewer's RLS, so before
+  reveal a member would see only their own sheet and a captain the sheets they
+  may proxy: a number that is wrong, and wrong per viewer. Before reveal the
+  board says *picks hidden until reveal* instead. (Not reachable through the UI
+  today — results can only be entered once picks lock — but `set_pickem_result`
+  itself has no reveal gate.)
+- **Nothing to award is said, not drawn as 0.** A game worth nothing reads
+  *no points to award*, never `▲0 | ▲0`.
+- **Match-play cups only**, where the row carries team pills. A points cup shows
+  no projection on any surface yet; that arrives with the points-race bars.
+
 ### How a settled row reads — four marks, one rule
 
 Two facts live on every settled row and they are **not the same fact**:
