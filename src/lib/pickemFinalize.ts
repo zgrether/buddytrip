@@ -4,6 +4,7 @@ import {
   matchStanding,
   matchesWonByTeam,
   orderByTotal,
+  sheetSubmitted,
   sideStanding,
   tiedWithPrevious,
   type TeamStanding,
@@ -31,6 +32,8 @@ import { placementPointsByTeam, placementsFrom } from "./placementGroups";
  *
  * `individual_matches` — the game's points split across the valid matches, each
  *   match paying its own share to whoever won it, halved matches splitting.
+ *   A side with NO sheet is not a contestant (#1419): two empty sides pay
+ *   nobody, and one empty side forfeits the whole match to the submitter.
  *
  * `simple` — the app's existing word, borrowed rather than coined. Non-golf's
  *   Simple format is "choose the winner": higher total takes the whole value,
@@ -61,6 +64,10 @@ import { placementPointsByTeam, placementsFrom } from "./placementGroups";
  * `remaining: 0`. Without that, a game finalized with contests outstanding
  * would pay nothing for the matches those contests were in — silently, and only
  * for some of them.
+ *
+ * Settling is for CONTESTS. A match with an empty side is decided before it
+ * reaches the tally (#1419), because settling two empty sheets at 0–0 halved
+ * a match nobody played.
  */
 
 export type PickemResolution = "individual_matches" | "simple" | "placement";
@@ -198,6 +205,37 @@ export function pickemFinalize(input: PickemFinalizeInput): PickemFinalizeResult
 
     for (const m of input.matches) {
       if (!m.sideAId || !m.sideBId) continue;
+      const value = m.pointValue ?? perMatch;
+
+      /**
+       * ── AN EMPTY SIDE IS DECIDED HERE, BEFORE THE TALLY (#1419) ──────────
+       *
+       * `matchesWonByTeam` halves any settled 0–0, and `remaining: 0` below
+       * settles every match. For two SUBMITTED sheets that is right — a level
+       * contest splits. For a side with NO sheet it was not: two empty sheets
+       * tie at 0–0 and were halved, paying each team half a match nobody played,
+       * while the card said "Nothing scores".
+       *
+       * Ruled (Zach, 2026-09-23):
+       *  - neither side submitted → pays NOBODY. There was no contest to settle.
+       *  - one side submitted     → FORFEIT: the whole match to the submitter,
+       *    whatever they scored. Participation is the question, not the seat.
+       *  - both submitted         → the tally below, 0–0 halve included. A
+       *    submitted zero is present; zero from real picks is a result.
+       *
+       * Presence is `sheetSubmitted` — the same predicate the cards read — so
+       * the payout and the card cannot disagree about who showed up.
+       * `matchesWonByTeam` itself is unchanged: it is also the board's tally
+       * (#1144), and nothing about a two-sheet match moved.
+       */
+      const aIn = sheetSubmitted(input.sheets, m.sideAId);
+      const bIn = sheetSubmitted(input.sheets, m.sideBId);
+      if (!aIn && !bIn) continue;
+      if (aIn !== bIn) {
+        add(teamOf(aIn ? m.sideAId : m.sideBId), value);
+        continue;
+      }
+
       const st = matchStanding(
         buildBoardRows(
           input.slate,
@@ -225,7 +263,6 @@ export function pickemFinalize(input: PickemFinalizeInput): PickemFinalizeResult
           clinched: st.clinched,
         },
       ]);
-      const value = m.pointValue ?? perMatch;
       for (const [teamId, share] of won) add(teamId, share * value);
     }
     return { resolution, awards, write: pointsWrite(awards), unresolved };
