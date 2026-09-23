@@ -20,6 +20,8 @@
  * rule.
  */
 
+import { awardMatches, type MatchAwardResult } from "./gameAward";
+
 /** A `game_matches.side_a`/`side_b` JSONB ref. A 1v1 side is a user; a 2v2 side
  *  is a minted `play_group` (CLAUDE.md #27 — a side is not a person). */
 export interface SideRef {
@@ -39,28 +41,40 @@ export function tallyMatchAwards(
   sideTeam: (s: SideRef) => string | undefined,
   evenShareFallback: number
 ): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const m of matches) {
-    const result = m.result as "a_win" | "b_win" | "halve" | null;
-    if (!result) continue;
-    const a = m.side_a as SideRef | null;
-    const b = m.side_b as SideRef | null;
-    if (!a?.id || !b?.id) continue;
-    const aTeam = sideTeam(a);
-    const bTeam = sideTeam(b);
-    if (!aTeam || !bTeam) continue;
+  return tallyMatchAwardsDetailed(matches, sideTeam, evenShareFallback).byTeam;
+}
 
-    // A2b award rule: this match's own override, else the even share.
-    const value = (m.point_value as number | null) ?? evenShareFallback;
-    if (result === "a_win") {
-      out[aTeam] = (out[aTeam] ?? 0) + value;
-    } else if (result === "b_win") {
-      out[bTeam] = (out[bTeam] ?? 0) + value;
-    } else {
-      // halve — each side gets half
-      out[aTeam] = (out[aTeam] ?? 0) + value / 2;
-      out[bTeam] = (out[bTeam] ?? 0) + value / 2;
-    }
-  }
-  return out;
+/**
+ * The same tally, keeping the count of matches that paid NOBODY.
+ *
+ * `tallyMatchAwards` above returns only the per-team map, because that is what
+ * its callers write to `game_results` and nothing about a result row can
+ * express "this match was unpayable". A surface that has to say why a game's
+ * points are not all in play needs the other half, so it calls this.
+ */
+export function tallyMatchAwardsDetailed(
+  matches: { side_a: unknown; side_b: unknown; result?: unknown; point_value?: unknown }[],
+  sideTeam: (s: SideRef) => string | undefined,
+  evenShareFallback: number
+): MatchAwardResult {
+  return awardMatches(
+    matches.map((m) => {
+      const a = m.side_a as SideRef | null;
+      const b = m.side_b as SideRef | null;
+      const result = m.result as "a_win" | "b_win" | "halve" | null;
+      // An UNPAIRED slot is not a match at all — it never scores and it is not a
+      // forfeit either, so it is mapped to "nothing decided" rather than to a
+      // match with a missing team. That distinction is the reason the outcome
+      // and the team ids are separate inputs: one says whether there is anything
+      // to pay, the other says whether it can be paid.
+      const paired = !!a?.id && !!b?.id;
+      return {
+        aTeamId: paired ? sideTeam(a!) ?? null : null,
+        bTeamId: paired ? sideTeam(b!) ?? null : null,
+        // A2b award rule: this match's own override, else the even share.
+        value: (m.point_value as number | null) ?? evenShareFallback,
+        outcome: !paired || !result ? null : result === "a_win" ? "a" : result === "b_win" ? "b" : "split",
+      };
+    })
+  );
 }
