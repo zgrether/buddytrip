@@ -86,7 +86,14 @@ export function cannotProjectCopy(reason: CannotProjectReason): string {
     case "no_teams":
       return "Underway · needs two teams to project";
     case "no_matches":
-      return "Underway · no matches paired";
+      // WITHHELD, deliberately (Zach, 2026-09-23). The reason ships; its words
+      // wait for the pick'em results-first PR, which makes "results in, no
+      // matches drawn yet" an ordinary step — so "no matches paired" would
+      // read as something missing where it is really progress, and a vacated
+      // seat in golf / Matches is a different fact again. Until then it reads
+      // like a live game, which is true; what it must NOT do is the old
+      // `▲0 | ▲0`, and it does not — no projection is emitted for it.
+      return "Underway · scoring";
   }
 }
 
