@@ -74,13 +74,18 @@ describe("GameRow — a live game that can't project says why", () => {
     expect(count(html, PILL)).toBe(0);
   });
 
-  it("no matches paired → the plain line for now, and NO pills (its words are withheld, not missing)", () => {
-    // Zach's ruling: ship the mechanism, withhold the label the results-first
-    // PR is about to rewrite. What this pins is the part that must hold either
-    // way — no `▲0 | ▲0` for a game with nothing paired.
-    const html = render({ cannotProject: "no_matches" });
-    expect(html).toContain("Underway · scoring");
-    expect(html).not.toContain("no matches paired");
+  it("matches not drawn yet → progress, not a fault, and NO pills", () => {
+    // Was pinned to the plain line while its words were withheld (3c); the
+    // results-first PR gave them. This assertion was always the one that had
+    // to change on purpose.
+    const html = render({ cannotProject: "matches_not_drawn" });
+    expect(html).toContain("Underway · matches not drawn yet");
+    expect(count(html, PILL)).toBe(0);
+  });
+
+  it("seats vacated → says the state and what fixes it", () => {
+    const html = render({ cannotProject: "seats_vacated" });
+    expect(html).toContain("Underway · matches need re-pairing");
     expect(count(html, PILL)).toBe(0);
   });
 
@@ -119,14 +124,13 @@ describe("GameRow — a team missing from a projection is not invented as 0", ()
 });
 
 describe("cannotProjectCopy — one sentence per reason, none shared", () => {
-  it("every WORDED reason has its own copy; no_matches alone is withheld to the plain line", () => {
-    const worded: CannotProjectReason[] = ["no_points", "picks_hidden", "no_course", "no_teams"];
-    const copies = worded.map(cannotProjectCopy);
-    expect(new Set(copies).size).toBe(worded.length);
+  it("every reason has its own copy — none shares the plain line", () => {
+    const reasons: CannotProjectReason[] = [
+      "no_points", "matches_not_drawn", "seats_vacated", "picks_hidden", "no_course", "no_teams",
+    ];
+    const copies = reasons.map(cannotProjectCopy);
+    expect(new Set(copies).size).toBe(reasons.length);
     for (const c of copies) expect(c).toMatch(/^Underway · /);
-    // Withheld, not forgotten: when the results-first PR words it, this line
-    // is the one that has to change — which is the point of pinning it.
-    expect(cannotProjectCopy("no_matches")).toBe("Underway · scoring");
     expect(copies).not.toContain("Underway · scoring");
   });
 });

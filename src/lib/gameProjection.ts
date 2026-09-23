@@ -30,18 +30,19 @@ import { awardMatches, type MatchAwardResult } from "./gameAward";
  *    and no override. Whatever happens, this game awards nothing.
  *  - `no_course` — rack has no par / stroke index to measure against.
  *  - `no_teams`  — rack needs two teams on its roster and has fewer.
- *  - `no_matches` — a game that pays PER MATCH with no match paired (both
- *    sides set). Points are set and nothing can earn them yet. Actionable: an
- *    organizer can still draw matches. The app saves pairings through
- *    `save_game_config`, whose only pairing freeze is a MATCH with a recorded
- *    result (`MATCH_DECIDED`); a pick'em slate result is not one, and
- *    `HAS_SCORES` does not read `pickem_slate_games`. (`save_pickem_matches`
- *    says the same since 162, but the app no longer calls it — cite the path
- *    the app takes.)
- *    Reached when a started game in any of the three per-match arms is left
- *    with nothing paired: a vacated seat in non-golf Matches or golf match play
- *    (the side is nulled, the result kept, the game stays started), or pick'em
- *    individual matches whose pairings were cleared after a result.
+ *  - `matches_not_drawn` — a game that pays PER MATCH has NO match rows yet.
+ *    Progress, not a fault: results are entered whenever they happen and a
+ *    match drawn later is scored from them (results-first PR). Reached on
+ *    pick'em individual matches (clearing pairings deletes the rows, and a
+ *    result can precede the draw), and on golf / Matches never drawn.
+ *  - `seats_vacated` — match rows EXIST and none has both sides: players left
+ *    (`leaveTrip` / `matches.ts` null a side and keep the row, and the game
+ *    stays started). A real problem, with a fix — re-pair. The data separates
+ *    the two, and they lead a reader to different actions, so they are two
+ *    reasons, not one with two meanings (the empty-vs-unknown rule).
+ *    Both are actionable: the app saves pairings via `save_game_config`, whose
+ *    only pairing freeze is a match with a recorded result — which pick'em
+ *    never writes — and `FINAL_LOCKED` only once the game is finished.
  *  - `picks_hidden` — a pick'em game whose sheets are not yet revealed. The
  *    board is computed under the VIEWER's RLS, so before reveal it would see
  *    only their own sheet (or, for a captain, sheets it may proxy) and project
@@ -49,7 +50,13 @@ import { awardMatches, type MatchAwardResult } from "./gameAward";
  *
  * Client-safe on purpose: the server emits it and `GameRow` renders it.
  */
-export type CannotProjectReason = "no_points" | "no_matches" | "no_course" | "no_teams" | "picks_hidden";
+export type CannotProjectReason =
+  | "no_points"
+  | "matches_not_drawn"
+  | "seats_vacated"
+  | "no_course"
+  | "no_teams"
+  | "picks_hidden";
 
 /** One match's current on-page standing, as the scoreboard already shows it. */
 export interface ProjMatch {

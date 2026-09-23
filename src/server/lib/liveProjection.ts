@@ -170,12 +170,18 @@ const cannot = (reason: CannotProjectReason): ProjectionOutcome => ({ kind: "can
  * that isn't there.
  */
 /**
- * Does a per-match game have a single match to pay? `no_matches` is asked
- * AFTER `no_points`: a game worth nothing is nothing whether or not it is
- * paired, and that is the more basic fact to tell someone.
+ * Why a per-match game has nothing to pay YET — or null if some match is paired.
+ * Asked AFTER `no_points`: a game worth nothing is nothing, paired or not.
+ *
+ * Two reasons because the DATA holds two states that lead a reader to
+ * different actions: no match rows at all is a draw that has not happened
+ * (progress), while rows with no pair left is seats vacated (re-pair).
  */
-function noMatchPaired(matches: { side_a: SideRef | null; side_b: SideRef | null }[]): boolean {
-  return !matches.some((m) => m.side_a?.id && m.side_b?.id);
+function unpairedReason(
+  matches: { side_a: SideRef | null; side_b: SideRef | null }[]
+): "matches_not_drawn" | "seats_vacated" | null {
+  if (matches.some((m) => m.side_a?.id && m.side_b?.id)) return null;
+  return matches.length === 0 ? "matches_not_drawn" : "seats_vacated";
 }
 
 function noPointsToAward(
@@ -391,7 +397,8 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Project
   // that could never pay anybody.
   if (!g.isPerMatch || noPointsToAward(g.pointsTotal, g.legacyValue, matches)) return cannot("no_points");
   // Points set, nothing paired: it used to project `0 | 0` for every team.
-  if (noMatchPaired(matches)) return cannot("no_matches");
+  const unpaired = unpairedReason(matches);
+  if (unpaired) return cannot(unpaired);
   const strokeIndex = schema?.units?.metadata?.handicap_index;
   const holeCount = schema?.units?.count;
   // Entry mode gates glorious (outcome entry only) — `outcomeMode` is already on
@@ -510,7 +517,8 @@ function projectMatches(g: LiveProjectionInput, data: GameProjectionData): Proje
     g.legacyValue
   );
   if (pointsPerMatch == null) return cannot("no_points");
-  if (noMatchPaired(matches)) return cannot("no_matches");
+  const unpaired = unpairedReason(matches);
+  if (unpaired) return cannot(unpaired);
 
   return projected(tallyMatchAwards(matches, sideTeam, pointsPerMatch));
 }
@@ -572,7 +580,10 @@ function projectPickem(g: LiveProjectionInput, data: GameProjectionData): Projec
   if (nothing) return cannot("no_points");
   // Only individual matches pays per match; team totals and a points cup
   // never read the pairings, so an empty list means nothing to them.
-  if (resolution === "individual_matches" && noMatchPaired(data.matches)) return cannot("no_matches");
+  if (resolution === "individual_matches") {
+    const unpaired = unpairedReason(data.matches);
+    if (unpaired) return cannot(unpaired);
+  }
 
   return projected(Object.fromEntries(pickemFinalize(input).awards));
 }
