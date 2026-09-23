@@ -169,6 +169,15 @@ const cannot = (reason: CannotProjectReason): ProjectionOutcome => ({ kind: "can
  * pairings yet HAS points set; reporting it as `no_points` would name a cause
  * that isn't there.
  */
+/**
+ * Does a per-match game have a single match to pay? `no_matches` is asked
+ * AFTER `no_points`: a game worth nothing is nothing whether or not it is
+ * paired, and that is the more basic fact to tell someone.
+ */
+function noMatchPaired(matches: { side_a: SideRef | null; side_b: SideRef | null }[]): boolean {
+  return !matches.some((m) => m.side_a?.id && m.side_b?.id);
+}
+
 function noPointsToAward(
   pointsTotal: number | null,
   legacyValue: number | null | undefined,
@@ -381,6 +390,8 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Project
   // It used to project `0 | 0` here — the picture of "nobody's up", for a game
   // that could never pay anybody.
   if (!g.isPerMatch || noPointsToAward(g.pointsTotal, g.legacyValue, matches)) return cannot("no_points");
+  // Points set, nothing paired: it used to project `0 | 0` for every team.
+  if (noMatchPaired(matches)) return cannot("no_matches");
   const strokeIndex = schema?.units?.metadata?.handicap_index;
   const holeCount = schema?.units?.count;
   // Entry mode gates glorious (outcome entry only) — `outcomeMode` is already on
@@ -499,6 +510,7 @@ function projectMatches(g: LiveProjectionInput, data: GameProjectionData): Proje
     g.legacyValue
   );
   if (pointsPerMatch == null) return cannot("no_points");
+  if (noMatchPaired(matches)) return cannot("no_matches");
 
   return projected(tallyMatchAwards(matches, sideTeam, pointsPerMatch));
 }
@@ -558,6 +570,9 @@ function projectPickem(g: LiveProjectionInput, data: GameProjectionData): Projec
         ? !((input.pointsTotal ?? 0) > 0)
         : noPointsToAward(input.pointsTotal, null, data.matches);
   if (nothing) return cannot("no_points");
+  // Only individual matches pays per match; team totals and a points cup
+  // never read the pairings, so an empty list means nothing to them.
+  if (resolution === "individual_matches" && noMatchPaired(data.matches)) return cannot("no_matches");
 
   return projected(Object.fromEntries(pickemFinalize(input).awards));
 }

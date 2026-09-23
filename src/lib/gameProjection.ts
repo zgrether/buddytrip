@@ -30,6 +30,14 @@ import { awardMatches, type MatchAwardResult } from "./gameAward";
  *    and no override. Whatever happens, this game awards nothing.
  *  - `no_course` — rack has no par / stroke index to measure against.
  *  - `no_teams`  — rack needs two teams on its roster and has fewer.
+ *  - `no_matches` — a game that pays PER MATCH with no match paired (both
+ *    sides set). Points are set and nothing can earn them yet. A true reason
+ *    and an actionable one: an organizer can still draw matches (pick'em's
+ *    pairing freeze binds only once a MATCH has a result, migration 162).
+ *    Reachable in all three per-match arms: pick'em individual matches with a
+ *    result before any match is drawn, and non-golf Matches or golf match
+ *    play after a leaving player's seat is vacated (the side is nulled, the
+ *    game stays started).
  *  - `picks_hidden` — a pick'em game whose sheets are not yet revealed. The
  *    board is computed under the VIEWER's RLS, so before reveal it would see
  *    only their own sheet (or, for a captain, sheets it may proxy) and project
@@ -37,7 +45,7 @@ import { awardMatches, type MatchAwardResult } from "./gameAward";
  *
  * Client-safe on purpose: the server emits it and `GameRow` renders it.
  */
-export type CannotProjectReason = "no_points" | "no_course" | "no_teams" | "picks_hidden";
+export type CannotProjectReason = "no_points" | "no_matches" | "no_course" | "no_teams" | "picks_hidden";
 
 /** One match's current on-page standing, as the scoreboard already shows it. */
 export interface ProjMatch {

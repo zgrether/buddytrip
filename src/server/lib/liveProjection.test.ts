@@ -91,7 +91,10 @@ describe("projectGame — match play", () => {
     expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { blue: 3, red: 1 } });
   });
 
-  it("an unpaired match (a side missing) contributes nothing", () => {
+  // This asserted `{ kind: "projected", byTeam: {} }` until the no_matches
+  // ruling — which the board then filled to `▲0 | ▲0`: a zero standing in for
+  // "nothing can happen yet", the conflation 3c exists to end.
+  it("a game whose ONLY match is unpaired (a side vacated) → no_matches, not a projection of nothing", () => {
     const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsTotal: 4, isPerMatch: true };
     const data: GameProjectionData = {
       schema: { units: { count: 2 } },
@@ -103,7 +106,25 @@ describe("projectGame — match play", () => {
       outcomes: [],
       userTeam: userTeam({ alice: "blue" }),
     };
-    expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: {} });
+    expect(projectGame(input, data)).toEqual({ kind: "cannot", reason: "no_matches" });
+  });
+
+  it("…but ONE paired match among unpaired ones still projects — the reason is \"none paired\", not \"some unpaired\"", () => {
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsTotal: 4, isPerMatch: true };
+    const data: GameProjectionData = {
+      schema: { units: { count: 2 } },
+      modifiers: null,
+      matches: [
+        { id: "m1", side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" } },
+        { id: "m2", side_a: { type: "user", id: "carol" }, side_b: null },
+      ],
+      parts: [part("alice"), part("bob"), part("carol")],
+      playGroups: [],
+      gross: gross({ alice: { "1": 4 }, bob: { "1": 5 } }),
+      outcomes: [],
+      userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue" }),
+    };
+    expect(projectGame(input, data)?.kind).toBe("projected");
   });
 });
 
@@ -454,5 +475,62 @@ describe("projectGame — pick'em", () => {
 
   it("a points cup worth nothing → no_points (the #1410 schedule, `[]`)", () => {
     expect(pickem({ pointsTotal: 0, pointsMode: true })).toEqual({ kind: "cannot", reason: "no_points" });
+  });
+
+  it("individual matches with NO match drawn → no_matches (production's 'Picks 2', one result away)", () => {
+    expect(pickem({ pointsTotal: 8, rollUp: "individual_matches", matches: [] })).toEqual({
+      kind: "cannot",
+      reason: "no_matches",
+    });
+  });
+
+  it("…while team totals with no matches projects: it never reads the pairings", () => {
+    expect(pickem({ pointsTotal: 8, rollUp: "team_totals", matches: [] })?.kind).toBe("projected");
+  });
+});
+
+/**
+ * NO MATCHES PAIRED — the reason belongs to the STATE, not to pick'em (3c).
+ *
+ * Found on pick'em (a result entered before any match is drawn), then swept
+ * across every arm that pays per match: non-golf Matches and golf match play
+ * both reach it when a leaving player's seat is vacated — the side is nulled,
+ * the recorded result is kept, and the game stays started. Rack's version of
+ * "set up but empty" already has its own reason (no_teams).
+ */
+describe("projectGame — no matches paired", () => {
+  it("non-golf Matches whose decided match had its seats vacated → no_matches", () => {
+    const out = projectGame(
+      { id: "g", gameTypeId: "gtt_generic_card", competitionFormat: "matches", pointsTotal: 8, isPerMatch: true },
+      {
+        schema: null,
+        modifiers: null,
+        // result kept, sides nulled — what vacateTripGameSeats leaves behind
+        matches: [{ id: "m1", side_a: null, side_b: null, result: "a_win" }],
+        parts: [],
+        playGroups: [],
+        gross: new Map(),
+        outcomes: [],
+        userTeam: userTeam({ alice: "blue", bob: "red" }),
+      }
+    );
+    expect(out).toEqual({ kind: "cannot", reason: "no_matches" });
+  });
+
+  it("no_points is said FIRST: a game worth nothing is nothing, paired or not", () => {
+    const out = projectGame(
+      { id: "g", gameTypeId: "gtt_generic_card", competitionFormat: "matches", pointsTotal: 0, isPerMatch: true },
+      {
+        schema: null,
+        modifiers: null,
+        matches: [],
+        parts: [],
+        playGroups: [],
+        gross: new Map(),
+        outcomes: [],
+        userTeam: userTeam({ alice: "blue", bob: "red" }),
+      }
+    );
+    expect(out).toEqual({ kind: "cannot", reason: "no_points" });
   });
 });

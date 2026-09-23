@@ -85,6 +85,8 @@ export function cannotProjectCopy(reason: CannotProjectReason): string {
       return "Underway · no course to project against";
     case "no_teams":
       return "Underway · needs two teams to project";
+    case "no_matches":
+      return "Underway · no matches paired";
   }
 }
 

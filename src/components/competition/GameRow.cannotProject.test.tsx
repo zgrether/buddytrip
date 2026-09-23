@@ -74,6 +74,12 @@ describe("GameRow — a live game that can't project says why", () => {
     expect(count(html, PILL)).toBe(0);
   });
 
+  it("no matches paired → its own sentence", () => {
+    const html = render({ cannotProject: "no_matches" });
+    expect(html).toContain("Underway · no matches paired");
+    expect(count(html, PILL)).toBe(0);
+  });
+
   it("picks hidden → its own sentence, not the no-points one", () => {
     const html = render({ cannotProject: "picks_hidden" });
     expect(html).toContain("Underway · picks hidden until reveal");
@@ -110,7 +116,7 @@ describe("GameRow — a team missing from a projection is not invented as 0", ()
 
 describe("cannotProjectCopy — one sentence per reason, none shared", () => {
   it("every reason has its own copy", () => {
-    const reasons: CannotProjectReason[] = ["no_points", "picks_hidden", "no_course", "no_teams"];
+    const reasons: CannotProjectReason[] = ["no_points", "no_matches", "picks_hidden", "no_course", "no_teams"];
     const copies = reasons.map(cannotProjectCopy);
     expect(new Set(copies).size).toBe(reasons.length);
     for (const c of copies) expect(c).toMatch(/^Underway · /);
