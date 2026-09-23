@@ -7,7 +7,7 @@ import { PickemHeadToHead } from "./PickemHeadToHead";
 import { PickemMatchPlayCard } from "./PickemMatchPlayCard";
 import { PickemTeamRollUp } from "./PickemTeamRollUp";
 import { PickemUnassignedNote } from "./PickemUnassignedNote";
-import { buildBoardRows, matchStanding, type BoardRow } from "@/lib/pickemBoard";
+import { buildBoardRows, matchStanding, sheetSubmitted, type BoardRow } from "@/lib/pickemBoard";
 import { resolvedCount, type ScoredPick, type ScoredSlateGame } from "@/lib/pickemScoring";
 
 /**
@@ -183,8 +183,8 @@ export function PickemBoard({
       const aName = nameOf(m.sideAId);
       const bName = nameOf(m.sideBId);
       const pickedSides = {
-        a: (sheets[m.sideAId] ?? []).length > 0,
-        b: (sheets[m.sideBId] ?? []).length > 0,
+        a: sheetSubmitted(sheets, m.sideAId),
+        b: sheetSubmitted(sheets, m.sideBId),
       };
       const st = matchStanding(rows);
       return (
@@ -267,8 +267,8 @@ export function PickemBoard({
                   aColor={avatarFor(m.sideAId).teamColor}
                   bColor={avatarFor(m.sideBId).teamColor}
                   picked={{
-                    a: (sheets[m.sideAId] ?? []).length > 0,
-                    b: (sheets[m.sideBId] ?? []).length > 0,
+                    a: sheetSubmitted(sheets, m.sideAId),
+                    b: sheetSubmitted(sheets, m.sideBId),
                   }}
                   mine={meId != null && (m.sideAId === meId || m.sideBId === meId)}
                   onOpen={() => setOpenMatch(m.id)}
@@ -285,10 +285,11 @@ export function PickemBoard({
                 // Separates "level" from "nothing played" — two states that both
                 // show 0-0 and mean opposite things about what is left.
                 resolvedCount={resolved}
-                // A sheet is all-or-nothing, so presence in `sheets` IS "picked".
+                // Presence in `sheets` IS "picked": `pick` is NOT NULL (166), so any row
+                // is a submitted pick. The ONE predicate finalize pays by, too.
                 picked={{
-                  a: (sheets[m.sideAId] ?? []).length > 0,
-                  b: (sheets[m.sideBId] ?? []).length > 0,
+                  a: sheetSubmitted(sheets, m.sideAId),
+                  b: sheetSubmitted(sheets, m.sideBId),
                 }}
                 aAvatar={avatarFor(m.sideAId)}
                 bAvatar={avatarFor(m.sideBId)}

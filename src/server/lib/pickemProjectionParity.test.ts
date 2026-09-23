@@ -34,7 +34,14 @@ const RED = "tRed";
 
 type Rows = Record<string, unknown>[];
 
-function db(scoringModel: "match_play" | "points", distribution: unknown) {
+interface Extra {
+  rollUp?: "team_totals" | "individual_matches";
+  assignments?: Rows;
+  picks?: Rows;
+  matches?: Rows;
+}
+
+function db(scoringModel: "match_play" | "points", distribution: unknown, extra: Extra = {}) {
   const writes: { rpc: unknown[]; voided: unknown[] } = { rpc: [], voided: [] };
   const tables: Record<string, Rows> = {
     teams: [
@@ -50,12 +57,13 @@ function db(scoringModel: "match_play" | "points", distribution: unknown) {
       bracket_config: {}, rules_for_today: null, scorecard_schema: null, tee_time: null,
     }],
     team_assignments: [
+      ...(extra.assignments ?? []),
       { user_id: "alice", team_id: BLUE, competition_id: COMP },
       { user_id: "bob", team_id: RED, competition_id: COMP },
     ],
     pickem_games: [{
       game_id: GAME, picks_opened_at: "2026-09-01T00:00:00Z", picks_deadline: null,
-      picks_locked_at: "2026-09-02T00:00:00Z", roll_up: "team_totals", use_confidence: true,
+      picks_locked_at: "2026-09-02T00:00:00Z", roll_up: extra.rollUp ?? "team_totals", use_confidence: true,
     }],
     pickem_slate_games: [
       { game_id: GAME, id: "s1", multiplier: 1, result: "home" },
@@ -63,6 +71,7 @@ function db(scoringModel: "match_play" | "points", distribution: unknown) {
       { game_id: GAME, id: "s3", multiplier: 1, result: null }, // unresolved → void
     ],
     pickem_picks: [
+      ...(extra.picks ?? []),
       { game_id: GAME, user_id: "alice", slate_game_id: "s1", pick: "home", confidence: 3 },
       { game_id: GAME, user_id: "alice", slate_game_id: "s2", pick: "home", confidence: 1 },
       { game_id: GAME, user_id: "alice", slate_game_id: "s3", pick: "away", confidence: 2 },
@@ -71,7 +80,7 @@ function db(scoringModel: "match_play" | "points", distribution: unknown) {
       { game_id: GAME, user_id: "bob", slate_game_id: "s3", pick: "home", confidence: 2 },
     ],
     game_results: [],
-    game_matches: [],
+    game_matches: extra.matches ?? [],
     game_participants: [], play_groups: [], game_started: [{ game_id: GAME }],
     bracket_entrants: [], score_entries: [], match_hole_outcomes: [],
   };
@@ -109,8 +118,8 @@ function db(scoringModel: "match_play" | "points", distribution: unknown) {
   return { client, writes };
 }
 
-async function both(scoringModel: "match_play" | "points", distribution: unknown) {
-  const { client, writes } = db(scoringModel, distribution);
+async function both(scoringModel: "match_play" | "points", distribution: unknown, extra: Extra = {}) {
+  const { client, writes } = db(scoringModel, distribution, extra);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const board = await computeCompetitionLeaderboard(client as any, COMP);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -141,5 +150,49 @@ describe("pick'em: the board's projection is what finalize pays", () => {
     const r = await both("points", { type: "placement", values: [6, 2] });
     expect(r.projection).toEqual(r.awards);
     expect(r.awards).toEqual({ [BLUE]: 2, [RED]: 6 });
+  });
+});
+
+/**
+ * #1419 — an empty side, through BOTH real entry points.
+ *
+ * Individual matches, 3 paired matches, points_total 8 → an even share of 8/3:
+ *   m1  alice (Blue, 3) v bob (Red, 6)  → a real contest, Red wins   → Red   8/3
+ *   m2  carol v dave, NEITHER submitted → nobody                      → —
+ *   m3  erin (Blue, submitted, all wrong = 0) v finn (none) → FORFEIT → Blue  8/3
+ *
+ * The old build halved m2 and m3 at 0–0 (4/3 to each side, twice), paying
+ * Blue 4/3 + 4/3 = 8/3 and Red 8/3 + 4/3 + 4/3 = 16/3. Fixed: 8/3 each — Red
+ * loses the 8/3 it banked for two matches its people never played. erin's zero is the case a
+ * points-based presence test would get wrong — it would call her absent and
+ * make m3 empty on both sides.
+ */
+describe("pick'em individual matches: an empty side, projection == finalize (#1419)", () => {
+  const u = (id: string) => ({ type: "user", id });
+  const extra: Extra = {
+    rollUp: "individual_matches",
+    assignments: [
+      { user_id: "carol", team_id: BLUE, competition_id: COMP },
+      { user_id: "erin", team_id: BLUE, competition_id: COMP },
+      { user_id: "dave", team_id: RED, competition_id: COMP },
+      { user_id: "finn", team_id: RED, competition_id: COMP },
+    ],
+    // erin: both resolved games picked WRONG → a submitted sheet worth 0.
+    picks: [
+      { game_id: GAME, user_id: "erin", slate_game_id: "s1", pick: "away", confidence: 1 },
+      { game_id: GAME, user_id: "erin", slate_game_id: "s2", pick: "home", confidence: 2 },
+    ],
+    matches: [
+      { id: "m1", game_id: GAME, side_a: u("alice"), side_b: u("bob"), point_value: null, result: null },
+      { id: "m2", game_id: GAME, side_a: u("carol"), side_b: u("dave"), point_value: null, result: null },
+      { id: "m3", game_id: GAME, side_a: u("erin"), side_b: u("finn"), point_value: null, result: null },
+    ],
+  };
+
+  it("projection and finalize agree, and both pay 8/3 to each side — not 16/3", async () => {
+    const r = await both("match_play", null, extra);
+    expect(r.projection).toEqual(r.awards);
+    expect(r.awards[BLUE]).toBeCloseTo(8 / 3, 10);
+    expect(r.awards[RED]).toBeCloseTo(8 / 3, 10);
   });
 });

@@ -513,3 +513,91 @@ describe("confirmUnresolvedFinalize", () => {
     expect(unresolvedWarning(0)).toBeNull();
   });
 });
+
+/**
+ * AN EMPTY SIDE IS NOT A CONTESTANT (#1419).
+ *
+ * `matchesWonByTeam` halves a settled 0–0 and finalize settles every match, so
+ * two sides with NO sheet used to tie 0–0 and be halved: each team paid half a
+ * match nobody played, while the card read "Nothing scores". Ruled:
+ *   neither submitted  → pays nobody
+ *   one submitted      → forfeit, the WHOLE match to the submitter, whatever
+ *                        they scored
+ *   both submitted     → the ordinary tally, a 0–0 still halving
+ *
+ * Each case below separates the old build from the new one by a value, and the
+ * "scored 0" cases are the ones that matter: a presence test written as "scored
+ * more than zero" is the exact bug being fixed, arriving through the fix.
+ */
+describe("individual matches — an empty side (#1419)", () => {
+  const oneMatch = (sheets: PickemFinalizeInput["sheets"]) =>
+    base({ matches: [{ sideAId: "a1", sideBId: "b1", pointValue: null }], sheets });
+
+  it("NEITHER side submitted → the match pays nobody (it was 4 / 4)", () => {
+    const r = pickemFinalize(oneMatch({}));
+    expect(r.awards.get("A")).toBe(0);
+    expect(r.awards.get("B")).toBe(0);
+  });
+
+  it("one side submitted and SCORED 0 → forfeit: the whole 8 to the submitter (it was 4 / 4)", () => {
+    // sheet(4, 0): four picks, all wrong — present, and a real zero.
+    const r = pickemFinalize(oneMatch({ a1: sheet(4, 0) }));
+    expect(r.awards.get("A")).toBe(8);
+    expect(r.awards.get("B")).toBe(0);
+  });
+
+  it("…and the forfeit runs the other way too — B submitted, A did not", () => {
+    const r = pickemFinalize(oneMatch({ b1: sheet(4, 0) }));
+    expect(r.awards.get("A")).toBe(0);
+    expect(r.awards.get("B")).toBe(8);
+  });
+
+  it("one side submitted and scored MORE than 0 → the whole 8 (unchanged — it already won)", () => {
+    const r = pickemFinalize(oneMatch({ a1: sheet(4, 2) }));
+    expect(r.awards.get("A")).toBe(8);
+    expect(r.awards.get("B")).toBe(0);
+  });
+
+  it("BOTH submitted and tied 0–0 → still halved: two real zeros are a level contest", () => {
+    const r = pickemFinalize(oneMatch({ a1: sheet(4, 0), b1: sheet(4, 0) }));
+    expect(r.awards.get("A")).toBe(4);
+    expect(r.awards.get("B")).toBe(4);
+  });
+
+  it("the shape production had: one forfeit and two empty matches in one game", () => {
+    // 3 paired matches → an even share of 8/3 each. Only m1 pays anyone.
+    // The old build paid A 8/3 + 2×(4/3) and B 2×(4/3) — B banking 8/3 for
+    // two matches nobody on either side played.
+    const r = pickemFinalize(
+      base({
+        teams: [
+          { id: "A", memberIds: ["a1", "a2", "a3"] },
+          { id: "B", memberIds: ["b1", "b2", "b3"] },
+        ],
+        matches: [
+          { sideAId: "a1", sideBId: "b1", pointValue: null },
+          { sideAId: "a2", sideBId: "b2", pointValue: null },
+          { sideAId: "a3", sideBId: "b3", pointValue: null },
+        ],
+        sheets: { a1: sheet(4, 2) },
+      })
+    );
+    expect(r.awards.get("A")).toBeCloseTo(8 / 3, 10);
+    expect(r.awards.get("B")).toBe(0);
+  });
+
+  it("a forfeit pays the match's OWN override, not the even share", () => {
+    const r = pickemFinalize(
+      base({
+        matches: [
+          { sideAId: "a1", sideBId: "b1", pointValue: 6 },
+          { sideAId: "a2", sideBId: "b2", pointValue: null },
+        ],
+        sheets: { a1: sheet(4, 0) },
+      })
+    );
+    // m1 forfeits its override 6 to A; m2 is empty on both sides and pays nobody.
+    expect(r.awards.get("A")).toBe(6);
+    expect(r.awards.get("B")).toBe(0);
+  });
+});

@@ -208,6 +208,23 @@ an optional kickoff, an optional note and an optional multiplier.
   highest total wins the match.
 - **`team_totals`** — every sheet on a side adds into one team total.
 
+**An empty side is not a contestant** (`individual_matches`, #1419). A side is
+present iff that person submitted a sheet: at least one `pickem_picks` row,
+which is exact because `pick` is NOT NULL. That's `sheetSubmitted`, the one
+predicate both the cards and finalize read.
+
+- **Neither submitted:** the match pays **nobody**. There was no contest.
+- **One submitted:** a **forfeit**. The whole match goes to the submitter,
+  whatever they scored.
+- **Both submitted:** the ordinary tally. A 0–0 between two submitted sheets
+  still **halves**: zero from real picks is a result, and no picks is an
+  absence.
+
+Before #1419, finalize settled every match at 0–0 and halved it, so two empty
+sheets paid each team half a match nobody played while the card said "Nothing
+scores". The share an empty match doesn't pay is **still counted in the cup's
+points-available** today (#1420).
+
 In a **points competition** the roll-up is inert: N teams finish in order and
 each place pays. `pointsMode` overrides `rollUp` in one place, because a fifth
 call site is inevitable and the version where each caller remembers the override

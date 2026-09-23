@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchesWonByTeam, type MatchTallyRow } from "./pickemBoard";
+import { matchesWonByTeam, sheetSubmitted, type MatchTallyRow } from "./pickemBoard";
 
 /**
  * The matches-won tally.
@@ -93,5 +93,23 @@ describe("matchesWonByTeam", () => {
     expect(t.get("B")).toBe(1);
     // Whole numbers out of an uneven pool — the whole point of the change.
     expect([...t.values()].every(Number.isInteger)).toBe(true);
+  });
+});
+
+describe("sheetSubmitted — the one presence test (#1419)", () => {
+  it("is false for no entry and for an empty list, true for any row", () => {
+    expect(sheetSubmitted({}, "u1")).toBe(false);
+    expect(sheetSubmitted({ u1: [] }, "u1")).toBe(false);
+    expect(sheetSubmitted({ u1: [{ slateGameId: "g1", pick: "away", confidence: 1 }] }, "u1")).toBe(true);
+  });
+
+  it("is about ROWS, not points: a sheet of all-wrong picks is present", () => {
+    // The fix's own failure mode. A predicate over points would call this sheet
+    // absent and turn a submitted zero into a forfeit AGAINST the submitter.
+    const allWrong = [
+      { slateGameId: "g1", pick: "away" as const, confidence: 2 },
+      { slateGameId: "g2", pick: "away" as const, confidence: 1 },
+    ];
+    expect(sheetSubmitted({ u1: allWrong }, "u1")).toBe(true);
   });
 });
