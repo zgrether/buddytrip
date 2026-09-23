@@ -12,6 +12,7 @@ import { useFirstClinchView } from "@/hooks/useFirstClinchView";
 import { useMyTeamId } from "@/hooks/useMyTeamColor";
 import { isCupComplete, gamesRemaining } from "@/lib/cupCompletion";
 import type { ScoringModel } from "@/lib/gameTypes";
+import type { CannotProjectReason } from "@/lib/gameProjection";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, fmtPts, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
 import { PointsMatrix } from "./PointsMatrix";
@@ -102,6 +103,9 @@ interface LeaderboardData {
   /** gameId → teamId → projected points, for LIVE match/rack games only (the
    *  ▲ projected-points pill). Absent games have no live projection. */
   projections: Record<string, Record<string, number>>;
+  /** gameId → why a live game whose format projects can't right now (3c).
+   *  Disjoint from `projections`. */
+  cannotProject: Record<string, CannotProjectReason>;
   teamTotals: Record<string, number>;
   /** Per-team projected total ("if today holds") = banked + Σ live-game projections
    *  (server-summed). The hero's projected tier reads it; delta = this − teamTotals. */
@@ -460,6 +464,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         teams={teams}
         cellsByGame={cellsByGame}
         projections={data.projections ?? {}}
+        cannotProject={data.cannotProject ?? {}}
         scoringModel={scoringModel}
         tripId={tripId}
         mineSet={mineSet}
@@ -478,13 +483,14 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 function GamesSection({
-  games, competitionId, teams, cellsByGame, projections, scoringModel, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame,
+  games, competitionId, teams, cellsByGame, projections, cannotProject, scoringModel, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame,
 }: {
   games: LBGame[];
   competitionId: string;
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
   projections: Record<string, Record<string, number>>;
+  cannotProject: Record<string, CannotProjectReason>;
   scoringModel: ScoringModel;
   tripId: string;
   mineSet: Set<string>;
@@ -645,6 +651,7 @@ function GamesSection({
         teams={teams}
         cellsByGame={cellsByGame}
         projections={projections}
+        cannotProject={cannotProject}
         scoringModel={scoringModel}
         tripId={tripId}
         mineSet={mineSet}
@@ -787,6 +794,7 @@ function SessionBreakdown({
   teams,
   cellsByGame,
   projections,
+  cannotProject,
   scoringModel,
   tripId,
   mineSet,
@@ -801,6 +809,7 @@ function SessionBreakdown({
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
   projections: Record<string, Record<string, number>>;
+  cannotProject: Record<string, CannotProjectReason>;
   scoringModel: ScoringModel;
   tripId: string;
   mineSet: Set<string>;
@@ -846,6 +855,7 @@ function SessionBreakdown({
           teams={teams}
           cells={cellsByGame.get(game.id)}
           projection={projections[game.id]}
+          cannotProject={cannotProject[game.id]}
           scoringModel={scoringModel}
           tripId={tripId}
           mine={mineSet.has(game.id)}
@@ -858,7 +868,7 @@ function SessionBreakdown({
         />
       );
     },
-    [teams, cellsByGame, scoringModel, tripId, projections, mineSet, canEdit, viewer, delegateOfByGame, onPrefetch]
+    [teams, cellsByGame, scoringModel, tripId, projections, cannotProject, mineSet, canEdit, viewer, delegateOfByGame, onPrefetch]
   );
 
   // Group games by board section (single source: sectionOf) — every game lands

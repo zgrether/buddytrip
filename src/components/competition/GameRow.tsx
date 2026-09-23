@@ -12,6 +12,7 @@ import { categoryIcon } from "@/lib/gameCategoryIcon";
 import { gameLockState, isPreScoring } from "@/lib/gameLifecycle";
 import { usesScoringLifecycle } from "@/lib/formatSurface";
 import type { ScoringModel } from "@/lib/gameTypes";
+import type { CannotProjectReason } from "@/lib/gameProjection";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 
 export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
@@ -68,6 +69,24 @@ function openScorecardOverlay(pathname: string, gameId: string) {
 }
 
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
+
+/**
+ * The row's sentence for a live game that can't project (3c). Each names what
+ * is actually missing, and says it as a fact about the GAME — the whole crew
+ * reads this row, and most of them can't change a setting.
+ */
+export function cannotProjectCopy(reason: CannotProjectReason): string {
+  switch (reason) {
+    case "no_points":
+      return "Underway · no points to award";
+    case "picks_hidden":
+      return "Underway · picks hidden until reveal";
+    case "no_course":
+      return "Underway · no course to project against";
+    case "no_teams":
+      return "Underway · needs two teams to project";
+  }
+}
 
 /** "8.5" → "8½", "14" → "14", "0.5" → "½", "1.25" → "1.25" (other fractions kept
  *  exact to 2dp — fractional shares must survive display end to end, #585). */
@@ -179,6 +198,7 @@ export function GameRow({
   cells,
   scoringModel,
   projection,
+  cannotProject,
   tripId,
   mine,
   canEdit,
@@ -198,6 +218,9 @@ export function GameRow({
   /** teamId → projected points for THIS game (LIVE match/rack only). Present →
    *  the row renders the ▲ pill grid instead of the outer `N PTS` column. */
   projection?: Record<string, number>;
+  /** Why this LIVE game can't project, when its format does (3c). Absent with
+   *  `projection` also absent = a format with no live projection at all. */
+  cannotProject?: CannotProjectReason;
   tripId: string;
   mine: boolean;
   /** Trip-level edit access (Owner/Organizer). ORed with `mine` (this game's
@@ -308,7 +331,13 @@ export function GameRow({
     section === "on-tap"
       ? showProjectionPills
         ? "Projected results" // the cells now carry projections → the subtitle says so
-        : "Underway · scoring"
+        : // A live game whose format projects but can't: say WHY, instead of
+          // the same "Underway" a format with no projection at all gets (3c).
+          // Match-play cups only, like the pills this stands in for — a points
+          // cup shows no projection anywhere yet (PR 9 builds that surface).
+          scoringModel === "match_play" && cannotProject
+          ? cannotProjectCopy(cannotProject)
+          : "Underway · scoring"
       : section === "ready"
       ? // Pick'em has no "play" to be ready for — the next thing that happens
         // is people filling in sheets, so the row says that instead.
@@ -485,7 +514,16 @@ export function GameRow({
             className="flex shrink-0 items-center justify-center"
             style={{ width: GRID_COLW }}
           >
-            <ProjectionPill color={t.color} value={projection![t.id] ?? 0} alwaysTriangle />
+            {/* No `?? 0`: the server names every cup team on a projected game,
+                so a missing key is not a zero this row may invent. It reads as
+                the board's "no value" dash, never as a projection. */}
+            {projection![t.id] != null ? (
+              <ProjectionPill color={t.color} value={projection![t.id]} alwaysTriangle />
+            ) : (
+              <span className="text-sm" style={{ color: "var(--color-bt-text-dim)" }} data-testid="projection-missing">
+                —
+              </span>
+            )}
           </span>
         ))
       ) : (
@@ -648,6 +686,7 @@ export function ProjectionPill({
   return (
     <span
       className="inline-flex items-center tabular-nums"
+      data-testid="projection-pill"
       style={{
         gap: 2,
         padding: lg ? "4px 11px" : "2px 8px",

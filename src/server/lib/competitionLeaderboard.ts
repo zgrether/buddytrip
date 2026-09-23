@@ -1085,7 +1085,16 @@ export async function computeCompetitionLeaderboard(
         outcomeMode: (g.entry_mode as string | null) === "outcome",
       };
     });
-  const projections = await computeLiveProjections(supabase, competitionId, liveProjectionInputs);
+  const live = await computeLiveProjections(supabase, competitionId, liveProjectionInputs);
+  const cannotProject = live.cannotProject;
+  // Every cup team, explicitly, on every projected game. An arm reports only the
+  // teams it met, and the row used to supply the rest with `?? 0` — a number the
+  // client made up. A team with no side in a game genuinely projects 0 here, and
+  // this is where that is known, so this is where it is said.
+  const projections: typeof live.projections = {};
+  for (const [gameId, byTeam] of Object.entries(live.projections)) {
+    projections[gameId] = Object.fromEntries(teamIds.map((id) => [id, byTeam[id] ?? 0]));
+  }
 
   // Competition-total projection ("if today holds"): banked (teamTotals) + Σ of each
   // team's live-game projections, summed SERVER-SIDE so the hero reads one authoritative
@@ -1176,6 +1185,9 @@ export async function computeCompetitionLeaderboard(
     // gameId → teamId → projected points (LIVE match/rack games only). The board
     // renders these as the ▲ projected-points pill in each team column.
     projections,
+    // gameId → why a LIVE game whose format projects can't right now (3c). Disjoint
+    // from `projections`; a live game in neither has a format with no projection.
+    cannotProject,
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,
     teamTotals: Object.fromEntries(roll.teamTotals),

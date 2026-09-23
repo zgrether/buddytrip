@@ -37,7 +37,7 @@ describe("projectGame — match play", () => {
       userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red" }),
     };
     // match 1: blue up → blue +2. match 2: all-square started → blue +1, red +1.
-    expect(projectGame(input, data)).toEqual({ blue: 3, red: 1 });
+    expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { blue: 3, red: 1 } });
   });
 
   it("A2b — a match's point_value OVERRIDES the even-share pointsPerMatch in the projection", () => {
@@ -65,7 +65,7 @@ describe("projectGame — match play", () => {
       userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red" }),
     };
     // blue = 4 (overridden match) + 2 (even-share match) = 6.
-    expect(projectGame(input, data)).toEqual({ blue: 6 });
+    expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { blue: 6 } });
   });
 
   it("B3 — outcome-mode games project from match_hole_outcomes, not gross scores (same result as the score-mode sweep/halve test)", () => {
@@ -87,7 +87,7 @@ describe("projectGame — match play", () => {
       ],
       userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red" }),
     };
-    expect(projectGame(input, data)).toEqual({ blue: 3, red: 1 });
+    expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { blue: 3, red: 1 } });
   });
 
   it("an unpaired match (a side missing) contributes nothing", () => {
@@ -102,7 +102,7 @@ describe("projectGame — match play", () => {
       outcomes: [],
       userTeam: userTeam({ alice: "blue" }),
     };
-    expect(projectGame(input, data)).toEqual({});
+    expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: {} });
   });
 });
 
@@ -127,7 +127,7 @@ describe("projectGame — rack", () => {
     };
     // rank-paired: (p1<p4) → t1, (p3<p2) → t1 → t1 sweeps both slots = 2 slots.
     // × per_match (3, points-per-slot) → 6 competition points (NOT raw 2).
-    expect(projectGame(input, data)).toEqual({ t1: 6, t2: 0 });
+    expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { t1: 6, t2: 0 } });
   });
 
   it("a legacy rack with no per_match value (0) falls back to ×1 (raw slots)", () => {
@@ -147,7 +147,7 @@ describe("projectGame — rack", () => {
       outcomes: [],
       userTeam: userTeam({ p1: "t1", p3: "t1", p2: "t2", p4: "t2" }),
     };
-    expect(projectGame(input, data)).toEqual({ t1: 2, t2: 0 });
+    expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { t1: 2, t2: 0 } });
   });
 });
 
@@ -177,7 +177,7 @@ describe("projectGame — Matches", () => {
     };
     // m1: blue +4. m2 halved: blue +2, red +2. m3 undecided: nothing (NOT +2 each,
     // which is what a "credit the leader" mistake copied from golf would do).
-    expect(projectGame(input, data)).toEqual({ blue: 6, red: 2 });
+    expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { blue: 6, red: 2 } });
   });
 
   it("a per-match point_value override wins over the even share, same as the persisted write", () => {
@@ -202,7 +202,7 @@ describe("projectGame — Matches", () => {
       userTeam: userTeam({ alice: "blue", bob: "red", carol: "blue", dave: "red" }),
     };
     // even share = (10 - 6) / 1 non-overridden match = 4.
-    expect(projectGame(input, data)).toEqual({ blue: 6, red: 4 });
+    expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { blue: 6, red: 4 } });
   });
 
   it("gameTypeId is a generic non-golf shape shared with other formats — competitionFormat is what decides this is Matches", () => {
@@ -237,5 +237,92 @@ describe("projectGame — no projection", () => {
       userTeam: new Map(),
     };
     expect(projectGame(input, data)).toBeNull();
+  });
+});
+
+/**
+ * CANNOT PROJECT — a reason, not a silence and not a zero (3c).
+ *
+ * Each case is paired with the near-miss that must NOT be "cannot", because the
+ * wrong build for this is a predicate that fires too often as much as too
+ * rarely: a game with points set but nothing paired yet, or a total of 0 with a
+ * paying override, is a real projection and saying otherwise names a cause that
+ * isn't there.
+ */
+describe("projectGame — cannot project", () => {
+  const paired = [
+    { id: "m1", side_a: { type: "user", id: "alice" }, side_b: { type: "user", id: "bob" } },
+  ];
+  const golf = (over: Partial<LiveProjectionInput>, matches = paired as GameProjectionData["matches"]) =>
+    projectGame(
+      { id: "g", gameTypeId: "gtt_match_play", pointsTotal: 4, isPerMatch: true, ...over },
+      {
+        schema: { units: { count: 2 } },
+        modifiers: null,
+        matches,
+        parts: [part("alice"), part("bob")],
+        playGroups: [],
+        gross: gross({ alice: { "1": 4 }, bob: { "1": 5 } }),
+        outcomes: [],
+        userTeam: userTeam({ alice: "blue", bob: "red" }),
+      }
+    );
+
+  it("golf match play that isn't per_match → no_points (it used to project 0 | 0: its writer pays nothing)", () => {
+    expect(golf({ isPerMatch: false })).toEqual({ kind: "cannot", reason: "no_points" });
+  });
+
+  it("golf match play with a total of 0 and no override → no_points", () => {
+    expect(golf({ pointsTotal: 0 })).toEqual({ kind: "cannot", reason: "no_points" });
+  });
+
+  it("golf match play with no total and no legacy value → no_points", () => {
+    expect(golf({ pointsTotal: null, legacyValue: null })).toEqual({ kind: "cannot", reason: "no_points" });
+  });
+
+  it("…but a total of 0 WITH a paying override on a paired match still projects", () => {
+    const out = golf({ pointsTotal: 0 }, [{ ...paired[0], point_value: 3 }] as GameProjectionData["matches"]);
+    expect(out?.kind).toBe("projected");
+  });
+
+  it("…and an override on an UNPAIRED match pays nobody, so it does not rescue a total of 0", () => {
+    const out = golf({ pointsTotal: 0 }, [
+      { id: "m1", side_a: { type: "user", id: "alice" }, side_b: null, point_value: 3 },
+    ] as GameProjectionData["matches"]);
+    expect(out).toEqual({ kind: "cannot", reason: "no_points" });
+  });
+
+  it("Matches with a total of 0 → no_points (projectableMatchShare alone returns a 0 share: 0 | 0)", () => {
+    const out = projectGame(
+      { id: "g", gameTypeId: "gtt_generic_card", competitionFormat: "matches", pointsTotal: 0, isPerMatch: true },
+      {
+        schema: null,
+        modifiers: null,
+        matches: [{ ...paired[0], result: "a_win" }] as GameProjectionData["matches"],
+        parts: [],
+        playGroups: [],
+        gross: new Map(),
+        outcomes: [],
+        userTeam: userTeam({ alice: "blue", bob: "red" }),
+      }
+    );
+    expect(out).toEqual({ kind: "cannot", reason: "no_points" });
+  });
+
+  it("rack with everyone on ONE team → no_teams", () => {
+    const out = projectGame(
+      { id: "g", gameTypeId: "gtt_rack_n_stack", pointsTotal: 6, isPerMatch: true },
+      {
+        schema: { units: { metadata: { par: [4, 4], handicap_index: [1, 2] } } },
+        modifiers: null,
+        matches: [],
+        parts: [part("p1"), part("p2")],
+        playGroups: [],
+        gross: gross({ p1: { "1": 4 }, p2: { "1": 5 } }),
+        outcomes: [],
+        userTeam: userTeam({ p1: "t1", p2: "t1" }),
+      }
+    );
+    expect(out).toEqual({ kind: "cannot", reason: "no_teams" });
   });
 });
