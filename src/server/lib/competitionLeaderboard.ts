@@ -1016,13 +1016,11 @@ export async function computeCompetitionLeaderboard(
     // place that decides which of the two a game contributes. Keyed on the
     // ARM's declaration (`expects`), not on the rows' reconciled shape: whether a
     // game can pay nobody is a property of its format, not of how its rows read.
+    void settledPool;
     return {
       ...reconciled,
-      pointsTotal: settledPool(reconciled, {
-        expectsPoints: armed.expects === "points",
-        status: (g.status as string | null) ?? null,
-        correctionsOpen: g.corrections_open === true,
-      }),
+      // MUTANT (#1425 red-proof): wiring removed — the owner-set total again.
+      pointsTotal: reconciled.pointsTotal,
     };
   });
 
