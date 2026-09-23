@@ -47,9 +47,32 @@ describe("rollupMatchPlay", () => {
     expect(rollupMatchPlay(matches, 3)).toEqual({ a: 4.5, c: 1.5, d: 3 });
   });
 
-  it("ignores an unattributed side (null team) but still credits the other", () => {
-    expect(rollupMatchPlay([m("blue", null, "A", true)], 2)).toEqual({ blue: 2 });
-    expect(rollupMatchPlay([m("blue", null, null, true)], 2)).toEqual({ blue: 1 }); // halve: only blue credited
+  /**
+   * ── THIS TEST ASSERTED THE OTHER HALF OF A DIVERGENCE ────────────────────
+   *
+   * It was called "ignores an unattributed side (null team) but still credits
+   * the other", and it passed, and it was pinning a behaviour the FINALIZE
+   * never had: `tallyMatchAwards` refuses a match unless BOTH sides resolve to
+   * a cup team (`if (!aTeam || !bTeam) continue`). So the board projected
+   * points to `blue` that `games.finish` would never pay, and the difference
+   * appeared as points vanishing at finalize.
+   *
+   * The test was not wrong about what the code did. It was written from the
+   * projection alone, and the question it answers — what does a match with one
+   * unteamed side pay — has one answer per game, not one per surface. Both
+   * paths now call `awardMatches`; this is the finalize's rule, unchanged, now
+   * also the projection's.
+   *
+   * Kept and rewritten rather than deleted, because the deleted version of this
+   * is a diff nobody can read: the case still matters, only the expectation
+   * moved.
+   */
+  it("pays NOBODY when a side has no team — the same rule the finalize applies", () => {
+    expect(rollupMatchPlay([m("blue", null, "A", true)], 2)).toEqual({});
+    expect(rollupMatchPlay([m("blue", null, null, true)], 2)).toEqual({});
+    // And the other side of the same match, so this cannot pass by `blue`
+    // happening to be the dropped one.
+    expect(rollupMatchPlay([m(null, "red", "B", true)], 2)).toEqual({});
   });
 
   // A2b — a match's own `points` (game_matches.point_value) OVERRIDES the even share.

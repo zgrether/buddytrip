@@ -10,6 +10,8 @@
  * rule needs a shared function, so that's what lives here (+ its tests).
  */
 
+import { awardMatches, type MatchAwardResult } from "./gameAward";
+
 /** One match's current on-page standing, as the scoreboard already shows it. */
 export interface ProjMatch {
   /** The team on each side (null when a side isn't attributed to a team). */
@@ -36,7 +38,11 @@ export interface ProjMatch {
  *
  * A2b: each match is worth its own `points` when set (an override), else the game's
  * even-share `pointsPerMatch` — so an overridden ("counts double") match projects at
- * its real value, exactly as the finish path awards it.
+ * its real value, the same way the finish path awards it.
+ *
+ * That last clause used to read "exactly as the finish path awards it" and was
+ * FALSE for a match with an unteamed side. It is true now because both paths
+ * call one function; see `rollupMatchPlayDetailed` for what diverged.
  */
 /**
  * Competition-total projection ("if today holds") — the FIRST rollup of projected
@@ -68,20 +74,39 @@ export function projectedTeamTotals(
 }
 
 export function rollupMatchPlay(matches: ProjMatch[], pointsPerMatch: number): Record<string, number> {
-  const out: Record<string, number> = {};
-  const add = (teamId: string | null, n: number) => {
-    if (teamId) out[teamId] = (out[teamId] ?? 0) + n;
-  };
-  for (const m of matches) {
-    if (!m.started) continue; // not started → 0
-    const value = m.points ?? pointsPerMatch; // A2b: per-match override wins
-    if (m.leader === "A") add(m.aTeamId, value);
-    else if (m.leader === "B") add(m.bTeamId, value);
-    else {
-      // all-square, in progress → halved
-      add(m.aTeamId, value / 2);
-      add(m.bTeamId, value / 2);
-    }
-  }
-  return out;
+  return rollupMatchPlayDetailed(matches, pointsPerMatch).byTeam;
+}
+
+/**
+ * The same rollup, keeping the count of started matches that can pay NOBODY.
+ *
+ * ── THIS FUNCTION USED TO DISAGREE WITH THE FINALIZE, AND SAID IT DIDN'T ────
+ *
+ * Its own doc comment claimed each match projects "exactly as the finish path
+ * awards it". It did not. The old body added through
+ * `(teamId, n) => { if (teamId) … }`, which silently DROPS an unteamed side and
+ * credits the other one; the finalize's rule is `if (!aTeam || !bTeam) continue`
+ * — pay nobody. So one match with one unassigned player projected points to a
+ * team that the finalize would never pay, and the difference showed up as
+ * points disappearing when the game was finalized.
+ *
+ * Both now call `awardMatches`. The rule lives in ONE place and this is an
+ * adapter: it says what a match's CURRENT standing means (leading → that side
+ * takes it, all-square but started → split, not started → nothing), and hands
+ * that to the rule. The finalize's adapter says the same thing about a RECORDED
+ * result. Neither can drift, because neither decides.
+ */
+export function rollupMatchPlayDetailed(
+  matches: ProjMatch[],
+  pointsPerMatch: number
+): MatchAwardResult {
+  return awardMatches(
+    matches.map((m) => ({
+      aTeamId: m.aTeamId,
+      bTeamId: m.bTeamId,
+      // A2b: per-match override wins over the game's even share.
+      value: m.points ?? pointsPerMatch,
+      outcome: !m.started ? null : m.leader === "A" ? "a" : m.leader === "B" ? "b" : "split",
+    }))
+  );
 }

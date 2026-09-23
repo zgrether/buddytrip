@@ -227,6 +227,85 @@ describe("points_distribution convention — carried to the ranking (#1381)", ()
     expect(r.errors[0]).toContain(`ranking-convention unreadable: game ${GAME}`);
   });
 
+  /**
+   * ── THE CONFLICTED ARM, AND WHY IT GETS ITS OWN END-TO-END CASES ─────────
+   *
+   * `conflicted` is a row that disagrees with ITSELF — it declares one
+   * `value_kind` and carries the other. Migration 191 made the declaration NOT
+   * NULL and every writer stamps the kind its own columns take, so this has
+   * never occurred: measured on production the day 191 landed, all 273 rows
+   * have declared and contained agreeing.
+   *
+   * **That is exactly why it needs a test rather than exactly why it does not.**
+   * From the moment a consumer ranks by the declaration, this arm is the only
+   * thing between a wrong declaration and a wrong payout — and it is a guard
+   * nobody has ever watched fail. A guard with no red proof is the shape this
+   * codebase keeps finding: green because it is right, or green because it
+   * cannot fire, and the two are indistinguishable from the outside.
+   *
+   * So the fixture writes the contradiction by hand — the only way to produce
+   * it, since no writer will — and the assertions are that the board refuses to
+   * rank it, says which game, and says the RIGHT thing about why.
+   */
+  it("CONFLICTED rows pay nothing: a row declaring points while carrying a position", async () => {
+    const r = await payoutIn("production", { type: "per_match", value: 2 }, {
+      results: [
+        // Both rows declare POINTS. Both carry a POSITION. Under the per_match
+        // arm these would otherwise rank high_wins on raw_score and pay 6 and 2
+        // — which is what a build WITHOUT this arm does, and is the mutant.
+        { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 6, value_kind: "points" },
+        { game_id: GAME, entity_id: LOSER, entity_type: "team", position: 2, raw_score: 2, value_kind: "points" },
+      ],
+    });
+    expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: null, loser: null });
+  });
+
+  it("…and it is reported as a CONTRADICTION, never as the mixed message", async () => {
+    const r = await payoutIn("production", { type: "per_match", value: 2 }, {
+      results: [
+        { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 6, value_kind: "points" },
+        { game_id: GAME, entity_id: LOSER, entity_type: "team", position: 2, raw_score: 2, value_kind: "points" },
+      ],
+    });
+    // TWO lines, and they are different facts: `resolveConvention` reports the
+    // contradiction itself (which game, declared vs contained), and the arm
+    // reports that it therefore ranked nothing.
+    expect(r.errors.some((e) => e.includes("contradict their own declaration"))).toBe(true);
+    expect(r.errors.some((e) => e.includes("ranking-convention contradicted"))).toBe(true);
+    // NOT the mixed wording. `mixed` is rows disagreeing with EACH OTHER — a
+    // half-rewritten game — and sends a reader to the game's history. This sends
+    // them to the writer. A widened condition under an unchanged message is how
+    // a refusal starts naming the wrong object.
+    expect(r.errors.some((e) => e.includes("carrying BOTH positions and raw_score"))).toBe(false);
+    expect(r.errors.some((e) => e.includes("ranking-convention unreadable"))).toBe(false);
+  });
+
+  it("…and the contradiction is caught in the OTHER direction too", async () => {
+    // Declares rank, carries no position. The mirror case: a build that only
+    // checked one direction would pass every case above and fail here.
+    const r = await payoutIn("production", { type: "per_match", value: 2 }, {
+      results: [
+        { game_id: GAME, entity_id: WINNER, entity_type: "team", position: null, raw_score: 6, value_kind: "rank" },
+        { game_id: GAME, entity_id: LOSER, entity_type: "team", position: null, raw_score: 2, value_kind: "rank" },
+      ],
+    });
+    expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: null, loser: null });
+    expect(r.errors.some((e) => e.includes("ranking-convention contradicted"))).toBe(true);
+  });
+
+  it("CONFLICTED rows THROW outside production, exactly as mixed rows do", async () => {
+    // The dev-run half. Same reasoning as the mixed case directly above: a
+    // write nobody can interpret must not pass a local run quietly.
+    await expect(
+      payoutIn("test", { type: "per_match", value: 2 }, {
+        results: [
+          { game_id: GAME, entity_id: WINNER, entity_type: "team", position: 1, raw_score: 6, value_kind: "points" },
+          { game_id: GAME, entity_id: LOSER, entity_type: "team", position: 2, raw_score: 2, value_kind: "points" },
+        ],
+      })
+    ).rejects.toThrow(`ranking-convention contradicted: game ${GAME}`);
+  });
+
   it("MIXED rows THROW outside production, so a dev run cannot miss an unreadable write", async () => {
     await expect(
       payoutIn("test", { type: "per_match", value: 2 }, {

@@ -806,9 +806,46 @@ export async function computeCompetitionLeaderboard(
       // DOESN'T use game_matches; its legacy `mc` fallback is the team-size-derived
       // head-to-head sizing (unchanged stable model) — so counting rows there would
       // zero them out.
+      /**
+       * ── A FINISHED GAME'S POOL DOES NOT MOVE WITH TODAY'S ROSTER ─────────
+       *
+       * `deriveMatchCount(teamSizes, …)` sizes the pool from `team_assignments`
+       * AS OF THIS READ. For a LIVE game that is right — the clinch goalpost is
+       * supposed to move as people are added and the slate grows, and the plan's
+       * ruling 15 says a projection of an unfinished game may use current
+       * rosters. For a COMPLETE one it is the same violation the credited unit
+       * had: a fact about THEN, re-derived from NOW, so trading a player after
+       * a game is decided silently changes how many points that game had in
+       * play, and therefore the number every team is chasing.
+       *
+       * A complete game's pool is what it actually paid. `awardedForGame` sums
+       * the distribution over the teams, which is the same expression
+       * `rollUp` uses for points-available — so this does not invent a second
+       * definition, it stops a roster read from standing in for one.
+       *
+       * ── The one case where the two answers genuinely differ ─────────────
+       *
+       * `value × mc` counts every slot as available whether or not it paid
+       * anybody; the sum of the standings counts only what landed. They agree
+       * on a normal game (rack's own integration test pins 2 slots × 2 = 4, and
+       * the standings sum to the same 4) and diverge when a match paid NOBODY —
+       * a side with no cup team, the case `awardMatches` now counts as
+       * `unpayable`. For a DECIDED game the standings sum is the better of the
+       * two: a clinch target that includes points nothing can ever award is a
+       * target no team can reach. Stated rather than smuggled, because it is a
+       * semantic change and not only a de-rostering.
+       *
+       * NOT LIVE TODAY, and that is measured rather than assumed: every
+       * completed rack and match-play game in production carries an owner-set
+       * `points_total`, so `pointsTotal` below never reaches the `value × mc`
+       * fallback. This closes the path before something takes it.
+       */
+      const isComplete = (g.status as string | null) === "complete";
       const mc = dividesByMatchRows
         ? matchCountByGame.get(g.id as string) ?? 0
-        : deriveMatchCount(teamSizes, matchFormat(typeId)) ?? 0;
+        : isComplete
+          ? 0
+          : deriveMatchCount(teamSizes, matchFormat(typeId)) ?? 0;
       // A2b (match play) + the rack total-points migration: once an owner sets
       // `points_total`, it's the authoritative total — `value × mc` only equals it
       // when there's no drift (match play: no overrides; rack: this leaderboard's
@@ -817,9 +854,20 @@ export async function computeCompetitionLeaderboard(
       // sidesteps that pre-existing divisor mismatch for any game with an owner-set
       // total. A legacy game (pre-migration, null total) falls back to `value × mc`,
       // its old behavior — unchanged for both formats.
-      const pointsTotal = dividesByMatchRows || isRackType
-        ? (g.points_total as number | null) ?? rawDist.value * mc
+      // A2b (match play) + the rack total-points migration: once an owner sets
+      // `points_total`, it's the authoritative total. A legacy game (pre-migration,
+      // null total) falls back to `value × mc` while LIVE; once complete, `mc` is
+      // 0 above and the fallback becomes what the game awarded, read off the
+      // standings rather than off a roster.
+      const legacyPool = isComplete
+        ? awardedForGame(
+            standings.length > 0 ? [...standings].sort((a, b) => b.value - a.value).map((x) => x.value) : null,
+            teamIds.length
+          )
         : rawDist.value * mc;
+      const pointsTotal = dividesByMatchRows || isRackType
+        ? (g.points_total as number | null) ?? legacyPool
+        : legacyPool;
       if (standings.length === 0) {
         // No decided matches yet — contributes its available pool, no awards.
         return { id: g.id as string, distribution: null, numTeams: teamIds.length, standings: [], direction: "high_wins" as const, pointsTotal };
