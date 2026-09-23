@@ -225,8 +225,10 @@ describe("pick'em individual matches — the pick'em arm", () => {
   }
 
   it("NO matches drawn → the whole total goes unpaid, and the target drops by all of it", async () => {
-    // Picks 2's state on the Test Cup, finalized. Before #1420 its 10 stayed in
-    // the target forever, winnable by nobody.
+    // The SHAPE of Picks 2 on the Test Cup (individual matches, none drawn),
+    // finalized. This fixture is worth 10; Picks 2 itself is worth 1 — an
+    // earlier version of this comment ran the two together. Before #1420 the
+    // whole total stayed in the target forever, winnable by nobody.
     const f = await pickem("no matches");
     const live = await computeCompetitionLeaderboard(ctx.admin, f.competitionId);
     expect(live.pointsAvailable).toBe(10); // control
