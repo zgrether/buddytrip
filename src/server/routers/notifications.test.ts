@@ -111,6 +111,7 @@ describe("notifications router", () => {
       invites: true,
       chat: true,
       news: true,
+      organizer: true,
     });
   });
 

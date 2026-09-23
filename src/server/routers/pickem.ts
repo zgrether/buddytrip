@@ -3,6 +3,8 @@ import { pickemError } from "./pickemErrors";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireGameEdit } from "../middleware";
+import { afterResponse } from "../lib/afterResponse";
+import { notifyPickemMatchesNotDrawn } from "../lib/pickemMatchesNotify";
 
 /**
  * pickem — the slate, the two scoring settings, and the lifecycle transitions.
@@ -752,12 +754,43 @@ export const pickemRouter = router({
     )
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
+      /**
+       * The organizer push fires on the none-to-some TRANSITION of results, so
+       * whether any existed has to be read BEFORE the write. Only when setting
+       * a result — clearing one is never a first result — and as a head count,
+       * which returns no rows. Everything else is read after the response.
+       * Duplicates from a same-instant race are accepted; see
+       * `pickemMatchesNotify.ts`.
+       */
+      let priorResults: number | null = null;
+      if (input.result !== null) {
+        const { count } = await ctx.supabase
+          .from("pickem_slate_games")
+          .select("id", { count: "exact", head: true })
+          .eq("game_id", input.gameId)
+          .not("result", "is", null);
+        priorResults = count ?? null;
+      }
+
       const { error } = await ctx.supabase.rpc("set_pickem_result", {
         p_game_id: input.gameId,
         p_slate_game_id: input.slateGameId,
         p_result: input.result,
       });
       if (error) throw pickemError(error.message);
+
+      if (priorResults === 0) {
+        const actorUserId = ctx.user!.id;
+        await afterResponse(async () => {
+          await notifyPickemMatchesNotDrawn({
+            tripId: input.tripId,
+            gameId: input.gameId,
+            actorUserId,
+            priorResults: 0,
+            newResult: input.result,
+          });
+        });
+      }
       return { ok: true };
     }),
 

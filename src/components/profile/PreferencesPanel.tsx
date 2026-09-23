@@ -630,8 +630,11 @@ function NotificationSettings({ onOpen }: { onOpen: () => void }) {
  *
  * `news` follows the same rule, in the same commit as `newsNotify.ts` and
  * `news.create`/`news.resend`'s calls into it.
+ *
+ * `organizer` follows it too: exposed in the same commit as
+ * `pickemMatchesNotify.ts` and `pickem.setResult`'s call into it.
  */
-const EXPOSED_CATEGORIES: NotificationKey[] = ["game_results", "chat", "news"];
+const EXPOSED_CATEGORIES: NotificationKey[] = ["game_results", "chat", "news", "organizer"];
 
 /**
  * One category row, inside the notifications modal beneath the activation
