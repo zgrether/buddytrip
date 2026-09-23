@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rollUp, placementDetail, placementPoints, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
-import { isPerMatch, isPlacement, effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
+import { isPerMatch, isPlacement, effectiveDistribution, payingSchedule, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { isBracketGame, isPickemGame, isMatchesGame } from "@/lib/resultStrategy";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
@@ -206,22 +206,25 @@ export function reconcileConvention(
   // Named, not spread: a spread would carry `expects`/`schedule` into the
   // LiveGame and on into everything downstream of the roll-up.
   const base = { id: arm.id, numTeams: arm.numTeams, standings: arm.standings, pointsTotal: arm.pointsTotal };
-  const schedule =
+  // A schedule that PAYS NOTHING is no schedule (#1410). Collapsed HERE, at the
+  // seam every positions arm passes through, rather than in the arm that was
+  // caught doing it: pick'em's `[]` for a game worth nothing, placement's
+  // values, a stroke total of 0 saved as `[0]`, and any arm written later all
+  // reach the board through the two returns below.
+  const schedule = payingSchedule(
     arm.expects === "positions"
       ? arm.schedule
-      : (() => {
-          // An arm expecting points authors no schedule; ranks reaching it are
-          // paid by the game's split, else winner takes the total.
-          const d = effectiveDistribution(ctx.rawDistribution, ctx.pointsTotal);
-          return d.length > 0 ? d : null;
-        })();
+      : // An arm expecting points authors no schedule; ranks reaching it are
+        // paid by the game's split, else winner takes the total.
+        effectiveDistribution(ctx.rawDistribution, ctx.pointsTotal)
+  );
 
   // No standings to rank: the pre-decision shape. An arm expecting positions
   // still carries its schedule, because the schedule's sum is its
   // points-in-play when no owner total is set.
   if (arm.standings.length === 0) {
     return arm.expects === "positions"
-      ? { ...base, distribution: arm.schedule, direction: "low_wins" }
+      ? { ...base, distribution: schedule, direction: "low_wins" }
       : { ...base, distribution: null, direction: "high_wins" };
   }
   // Standings exist only where team rows do, so every game reaching here has a
