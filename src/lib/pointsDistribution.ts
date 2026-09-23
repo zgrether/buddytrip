@@ -98,6 +98,26 @@ export function effectiveDistribution(
 }
 
 /**
+ * The schedule, or `null` if it PAYS NOTHING — the one test for "is there a
+ * payout here at all" (#1410).
+ *
+ * `[]` is truthy, so a bare `if (schedule)` admits the empty one
+ * `effectiveDistribution` returns for a game worth nothing — and a schedule of
+ * zeros (`[0]`, which the stroke save path writes for a total of 0) is not even
+ * empty. Both were handed to `placementDetail`, which assigns every team a real
+ * PLACE worth nothing: the board's Game-by-game table printed `0 | 0` where "no
+ * payout configured" belonged. So the question is not "is it empty" but "does
+ * it pay anything", and it is asked here once rather than per call site.
+ *
+ * For a SCHEDULE — a payout by place. A points-convention distribution (the
+ * sorted values a finished match game actually scored) is a result, and a real
+ * 0-0 there is a decided outcome; do not route those through this.
+ */
+export function payingSchedule(schedule: readonly number[] | null | undefined): number[] | null {
+  return schedule != null && schedule.some((v) => v > 0) ? [...schedule] : null;
+}
+
+/**
  * #1031 — the LIVE per-match award value (A2b match play), recomputed from the
  * game's CURRENT assigned matches. Every caller that needs a match's fallback
  * award (no override) MUST go through this — never read `points_distribution.value`

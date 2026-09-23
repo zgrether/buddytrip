@@ -59,7 +59,7 @@ import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
 
 /** The competition context the resolution needs. Null for a standalone game,
  *  which has no teams and therefore nothing to award. */
-interface PickemCompetition {
+export interface PickemCompetition {
   /** `competitions.scoring_model` — a points cup overrides `roll_up` entirely. */
   pointsMode: boolean;
   teams: { id: string; memberIds: string[] }[];
@@ -187,56 +187,17 @@ export async function computePickemResults(
       });
     }
   }
-  const voidedIds = new Set(unresolvedIds);
-
-  const sheets: Record<string, ScoredPick[]> = {};
-  for (const row of picksRes.data ?? []) {
-    const pick = row.pick as "away" | "home" | null;
-    // A stored row with no side is a partial sheet's untouched game (migration
-    // 166). It is not a pick and must not be scored as one.
-    if (pick == null) continue;
-    const uid = row.user_id as string;
-    (sheets[uid] ??= []).push({
-      slateGameId: row.slate_game_id as string,
-      pick,
-      confidence: (row.confidence as number | null) ?? null,
-    });
-  }
-
-  const comp = compRes;
-  const input: PickemFinalizeInput = {
-    slate: (slateRes.data ?? []).map((g) => ({
-      id: g.id as string,
-      // The just-written void, folded in here rather than re-read: one round
-      // trip fewer, and the scored value is provably the stored one.
-      result: voidedIds.has(g.id as string)
-        ? ("cancelled" as const)
-        : ((g.result as PickemFinalizeInput["slate"][number]["result"]) ?? null),
-      multiplier: (g.multiplier as number | null) ?? 1,
-    })),
-    sheets,
-    matches: (matchRes.data ?? []).map((m) => ({
-      sideAId: sideUserId(m.side_a),
-      sideBId: sideUserId(m.side_b),
-      pointValue: (m.point_value as number | null) ?? null,
-    })),
-    teams: comp?.teams ?? [],
-    useConfidence: (cfg?.use_confidence as boolean | null) ?? true,
-    rollUp: ((cfg?.roll_up as string | null) ?? "team_totals") as PickemFinalizeInput["rollUp"],
-    pointsMode: comp?.pointsMode ?? false,
-    pointsTotal: (game.points_total as number | null) ?? null,
-    /**
-     * The SHARED accessor, not `isPlacement(d) ? d.values : []`. Pick'em never
-     * writes a `points_distribution` at all — `set_pickem_points_total` is its
-     * only points writer and it sets the total alone — so this is the winner-
-     * takes-all fallback in every real game, and the ternary would have paid
-     * nobody. Same call the board's own placement schedule makes.
-     */
-    distribution: effectiveDistribution(
-      game.points_distribution as PointsDistribution | null,
-      game.points_total as number | null
-    ),
-  };
+  // The just-written void is folded in by the builder (unresolved → cancelled)
+  // rather than re-read: one round trip fewer, and the scored value is provably
+  // the stored one.
+  const input = buildPickemFinalizeInput({
+    game,
+    cfg,
+    slate: slateRes.data ?? [],
+    picks: picksRes.data ?? [],
+    matches: matchRes.data ?? [],
+    competition: compRes,
+  });
 
   const outcome = pickemFinalize(input);
 
@@ -282,6 +243,85 @@ export async function computePickemResults(
   });
 
   return outcome;
+}
+
+/** The rows `pickemFinalize`'s input is built from — as PostgREST returns them. */
+export interface PickemFinalizeRows {
+  game: { points_total: unknown; points_distribution: unknown };
+  cfg: { roll_up?: unknown; use_confidence?: unknown } | null;
+  slate: { id: unknown; multiplier: unknown; result: unknown }[];
+  picks: { user_id: unknown; slate_game_id: unknown; pick: unknown; confidence: unknown }[];
+  matches: { side_a: unknown; side_b: unknown; point_value: unknown }[];
+  competition: PickemCompetition | null;
+}
+
+/**
+ * Rows → `pickemFinalize`'s input. THE ONE BUILDER, called by finalize here and
+ * by the board's live projection (`liveProjection.ts`, 3c).
+ *
+ * One builder rather than two that agree, because the projection's whole claim
+ * is "what finalize would pay if it ran now" (rulings 13 and 14). A second copy
+ * of this mapping is where that claim quietly stops being true — a default read
+ * differently (`use_confidence`, `roll_up`), a null pick scored as a pick — and
+ * nothing about either output would show it.
+ *
+ * ── An unresolved contest is VOID ──────────────────────────────────────────
+ * Finalize writes `cancelled` over every unresolved slate game before it
+ * scores (see `computePickemResults`), and folds that written void in here
+ * rather than re-reading it: `result ?? "cancelled"`.
+ *
+ * NOT a scoring difference, and measured rather than assumed: `pickPoints`
+ * pays 0 on a null result and on `cancelled` alike, so no award in any
+ * resolution changes with or without this fold (a mutant removing it left
+ * every award test green). What it DOES change is `pickemFinalize`'s
+ * `unresolved` count — 0 after the void, as it always was before this builder
+ * was extracted — and that is pinned in `pickemProjectionParity.test.ts`.
+ */
+export function buildPickemFinalizeInput(rows: PickemFinalizeRows): PickemFinalizeInput {
+  const sheets: Record<string, ScoredPick[]> = {};
+  for (const row of rows.picks) {
+    const pick = row.pick as "away" | "home" | null;
+    // A stored row with no side is a partial sheet's untouched game (migration
+    // 166). It is not a pick and must not be scored as one.
+    if (pick == null) continue;
+    const uid = row.user_id as string;
+    (sheets[uid] ??= []).push({
+      slateGameId: row.slate_game_id as string,
+      pick,
+      confidence: (row.confidence as number | null) ?? null,
+    });
+  }
+
+  const comp = rows.competition;
+  return {
+    slate: rows.slate.map((g) => ({
+      id: g.id as string,
+      result: ((g.result as PickemFinalizeInput["slate"][number]["result"]) ?? "cancelled"),
+      multiplier: (g.multiplier as number | null) ?? 1,
+    })),
+    sheets,
+    matches: rows.matches.map((m) => ({
+      sideAId: sideUserId(m.side_a),
+      sideBId: sideUserId(m.side_b),
+      pointValue: (m.point_value as number | null) ?? null,
+    })),
+    teams: comp?.teams ?? [],
+    useConfidence: (rows.cfg?.use_confidence as boolean | null) ?? true,
+    rollUp: ((rows.cfg?.roll_up as string | null) ?? "team_totals") as PickemFinalizeInput["rollUp"],
+    pointsMode: comp?.pointsMode ?? false,
+    pointsTotal: (rows.game.points_total as number | null) ?? null,
+    /**
+     * The SHARED accessor, not `isPlacement(d) ? d.values : []`. Pick'em never
+     * writes a `points_distribution` at all — `set_pickem_points_total` is its
+     * only points writer and it sets the total alone — so this is the winner-
+     * takes-all fallback in every real game, and the ternary would have paid
+     * nobody. Same call the board's own placement schedule makes.
+     */
+    distribution: effectiveDistribution(
+      rows.game.points_distribution as PointsDistribution | null,
+      rows.game.points_total as number | null
+    ),
+  };
 }
 
 /**

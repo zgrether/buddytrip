@@ -12,6 +12,45 @@
 
 import { awardMatches, type MatchAwardResult } from "./gameAward";
 
+/**
+ * Why a game whose format DOES project can't produce a figure right now (3c,
+ * principle 3: open-ended is a declared outcome, not a missing one).
+ *
+ * Distinct from "projects zero". A game paying 0-0 because nobody is up is a
+ * real standing; a game with no points set would pay 0-0 however it went, and
+ * rendering that as `▲0 | ▲0` is how "nothing configured" and "nobody leads"
+ * became the same picture — the #1381 lesson, where 0-0 read as "not started"
+ * and hid an inverted payout until finalize.
+ *
+ * And distinct from ABSENT, which means the format has no live projection at
+ * all (stroke, scramble and skins until PR 9; non-golf placement, which never
+ * runs live).
+ *
+ *  - `no_points` — nothing to pay: no total, a total of 0, no per-match value
+ *    and no override. Whatever happens, this game awards nothing.
+ *  - `no_course` — rack has no par / stroke index to measure against.
+ *  - `no_teams`  — rack needs two teams on its roster and has fewer.
+ *  - `no_matches` — a game that pays PER MATCH with no match paired (both
+ *    sides set). Points are set and nothing can earn them yet. Actionable: an
+ *    organizer can still draw matches. The app saves pairings through
+ *    `save_game_config`, whose only pairing freeze is a MATCH with a recorded
+ *    result (`MATCH_DECIDED`); a pick'em slate result is not one, and
+ *    `HAS_SCORES` does not read `pickem_slate_games`. (`save_pickem_matches`
+ *    says the same since 162, but the app no longer calls it — cite the path
+ *    the app takes.)
+ *    Reached when a started game in any of the three per-match arms is left
+ *    with nothing paired: a vacated seat in non-golf Matches or golf match play
+ *    (the side is nulled, the result kept, the game stays started), or pick'em
+ *    individual matches whose pairings were cleared after a result.
+ *  - `picks_hidden` — a pick'em game whose sheets are not yet revealed. The
+ *    board is computed under the VIEWER's RLS, so before reveal it would see
+ *    only their own sheet (or, for a captain, sheets it may proxy) and project
+ *    a number that is wrong and differs per viewer.
+ *
+ * Client-safe on purpose: the server emits it and `GameRow` renders it.
+ */
+export type CannotProjectReason = "no_points" | "no_matches" | "no_course" | "no_teams" | "picks_hidden";
+
 /** One match's current on-page standing, as the scoreboard already shows it. */
 export interface ProjMatch {
   /** The team on each side (null when a side isn't attributed to a team). */

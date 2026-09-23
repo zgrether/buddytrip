@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rollUp, placementDetail, placementPoints, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
-import { isPerMatch, isPlacement, effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
+import { isPerMatch, isPlacement, effectiveDistribution, payingSchedule, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { isBracketGame, isPickemGame, isMatchesGame } from "@/lib/resultStrategy";
 import { deriveMatchCount, type MatchFormat } from "@/lib/gameConfig";
@@ -206,22 +206,25 @@ export function reconcileConvention(
   // Named, not spread: a spread would carry `expects`/`schedule` into the
   // LiveGame and on into everything downstream of the roll-up.
   const base = { id: arm.id, numTeams: arm.numTeams, standings: arm.standings, pointsTotal: arm.pointsTotal };
-  const schedule =
+  // A schedule that PAYS NOTHING is no schedule (#1410). Collapsed HERE, at the
+  // seam every positions arm passes through, rather than in the arm that was
+  // caught doing it: pick'em's `[]` for a game worth nothing, placement's
+  // values, a stroke total of 0 saved as `[0]`, and any arm written later all
+  // reach the board through the two returns below.
+  const schedule = payingSchedule(
     arm.expects === "positions"
       ? arm.schedule
-      : (() => {
-          // An arm expecting points authors no schedule; ranks reaching it are
-          // paid by the game's split, else winner takes the total.
-          const d = effectiveDistribution(ctx.rawDistribution, ctx.pointsTotal);
-          return d.length > 0 ? d : null;
-        })();
+      : // An arm expecting points authors no schedule; ranks reaching it are
+        // paid by the game's split, else winner takes the total.
+        effectiveDistribution(ctx.rawDistribution, ctx.pointsTotal)
+  );
 
   // No standings to rank: the pre-decision shape. An arm expecting positions
   // still carries its schedule, because the schedule's sum is its
   // points-in-play when no owner total is set.
   if (arm.standings.length === 0) {
     return arm.expects === "positions"
-      ? { ...base, distribution: arm.schedule, direction: "low_wins" }
+      ? { ...base, distribution: schedule, direction: "low_wins" }
       : { ...base, distribution: null, direction: "high_wins" };
   }
   // Standings exist only where team rows do, so every game reaching here has a
@@ -1036,22 +1039,20 @@ export async function computeCompetitionLeaderboard(
   // (Path A), read-only, and rides this payload's existing 30s poll (no new
   // fetch on the client, converges across devices for free). Stroke/non-golf and
   // not-yet-started games have no projection → their rows keep the plain layout.
-  // ── The pill is gated on STARTED, and that is the pick'em decision ──────
+  // ── The pill is gated on STARTED — and pick'em has now joined (3c) ──────
   //
-  // Pick'em was asked to join the format allowlist. It should not, and the
-  // allowlist is not even the operative gate: `projectGame` returns null for
-  // anything that is not match play or rack, so joining the list alone would
-  // change nothing without a pick'em projection function written.
+  // This comment used to argue pick'em should NOT join the allowlist, and the
+  // argument was about one state: a locked game with zero results, where every
+  // sheet scores 0 and the pill would read 0 to each side — "pick'em is worth
+  // nothing" where "pick'em has not started" was true. That argument still
+  // holds and is still honoured, by the same line it named: `started` (a
+  // pick'em game is started on its first slate result, migration 161), so
+  // there is no pill until the first result, then a real one.
   //
-  // What such a function WOULD compute for a locked game with zero results is
-  // the argument against it: every sheet scores 0, so the pill would read 0 to
-  // each side. Next to golf games mid-round that says "pick'em is worth
-  // nothing" rather than "pick'em has not started" — and the two are
-  // indistinguishable on screen, which is the kind of dishonesty that matters.
-  //
-  // `started` already draws that line, so it draws this one too: no pill until
-  // the first result, then a real one. Migration 161's predicate doing a second
-  // job it was already suited for.
+  // What changed is that there is now a real one to show. `projectPickem`
+  // runs finalize's own builder into `pickemFinalize` (rulings 13 and 14), is
+  // gated on reveal because this board is computed under the viewer's RLS, and
+  // says `cannot` with a reason rather than projecting a pot of nothing.
   const liveProjectionInputs: LiveProjectionInput[] = allGames
     .filter((g) => {
       const t = g.game_type_id as string | null;
@@ -1059,7 +1060,7 @@ export async function computeCompetitionLeaderboard(
       return (
         g.status === "active" &&
         startedByGame.has(g.id as string) &&
-        ((t != null && MATCH_PLAY_TYPES.has(t)) || t === RACK_TYPE || isMatchesGame(t, cf))
+        ((t != null && MATCH_PLAY_TYPES.has(t)) || t === RACK_TYPE || isMatchesGame(t, cf) || isPickemGame(t, cf))
       );
     })
     .map((g) => {
@@ -1080,9 +1081,22 @@ export async function computeCompetitionLeaderboard(
         // Refactor B3: an outcome-mode match projects from recorded outcomes,
         // not gross scores (it has none).
         outcomeMode: (g.entry_mode as string | null) === "outcome",
+        // Pick'em's points cup pays by the schedule derived from this.
+        pointsDistribution: dist,
       };
     });
-  const projections = await computeLiveProjections(supabase, competitionId, liveProjectionInputs);
+  const live = await computeLiveProjections(supabase, competitionId, liveProjectionInputs, {
+    pointsMode: scoringModel === "points",
+  });
+  const cannotProject = live.cannotProject;
+  // Every cup team, explicitly, on every projected game. An arm reports only the
+  // teams it met, and the row used to supply the rest with `?? 0` — a number the
+  // client made up. A team with no side in a game genuinely projects 0 here, and
+  // this is where that is known, so this is where it is said.
+  const projections: typeof live.projections = {};
+  for (const [gameId, byTeam] of Object.entries(live.projections)) {
+    projections[gameId] = Object.fromEntries(teamIds.map((id) => [id, byTeam[id] ?? 0]));
+  }
 
   // Competition-total projection ("if today holds"): banked (teamTotals) + Σ of each
   // team's live-game projections, summed SERVER-SIDE so the hero reads one authoritative
@@ -1173,6 +1187,9 @@ export async function computeCompetitionLeaderboard(
     // gameId → teamId → projected points (LIVE match/rack games only). The board
     // renders these as the ▲ projected-points pill in each team column.
     projections,
+    // gameId → why a LIVE game whose format projects can't right now (3c). Disjoint
+    // from `projections`; a live game in neither has a format with no projection.
+    cannotProject,
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,
     teamTotals: Object.fromEntries(roll.teamTotals),

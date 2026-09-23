@@ -362,7 +362,7 @@ describe("points_distribution convention — live projection (#1381)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fakeClient({ type: "per_match", value: 2 }) as any, COMPETITION, [input(true, 2)]
     );
-    expect(out[GAME]).toEqual({ [WINNER]: 6, [LOSER]: 2 });
+    expect(out.projections[GAME]).toEqual({ [WINNER]: 6, [LOSER]: 2 });
   });
 
   it("a placement-carrying Matches game projects the SAME split — not 0-0", async () => {
@@ -370,7 +370,7 @@ describe("points_distribution convention — live projection (#1381)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fakeClient({ type: "placement", values: [8] }) as any, COMPETITION, [input(false, null)]
     );
-    expect(out[GAME]).toEqual({ [WINNER]: 6, [LOSER]: 2 });
+    expect(out.projections[GAME]).toEqual({ [WINNER]: 6, [LOSER]: 2 });
   });
 
   it("with nothing to divide (no total, no legacy value, no overrides) it projects NOTHING, not 0-0", async () => {
@@ -378,6 +378,9 @@ describe("points_distribution convention — live projection (#1381)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       fakeClient(null) as any, COMPETITION, [input(false, null, null)]
     );
-    expect(GAME in out).toBe(false);
+    expect(GAME in out.projections).toBe(false);
+    // …and it SAYS why, rather than being silently absent (3c). Absent alone is
+    // what a format with no projection at all looks like.
+    expect(out.cannotProject[GAME]).toBe("no_points");
   });
 });
