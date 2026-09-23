@@ -182,11 +182,20 @@ const LOCKED_WITH_RESULTS =
    */
   "Results are in, picks stay closed.";
 
-/** The two worded steps. `none` renders nothing, so it has no copy. */
+/**
+ * The two worded steps. `none` renders nothing, so it has no copy.
+ *
+ * SHORT, and naming no route. The first version said "the gear at the top of
+ * this page, then Matches" — which is the "Matches can be set in the game
+ * settings" signpost `PickemNoMatches` deliberately removed, reintroduced as a
+ * sentence. The gear is in this game's own header, where a runner looks for
+ * settings on every format; the line only has to say WHAT, not where. "They're
+ * scored from the results already in" lives in the push body, which has the
+ * room (Zach's look, 2026-09-23: "That's a lot of text!").
+ */
 export const DRAW_MATCHES_COPY: Record<Exclude<DrawMatchesUrgency, "none">, string> = {
-  locked: "Picks are locked — draw the matches next: the gear at the top of this page, then Matches.",
-  results:
-    "Results are coming in and no matches are drawn — draw them now: the gear at the top of this page, then Matches. They're scored from the results already in.",
+  locked: "Picks are locked. Draw the matches next.",
+  results: "Results are in — draw the matches.",
 };
 
 export interface PickemPhaseStripProps {
@@ -503,8 +512,7 @@ export function PickemPhaseStrip({
       )}
 
       {/* DRAW THE MATCHES — first, because it is the runner's one outstanding
-          job. Names WHERE (the refusal rule). Two steps that differ in WORDS and
-          in PAINT: the locked step is an ordinary dim to-do; the results step
+          job. Two steps that differ in WORDS and in PAINT: the locked step is an ordinary dim to-do; the results step
           takes the owner-attention colour this panel already uses, because the
           game is now degrading silently. Both are asserted, the paint included —
           a distinction carried only by style is invisible to value-level guards. */}
@@ -524,8 +532,12 @@ export function PickemPhaseStrip({
       )}
 
       {/* The one sentence that is NOT a phase restatement: it says why an
-          action a runner expects to find is missing, which the button cannot. */}
-      {phase === "locked" && hasResults && (
+          action a runner expects to find is missing, which the button cannot.
+          Stood down while the RESULTS draw-matches line shows: that line opens
+          "Results are in" too, and the pair said one fact twice in one card
+          (Zach's look). The draw is the more urgent sentence; this one returns
+          the moment the matches are drawn. */}
+      {phase === "locked" && hasResults && drawMatches !== "results" && (
         <span
           style={{
             fontSize: TYPE_SCALE.caption,

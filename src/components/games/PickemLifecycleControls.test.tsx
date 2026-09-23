@@ -920,10 +920,33 @@ describe("the strip renders the two steps differently — in WORDS and in PAINT"
     expect(html).toContain(rendered(DRAW_MATCHES_COPY.results));
   });
 
-  it("both worded steps name WHERE the fix is — the refusal rule", () => {
+  it("neither step names a route — the settings signpost stays removed", () => {
+    // The first version said "the gear at the top of this page, then Matches":
+    // the signpost `PickemNoMatches` deliberately dropped, back as a sentence.
+    // The gear is in this game's own header; the line says WHAT (Zach's look).
     for (const copy of Object.values(DRAW_MATCHES_COPY)) {
-      expect(copy).toContain("the gear at the top of this page, then Matches");
+      expect(copy).not.toMatch(/gear|settings/i);
     }
     expect(DRAW_MATCHES_COPY.locked).not.toBe(DRAW_MATCHES_COPY.results);
+  });
+
+  // The strip as READ: tags out, case folded. Local — `words` above is scoped
+  // to another describe.
+  const read = (html: string) => html.replace(/<[^>]*>/g, " ").toLowerCase();
+
+  it("results + nothing drawn → ONE 'Results are in', not two stacked lines", () => {
+    // Zach's look: the draw line and "Results are in, picks stay closed."
+    // stacked in one card, one fact twice. Counted over the strip's WORDS so
+    // either copy regaining the phrase is caught, not only the old line.
+    const html = strip({ phase: "locked", hasResults: true, drawMatches: "results" });
+    expect(read(html).split("results are in").length - 1).toBe(1);
+    expect(read(html)).not.toContain("picks stay closed");
+  });
+
+  it("…and the stay-closed line comes back once the matches are drawn", () => {
+    // The control: without it, the case above passes on a build that deleted
+    // the stay-closed line outright.
+    const html = strip({ phase: "locked", hasResults: true, drawMatches: "none" });
+    expect(read(html)).toContain("picks stay closed");
   });
 });

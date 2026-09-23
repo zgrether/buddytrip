@@ -9,13 +9,23 @@ import { PickemNoMatches, noMatchesDrawn } from "./PickemNoMatches";
  * being dressed as a broken one.
  */
 
-const render = () => renderToStaticMarkup(<PickemNoMatches />);
+const render = (canDraw = false) => renderToStaticMarkup(<PickemNoMatches canDraw={canDraw} />);
+const WAIT = "Check back later to see who your opponent is.";
 
 describe("PickemNoMatches", () => {
-  it("tells everyone what they are waiting for, and stops", () => {
-    const html = render();
+  it("tells a member what they are waiting for, and stops", () => {
+    const html = render(false);
     expect(html).toContain("No matches drawn yet");
-    expect(html).toContain("Check back later to see who your opponent is.");
+    expect(html).toContain(WAIT);
+  });
+
+  it("does NOT tell the runner to wait — they are the one everyone is waiting on", () => {
+    // Zach's look (2026-09-23). Both arms asserted: a build that drops the
+    // line for everyone fails the member case above; one that ignores
+    // `canDraw` fails this one.
+    const html = render(true);
+    expect(html).toContain("No matches drawn yet");
+    expect(html).not.toContain(WAIT);
   });
 
   it("is DASHED, because there will be something here", () => {
@@ -25,7 +35,7 @@ describe("PickemNoMatches", () => {
     expect(render()).toContain("dashed");
   });
 
-  it("sends nobody to settings, and takes no viewer at all", () => {
+  it("sends nobody to settings — runner or member", () => {
     /**
      * There was a second card here for the runner — "Matches can be set in the
      * game settings", with a chevron. It is gone and nothing replaced it.
@@ -36,13 +46,16 @@ describe("PickemNoMatches", () => {
      * "where are the matches"; a card explaining they live elsewhere is the
      * screen apologising for itself.
      *
-     * The component takes no props now, which is the strongest form of "it says
-     * the same thing to everyone" — there is nothing to branch on.
+     * This used to also assert the component took NO props — "there is nothing
+     * to branch on". It branches now, on one line: the runner is not told to
+     * wait (Zach, 2026-09-23). What that assertion protected — no route to
+     * settings for anyone — is asserted directly instead, for both viewers.
      */
-    const html = render();
-    expect(html).not.toContain("game settings");
-    expect(html).not.toContain('data-testid="pickem-no-matches-settings"');
-    expect(PickemNoMatches.length).toBe(0);
+    for (const html of [render(false), render(true)]) {
+      expect(html).not.toContain("game settings");
+      expect(html).not.toContain("gear");
+      expect(html).not.toContain('data-testid="pickem-no-matches-settings"');
+    }
   });
 });
 
@@ -94,6 +107,14 @@ describe("results are entered whenever they happen (results-first PR)", () => {
   it("the scan can see the region at all — not passing on a moved panel", () => {
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
+  });
+
+  it("the Matches tab asks the SAME runner question as the strip", () => {
+    // `tsc` forces `canDraw` to be passed, not what it is passed. `runnerStrip`
+    // is the flag that mounts the strip saying "draw the matches"; anything
+    // else lets the two disagree about who the runner is — a runner told to
+    // wait by the tab while the strip tells them to act.
+    expect(SRC).toContain("<PickemNoMatches canDraw={runnerStrip} />");
   });
 
   it("nothing in the results panel keys on the matches prerequisite", () => {

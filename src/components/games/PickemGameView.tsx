@@ -1914,7 +1914,7 @@ export function PickemGameView() {
               that must read as waiting rather than broken. */}
           {surface.panel === "matches" &&
             (noMatchesDrawn ? (
-            <PickemNoMatches />
+            <PickemNoMatches canDraw={runnerStrip} />
           ) : (
             <PickemBoard
               slate={q.data.slate}

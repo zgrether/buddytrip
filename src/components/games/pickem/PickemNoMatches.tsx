@@ -14,7 +14,14 @@ import { TYPE_SCALE } from "@/lib/typeScale";
  * a nag: a DASHED panel says "there will be something here", where a solid card
  * would say "here is the thing" and a warning would say "somebody has failed".
  *
- * ── It says the same thing to everyone ─────────────────────────────────────
+ * ── It says the same thing to everyone — EXCEPT the one instruction ────────
+ *
+ * "Check back later to see who your opponent is" is right for a member and
+ * wrong for the runner: it tells the one person everyone is waiting on to wait.
+ * So a viewer who can draw the matches (`canDraw`, the same `canEdit` that
+ * mounts the runner's strip) gets the headline alone. The strip above already
+ * says "draw the matches", so the runner's version needs no sentence of its
+ * own — least of all a route (Zach's look, 2026-09-23).
  *
  * There was a second card under this one for the runner — a teal badge reading
  * "Matches can be set in the game settings" with a chevron into settings. It is
@@ -53,7 +60,12 @@ export function noMatchesDrawn(input: {
   return input.individualMatches && input.matchCount === 0;
 }
 
-export function PickemNoMatches() {
+export function PickemNoMatches({
+  canDraw,
+}: {
+  /** Can this viewer draw the matches — the runner. Drops the "check back later". */
+  canDraw: boolean;
+}) {
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-no-matches">
       <div
@@ -66,9 +78,11 @@ export function PickemNoMatches() {
       >
         <Users size={30} style={{ color: "var(--color-bt-text-dim)", opacity: 0.7 }} />
         <span style={{ fontSize: TYPE_SCALE.name, fontWeight: 700 }}>No matches drawn yet</span>
-        <span style={{ fontSize: TYPE_SCALE.bodyDense, color: "var(--color-bt-text-dim)" }}>
-          Check back later to see who your opponent is.
-        </span>
+        {!canDraw && (
+          <span style={{ fontSize: TYPE_SCALE.bodyDense, color: "var(--color-bt-text-dim)" }}>
+            Check back later to see who your opponent is.
+          </span>
+        )}
       </div>
     </div>
   );
