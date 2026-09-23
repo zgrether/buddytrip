@@ -52,6 +52,7 @@ const render = (props: {
       cannotProject={props.cannotProject}
       tripId="t1"
       mine={false}
+      onPrefetch={() => {}}
     />
   );
 
