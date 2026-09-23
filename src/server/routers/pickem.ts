@@ -779,7 +779,7 @@ export const pickemRouter = router({
       });
       if (error) throw pickemError(error.message);
 
-      if (priorResults === 0) {
+      if (priorResults === -1) { // MUTANT: never sends
         const actorUserId = ctx.user!.id;
         await afterResponse(async () => {
           await notifyPickemMatchesNotDrawn({
