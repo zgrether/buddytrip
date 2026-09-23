@@ -160,6 +160,65 @@ export function winThreshold(pointsAvailable: number, defending: boolean): numbe
 }
 
 /**
+ * What a game PAID, per team — the one definition. `rollUp` banks exactly this
+ * into `teamTotals`, and `settledPool` sums exactly this for a finished game's
+ * share of points-available, so "what the teams banked" and "what the game
+ * counted as available" cannot be two expressions that drift (#1420).
+ */
+export function gamePayout(g: LiveGame): Map<string, number> {
+  if (!g.distribution || g.standings.length === 0) return new Map();
+  return placementPoints(g.distribution, g.standings, g.direction);
+}
+
+/**
+ * The share of points-available a game contributes (#1420).
+ *
+ * ── A FINISHED per-match game counts what it PAID, not what was set ────────
+ *
+ * A match can pay nobody: a side on no cup team, a match undecided at finalize,
+ * a pick'em match both of whose sheets are empty, or a pick'em with no matches
+ * drawn at all (the WHOLE total unpaid). Counting the owner-set total left that
+ * share in points-available forever, so the "first to N" and the clinch push
+ * both included points no team could ever win. This reads the persisted
+ * payout, so every format's own unpaid rule (`awardMatches`, `pickemFinalize`)
+ * is honoured without being consulted — and `awardMatches`' `unpayable` is
+ * deliberately NOT the input: it misses undecided matches and every pick'em case.
+ *
+ * ── Why only `expectsPoints`, only `complete`, and never a live game ───────
+ *
+ *  - PLACEMENT / bracket / points-cup pick'em (positions) have no "match that
+ *    pays nobody" and are out of scope (#1420 carries the unmeasured
+ *    placement over-split as a known gap).
+ *  - A LIVE game keeps the owner-set total. What it will leave unpaid moves on
+ *    paths that never call `games.finish` — a sheet submission, a pairing, a
+ *    roster change — and `finish` is the ONLY place the clinch push is sent
+ *    (`reconcileClinchClaim` only ever releases). A threshold crossed on one of
+ *    those paths would clinch with nobody told, possibly forever. Moving the
+ *    target only when a game becomes complete means the same finalize that
+ *    moved it is the one that announces it (Zach, 2026-09-23).
+ *
+ * ── `status`, NOT the lock state — and `correctionsOpen` is taken to say so ─
+ *
+ * Opening a correction sets `corrections_open` and leaves `status = complete`
+ * and every result row untouched until the re-finalize. Keyed on the lock state
+ * (`gameLockState`), opening a correction would raise the target back to the
+ * owner-set total, un-clinch, release the claim — and the re-finalize would
+ * re-clinch and push "X clinched" to every phone in the cup, on EVERY
+ * correction cycle of an under-paid game. `correctionsOpen` is an input so the
+ * call site hands over the whole lifecycle and this function is visibly the
+ * one that declines to use it; the test that pins it is the correction case.
+ */
+export function settledPool(
+  g: LiveGame,
+  o: { expectsPoints: boolean; status: string | null; correctionsOpen: boolean }
+): number | null | undefined {
+  if (!o.expectsPoints || o.status !== "complete") return g.pointsTotal;
+  let paid = 0;
+  for (const p of gamePayout(g).values()) paid += p;
+  return paid;
+}
+
+/**
  * The full roll-up over LIVE (non-dropped) games. Caller passes only live games
  * — dropping/restoring a game changes the set, which is exactly why the win
  * number recomputes (§4): it is derived here, never stored.
@@ -180,9 +239,7 @@ export function rollUp(
     // clinch), else the pre-Slice-D awardable sum. `?? ` keeps an explicit 0
     // (match game, teams not sized) from falling back.
     pointsAvailable += g.pointsTotal ?? awardedForGame(g.distribution, g.numTeams);
-    if (!g.distribution || g.standings.length === 0) continue;
-    const pts = placementPoints(g.distribution, g.standings, g.direction);
-    for (const [entityId, p] of pts) {
+    for (const [entityId, p] of gamePayout(g)) {
       teamTotals.set(entityId, (teamTotals.get(entityId) ?? 0) + p);
     }
   }

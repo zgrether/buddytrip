@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { rollUp, placementDetail, placementPoints, awardedForGame, type LiveGame } from "@/lib/competitionPlacement";
+import { rollUp, placementDetail, placementPoints, awardedForGame, settledPool, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, effectiveDistribution, payingSchedule, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { isBracketGame, isPickemGame, isMatchesGame } from "@/lib/resultStrategy";
@@ -899,9 +899,9 @@ export async function computeCompetitionLeaderboard(
        * a game is decided silently changes how many points that game had in
        * play, and therefore the number every team is chasing.
        *
-       * A complete game's pool is what it actually paid. `awardedForGame` sums
-       * the distribution over the teams, which is the same expression
-       * `rollUp` uses for points-available — so this does not invent a second
+       * A complete game's pool is what it actually paid — decided by
+       * `settledPool` below every arm (#1420), from `gamePayout`, the same
+       * per-team payout `rollUp` banks — so this does not invent a second
        * definition, it stops a roster read from standing in for one.
        *
        * ── The one case where the two answers genuinely differ ─────────────
@@ -916,10 +916,12 @@ export async function computeCompetitionLeaderboard(
        * target no team can reach. Stated rather than smuggled, because it is a
        * semantic change and not only a de-rostering.
        *
-       * NOT LIVE TODAY, and that is measured rather than assumed: every
-       * completed rack and match-play game in production carries an owner-set
-       * `points_total`, so `pointsTotal` below never reaches the `value × mc`
-       * fallback. This closes the path before something takes it.
+       * This paragraph used to end "NOT LIVE TODAY": the rule sat on the
+       * null-total fallback, and every completed per-match game in production
+       * carries an owner-set total, so it never ran. #1420 moved it below every
+       * arm, where it applies to the owner-set total too — and is live. Measured
+       * 2026-09-23: every such completed game in production paid exactly its
+       * owner-set total (16 of 16), so it moves no current cup.
        */
       const isComplete = (g.status as string | null) === "complete";
       const mc = dividesByMatchRows
@@ -936,16 +938,18 @@ export async function computeCompetitionLeaderboard(
       // total. A legacy game (pre-migration, null total) falls back to `value × mc`,
       // its old behavior — unchanged for both formats.
       // A2b (match play) + the rack total-points migration: once an owner sets
-      // `points_total`, it's the authoritative total. A legacy game (pre-migration,
-      // null total) falls back to `value × mc` while LIVE; once complete, `mc` is
-      // 0 above and the fallback becomes what the game awarded, read off the
-      // standings rather than off a roster.
-      const legacyPool = isComplete
-        ? awardedForGame(
-            standings.length > 0 ? [...standings].sort((a, b) => b.value - a.value).map((x) => x.value) : null,
-            teamIds.length
-          )
-        : rawDist.value * mc;
+      // `points_total`, it's the authoritative total WHILE LIVE. A legacy game
+      // (pre-migration, null total) falls back to `value × mc`.
+      //
+      // A COMPLETE game's pool is no longer decided here, for either kind of
+      // total: `settledPool` replaces it with what the game paid, after the
+      // convention is reconciled (#1420). This arm used to do that for the
+      // null-total case alone — the only case the comment above could reach —
+      // which is how "a complete game's pool is what it paid" was stated as the
+      // intent and never ran against a real game (every completed per-match game
+      // in production carries an owner-set total). Doing it once, below every
+      // arm, is what makes it true for all of them.
+      const legacyPool = rawDist.value * mc;
       const pointsTotal = dividesByMatchRows || isRackType
         ? (g.points_total as number | null) ?? legacyPool
         : legacyPool;
@@ -1002,11 +1006,24 @@ export async function computeCompetitionLeaderboard(
   const liveGames: LiveGame[] = allGames.map((g) => {
     const armed = armFor(g);
     if (!("expects" in armed)) return armed;
-    return reconcileConvention(armed, conventionByGame.get(g.id as string), {
+    const reconciled = reconcileConvention(armed, conventionByGame.get(g.id as string), {
       competitionId,
       rawDistribution: (g.points_distribution as PointsDistribution | null) ?? null,
       pointsTotal: (g.points_total as number | null) ?? null,
     });
+    // #1420: a FINISHED per-match game counts what it paid, here and nowhere
+    // else — every arm above hands over the owner-set total, and this is the one
+    // place that decides which of the two a game contributes. Keyed on the
+    // ARM's declaration (`expects`), not on the rows' reconciled shape: whether a
+    // game can pay nobody is a property of its format, not of how its rows read.
+    return {
+      ...reconciled,
+      pointsTotal: settledPool(reconciled, {
+        expectsPoints: armed.expects === "points",
+        status: (g.status as string | null) ?? null,
+        correctionsOpen: g.corrections_open === true,
+      }),
+    };
   });
 
   const roll = rollUp(liveGames, teamIds, { defendingTeamId: comp?.defending_team_id ?? null });
