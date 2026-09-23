@@ -42,10 +42,20 @@ function matchFormat(_gameTypeId: string | null): MatchFormat {
  *    pick'em and bracket arms already use). A placement split on such a game
  *    describes a payout no finalize wrote, so it cannot re-rank points into it.
  *  - rows carry POSITIONS → a ranking to pay by the game's schedule. Ranked
- *    `low_wins` against the arm's distribution, or — when the arm had treated
- *    them as points — `effectiveDistribution` (the game's split, else winner
+ *    `low_wins` against the arm's schedule, or — when the arm expected points
+ *    and authors none — `effectiveDistribution` (the game's split, else winner
  *    takes the total, the default every format uses).
  *  - rows MIXED → a write nobody can interpret. Pays nothing and keeps its pool.
+ *
+ * ── Since 3b, the arms no longer choose ─────────────────────────────────────
+ * Up to #1381 the arms still picked a `direction` and a `distribution` and this
+ * function overrode them when the rows disagreed. Those two were always one bit
+ * (high_wins ⟺ as-scored, low_wins ⟺ schedule), and the bit is the ROW's. So a
+ * team arm now returns a `TeamArm` — what its configuration `expects`, and the
+ * `schedule` it authors — and the ranking comes from the declaration alone. The
+ * report below compares the declaration against `expects`, which is sourced
+ * from configuration and never from the rows; see `TeamArm` for why that
+ * separation is the whole of what keeps it able to fire.
  *
  * ── When it has to override an arm, it SAYS so ──────────────────────────────
  * Production rows all agree with their arms today (measured 2026-09-17: every
@@ -145,33 +155,99 @@ export function resolveConvention(
   return declared;
 }
 
+/**
+ * What a TEAM arm knows from the game's CONFIGURATION — and nothing else (3b).
+ *
+ * An arm used to return a `direction` and a `distribution`, and it chose both.
+ * They are one bit, not two: in all seven arms `high_wins` came with the sorted
+ * values as the distribution (points passed through as scored), and `low_wins`
+ * came with a schedule (ranks paid by place). And the bit belongs to the ROW —
+ * a position is a rank, a raw_score is points already decided — which the row
+ * now declares itself (`value_kind`, migration 191). So an arm no longer
+ * chooses it. It says two things only its configuration can say:
+ *
+ *  - `expects` — what this game's configuration implies its rows carry. Read
+ *    off the arm's own branch condition (distribution shape, scoring model,
+ *    whether match rows exist).
+ *  - `schedule` — for an arm expecting POSITIONS, the payout its configuration
+ *    authors for ranks. Each arm keeps its own: `[total, 0]` for
+ *    winner-takes-all is NOT normalised to `effectiveDistribution`'s `[total]`,
+ *    because no one has measured that the two pay a tie the same.
+ *
+ * `reconcileConvention` then turns the row's declaration into the ranking.
+ *
+ * ── `expects` MUST NEVER BE COMPUTED FROM THE ROWS ─────────────────────────
+ * That is the whole of what keeps the reconciler able to fire. Derive `expects`
+ * from `value_kind` (or from `conventionByGame`) and every game agrees with
+ * itself by construction: payouts stay correct, the suite's payout cases stay
+ * green, and the one signal that a game is configured against its own results
+ * — the signal that caught Cornhole — goes silent for good. Measured before
+ * 3b was built: that build fails exactly two tests, the two warning assertions
+ * in `competitionLeaderboard.convention.test.ts`, and nothing else.
+ */
+export type TeamArm = Omit<LiveGame, "direction" | "distribution"> &
+  ({ expects: "positions"; schedule: number[] | null } | { expects: "points" });
+
+/**
+ * The ONE place a team game's ranking is decided — from the rows' declaration —
+ * and the report when that declaration disagrees with what the game's
+ * configuration expected (`arm.expects`).
+ */
 export function reconcileConvention(
-  armed: LiveGame,
+  arm: TeamArm,
   convention: RowConvention | undefined,
   ctx: { competitionId: string; rawDistribution: PointsDistribution | null; pointsTotal: number | null }
 ): LiveGame {
-  // No rows yet, or the arm returned no standings to rank: nothing to reconcile.
-  if (!convention || armed.standings.length === 0) return armed;
+  // The direction the configuration implies. Carried into the evidence as
+  // `armDirection` so the logged shape stays byte-identical to the lines already
+  // written before 3b — the Cornhole investigation matched fixture evidence
+  // against live Vercel logs, and a renamed key would end that comparability.
+  const armDirection = arm.expects === "points" ? ("high_wins" as const) : ("low_wins" as const);
+  // Named, not spread: a spread would carry `expects`/`schedule` into the
+  // LiveGame and on into everything downstream of the roll-up.
+  const base = { id: arm.id, numTeams: arm.numTeams, standings: arm.standings, pointsTotal: arm.pointsTotal };
+  const schedule =
+    arm.expects === "positions"
+      ? arm.schedule
+      : (() => {
+          // An arm expecting points authors no schedule; ranks reaching it are
+          // paid by the game's split, else winner takes the total.
+          const d = effectiveDistribution(ctx.rawDistribution, ctx.pointsTotal);
+          return d.length > 0 ? d : null;
+        })();
+
+  // No standings to rank: the pre-decision shape. An arm expecting positions
+  // still carries its schedule, because the schedule's sum is its
+  // points-in-play when no owner total is set.
+  if (arm.standings.length === 0) {
+    return arm.expects === "positions"
+      ? { ...base, distribution: arm.schedule, direction: "low_wins" }
+      : { ...base, distribution: null, direction: "high_wins" };
+  }
+  // Standings exist only where team rows do, so every game reaching here has a
+  // convention. Absent one, nothing contradicts the configuration — and taking
+  // `arm.expects` here is the ONLY place it may stand in for the rows.
+  const declared: RowConvention = convention ?? arm.expects;
 
   const evidence = (to: string) =>
     JSON.stringify({
       competitionId: ctx.competitionId,
-      gameId: armed.id,
-      convention,
-      armDirection: armed.direction,
+      gameId: arm.id,
+      convention: declared,
+      armDirection,
       rankedAs: to,
-      standings: armed.standings.map((s) => ({ entityId: s.entityId, value: s.value })),
+      standings: arm.standings.map((s) => ({ entityId: s.entityId, value: s.value })),
       distribution: ctx.rawDistribution,
       pointsTotal: ctx.pointsTotal,
     });
 
-  if (convention === "mixed") {
+  if (declared === "mixed") {
     const message =
-      `[leaderboard] ranking-convention unreadable: game ${armed.id} has team results carrying BOTH ` +
+      `[leaderboard] ranking-convention unreadable: game ${arm.id} has team results carrying BOTH ` +
       `positions and raw_score points, so neither ranking is sound — awarding nothing. Evidence: ${evidence("nothing")}`;
     if (process.env.NODE_ENV === "production") console.error(message);
     else throw new Error(message);
-    return { ...armed, distribution: null, standings: [] };
+    return { ...base, distribution: null, standings: [], direction: armDirection };
   }
 
   /**
@@ -181,36 +257,38 @@ export function reconcileConvention(
    * `resolveConvention` has already logged the specific contradiction; this is
    * the ranking half of it.
    */
-  if (convention === "conflicted") {
+  if (declared === "conflicted") {
     const message =
-      `[leaderboard] ranking-convention contradicted: game ${armed.id}'s team results declare one ` +
+      `[leaderboard] ranking-convention contradicted: game ${arm.id}'s team results declare one ` +
       `value_kind and carry the other, so neither ranking is sound — awarding nothing. Evidence: ${evidence("nothing")}`;
     if (process.env.NODE_ENV === "production") console.error(message);
     else throw new Error(message);
-    return { ...armed, distribution: null, standings: [] };
+    return { ...base, distribution: null, standings: [], direction: armDirection };
   }
 
-  if (convention === "points" && armed.direction === "low_wins") {
-    const sorted = [...armed.standings].sort((a, b) => b.value - a.value);
-    console.warn(
-      `[leaderboard] ranking-convention reconciled: game ${armed.id}'s results are raw_score POINTS but its ` +
-        `arm ranks low_wins — paying the points as scored. The game's configuration disagrees with its ` +
-        `results. Evidence: ${evidence("points")}`
-    );
-    return { ...armed, distribution: sorted.map((s) => s.value), standings: sorted, direction: "high_wins" };
+  // Rows carry POINTS → the points ARE the award: ranked high_wins and passed
+  // through as the synthetic distribution. Whatever the configuration expected.
+  if (declared === "points") {
+    if (arm.expects === "positions") {
+      console.warn(
+        `[leaderboard] ranking-convention reconciled: game ${arm.id}'s results are raw_score POINTS but its ` +
+          `arm ranks low_wins — paying the points as scored. The game's configuration disagrees with its ` +
+          `results. Evidence: ${evidence("points")}`
+      );
+    }
+    const sorted = [...arm.standings].sort((a, b) => b.value - a.value);
+    return { ...base, distribution: sorted.map((s) => s.value), standings: sorted, direction: "high_wins" };
   }
 
-  if (convention === "positions" && armed.direction === "high_wins") {
-    const schedule = effectiveDistribution(ctx.rawDistribution, ctx.pointsTotal);
+  // Rows carry POSITIONS → a ranking, paid by the schedule.
+  if (arm.expects === "points") {
     console.warn(
-      `[leaderboard] ranking-convention reconciled: game ${armed.id}'s results are POSITIONS but its arm ` +
+      `[leaderboard] ranking-convention reconciled: game ${arm.id}'s results are POSITIONS but its arm ` +
         `ranks high_wins — paying by place. The game's configuration disagrees with its results. ` +
         `Evidence: ${evidence("positions")}`
     );
-    return { ...armed, distribution: schedule.length > 0 ? schedule : null, direction: "low_wins" };
   }
-
-  return armed;
+  return { ...base, distribution: schedule, direction: "low_wins" };
 }
 
 /**
@@ -555,7 +633,7 @@ export async function computeCompetitionLeaderboard(
     );
   }
 
-  const armFor = (g: (typeof allGames)[number]): LiveGame => {
+  const armFor = (g: (typeof allGames)[number]): LiveGame | TeamArm => {
     const rawDist = g.points_distribution as PointsDistribution | null;
     const standings = standingsByGame.get(g.id as string) ?? [];
 
@@ -687,10 +765,10 @@ export async function computeCompetitionLeaderboard(
           // `effectiveDistribution`, not `isPlacement(d) ? d.values : []` — pick'em
           // authors no split, so the ternary would pay nobody. Winner takes the
           // lot is what every other format does with a null distribution.
-          distribution: effectiveDistribution(rawDist, g.points_total as number | null),
+          expects: "positions" as const,
+          schedule: effectiveDistribution(rawDist, g.points_total as number | null),
           numTeams: teamIds.length,
           standings,
-          direction: "low_wins" as const,
           pointsTotal,
         };
       }
@@ -699,20 +777,18 @@ export async function computeCompetitionLeaderboard(
       if (standings.length === 0) {
         return {
           id: g.id as string,
-          distribution: null,
+          expects: "points" as const,
           numTeams: teamIds.length,
           standings: [],
-          direction: "high_wins" as const,
           pointsTotal,
         };
       }
       const sorted = [...standings].sort((a, b) => b.value - a.value);
       return {
         id: g.id as string,
-        distribution: sorted.map((s) => s.value),
+        expects: "points" as const,
         numTeams: teamIds.length,
         standings: sorted,
-        direction: "high_wins" as const,
         pointsTotal,
       };
     }
@@ -782,10 +858,12 @@ export async function computeCompetitionLeaderboard(
       const total = (g.points_total as number | null) ?? 0;
       return {
         id: g.id as string,
-        distribution: total > 0 ? [total, 0] : null,
+        expects: "positions" as const,
+        // [total, 0], NOT effectiveDistribution's [total]: nobody has measured
+        // that the two pay a tie the same, so 3b does not unify them.
+        schedule: total > 0 ? [total, 0] : null,
         numTeams: teamIds.length,
         standings,
-        direction: "low_wins" as const,
         pointsTotal: (g.points_total as number | null) ?? undefined,
       };
     }
@@ -870,15 +948,14 @@ export async function computeCompetitionLeaderboard(
         : legacyPool;
       if (standings.length === 0) {
         // No decided matches yet — contributes its available pool, no awards.
-        return { id: g.id as string, distribution: null, numTeams: teamIds.length, standings: [], direction: "high_wins" as const, pointsTotal };
+        return { id: g.id as string, expects: "points" as const, numTeams: teamIds.length, standings: [], pointsTotal };
       }
       const sorted = [...standings].sort((a, b) => b.value - a.value);
       return {
         id: g.id as string,
-        distribution: sorted.map((s) => s.value),
+        expects: "points" as const,
         numTeams: teamIds.length,
         standings: sorted,
-        direction: "high_wins" as const,
         pointsTotal,
       };
     }
@@ -893,10 +970,10 @@ export async function computeCompetitionLeaderboard(
       // is re-ranked by `reconcileConvention`, not by this arm guessing.
       return {
         id: g.id as string,
-        distribution: rawDist.values,
+        expects: "positions" as const,
+        schedule: rawDist.values,
         numTeams: teamIds.length,
         standings,
-        direction: "low_wins" as const,
         pointsTotal: (g.points_total as number | null) ?? undefined,
       };
     }
@@ -906,19 +983,22 @@ export async function computeCompetitionLeaderboard(
     // Configuration-tab split exists). No total → contributes nothing.
     return {
       id: g.id as string,
-      distribution: null,
+      expects: "positions" as const,
+      schedule: null,
       numTeams: teamIds.length,
       standings: [],
-      direction: "low_wins" as const,
       pointsTotal: (g.points_total as number | null) ?? undefined,
     };
   };
 
-  // Every TEAM-standings arm passes through the reconciliation; the bracket arm
-  // ranks its own entrant field and is left as it chose.
+  // Every TEAM arm is ranked by the reconciliation, from its rows' declaration.
+  // The bracket arm ranks its own entrant field and returns a finished LiveGame
+  // — the one arm that still decides its own direction, deliberately: 3b left it
+  // out, and production's 14 entrant rows (3 games) all declare rank with a
+  // position, measured 2026-09-23.
   const liveGames: LiveGame[] = allGames.map((g) => {
     const armed = armFor(g);
-    if (isBracketGame(g.game_type_id as string | null, g.competition_format as string | null)) return armed;
+    if (!("expects" in armed)) return armed;
     return reconcileConvention(armed, conventionByGame.get(g.id as string), {
       competitionId,
       rawDistribution: (g.points_distribution as PointsDistribution | null) ?? null,
