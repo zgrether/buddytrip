@@ -64,8 +64,17 @@ async function manualGame(
   return g.id;
 }
 
-/** A finished manual game: team A first, team B second. */
+/**
+ * A finished manual game: team A first, team B second.
+ *
+ * Marks the game `complete` as well as writing its rows. It used to write the
+ * rows alone, so the game it described as finished was still live, and the
+ * board banked it anyway. Since #1416 the board banks a game only once it is
+ * finished, so a fixture that skips the status is describing a state the app
+ * never shows.
+ */
 async function finishFirstSecond(gameId: string, ta: string, tb: string) {
+  await ctx.admin.from("games").update({ status: "complete" }).eq("id", gameId);
   await ctx.admin.from("game_results").insert([
     { id: crypto.randomUUID(), game_id: gameId, entity_id: ta, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
     { id: crypto.randomUUID(), game_id: gameId, entity_id: tb, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
@@ -101,6 +110,8 @@ describe("match-play cup — a manual game with NO split of its own is unchanged
     const { comp, ta, tb } = await matchPlayCup("Tie Cup");
     const gameId = await manualGame(comp, "Tied Cornhole", { points_total: 8, points_distribution: null });
     // Both at position 1 is how a tie is recorded; placementPoints averages [8,0].
+    // Finished, like every game this file reads a result from (see finishFirstSecond).
+    await ctx.admin.from("games").update({ status: "complete" }).eq("id", gameId);
     await ctx.admin.from("game_results").insert([
       { id: crypto.randomUUID(), game_id: gameId, entity_id: ta, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
       { id: crypto.randomUUID(), game_id: gameId, entity_id: tb, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },

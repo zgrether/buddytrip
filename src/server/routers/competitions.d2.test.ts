@@ -38,7 +38,7 @@ async function enterResults(
 ) {
   await ctx
     .caller()
-    .games.setManualResults({
+    .games.finish({
       tripId,
       gameId,
       placements: placements.map((p) => ({ entityId: p.teamId, position: p.position })),
@@ -63,6 +63,11 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 30000);
 
+// Through `games.finish({ placements })` — the manual finalize, the app's only
+// live path for these rows. This file used `setManualResults`, which no client
+// calls and which writes placements on an UNFINISHED game; since #1416 the
+// board banks a game only once it is finished, so those rows would read as
+// nothing. Same input shape, same writer (`writeManualResults`).
 describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
   let teamA: string;
   let teamB: string;
@@ -124,7 +129,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
     }) as { id: string };
     gameIds.push(g.id);
 
-    await ctx.caller().games.setManualResults({
+    await ctx.caller().games.finish({
       tripId,
       gameId: g.id,
       placements: [
@@ -163,7 +168,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
     }) as { id: string };
     gameIds.push(g.id);
 
-    await ctx.caller().games.setManualResults({
+    await ctx.caller().games.finish({
       tripId,
       gameId: g.id,
       placements: [
@@ -199,7 +204,7 @@ describe("D2 §6 — N-team (3+ teams) ranked list data", () => {
     }) as { id: string };
     gameIds.push(g.id);
 
-    await ctx.caller().games.setManualResults({
+    await ctx.caller().games.finish({
       tripId,
       gameId: g.id,
       placements: [
@@ -400,7 +405,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     }) as { id: string };
     gameIds.push(g.id);
 
-    await ctx.caller().games.setManualResults({
+    await ctx.caller().games.finish({
       tripId, gameId: g.id,
       placements: [{ entityId: t1, position: 1 }, { entityId: t2, position: 2 }],
     });

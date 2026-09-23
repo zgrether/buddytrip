@@ -136,12 +136,19 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
       { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", value_kind: "points", raw_score: 2, position: null, competition_points_earned: null },
       { id: crypto.randomUUID(), game_id: g.id, entity_id: tb, entity_type: "team", value_kind: "points", raw_score: 0, position: null, competition_points_earned: null },
     ]);
+    // FINISHED, because these rows are the finalize's adapter output. The
+    // fixture used to leave the game live, which put a clinch on a game still
+    // being played; since #1416 the board banks a game only once it is
+    // finished. (Available is then what it PAID, #1425 — 2 here, the same as
+    // value × match rows, because both matches paid. The LIVE value × rows
+    // claim is pinned by the ASSIGNED-match-count case below, with no rows.)
+    await ctx.admin.from("games").update({ status: "complete" }).eq("id", g.id);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
     expect(lb.teamTotals[ta]).toBe(2);
     expect(lb.teamTotals[tb]).toBe(0);
-    // available = value × match-row count = 1 × 2 (NOT the realized sum).
+    // available = 2: finished, so what it paid (#1425), equal here to value × match rows.
     expect(lb.pointsAvailable).toBe(2);
     expect(lb.winNumber).toBe(1.5); // smallest > half of 2
     expect(lb.pointsToClinch[ta]).toBeLessThanOrEqual(0); // 2 ≥ 1.5 → clinched
@@ -181,12 +188,19 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
       { id: crypto.randomUUID(), game_id: g.id, entity_id: ta, entity_type: "team", value_kind: "points", raw_score: 1.5, position: null, competition_points_earned: null },
       { id: crypto.randomUUID(), game_id: g.id, entity_id: tb, entity_type: "team", value_kind: "points", raw_score: 0.5, position: null, competition_points_earned: null },
     ]);
+    // FINISHED, because these rows are the finalize's adapter output. The
+    // fixture used to leave the game live, which put a clinch on a game still
+    // being played; since #1416 the board banks a game only once it is
+    // finished. (Available is then what it PAID, #1425 — 2 here, the same as
+    // value × match rows, because both matches paid. The LIVE value × rows
+    // claim is pinned by the ASSIGNED-match-count case below, with no rows.)
+    await ctx.admin.from("games").update({ status: "complete" }).eq("id", g.id);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
     expect(lb.teamTotals[ta]).toBe(1.5); // realized (the 0.5 halve survives numeric)
     expect(lb.teamTotals[tb]).toBe(0.5);
-    expect(lb.pointsAvailable).toBe(2); // value × match-row count = 1×2
+    expect(lb.pointsAvailable).toBe(2); // finished: what it paid (1.5 + 0.5)
   });
 
   it("per_match shell with no team results contributes 0 to pointsAvailable (no pairings)", async () => {
