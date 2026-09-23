@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PhaseBody, PickemSlateRow } from "./PickemGameView";
 import { PickemScoringRows } from "./pickem/PickemScoringRows";
-import { PickemPhaseStrip } from "./pickem/PickemPhaseStrip";
+import { PickemPhaseStrip, DRAW_MATCHES_COPY } from "./pickem/PickemPhaseStrip";
+import { drawMatchesUrgency } from "@/lib/pickemLifecycle";
 
 /**
  * The runner's route from a built slate to open picks, and out again.
@@ -277,6 +278,7 @@ const strip = (over: Partial<Parameters<typeof PickemPhaseStrip>[0]> = {}) =>
       busy={false}
       hasResults={false}
       deadlinePassed={false}
+      drawMatches="none"
       onOpenPicks={noop}
       onLock={noop}
       onUnlock={noop}
@@ -854,5 +856,74 @@ describe("the slate row warns that it does not share the page's Save", () => {
     const html = settingsRows({ slateCount: 0 });
     expect(html).toContain("No games yet");
     expect(html).toContain("Saves as you go");
+  });
+});
+
+/**
+ * DRAW THE MATCHES — the signal that replaced the results scrim (results-first
+ * PR). Moved to the runner's strip, and it sharpens with the timeline: nothing
+ * before lock, a to-do at lock, sharper once results land. Silent once FINAL,
+ * where `FINAL_LOCKED` refuses the action it would name.
+ */
+describe("drawMatchesUrgency — when the runner is told to draw", () => {
+  const u = (over: Partial<Parameters<typeof drawMatchesUrgency>[0]> = {}) =>
+    drawMatchesUrgency({ phase: "locked", hasResults: false, noMatchesDrawn: true, isFinal: false, ...over });
+
+  it("locked, nothing drawn, no results → the to-do", () => {
+    expect(u()).toBe("locked");
+  });
+
+  it("locked, nothing drawn, results in → sharper", () => {
+    expect(u({ hasResults: true })).toBe("results");
+  });
+
+  it("before lock → nothing: drawing after seeing who submitted is the better workflow", () => {
+    expect(u({ phase: "picks_open" })).toBe("none");
+    expect(u({ phase: "building" })).toBe("none");
+  });
+
+  it("matches drawn (or a roll-up with none to draw) → nothing", () => {
+    expect(u({ noMatchesDrawn: false, hasResults: true })).toBe("none");
+  });
+
+  it("FINAL → nothing, even with results and nothing drawn — the action would be refused", () => {
+    expect(u({ hasResults: true, isFinal: true })).toBe("none");
+  });
+});
+
+describe("the strip renders the two steps differently — in WORDS and in PAINT", () => {
+  // Anchored to the element's OWN opening tag. The strip's icon also paints
+  // `--color-bt-owner`, so a document-wide substring would pass on the icon.
+  // The copy as the renderer emits it — apostrophes arrive escaped (`&#x27;`).
+  const rendered = (copy: string) => renderToStaticMarkup(<>{copy}</>);
+  const tag = (html: string) =>
+    html.match(/<span data-testid="pickem-strip-draw-matches"[^>]*>/)?.[0] ?? null;
+
+  it("none → no line at all", () => {
+    expect(tag(strip({ phase: "locked", drawMatches: "none" }))).toBeNull();
+  });
+
+  it("locked → the to-do copy, in the ordinary dim", () => {
+    const html = strip({ phase: "locked", drawMatches: "locked" });
+    const t = tag(html);
+    expect(t).toContain('data-urgency="locked"');
+    expect(t).toContain("color:var(--color-bt-text-dim)");
+    expect(html).toContain(rendered(DRAW_MATCHES_COPY.locked));
+  });
+
+  it("results → the sharper copy, in the owner-attention colour, heavier", () => {
+    const html = strip({ phase: "locked", hasResults: true, drawMatches: "results" });
+    const t = tag(html);
+    expect(t).toContain('data-urgency="results"');
+    expect(t).toContain("color:var(--color-bt-owner)");
+    expect(t).toContain("font-weight:600");
+    expect(html).toContain(rendered(DRAW_MATCHES_COPY.results));
+  });
+
+  it("both worded steps name WHERE the fix is — the refusal rule", () => {
+    for (const copy of Object.values(DRAW_MATCHES_COPY)) {
+      expect(copy).toContain("the gear at the top of this page, then Matches");
+    }
+    expect(DRAW_MATCHES_COPY.locked).not.toBe(DRAW_MATCHES_COPY.results);
   });
 });

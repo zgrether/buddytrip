@@ -66,7 +66,7 @@ import type { SheetSubject } from "@/components/games/pickem/PickemSheet";
 import type { SubmittedPick } from "@/lib/pickemSheet";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { ListChecks, Swords } from "lucide-react";
-import {
+import { drawMatchesUrgency,
   deadlineBlocksReopen,
   msUntilDeadline,
   picksOpen,
@@ -1492,6 +1492,12 @@ export function PickemGameView() {
              `deadlineBlocksReopen`, so the sentence and the behaviour cannot
              disagree about where the boundary is. */
           deadlinePassed={deadlineBlocksReopen(clock, now)}
+          drawMatches={drawMatchesUrgency({
+            phase,
+            hasResults: q.data.hasResults,
+            noMatchesDrawn,
+            isFinal: lock.isFinal,
+          })}
           /* ── THE FINALIZE MOVED HERE (r7 §10) ──────────────────────────
              It was at the end of the results list. The panel's action slot is
              empty by the time results are being entered — Start and Close are
