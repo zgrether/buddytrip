@@ -477,7 +477,7 @@ describe("projectGame — pick'em", () => {
     expect(pickem({ pointsTotal: 0, pointsMode: true })).toEqual({ kind: "cannot", reason: "no_points" });
   });
 
-  it("individual matches with NO match drawn → no_matches (production's 'Picks 2', one result away)", () => {
+  it("individual matches with NO match drawn → no_matches (production's 'Picks 2' after the look's direct write)", () => {
     expect(pickem({ pointsTotal: 8, rollUp: "individual_matches", matches: [] })).toEqual({
       kind: "cannot",
       reason: "no_matches",
@@ -492,7 +492,9 @@ describe("projectGame — pick'em", () => {
 /**
  * NO MATCHES PAIRED — the reason belongs to the STATE, not to pick'em (3c).
  *
- * Found on pick'em (a result entered before any match is drawn), then swept
+ * Found on pick'em (a result with no match drawn — reached in production only
+ * by a direct write, since the results panel's scrim blocks it; through the
+ * app, by clearing pairings after a result), then swept
  * across every arm that pays per match: non-golf Matches and golf match play
  * both reach it when a leaving player's seat is vacated — the side is nulled,
  * the recorded result is kept, and the game stays started. Rack's version of

@@ -31,13 +31,17 @@ import { awardMatches, type MatchAwardResult } from "./gameAward";
  *  - `no_course` — rack has no par / stroke index to measure against.
  *  - `no_teams`  — rack needs two teams on its roster and has fewer.
  *  - `no_matches` — a game that pays PER MATCH with no match paired (both
- *    sides set). Points are set and nothing can earn them yet. A true reason
- *    and an actionable one: an organizer can still draw matches (pick'em's
- *    pairing freeze binds only once a MATCH has a result, migration 162).
- *    Reachable in all three per-match arms: pick'em individual matches with a
- *    result before any match is drawn, and non-golf Matches or golf match
- *    play after a leaving player's seat is vacated (the side is nulled, the
- *    game stays started).
+ *    sides set). Points are set and nothing can earn them yet. Actionable: an
+ *    organizer can still draw matches. The app saves pairings through
+ *    `save_game_config`, whose only pairing freeze is a MATCH with a recorded
+ *    result (`MATCH_DECIDED`); a pick'em slate result is not one, and
+ *    `HAS_SCORES` does not read `pickem_slate_games`. (`save_pickem_matches`
+ *    says the same since 162, but the app no longer calls it — cite the path
+ *    the app takes.)
+ *    Reached when a started game in any of the three per-match arms is left
+ *    with nothing paired: a vacated seat in non-golf Matches or golf match play
+ *    (the side is nulled, the result kept, the game stays started), or pick'em
+ *    individual matches whose pairings were cleared after a result.
  *  - `picks_hidden` — a pick'em game whose sheets are not yet revealed. The
  *    board is computed under the VIEWER's RLS, so before reveal it would see
  *    only their own sheet (or, for a captain, sheets it may proxy) and project
