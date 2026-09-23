@@ -219,6 +219,39 @@ export function settledPool(
 }
 
 /**
+ * A game BANKS its result rows only once it is finished (#1416, reader-first).
+ *
+ * Rows reach a live game by design — `saveConfig`'s recompute (stroke, skins,
+ * rack, match) and five match-play setup mutations bank every match decided so
+ * far — and by accident: `games.finish` writes the results BEFORE it flips
+ * `status`, in two updates, so a failure between them leaves a finished game's
+ * rows on a live one through no ordinary path at all. A writer-side fix can only
+ * enumerate those; this reads the outcome, the same shape as `settledPool`.
+ *
+ * Banking a live game's rows did two things wrong:
+ *  - DOUBLE COUNT: "if today holds" is banked + projected, and the projection
+ *    already counts a decided match;
+ *  - SILENT CLINCH: a mid-round edit banking a decided match could cross the
+ *    threshold, and no setup path calls `games.finish` — the only place a clinch
+ *    is announced. The board said clinched; nobody was told. Banking only at a
+ *    finalize keeps the announcement attached to the event (#1420 ruling 2,
+ *    arriving through a different door).
+ *
+ * `status`, not the lock state, as in `settledPool`: a game re-opened for a
+ * correction keeps its banked result until the re-finalize — `CompletedRow`'s
+ * IN REVIEW badge relies on the totals staying put, and moving them on opening
+ * a correction would un-clinch and re-announce.
+ *
+ * Only the STANDINGS are withheld. The target is `settledPool`'s business (a
+ * live game keeps its owner-set total), and a live game's projection is shown
+ * where it always was — so nothing a live game is worth disappears, only the
+ * pretence that part of it is already won.
+ */
+export function bankedOnlyWhenFinished(g: LiveGame, status: string | null): LiveGame {
+  return status === "complete" ? g : { ...g, standings: [] };
+}
+
+/**
  * The full roll-up over LIVE (non-dropped) games. Caller passes only live games
  * — dropping/restoring a game changes the set, which is exactly why the win
  * number recomputes (§4): it is derived here, never stored.
