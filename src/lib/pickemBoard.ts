@@ -504,6 +504,26 @@ export function matchesWonByTeam(rows: readonly MatchTallyRow[]): Map<string, nu
   return out;
 }
 
+/**
+ * Did this person SUBMIT a sheet — the one test for "present" in a match.
+ *
+ * A sheet is present iff the person has at least one `pickem_picks` row in the
+ * game. That is exact rather than a proxy: `pick` is NOT NULL (migration 166),
+ * so no row exists for a game someone did not pick, and "has any rows" means
+ * "has submitted something". It is NOT "scored more than zero" — a submitted
+ * sheet whose picks all lost is present, and scores a real 0 (#1419's ruling:
+ * zero from real picks is a result; no picks is an absence).
+ *
+ * ONE predicate, read by the board's cards (NO PICKS / "Nothing scores" /
+ * "X takes it") and by `pickemFinalize`'s payout. It was three inline copies of
+ * `(sheets[id] ?? []).length > 0` in `PickemBoard` and none in finalize, which
+ * is how the card could say "Nothing scores" while finalize paid each side half
+ * a match: two answers to one question, agreeing only where they happened to.
+ */
+export function sheetSubmitted(sheets: Readonly<Record<string, readonly unknown[]>>, userId: string): boolean {
+  return (sheets[userId] ?? []).length > 0;
+}
+
 /** What the results screen needs to say what is at stake. */
 export interface RidingCounts {
   /** Unresolved slate game id -> how many live matches it can still move. */
