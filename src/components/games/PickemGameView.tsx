@@ -55,10 +55,7 @@ import {
   type OtherPicksColumn,
 } from "@/components/games/pickem/PickemOtherPicks";
 import { PickemNoMatches } from "@/components/games/pickem/PickemNoMatches";
-import {
-  PickemMatchesRequired,
-  noMatchesDrawn as noMatchesDrawnFor,
-} from "@/components/games/pickem/PickemMatchesRequired";
+import { noMatchesDrawn as noMatchesDrawnFor } from "@/components/games/pickem/PickemNoMatches";
 import {
   PickemProxyBanner,
   sheetAuthor,
@@ -1836,23 +1833,24 @@ export function PickemGameView() {
               the whole point is watching it resolve (§7). `canEdit` decides
               whether the BUTTONS are there, not whether the outcomes are. */}
           {surface.panel === "results" && (
-            /* ── §11 · THE PREREQUISITE, BEFORE THE DOOR SHUTS ─────────────
-               Migration 162 freezes the pairings on the first result, so a
-               runner who enters results before drawing matches can then never
-               draw them — and the refusal they meet names a rule they can no
-               longer satisfy.
+            /* ── §11 · RESULTS ARE ENTERED WHENEVER THEY HAPPEN ──────────────
+               This panel used to sit under a scrim ("Draw the matches first")
+               on an individual-matches game with nothing drawn, justified as
+               "migration 162 freezes the pairings on the first result". It
+               does not: 162 REVERTED 157's slate-result freeze, and the app no
+               longer saves pairings through `save_pickem_matches` anyway — it
+               uses `save_game_config`, whose only pairing freeze is a match
+               with a recorded result, which pick'em never writes. Every match
+               standing is derived from sheets plus results on each read, so a
+               match drawn after results is scored from what is already on
+               record, and `FINAL_LOCKED` protects the one snapshot that exists
+               (the finalize).
 
-               Only where there is something to draw: `noMatchesDrawn` is false
-               on team totals, which has no matches and no freeze.
-
-               Not gated on `resultsEditable`. A member arriving here would
-               otherwise see an entry list with nothing in it and no reason
-               given, and the sentence is true for them too — it is a fact about
-               the game, not an instruction only the runner can act on. The
-               second line names the gear, which a member simply does not
-               have; that is the same shape as every other "ask whoever is
-               running it" surface in the app. */
-            <div className="relative">
+               So a slate result — a real-world fact — is never blocked by
+               competition structure. The "draw the matches" signal moved to
+               the RUNNER's phase strip, the one person who can act on it,
+               where it sharpens once picks lock. */
+            <div>
               <PickemRunView
                 slate={q.data.slate}
                 /* The lifecycle-narrowed answer — a locked game's results are read
@@ -1901,7 +1899,6 @@ export function PickemGameView() {
                     : undefined
                 }
               />
-              {noMatchesDrawn && <PickemMatchesRequired />}
             </div>
           )}
 

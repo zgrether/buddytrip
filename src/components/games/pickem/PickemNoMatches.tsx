@@ -27,6 +27,32 @@ import { TYPE_SCALE } from "@/lib/typeScale";
  * matches", and a card explaining that they are configured elsewhere is the
  * screen apologising for itself.
  */
+/**
+ * Individual matches, and nobody drawn yet.
+ *
+ * Read by the Matches tab (this file's panel) and the runner's phase strip,
+ * which says it sharper once picks lock (results-first PR). It used to gate a
+ * scrim over the RESULTS panel too, on the claim that "the first result freezes
+ * the pairings". That claim was 157's behaviour, which 162 reverted, and the
+ * app no longer saves pairings through `save_pickem_matches` at all — it uses
+ * `save_game_config`, whose only pairing freeze is a MATCH with a recorded
+ * result, and pick'em never records one (every standing is derived from sheets
+ * plus results on each read). So results are entered whenever they happen, and
+ * a match drawn later is scored from what is already on record.
+ *
+ * TAKES THE RESOLVED FLAG, NOT THE RAW COLUMN: `PickemGameView.individualMatches`
+ * already folds points mode in, and it is on `pickemRollUpOverride.test.ts`'s
+ * allowlist for doing so. A second raw comparison here is how that list stops
+ * meaning anything.
+ */
+export function noMatchesDrawn(input: {
+  /** The RESOLVED flag — points mode already folded in. */
+  individualMatches: boolean;
+  matchCount: number;
+}): boolean {
+  return input.individualMatches && input.matchCount === 0;
+}
+
 export function PickemNoMatches() {
   return (
     <div className="flex flex-col gap-2" data-testid="pickem-no-matches">
