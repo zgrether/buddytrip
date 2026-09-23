@@ -65,6 +65,16 @@ const ALLOWED = new Map<string, string>([
     "components/games/pickem/PickemScoringRows.tsx",
     "EDITS the setting itself; the row is absent in a points cup (`showRollUp`)",
   ],
+  [
+    "server/lib/liveProjection.ts",
+    // 3c. `projectPickem` compares `pickemResolution(input)` — the DERIVED
+    // value, points mode read first — to decide whether "no matches paired" can
+    // apply. It never reads the raw column; the regex cannot tell the two
+    // apart, which is the same reason `pickemFinalize.ts` is listed. The cost
+    // of listing a FILE: a later raw comparison added here would pass this
+    // guard too, so anyone adding one must compare the resolution instead.
+    "compares the DERIVED `pickemResolution(input)`, never the column",
+  ],
 ]);
 
 function walk(dir: string): string[] {
