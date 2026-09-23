@@ -119,6 +119,9 @@ describe("Refactor B3 — presence + live projection for an in-progress outcome-
 
     const after = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     expect(after.games.find((g) => g.id === gameId)?.started).toBe(true);
-    expect(after.projections[gameId]).toEqual({ [blue]: 3 });
+    // Red is named explicitly at 0 (3c): the board now names EVERY cup team on
+    // a projected game server-side, instead of leaving the row to invent `?? 0`.
+    expect(after.projections[gameId]).toEqual({ [blue]: 3, [red]: 0 });
+    expect(gameId in after.cannotProject).toBe(false);
   }, 60000);
 });
