@@ -179,6 +179,28 @@ describe("points_distribution convention — carried to the ranking (#1381)", ()
     expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: 6, loser: 2 });
   });
 
+  /**
+   * ── THESE WARNING ASSERTIONS ARE NOT STALE. DO NOT "FIX" THEM. ────────────
+   *
+   * This one and the `r.warns` lines in the POSITION case below are the ONLY
+   * thing in the suite that separates a working reconciler from an inert one.
+   *
+   * The inert build is the tempting one: derive the arm's `expects` from the
+   * rows' `value_kind` instead of from the game's configuration. Every game then
+   * agrees with itself by construction, every payout stays CORRECT, and every
+   * other case in this file stays green — the only thing that changes is that
+   * the signal saying "this game is configured against its own results" (the
+   * signal that caught Cornhole) can never fire again. Measured before 3b was
+   * built: that mutant fails exactly these two tests, one per direction, and
+   * nothing else. Re-measured after 3b against the new shape, with the same
+   * result.
+   *
+   * So if you are mid-refactor and these two are the only reds, the
+   * refactor is the bug. The evidence shape (`armDirection` included) is also
+   * pinned on purpose: it is compared byte-for-byte against live Vercel log
+   * lines, and renaming a key ends that comparability for every line already
+   * written. Rename it only as a deliberate decision with that cost stated.
+   */
   it("…but the reconciliation SAYS so, with the values, because the game's config disagrees with its results", async () => {
     const r = await payoutIn("production", { type: "placement", values: [8] });
     expect(r.errors).toEqual([]);
@@ -211,6 +233,9 @@ describe("points_distribution convention — carried to the ranking (#1381)", ()
       ],
     });
     expect({ winner: r.winner, loser: r.loser }).toEqual({ winner: 8, loser: 0 });
+    // NOT STALE — the positions-direction half of the pair explained above the
+    // Cornhole evidence case. With `expects` derived from the rows, the payout
+    // line above stays green and only these two go red.
     expect(r.warns).toHaveLength(1);
     expect(r.warns[0]).toContain("results are POSITIONS but its arm ranks high_wins");
   });
