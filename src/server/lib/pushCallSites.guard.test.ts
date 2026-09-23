@@ -43,6 +43,11 @@ const ALLOWED: Record<string, string> = {
     "the news wire point — news.create's transition, and news.resend (an explicit, " +
     "Owner/Organizer-only re-fire for a post that predates this category). ~1-5/trip; " +
     "no BATCH/read-state gate needed, same reasoning as the module's own comment.",
+  "server/lib/pickemMatchesNotify.ts":
+    "the pick'em runner wire point — pickem.setResult's none-to-some transition of " +
+    "results on an individual-matches game with no match drawn. <=1 per pick'em game, " +
+    "runners only (Owner/Organizer + delegates), actor excluded. NOT per result: the " +
+    "router sends only when the count BEFORE the write was zero.",
   "server/routers/notifications.ts":
     "testSend — a self-only diagnostic; can never reach another user",
 };
@@ -160,6 +165,9 @@ describe("push call-site allowlist", () => {
 
     const messages = readFileSync(join(SRC, "server/routers/messages.ts"), "utf8");
     expect(messages).toContain("notifyChatMessage");
+
+    const pickem = readFileSync(join(SRC, "server/routers/pickem.ts"), "utf8");
+    expect(pickem).toContain("notifyPickemMatchesNotDrawn");
   });
 
   /**

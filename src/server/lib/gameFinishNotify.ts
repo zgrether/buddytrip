@@ -369,7 +369,7 @@ const COPY = {
  * that `router.replace`s to `?view=cup`, costing an extra hop and an extra
  * fetch. The canonical form is the one that goes on someone's phone.
  */
-function gameUrl(
+export function gameUrl(
   tripId: string,
   gameId: string,
   gameTypeId: string | null,

@@ -20,7 +20,7 @@
  * eligibility (ELIGIBLE / BATCH / NEVER) lives in NOTIFICATIONS.md.
  */
 
-export type NotificationKey = "game_results" | "planning" | "invites" | "chat" | "news";
+export type NotificationKey = "game_results" | "planning" | "invites" | "chat" | "news" | "organizer";
 
 export interface NotificationTypeDef {
   key: NotificationKey;
@@ -126,6 +126,20 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
       "Nothing else rides this key — News is the ONLY write site. ~1-5/trip, " +
       "organizer-authored, and there is no mechanical/per-write event anywhere " +
       "near this category the way scores.upsertEntry sits near game_results.",
+  },
+  {
+    // Its OWN category, not `invites` (Zach, 2026-09-23). A nudge you can only
+    // silence by also silencing something unrelated gets silenced — so an
+    // organizer who is tired of "draw the matches" must be able to turn off
+    // exactly that and keep their RSVP nudges.
+    key: "organizer",
+    label: "Running a game",
+    shortLabel: "Game running",
+    description: "A game you run needs you — like results coming in on a pick'em with no matches drawn.",
+    defaultOn: true,
+    excludes:
+      "Anything a member would get — this reaches only a game's Owners, Organizers and delegates. " +
+      "Never per-write: one push per game per condition, off the moment that condition first appears.",
   },
 ];
 

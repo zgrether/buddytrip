@@ -246,6 +246,32 @@ The runner marks each contest as it finishes: **away**, **home**, **push** or
 **cancelled**. Any order — nothing waits on the row above it, and
 `set_pickem_result` never reads `display_order`.
 
+**Results come first, whenever they happen.** A slate result is a real-world
+fact, and competition structure never blocks entering one. On individual
+matches, the matches can be drawn before or after results. A pairing stores
+nothing (`game_matches.result` is never written for pick'em; every standing is
+derived from sheets plus results on each read), so a late draw is scored from
+what's already on record. The app saves pairings through `save_game_config`.
+Its only pairing freeze is a match with a recorded result, which pick'em never
+has, and `FINAL_LOCKED` refuses a re-pair only once the game is finished.
+(A results scrim once claimed "the first result freezes the pairings". That was
+migration 157's behaviour, and 162 reverted it. The scrim is gone.)
+
+**The draw-the-matches signal is the runner's, and it sharpens over time.**
+It shows on the runner's phase strip only (`drawMatchesUrgency`):
+- **before lock:** nothing, because drawing after seeing who submitted is the
+  better workflow;
+- **at lock:** a dim to-do;
+- **once a result is in:** sharper, in the owner-attention colour.
+
+It goes silent once the game is final. Everyone else keeps the neutral
+"No matches drawn yet" on the Matches tab.
+
+**The first result on a game with nothing drawn pushes the other runners**
+(the `organizer` notification type). The lock itself is never announced: a
+deadline passing has no actor, so it can be displayed but not announced
+(#1076).
+
 - An entered game **reopens in place** for correction. Clearing first would pass
   through a state where the game reads unplayed and every total on every surface
   moves, for a mistake being fixed in the same breath.

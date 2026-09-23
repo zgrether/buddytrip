@@ -167,6 +167,19 @@ export function pickemResolution(o: {
   return o.rollUp === "individual_matches" ? "individual_matches" : "simple";
 }
 
+/**
+ * Is this game paid per MATCH? The resolution asked as a yes/no, HERE, so
+ * callers elsewhere (the organizer push) never compare the roll-up themselves —
+ * `pickemRollUpOverride.test.ts` refuses a raw comparison outside the files
+ * that resolve it, and this is one of them.
+ */
+export function resolvesToIndividualMatches(o: {
+  rollUp: "team_totals" | "individual_matches";
+  pointsMode: boolean;
+}): boolean {
+  return pickemResolution(o) === "individual_matches";
+}
+
 /** Each team's total — every sheet on it, summed by the board's own function. */
 function teamStandings(input: PickemFinalizeInput): TeamStanding[] {
   return input.teams.map((t) => ({

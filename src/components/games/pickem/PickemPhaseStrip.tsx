@@ -58,7 +58,7 @@ export function joinDeadline(date: Date | null, time: TimeValue | null): string 
   });
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
-import { type PickemPhase } from "@/lib/pickemLifecycle";
+import { type DrawMatchesUrgency, type PickemPhase } from "@/lib/pickemLifecycle";
 import { instantFromWallClock, wallClockInZone } from "@/lib/tripTimeZone";
 
 /**
@@ -182,6 +182,22 @@ const LOCKED_WITH_RESULTS =
    */
   "Results are in, picks stay closed.";
 
+/**
+ * The two worded steps. `none` renders nothing, so it has no copy.
+ *
+ * SHORT, and naming no route. The first version said "the gear at the top of
+ * this page, then Matches" — which is the "Matches can be set in the game
+ * settings" signpost `PickemNoMatches` deliberately removed, reintroduced as a
+ * sentence. The gear is in this game's own header, where a runner looks for
+ * settings on every format; the line only has to say WHAT, not where. "They're
+ * scored from the results already in" lives in the push body, which has the
+ * room (Zach's look, 2026-09-23: "That's a lot of text!").
+ */
+export const DRAW_MATCHES_COPY: Record<Exclude<DrawMatchesUrgency, "none">, string> = {
+  locked: "Picks are locked. Draw the matches next.",
+  results: "Results are in — draw the matches.",
+};
+
 export interface PickemPhaseStripProps {
   phase: PickemPhase;
   slateCount: number;
@@ -207,6 +223,13 @@ export interface PickemPhaseStripProps {
    * of one comparison is how the button and the thing the button does drift.
    */
   deadlinePassed: boolean;
+  /**
+   * How loudly to say "draw the matches" — decided by `drawMatchesUrgency`
+   * (`pickemLifecycle.ts`), rendered here. Moved from a scrim over the results
+   * panel that sixteen people saw and one could act on, to the one surface only
+   * that one person sees.
+   */
+  drawMatches: DrawMatchesUrgency;
   onOpenPicks: () => void;
   onLock: () => void;
   onUnlock: () => void;
@@ -268,6 +291,7 @@ export function PickemPhaseStrip({
   busy,
   hasResults,
   deadlinePassed,
+  drawMatches,
   lifecycle,
   onOpenPicks,
   onLock,
@@ -487,9 +511,33 @@ export function PickemPhaseStrip({
         />
       )}
 
+      {/* DRAW THE MATCHES — first, because it is the runner's one outstanding
+          job. Two steps that differ in WORDS and in PAINT: the locked step is an ordinary dim to-do; the results step
+          takes the owner-attention colour this panel already uses, because the
+          game is now degrading silently. Both are asserted, the paint included —
+          a distinction carried only by style is invisible to value-level guards. */}
+      {drawMatches !== "none" && (
+        <span
+          data-testid="pickem-strip-draw-matches"
+          data-urgency={drawMatches}
+          style={{
+            fontSize: TYPE_SCALE.caption,
+            fontWeight: drawMatches === "results" ? 600 : 400,
+            color: drawMatches === "results" ? "var(--color-bt-owner)" : "var(--color-bt-text-dim)",
+            lineHeight: 1.45,
+          }}
+        >
+          {DRAW_MATCHES_COPY[drawMatches]}
+        </span>
+      )}
+
       {/* The one sentence that is NOT a phase restatement: it says why an
-          action a runner expects to find is missing, which the button cannot. */}
-      {phase === "locked" && hasResults && (
+          action a runner expects to find is missing, which the button cannot.
+          Stood down while the RESULTS draw-matches line shows: that line opens
+          "Results are in" too, and the pair said one fact twice in one card
+          (Zach's look). The draw is the more urgent sentence; this one returns
+          the moment the matches are drawn. */}
+      {phase === "locked" && hasResults && drawMatches !== "results" && (
         <span
           style={{
             fontSize: TYPE_SCALE.caption,

@@ -63,7 +63,10 @@ export type PickemPhase =
   | "building"
   /** 2 — participants are writing. Nobody sees another sheet, staff included. */
   | "picks_open"
-  /** 3 — sheets are frozen and revealed. Pairing becomes legal here. */
+  /** 3 — sheets are frozen and revealed. Pairing is legal in EVERY phase —
+   *  nothing gates it on this one (`save_game_config` has no pick'em phase
+   *  check); this is simply when drawing matters, because the sheets are
+   *  final. The runner's strip says so from here (`drawMatchesUrgency`). */
   | "locked";
 
 const at = (v: string | null | undefined): number | null => {
@@ -210,6 +213,40 @@ export function deadlineBlocksReopen(clock: PickemClock, now: number = Date.now(
  * moving together for months, was wrong, and was wrong in the confident
  * direction. Two axes that usually advance in the same order are not one axis.
  */
+/**
+ * How loudly the RUNNER's strip should say "draw the matches" (results-first PR).
+ *
+ * The signal sharpens with the timeline, and each step is chosen for whether
+ * something HAPPENS at it (Zach, 2026-09-23):
+ *
+ *   none     — before lock. Pairing is possible, but drawing after seeing who
+ *              submitted is the better workflow (PickemNoMatches' own stance),
+ *              so nagging here would contradict the Matches tab.
+ *   locked   — picks are locked, nothing drawn. A to-do. DISPLAY ONLY: a
+ *              deadline passing has no actor, so nothing can announce it; a
+ *              reader recomputes it. (The general form is on #1076.)
+ *   results  — at least one result is in and still nothing drawn. The game is
+ *              degrading with no error anywhere. Sharper — and the organizer
+ *              push hangs off the first result, the one moment that has an actor.
+ *
+ * Silent once the game is FINAL: `FINAL_LOCKED` refuses a matchups change on a
+ * finished game, so a "draw the matches" line there would name an action the
+ * reader cannot take — the refusal rule. `isFinal` is `gameLockState`'s, not a
+ * status read of our own (CLAUDE.md #24).
+ */
+export type DrawMatchesUrgency = "none" | "locked" | "results";
+
+export function drawMatchesUrgency(o: {
+  phase: PickemPhase;
+  hasResults: boolean;
+  /** The RESOLVED `noMatchesDrawn` — false on team totals and in a points cup. */
+  noMatchesDrawn: boolean;
+  isFinal: boolean;
+}): DrawMatchesUrgency {
+  if (!o.noMatchesDrawn || o.isFinal || o.phase !== "locked") return "none";
+  return o.hasResults ? "results" : "locked";
+}
+
 export function pickemPhase(clock: PickemClock, now: number = Date.now()): PickemPhase {
   if (!picksEverOpened(clock)) return "building";
   return picksOpen(clock, now) ? "picks_open" : "locked";

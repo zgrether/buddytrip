@@ -59,6 +59,7 @@ import that slips through.
 | `planning` | Trip planning | **ON** | no | dates locked · destination locked · itinerary changed | one push per field-edit (itinerary is BATCH) |
 | `invites` | Invites & admin | **ON** | no | invited to a trip · added to a team · RSVP nudge | duplicating the existing invite email |
 | `chat` | Chat messages | **ON** | **yes** | new messages, any trip channel (1:1, not coalesced) | per-channel prefs — one global switch; team chat (no viewing state, no UI) |
+| `organizer` | Running a game | **ON** | **yes** | a game you RUN needs you — first: pick'em results coming in with no matches drawn | anything a member would get; per-write events. Its own key so it can be muted without muting RSVP nudges (`invites`) |
 
 ### `game_results` was called `scores`, and the rename was a bug fix
 
@@ -130,6 +131,7 @@ disappearance of that row raises the volume budget.
 
 | Write site (tRPC) | What happened | Category | Eligibility | Est. volume |
 |---|---|---|---|---|
+| `pickem.setResult` | FIRST result on an individual-matches pick'em with no match drawn | `organizer` | **ELIGIBLE — wired** | ≤1 per pick'em game (the none-to-some transition; a same-instant race can double it, accepted). Runners only, actor excluded. A lock by DEADLINE is not announced: it has no actor (#1076). |
 | `scores.upsertEntry` | A hole score entered | `game_results` | **NEVER** | ~540/day (30×18). Mechanical. Never wire. |
 | `scores.deleteEntry` | A hole score cleared | `game_results` | **NEVER** | churny corrections; mechanical |
 | `games.finish` | Game/round finalized (EVERY format, incl. a non-golf result posted to the cup) | `game_results` | **ELIGIBLE** | ~5–15/day golf + ~1–5/**trip** non-golf. **The natural Phase 3 first wire.** |

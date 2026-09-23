@@ -91,10 +91,10 @@ describe("projectGame — match play", () => {
     expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { blue: 3, red: 1 } });
   });
 
-  // This asserted `{ kind: "projected", byTeam: {} }` until the no_matches
+  // This asserted `{ kind: "projected", byTeam: {} }` until the no-matches
   // ruling — which the board then filled to `▲0 | ▲0`: a zero standing in for
   // "nothing can happen yet", the conflation 3c exists to end.
-  it("a game whose ONLY match is unpaired (a side vacated) → no_matches, not a projection of nothing", () => {
+  it("a game whose ONLY match is unpaired (a side vacated) → seats_vacated, not a projection of nothing", () => {
     const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsTotal: 4, isPerMatch: true };
     const data: GameProjectionData = {
       schema: { units: { count: 2 } },
@@ -106,7 +106,22 @@ describe("projectGame — match play", () => {
       outcomes: [],
       userTeam: userTeam({ alice: "blue" }),
     };
-    expect(projectGame(input, data)).toEqual({ kind: "cannot", reason: "no_matches" });
+    expect(projectGame(input, data)).toEqual({ kind: "cannot", reason: "seats_vacated" });
+  });
+
+  it("…and with NO match rows at all → matches_not_drawn: a draw that has not happened, not a vacated seat", () => {
+    const input: LiveProjectionInput = { id: "g1", gameTypeId: "gtt_match_play", pointsTotal: 4, isPerMatch: true };
+    const data: GameProjectionData = {
+      schema: { units: { count: 2 } },
+      modifiers: null,
+      matches: [],
+      parts: [part("alice")],
+      playGroups: [],
+      gross: gross({ alice: { "1": 4 } }),
+      outcomes: [],
+      userTeam: userTeam({ alice: "blue" }),
+    };
+    expect(projectGame(input, data)).toEqual({ kind: "cannot", reason: "matches_not_drawn" });
   });
 
   it("…but ONE paired match among unpaired ones still projects — the reason is \"none paired\", not \"some unpaired\"", () => {
@@ -477,10 +492,10 @@ describe("projectGame — pick'em", () => {
     expect(pickem({ pointsTotal: 0, pointsMode: true })).toEqual({ kind: "cannot", reason: "no_points" });
   });
 
-  it("individual matches with NO match drawn → no_matches (production's 'Picks 2' after the look's direct write)", () => {
+  it("individual matches with NO match drawn → matches_not_drawn (production's 'Picks 2' after the look's direct write)", () => {
     expect(pickem({ pointsTotal: 8, rollUp: "individual_matches", matches: [] })).toEqual({
       kind: "cannot",
-      reason: "no_matches",
+      reason: "matches_not_drawn",
     });
   });
 
@@ -501,7 +516,7 @@ describe("projectGame — pick'em", () => {
  * "set up but empty" already has its own reason (no_teams).
  */
 describe("projectGame — no matches paired", () => {
-  it("non-golf Matches whose decided match had its seats vacated → no_matches", () => {
+  it("non-golf Matches whose decided match had its seats vacated → seats_vacated", () => {
     const out = projectGame(
       { id: "g", gameTypeId: "gtt_generic_card", competitionFormat: "matches", pointsTotal: 8, isPerMatch: true },
       {
@@ -516,7 +531,7 @@ describe("projectGame — no matches paired", () => {
         userTeam: userTeam({ alice: "blue", bob: "red" }),
       }
     );
-    expect(out).toEqual({ kind: "cannot", reason: "no_matches" });
+    expect(out).toEqual({ kind: "cannot", reason: "seats_vacated" });
   });
 
   it("no_points is said FIRST: a game worth nothing is nothing, paired or not", () => {
