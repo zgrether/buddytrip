@@ -171,7 +171,11 @@ export function gameLifecycle({
     isCorrecting,
     // Gated on completeness as well as role: a partially-scored game must not be
     // finalizable, because `finish` computes from the server rows it can see and
-    // would quietly record a half-round as the result.
+    // would quietly record a half-round as the result. "Complete" is each
+    // format's own decision: pick'em passes `picksRevealed`, so it finalizes
+    // early ON PURPOSE (a multi-day slate may need calling before every game is
+    // played) — that is not a missing check. (`canRelock` below is not gated on
+    // this at all — #1431.)
     canFinalize: canEdit && !isFinal && allComplete,
     // NOT gated on `allComplete`: the whole point of a correction is that the
     // recorded result is wrong, and a locked game is complete by construction.
