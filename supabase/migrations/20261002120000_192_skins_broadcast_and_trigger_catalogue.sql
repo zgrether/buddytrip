@@ -22,9 +22,7 @@
 -- which the client's invalidation coalescer collapses to one refetch per query.
 
 DROP TRIGGER IF EXISTS skins_hole_outcomes_broadcast ON public.skins_hole_outcomes;
-CREATE TRIGGER skins_hole_outcomes_broadcast
-  AFTER INSERT OR DELETE OR UPDATE ON public.skins_hole_outcomes
-  FOR EACH ROW EXECUTE FUNCTION public.broadcast_score_event('game_id');
+-- MUTANT (#192 red-proof): CREATE TRIGGER removed.
 
 -- ── 2. `_broadcast_triggers()` — the migrated schema, readable by a test ───
 --
