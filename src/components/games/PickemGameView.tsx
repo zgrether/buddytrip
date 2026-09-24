@@ -1528,6 +1528,9 @@ export function PickemGameView() {
              * Derived from the SAME predicate the server gates on, so the CTA
              * cannot offer an action the RPC then refuses.
              */
+            // DELIBERATE: pick'em finalizes early — a multi-day slate may need
+            // calling before every game is played — where golf/Matches/rack/
+            // stroke refuse a partial finalize. Not a missing check (PICKEM-SPEC §5).
             allComplete: picksRevealed(clock, now),
             finalizePending,
             correctPending,

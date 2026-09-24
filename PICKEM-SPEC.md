@@ -199,6 +199,15 @@ an optional kickoff, an optional note and an optional multiplier.
   real outcome over the cancellation, and re-finalizing recomputes the award.
   That is
   what makes finalizing early a decision rather than a loss.
+- **Finalizing early is DELIBERATE, and it is the opposite of golf's rule.**
+  The finalize gates on picks having closed (`picksRevealed`), not on every
+  contest having a result: a multi-day slate may need calling before a
+  postponed game is played, and a Tuesday game must not hold the cup open.
+  Golf match play, Matches, rack and stroke decided the other way — no
+  partial finalize — which is why the gate reads differently there and why
+  #1431's relock fix leaves pick'em alone. Written down because
+  `allComplete: picksRevealed(...)` reads like a missing check, and was read
+  as one (2026-09-24).
 - Both are **resolved**: they stop counting as remaining, which is what lets a
   clinch come forward correctly.
 
@@ -454,7 +463,6 @@ heading, because both halves are correct in isolation. Four have shipped here.
 
 ## 10. Known gaps
 
-- **Pick'em cannot be finalized** (#1130) — no path to `games.finish`.
 - **Kickoff is free text**, not a timestamp (#1137). Day grouping parses it and
   refuses rather than guessing.
 - **Point Distribution** is unbuilt for pick'em (#1138).
