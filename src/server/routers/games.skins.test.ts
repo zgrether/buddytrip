@@ -243,9 +243,11 @@ it("AN UNPLAYED GAME BANKS NOTHING — it must not pay the pot out evenly", asyn
      * the correct behaviour for a genuine four-way tie and nonsense for a game
      * nobody has played.
      *
-     * It fires on the SETUP path, not the finalize: `games.saveConfig` recomputes
-     * results after every settings Save (the arm stroke and rack use), so simply
-     * configuring the game published a full set of awardable rows.
+     * It fired on the SETUP path, not the finalize: `games.saveConfig` recomputed
+     * results after every settings Save, so simply configuring the game published
+     * a full set of awardable rows. #1416 removed that recompute for skins and
+     * stroke; the engine rule this pins still governs the finalize, which is
+     * what the case below drives.
      *
      * Asserting the ABSENCE of rows is what makes this real. A test that checked
      * the leaderboard total would pass against a build that wrote the rows and
@@ -267,8 +269,9 @@ it("AN UNPLAYED GAME BANKS NOTHING — it must not pay the pot out evenly", asyn
     await ctx.caller().games.addParticipants({ tripId, gameId: game.id, userIds: [owner, planner] });
     await ctx.groupStrokeParticipants(game.id, [owner, planner]);
 
-    // The setup-path recompute, through the same procedure the settings page
-    // calls. No hole has been recorded.
+    // Through the finalize — the engine's only caller since #1416. (This
+    // comment used to call it "the setup-path recompute", which it never was.)
+    // No hole has been recorded.
     await ctx.caller().games.finish({ tripId, gameId: game.id });
 
     const { data: rows } = await ctx.admin

@@ -2206,11 +2206,16 @@ export const gamesRouter = router({
         // blocked, and only this one caller is loosened.
         await computeMatchPlayResults(ctx.supabase, input.gameId, { skipComplete: !gloriousChanged });
       } else if ((g?.status as string | undefined) !== "complete") {
+        // Rack only. STROKE and SKINS no longer recompute here (#1416): for a
+        // game that is not complete, their engines write a PARTIAL placement —
+        // stroke as soon as one player has finished every hole, skins as soon as
+        // any group has started — and nothing reads a live game's placement
+        // rows any more (the board banks a game only once it is finished,
+        // `bankedOnlyWhenFinished`). So the write produced only a stale snapshot,
+        // frozen at whenever settings were last saved, of something `games.finish`
+        // computes properly at the end. Neither engine writes anything else, and
+        // the removal guard reads `score_entries` for a player who has played.
         if (strategy === "rack_n_stack") await computeRackNStackResults(ctx.supabase, input.gameId);
-        else if (strategy === "stroke_total") await computeStrokePlayResults(ctx.supabase, input.gameId);
-        // Skins recomputes on the same terms as stroke and rack: only while the
-        // game is not complete, so a settings save cannot rewrite a posted card.
-        else if (strategy === "skins") await computeSkinsResults(ctx.supabase, input.gameId);
       }
 
       // 4 · Reconcile the clinch claim — the hole #841 left. It wired the

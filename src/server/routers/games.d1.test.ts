@@ -54,6 +54,11 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
+// Through `games.finish({ placements })` — the manual finalize, the app's only
+// live path for these rows. This file used `setManualResults`, which no client
+// calls and which writes placements on an UNFINISHED game; since #1416 the
+// board banks a game only once it is finished, so those rows would read as
+// nothing. Same input shape, same writer (`writeManualResults`).
 describe("Phase-1 shell + leaderboard (§3/§6)", () => {
   it("a game with all Phase-2 fields null is creatable and contributes points-available", async () => {
     const id = await newGame(DIST_9642, "Shell");
@@ -78,7 +83,7 @@ describe("Phase-1 shell + leaderboard (§3/§6)", () => {
 describe("manual adapter → universal roll-up (§5)", () => {
   it("entered per-team placements write game_results and roll up to distribution points", async () => {
     const id = await newGame(DIST_9642, "Pickem");
-    await ctx.caller().games.setManualResults({
+    await ctx.caller().games.finish({
       tripId,
       gameId: id,
       placements: [
@@ -102,7 +107,7 @@ describe("manual adapter → universal roll-up (§5)", () => {
       pointsDistribution: { type: "placement", values: [9, 6] },
     })) as { id: string };
     gameIds.push(g.id);
-    await ctx.caller().games.setManualResults({
+    await ctx.caller().games.finish({
       tripId, gameId: g.id,
       placements: [{ entityId: tA, position: 1 }, { entityId: tB, position: 1 }],
     });

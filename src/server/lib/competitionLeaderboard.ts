@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { rollUp, placementDetail, placementPoints, awardedForGame, settledPool, type LiveGame } from "@/lib/competitionPlacement";
+import { rollUp, placementDetail, placementPoints, awardedForGame, settledPool, bankedOnlyWhenFinished, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, effectiveDistribution, payingSchedule, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { isBracketGame, isPickemGame, isMatchesGame } from "@/lib/resultStrategy";
@@ -1004,8 +1004,12 @@ export async function computeCompetitionLeaderboard(
   // out, and production's 14 entrant rows (3 games) all declare rank with a
   // position, measured 2026-09-23.
   const liveGames: LiveGame[] = allGames.map((g) => {
+    const status = (g.status as string | null) ?? null;
     const armed = armFor(g);
-    if (!("expects" in armed)) return armed;
+    // #1416: a live game banks nothing — applied to the bracket arm too, which
+    // returns a finished LiveGame and so never reaches the step below. A rule
+    // that every arm but one obeys is how the next writer gets through.
+    if (!("expects" in armed)) return bankedOnlyWhenFinished(armed, status);
     const reconciled = reconcileConvention(armed, conventionByGame.get(g.id as string), {
       competitionId,
       rawDistribution: (g.points_distribution as PointsDistribution | null) ?? null,
@@ -1016,14 +1020,21 @@ export async function computeCompetitionLeaderboard(
     // place that decides which of the two a game contributes. Keyed on the
     // ARM's declaration (`expects`), not on the rows' reconciled shape: whether a
     // game can pay nobody is a property of its format, not of how its rows read.
-    return {
-      ...reconciled,
-      pointsTotal: settledPool(reconciled, {
-        expectsPoints: armed.expects === "points",
-        status: (g.status as string | null) ?? null,
-        correctionsOpen: g.corrections_open === true,
-      }),
-    };
+    //
+    // Then #1416: a live game banks nothing. AFTER the pool, because a finished
+    // game's pool is read off its standings — and for a finished game this is
+    // the identity, so the order only ever matters in the direction it should.
+    return bankedOnlyWhenFinished(
+      {
+        ...reconciled,
+        pointsTotal: settledPool(reconciled, {
+          expectsPoints: armed.expects === "points",
+          status,
+          correctionsOpen: g.corrections_open === true,
+        }),
+      },
+      status
+    );
   });
 
   const roll = rollUp(liveGames, teamIds, { defendingTeamId: comp?.defending_team_id ?? null });

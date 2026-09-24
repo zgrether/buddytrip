@@ -59,8 +59,9 @@ export async function computeStrokePlayResults(
     onFailure?: WriteFailureMode;
     /**
      * FINALIZE only. Refuse rather than record a result when not one player
-     * completed the round. Off for the setup-path recompute, which runs
-     * constantly mid-round when nobody has finished and must stay silent.
+     * completed the round. It was off for `saveConfig`'s setup-path recompute,
+     * which ran mid-round when nobody had finished and had to stay silent —
+     * #1416 removed that recompute, so the finalize is now the only caller.
      */
     requireQualified?: boolean;
   } = {}

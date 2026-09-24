@@ -102,9 +102,12 @@ export async function computeSkinsResults(
    * sitting in CONFIGURING paid out its entire pot evenly (5·5·5·5 of 20, seen
    * on BBMI 2025).
    *
-   * It fires on the SETUP path rather than the finalize: `games.saveConfig`
-   * recomputes after every settings Save, so merely configuring the game
-   * published an awardable result.
+   * It fired on the SETUP path rather than the finalize: `games.saveConfig`
+   * recomputed after every settings Save, so merely configuring the game
+   * published an awardable result. (#1416 has since removed that recompute for
+   * skins and stroke, and the board banks a game only once it is finished — so
+   * this rule now guards the finalize alone, which is where an unplayed group
+   * still has to be absent rather than on 0.)
    *
    * The rule is the one `StrokeTeamTotals` already states for its own board — "a
    * team with nobody playing yet gets NO row rather than a row totalling zero" —
