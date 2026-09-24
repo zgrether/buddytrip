@@ -126,6 +126,9 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
         scores: { listByGame: spy("scores") },
         games: { bracketDraw: spy("bracketDraw") },
         matches: { listByGame: spy("matches") },
+        matchOutcomes: { listByGame: spy("matchOutcomes") },
+        skinsOutcomes: { listByGame: spy("skinsOutcomes") },
+        pickem: { get: spy("pickem") },
       },
     };
   }
@@ -189,6 +192,42 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     flushWindow();
 
     expect(calls.filter((c) => c.startsWith("faceBootstrap.invalidate"))).toHaveLength(1);
+  });
+
+  /**
+   * #1432 — every query a game page renders SCORES from is refreshed.
+   *
+   * The handler's list was patched one key at a time after someone noticed a
+   * stale screen (bracketDraw, then matches.listByGame). Three queries were
+   * still missing, and production measured what that costs: a hole entered on
+   * one device reached another only on its ~20s poll — the broadcast arrived
+   * in ~1.5s and refreshed everything EXCEPT the query the match card reads
+   * (7.2s on one sample; uniform 0–20s by construction).
+   *
+   *   matchOutcomes.listByGame — outcome-mode match play (all four BBMI rounds)
+   *   skinsOutcomes.listByGame — skins (whose table gets its trigger in 192)
+   *   pickem.get               — a runner's slate result (a 60s poll today)
+   */
+  it("a SCORE event refreshes every query a game page renders scores from (#1432)", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", "score");
+    flushWindow();
+
+    expect(calls).toContain('matchOutcomes.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+    expect(calls).toContain('skinsOutcomes.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+    expect(calls).toContain('pickem.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+  });
+
+  it("…and a reconnect backfill refreshes them for EVERY game — it cannot know which moved", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null, null);
+    flushWindow();
+
+    for (const q of ["matchOutcomes", "skinsOutcomes", "pickem"]) {
+      expect(calls, q).toContain(`${q}.invalidate()`);
+    }
   });
 
   it("routes the score change through INVALIDATION ONLY — #15, no cache write", () => {
