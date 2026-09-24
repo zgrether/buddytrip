@@ -5,6 +5,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getRealtimeClient } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc-client";
 import { coalesceInvalidation } from "@/lib/invalidationCoalescer";
+import { BROADCAST_TABLES, type BroadcastTable } from "@/lib/broadcastTables";
 
 /**
  * useRealtimeScoreEvents — pushes SCORE and game-lifecycle changes to every open
@@ -185,32 +186,154 @@ export function acquire(topic: string, handler: Handler): () => void {
 
 /** The invalidation surface this hook is allowed to touch. Narrow on purpose —
  *  see `makeScoreEventHandler`. */
+/** A game-scoped list query: invalidated for one game, or for all on a backfill. */
+type GameScopedQuery = {
+  invalidate: (
+    i?: { tripId: string; gameId: string },
+    f?: undefined,
+    o?: { cancelRefetch: boolean },
+  ) => unknown;
+};
+
 type ScoreEventUtils = {
   competitions: {
     faceBootstrap: { invalidate: (i: { tripId: string }) => unknown };
     leaderboard: { invalidate: (i: { tripId: string; competitionId: string }) => unknown };
   };
-  scores: {
-    listByGame: { invalidate: (i?: { tripId: string; gameId: string }) => unknown };
+  scores: { listByGame: GameScopedQuery };
+  games: { bracketDraw: GameScopedQuery };
+  matches: { listByGame: GameScopedQuery };
+  matchOutcomes: { listByGame: GameScopedQuery };
+  skinsOutcomes: { listByGame: GameScopedQuery };
+  pickem: { get: GameScopedQuery };
+};
+
+/** A query the handler knows how to refresh. */
+type Reader =
+  | "faceBootstrap"
+  | "leaderboard"
+  | "scores"
+  | "matchOutcomes"
+  | "skinsOutcomes"
+  | "pickem"
+  | "bracketDraw"
+  | "matches";
+
+/**
+ * WHICH QUERY RENDERS EACH BROADCASTING TABLE — the one list (#1432).
+ *
+ * This replaced a hand-kept block per query that was patched one key at a time
+ * after someone noticed a stale screen: bracket picks ("the event arrived and
+ * refreshed nothing a bracket renders"), then non-golf Matches results. Three
+ * were still missing when production measured it — a hole entered on one device
+ * reached another only on its poll (7.2s on one sample, uniform 0–20s by
+ * construction), because the broadcast arrived in ~1.5s and refreshed
+ * everything except the query the match card reads:
+ *
+ *   match_hole_outcomes → matchOutcomes.listByGame  (outcome-mode match play;
+ *                         all four BBMI 2026 rounds — 342 rows, 0 score_entries)
+ *   skins_hole_outcomes → skinsOutcomes.listByGame  (its trigger: migration 192)
+ *   pickem_slate_games  → pickem.get                (a runner's result; 60s poll)
+ *
+ * `Record<BroadcastTable, …>` so `tsc` refuses a broadcasting table with no
+ * reader, and `broadcastRegistry.schema.test.ts` holds `BROADCAST_TABLES` equal to
+ * the triggers that actually exist in the migrated schema. So the list cannot
+ * silently fall behind the database again.
+ *
+ * #10 — faceBootstrap is refreshed alongside the leaderboard, never instead of
+ * it: the face re-seeds the child from the bootstrap, while standalone routes
+ * read the child key directly. It hangs off `games` alone, which is what #1284's
+ * rule says (next comment).
+ */
+export const BROADCAST_READERS: Record<BroadcastTable, readonly Reader[]> = {
+  games: ["faceBootstrap", "leaderboard"],
+  game_results: ["leaderboard"],
+  score_entries: ["scores"],
+  match_hole_outcomes: ["matchOutcomes"],
+  skins_hole_outcomes: ["skinsOutcomes"],
+  game_matches: ["matches"],
+  bracket_matches: ["bracketDraw"],
+  pickem_slate_games: ["pickem"],
+};
+
+/**
+ * The payload carries no table (#1284 kept it to two words, deliberately), so an
+ * event is routed by its KIND, which the SQL derives from the trigger's own
+ * table: `CASE WHEN TG_TABLE_NAME = 'games' THEN 'game' ELSE 'score' END`
+ * (pinned by the contract test). A SCORE event therefore came from some table
+ * other than `games`, and refreshes the readers of all of those; a GAME event, or
+ * an unknown kind (pre-189, or a reconnect backfill), refreshes everything.
+ *
+ * Refreshing the union costs nothing for a query nobody has mounted — only active
+ * observers refetch, and on a game page those are scoped to that game.
+ *
+ * #1284 falls out of this rather than being a special case: faceBootstrap is a
+ * reader of `games` only, so a score event — which cannot have changed the
+ * competition, roles, teams or games rows it holds — never refetches it.
+ */
+const SCORE_TABLES = BROADCAST_TABLES.filter((t) => t !== "games");
+
+function readersFor(kind: ScoreEventKind | null): Set<Reader> {
+  const tables = kind === "score" ? SCORE_TABLES : BROADCAST_TABLES;
+  const out = new Set<Reader>();
+  for (const t of tables) for (const r of BROADCAST_READERS[t]) out.add(r);
+  return out;
+}
+
+/**
+ * A game-scoped refresh: for the game in the event, or — on a reconnect backfill
+ * (no gameId) — for every game, because we cannot know which moved while we were
+ * away. The two arms get DIFFERENT coalescing keys on purpose: the backfill is a
+ * strictly broader invalidation, and collapsing it onto one game's key would let
+ * a per-game event swallow the "everything moved" refetch a reconnect relies on.
+ *
+ * `keepInFlight` passes `cancelRefetch: false`: a second invalidation during an
+ * in-flight refetch otherwise cancels it and the first response never reaches
+ * the cache (`src/lib/invalidateCancelsRefetch.test.ts`). A remote burst is
+ * precisely when that overlaps a local tap's own refetch. `scores` keeps the
+ * default, as it always has.
+ */
+function gameScoped(
+  prefix: string,
+  pick: (u: ScoreEventUtils) => GameScopedQuery,
+  keepInFlight: boolean,
+) {
+  return (utils: ScoreEventUtils, tripId: string, gameId: string | null) => {
+    const opts = keepInFlight ? { cancelRefetch: false } : undefined;
+    if (gameId) {
+      coalesceInvalidation(`${prefix}:${tripId}:${gameId}`, () => {
+        void pick(utils).invalidate({ tripId, gameId }, undefined, opts);
+      });
+    } else {
+      coalesceInvalidation(`${prefix}:${tripId}:*`, () => {
+        void pick(utils).invalidate(undefined, undefined, opts);
+      });
+    }
   };
-  games: {
-    bracketDraw: {
-      invalidate: (
-        i?: { tripId: string; gameId: string },
-        f?: undefined,
-        o?: { cancelRefetch: boolean },
-      ) => unknown;
-    };
-  };
-  matches: {
-    listByGame: {
-      invalidate: (
-        i?: { tripId: string; gameId: string },
-        f?: undefined,
-        o?: { cancelRefetch: boolean },
-      ) => unknown;
-    };
-  };
+}
+
+/**
+ * How each reader is refreshed. The coalescing keys are the ones the handler has
+ * always used, so a burst still collapses to one refetch per query per window.
+ */
+const INVALIDATE: Record<
+  Reader,
+  (utils: ScoreEventUtils, tripId: string, gameId: string | null, competitionId: string) => void
+> = {
+  faceBootstrap: (utils, tripId) =>
+    coalesceInvalidation(`faceBootstrap:${tripId}`, () => {
+      void utils.competitions.faceBootstrap.invalidate({ tripId });
+    }),
+  leaderboard: (utils, tripId, _gameId, competitionId) =>
+    coalesceInvalidation(`leaderboard:${tripId}:${competitionId}`, () => {
+      void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+    }),
+  scores: gameScoped("scores", (u) => u.scores.listByGame, false),
+  matchOutcomes: gameScoped("matchOutcomes", (u) => u.matchOutcomes.listByGame, true),
+  skinsOutcomes: gameScoped("skinsOutcomes", (u) => u.skinsOutcomes.listByGame, true),
+  pickem: gameScoped("pickem", (u) => u.pickem.get, true),
+  bracketDraw: gameScoped("bracketDraw", (u) => u.games.bracketDraw, true),
+  matches: gameScoped("matchesListByGame", (u) => u.matches.listByGame, true),
 };
 
 /**
@@ -236,125 +359,42 @@ export function makeScoreEventHandler(
   tripId: string,
   competitionId: string,
 ): Handler {
+  // COALESCED, not fired directly — see `invalidationCoalescer.ts`. Migration
+  // 096's `FOR EACH ROW` triggers make one reset emit ~73 broadcasts (measured),
+  // and every handler on the channel runs for each one, so the naive version
+  // costs broadcasts × handlers × queries refetches for a single tap. That is
+  // what took production down. The coalescing keys collapse both multipliers.
+  //
+  // #15 — INVALIDATE ONLY: the refetch hands the change to each view's existing
+  // reconcile (`reconcileScores` / outcome mode's local-over-server overlay),
+  // which is what protects the active enterer's in-flight cells. Nothing here
+  // reads the event's contents beyond the game id and kind.
   return (gameId, kind) => {
-    // COALESCED, not fired directly — see `invalidationCoalescer.ts`. Migration
-    // 096's `FOR EACH ROW` triggers make one reset emit ~73 broadcasts (measured),
-    // and every handler on the channel runs for each one, so the naive version
-    // costs broadcasts × handlers × queries refetches for a single tap. That is
-    // what took production down. The keys below collapse BOTH multipliers: the
-    // handlers on a topic share tripId + competitionId, and a burst carries one
-    // gameId, so the whole storm reduces to one refetch per query per window.
-    //
-    // WHAT IS INVALIDATED IS UNCHANGED — same three keys, same #10 pairing, same
-    // invalidate-only posture. Only the timing changed.
-
-    // #10 — faceBootstrap IN ADDITION TO the child query, never instead of.
-    // Dropping either leaves a surface stale: the face re-seeds from the
-    // bootstrap, while the standalone game routes read the child key directly.
-    //
-    // ── …EXCEPT for a SCORE event (#1284) ─────────────────────────────────────
-    // `faceBootstrap` carries the competition, roles, teams, assignments and the
-    // `games` ROWS — no results (the leaderboard left it in #1285). A score write
-    // reaches a games row only through the pending → active flip on a game's
-    // first score, and that flip fires its OWN `games_lifecycle_broadcast`, which
-    // arrives here as `kind: "game"`. So a score event cannot have changed
-    // anything this query holds, and refetching it on every hole was ~5 reads per
-    // score per client for nothing. #10's pairing still holds for every event
-    // that CAN change it: a game event, and an unknown kind — which is how an
-    // event from before migration 189, or a reconnect backfill, arrives.
-    if (kind !== "score") {
-      coalesceInvalidation(`faceBootstrap:${tripId}`, () => {
-        void utils.competitions.faceBootstrap.invalidate({ tripId });
-      });
-    }
-    coalesceInvalidation(`leaderboard:${tripId}:${competitionId}`, () => {
-      void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-    });
-
-    // #15 — hand the score change to the view's EXISTING reconcile rather than
-    // applying anything here. On a reconnect backfill (no gameId) we don't know
-    // which game moved while we were away, so invalidate the whole key.
-    //
-    // The two arms get DIFFERENT keys on purpose: the backfill is a strictly
-    // broader invalidation, and collapsing it onto a specific game's key would
-    // let a per-game event swallow the "everything moved while you were away"
-    // refetch that a reconnect depends on.
-    if (gameId) {
-      coalesceInvalidation(`scores:${tripId}:${gameId}`, () => {
-        void utils.scores.listByGame.invalidate({ tripId, gameId });
-      });
-    } else {
-      coalesceInvalidation(`scores:${tripId}:*`, () => {
-        void utils.scores.listByGame.invalidate();
-      });
-    }
-
-    /**
-     * THE BRACKET'S SCORE. A pick is a result exactly as a hole score is, and it
-     * broadcasts on the same topic — migration 118's `bracket_matches_pick_broadcast`
-     * fires on `winner_entrant_id` changing — but this handler's key list did not
-     * carry the query that holds it, so the event arrived and refreshed nothing a
-     * bracket renders.
-     *
-     * The draw is `STRUCTURE_QUERY` (`staleTime: Infinity`), so nothing else was
-     * going to catch it either: no poll, and `games.configHash` deliberately
-     * EXCLUDES `winner_entrant_id` (CLAUDE.md #16 — a result must never churn the
-     * config hash), so the ~20s config sync is silent on picks by design. The only
-     * invalidators were the picking client's own mutation and finalize. That is
-     * CLAUDE.md #22's "two lists that happen to match", except they did not: your
-     * own picks appeared and everyone else's never did, until a hard reload.
-     *
-     * `cancelRefetch: false` for the same measured reason `BracketScoringSurface`
-     * uses it — a second invalidation during an in-flight refetch otherwise cancels
-     * it and the first response never reaches the cache
-     * (`src/lib/invalidateCancelsRefetch.test.ts`). A remote burst is precisely when
-     * that overlaps a local pick's refetch.
-     *
-     * Invalidate-only, like everything above: the payload is a SIGNAL (#20), and the
-     * refetch is what re-applies auth. Nothing here reads the event's contents.
-     */
-    if (gameId) {
-      coalesceInvalidation(`bracketDraw:${tripId}:${gameId}`, () => {
-        void utils.games.bracketDraw.invalidate({ tripId, gameId }, undefined, {
-          cancelRefetch: false,
-        });
-      });
-    } else {
-      coalesceInvalidation(`bracketDraw:${tripId}:*`, () => {
-        void utils.games.bracketDraw.invalidate(undefined, undefined, {
-          cancelRefetch: false,
-        });
-      });
-    }
-
-    /**
-     * NON-GOLF MATCHES' RESULT — the same gap as the bracket pick above, same
-     * fix. Migration 173 (`game_matches_result_broadcast`) gave a declared
-     * match's `result` a broadcast source; without a key here that event
-     * arrived and refreshed nothing the game page or another open tab reads.
-     * `matches.listByGame` also has no poll of its own and is excluded from
-     * `configHash` (CLAUDE.md #16's own reasoning: a result must never churn
-     * the config hash), so the writer's own tab was the only invalidator —
-     * a second device watching the same game (or the settings pairing grid,
-     * same query) saw nothing until a hard reload. Same `cancelRefetch: false`
-     * reasoning as bracketDraw: a remote burst can land mid-refetch of a local
-     * tap's own invalidation.
-     */
-    if (gameId) {
-      coalesceInvalidation(`matchesListByGame:${tripId}:${gameId}`, () => {
-        void utils.matches.listByGame.invalidate({ tripId, gameId }, undefined, {
-          cancelRefetch: false,
-        });
-      });
-    } else {
-      coalesceInvalidation(`matchesListByGame:${tripId}:*`, () => {
-        void utils.matches.listByGame.invalidate(undefined, undefined, {
-          cancelRefetch: false,
-        });
-      });
+    for (const reader of readersFor(kind)) {
+      INVALIDATE[reader](utils, tripId, gameId, competitionId);
     }
   };
 }
+
+/**
+ * COMPILE-TIME: every path the handler invokes exists on the REAL router's
+ * utils. The hook below hands them over `as unknown as ScoreEventUtils` (tRPC's
+ * signatures are wider than the handler needs), and that cast means a mistyped
+ * or renamed path would pass `tsc` and throw inside the coalescer's timer at
+ * runtime — silently stopping every refresh after it. Naming each path here makes
+ * `tsc` refuse one that does not exist. Add a line when a `Reader` is added.
+ */
+type _Utils = ReturnType<typeof trpc.useUtils>;
+type _ReaderPathsExist = [
+  _Utils["competitions"]["faceBootstrap"]["invalidate"],
+  _Utils["competitions"]["leaderboard"]["invalidate"],
+  _Utils["scores"]["listByGame"]["invalidate"],
+  _Utils["games"]["bracketDraw"]["invalidate"],
+  _Utils["matches"]["listByGame"]["invalidate"],
+  _Utils["matchOutcomes"]["listByGame"]["invalidate"],
+  _Utils["skinsOutcomes"]["listByGame"]["invalidate"],
+  _Utils["pickem"]["get"]["invalidate"],
+];
 
 export function useRealtimeScoreEvents(
   tripId: string | undefined,
