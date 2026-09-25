@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { outcomeOutboxPut, outcomeOutboxClear, outcomeOutboxEntries } from "@/lib/outcomeOutbox";
 import { reconcileOutcomes, outcomeOverwrites, type OutcomeOverwrite } from "@/lib/outcomeReconcile";
-import { CONFIRM_GRACE_MS } from "@/lib/cellReconcile";
+import { createGraceGate } from "@/lib/graceGate";
 import { isTerminalRefusal, refusalMessage, retryUnlessRefused } from "@/lib/terminalRefusal";
 import { showToast } from "@/lib/toast";
 import {
@@ -61,10 +61,12 @@ export function useOutcomeSaver(
   useEffect(() => {
     valuesRef.current = values;
   }, [values]);
-  /** cellKey → when this device's write was CONFIRMED. Protected for
-   *  CONFIRM_GRACE_MS so a response already in flight when the write landed
-   *  cannot revert it — the same guard useScoreSaver has (#1437). */
-  const confirmedAtRef = useRef<Map<string, number>>(new Map());
+  /** Just-confirmed holes are protected for CONFIRM_GRACE_MS, and — the part
+   *  the inline version lacked — revisited when that grace ends, so a
+   *  conflicting write that arrived inside it is not stranded (#1437). One
+   *  gate, shared with useScoreSaver. */
+  const [grace] = useState(() => createGraceGate<OutcomeValues>());
+  useEffect(() => () => grace.dispose(), [grace]);
   /** Keys this device entered and still holds — the only holes an overwrite
    *  notice can be about. A hole this device only watched stays silent. */
   const enteredRef = useRef<Set<string>>(new Set());
@@ -122,7 +124,7 @@ export function useOutcomeSaver(
           mark(key, "saved");
           outcomeOutboxClear(gameId, matchId, Number(hole));
           noteRefusal(key, null);
-          confirmedAtRef.current.set(key, Date.now());
+          grace.confirm(key);
           enteredRef.current.add(key);
         })
         // Terminal → drop the outbox entry, or it is re-sent on every mount
@@ -133,7 +135,7 @@ export function useOutcomeSaver(
           noteRefusal(key, refusalMessage(err));
         });
     },
-    [tripId, gameId, upsertOutcome, mark, noteRefusal],
+    [tripId, gameId, upsertOutcome, mark, noteRefusal, grace],
   );
 
   const onClear = useCallback(
@@ -148,7 +150,7 @@ export function useOutcomeSaver(
       });
       mark(key, null);
       outcomeOutboxClear(gameId, matchId, Number(hole));
-      confirmedAtRef.current.delete(key);
+      grace.forget(key);
       enteredRef.current.delete(key);
       deleteOutcome
         .mutateAsync({ tripId, gameId, matchId, holeNumber: Number(hole) })
@@ -166,7 +168,7 @@ export function useOutcomeSaver(
           }
         });
     },
-    [tripId, gameId, values, deleteOutcome, mark, noteRefusal, onCleared],
+    [tripId, gameId, values, deleteOutcome, mark, noteRefusal, onCleared, grace],
   );
 
   /**
@@ -185,28 +187,26 @@ export function useOutcomeSaver(
    */
   const reconcile = useCallback(
     (server: OutcomeValues) => {
-      const protectedKeys = new Set<string>();
-      for (const [k, st] of Object.entries(saveStatusRef.current)) {
-        if (st === "saving" || st === "error") protectedKeys.add(k);
-      }
-      if (gameId) {
-        for (const e of outcomeOutboxEntries(gameId)) {
-          protectedKeys.add(outcomeCellKey(e.matchId, e.holeNumber));
+      // Through the gate: applied now, and again when the earliest grace ends.
+      grace.run(server, (srv, graceKeys) => {
+        const protectedKeys = new Set<string>(graceKeys);
+        for (const [k, st] of Object.entries(saveStatusRef.current)) {
+          if (st === "saving" || st === "error") protectedKeys.add(k);
         }
-      }
-      const now = Date.now();
-      for (const [k, at] of confirmedAtRef.current) {
-        if (now - at < CONFIRM_GRACE_MS) protectedKeys.add(k);
-        else confirmedAtRef.current.delete(k);
-      }
+        if (gameId) {
+          for (const e of outcomeOutboxEntries(gameId)) {
+            protectedKeys.add(outcomeCellKey(e.matchId, e.holeNumber));
+          }
+        }
 
-      const overwrites = outcomeOverwrites(valuesRef.current, server, protectedKeys, enteredRef.current);
-      for (const o of overwrites) enteredRef.current.delete(outcomeCellKey(o.matchId, o.hole));
+        const overwrites = outcomeOverwrites(valuesRef.current, srv, protectedKeys, enteredRef.current);
+        for (const o of overwrites) enteredRef.current.delete(outcomeCellKey(o.matchId, o.hole));
 
-      setValues((cur) => reconcileOutcomes(cur, server, protectedKeys));
-      if (overwrites.length > 0) onOverwritten?.(overwrites);
+        setValues((cur) => reconcileOutcomes(cur, srv, protectedKeys));
+        if (overwrites.length > 0) onOverwritten?.(overwrites);
+      });
     },
-    [gameId, onOverwritten],
+    [grace, gameId, onOverwritten],
   );
 
   /** Re-fire the save for a flagged cell using its current value. */

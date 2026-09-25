@@ -38,11 +38,29 @@ describe("MatchGameView wires outcome mode's reconcile", () => {
   });
 });
 
-describe("useOutcomeSaver protects a just-confirmed hole, as useScoreSaver does", () => {
-  it("adds confirmed holes to protectedKeys for CONFIRM_GRACE_MS", () => {
-    // Without it, a response already in flight when the write landed would
-    // revert the tap — and raise a false "changed" notice.
-    expect(HOOK).toMatch(/if \(now - at < CONFIRM_GRACE_MS\) protectedKeys\.add\(k\);/);
-    expect(HOOK).toMatch(/confirmedAtRef\.current\.set\(key, Date\.now\(\)\);/);
+const SCORE_HOOK = readFileSync(resolve(__dirname, "../../hooks/useScoreSaver.ts"), "utf8");
+
+/**
+ * Both entry modes go through ONE grace gate (`src/lib/graceGate.ts`), whose
+ * timing is tested with fake timers in `graceGate.test.ts`. What this pins is
+ * that neither hook has gone back to a private copy: the two inline copies
+ * SHARED the flaw that stranded hole 6 on #1439's preview — a cell protected
+ * when the conflicting write arrived, never revisited — and a third copy is how
+ * it would come back.
+ */
+describe.each([
+  ["useOutcomeSaver", HOOK],
+  ["useScoreSaver", SCORE_HOOK],
+])("%s protects just-confirmed cells through the shared gate", (_name, src) => {
+  it("records confirmations on the gate and reconciles through it", () => {
+    expect(src).toContain("createGraceGate<");
+    expect(src).toContain("grace.confirm(key);");
+    expect(src).toContain("grace.forget(key);");
+    expect(src).toMatch(/grace\.run\(server, \(srv, graceKeys\) =>/);
+  });
+
+  it("keeps no private grace loop — the copy that stranded a cell", () => {
+    expect(src).not.toContain("confirmedAtRef");
+    expect(src).not.toMatch(/CONFIRM_GRACE_MS\)\s*protectedKeys\.add/);
   });
 });
