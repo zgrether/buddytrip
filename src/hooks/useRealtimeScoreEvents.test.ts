@@ -65,7 +65,7 @@ vi.mock("@/lib/supabase", () => ({
 
 vi.mock("@/lib/trpc-client", () => ({ trpc: { useUtils: () => ({}) } }));
 
-const { acquire, scoreEventsTopic, SCORE_EVENT, makeScoreEventHandler, parseScoreEventKind } = await import(
+const { acquire, scoreEventsTopic, SCORE_EVENT, makeScoreEventHandler, parseScoreEventKind, BROADCAST_READERS } = await import(
   "./useRealtimeScoreEvents"
 );
 
@@ -114,18 +114,27 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
   /** A utils double that records calls and would expose any cache WRITE. */
   function fakeUtils() {
     const calls: string[] = [];
+    /** Options passed to invalidate, kept apart so `calls` counts are unchanged. */
+    const opts: string[] = [];
     const spy = (name: string) => ({
-      invalidate: (i?: unknown) => calls.push(`${name}.invalidate(${JSON.stringify(i) ?? ""})`),
+      invalidate: (i?: unknown, _f?: unknown, o?: unknown) => {
+        if (o !== undefined) opts.push(`${name}:${JSON.stringify(o)}`);
+        return calls.push(`${name}.invalidate(${JSON.stringify(i) ?? ""})`);
+      },
       setData: () => calls.push(`${name}.setData`),
       setInfiniteData: () => calls.push(`${name}.setInfiniteData`),
     });
     return {
       calls,
+      opts,
       utils: {
         competitions: { faceBootstrap: spy("faceBootstrap"), leaderboard: spy("leaderboard") },
         scores: { listByGame: spy("scores") },
         games: { bracketDraw: spy("bracketDraw") },
         matches: { listByGame: spy("matches") },
+        matchOutcomes: { listByGame: spy("matchOutcomes") },
+        skinsOutcomes: { listByGame: spy("skinsOutcomes") },
+        pickem: { get: spy("pickem") },
       },
     };
   }
@@ -189,6 +198,62 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     flushWindow();
 
     expect(calls.filter((c) => c.startsWith("faceBootstrap.invalidate"))).toHaveLength(1);
+  });
+
+  /**
+   * #1432 — every query a game page renders SCORES from is refreshed.
+   *
+   * The handler's list was patched one key at a time after someone noticed a
+   * stale screen (bracketDraw, then matches.listByGame). Three queries were
+   * still missing, and production measured what that costs: a hole entered on
+   * one device reached another only on its ~20s poll — the broadcast arrived
+   * in ~1.5s and refreshed everything EXCEPT the query the match card reads
+   * (7.2s on one sample; uniform 0–20s by construction).
+   *
+   *   matchOutcomes.listByGame — outcome-mode match play (all four BBMI rounds)
+   *   skinsOutcomes.listByGame — skins (whose table gets its trigger in 192)
+   *   pickem.get               — a runner's slate result (a 60s poll today)
+   */
+  it("a SCORE event refreshes every query a game page renders scores from (#1432)", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", "score");
+    flushWindow();
+
+    expect(calls).toContain('matchOutcomes.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+    expect(calls).toContain('skinsOutcomes.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+    expect(calls).toContain('pickem.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+  });
+
+  it("…and a reconnect backfill refreshes them for EVERY game — it cannot know which moved", () => {
+    const { calls, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")(null, null);
+    flushWindow();
+
+    for (const q of ["matchOutcomes", "skinsOutcomes", "pickem"]) {
+      expect(calls, q).toContain(`${q}.invalidate()`);
+    }
+  });
+
+  /**
+   * `cancelRefetch: false` where a remote burst can overlap a local refetch —
+   * otherwise the second invalidation cancels the first refetch and its response
+   * never reaches the cache (`src/lib/invalidateCancelsRefetch.test.ts`). The
+   * bracket draw and Matches list always had it; the three #1432 readers get it
+   * for the same reason; `scores` has always kept the default. Nothing pinned
+   * these until the registry rewired every call — so this is where they are held.
+   */
+  it("keeps an in-flight refetch where a burst can overlap one — and leaves scores on the default", () => {
+    const { opts, utils } = fakeUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", "score");
+    flushWindow();
+
+    for (const q of ["bracketDraw", "matches", "matchOutcomes", "skinsOutcomes", "pickem"]) {
+      expect(opts, q).toContain(`${q}:{"cancelRefetch":false}`);
+    }
+    expect(opts.filter((o) => o.startsWith("scores:"))).toEqual([]);
   });
 
   it("routes the score change through INVALIDATION ONLY — #15, no cache write", () => {
@@ -335,19 +400,15 @@ describe("makeScoreEventHandler — what a broadcast is allowed to do to the cac
     flushWindow();
 
     const count = (needle: string) => calls.filter((c) => c.startsWith(needle)).length;
-    expect(count("faceBootstrap.invalidate")).toBe(1);
-    expect(count("leaderboard.invalidate")).toBe(1);
-    expect(count("scores.invalidate")).toBe(1);
-    // The bracket draw joined the key set when remote picks started reaching the
-    // board; it coalesces exactly like the other three. The total moved 3 → 4
-    // because there are four QUERIES now, not because a burst costs more — which
-    // is the property this test exists to hold, and the per-query counts above are
-    // what actually state it.
-    expect(count("bracketDraw.invalidate")).toBe(1);
-    // Matches' listByGame joined the same way, for a declared result instead of
-    // a bracket pick. Five queries now; still one refetch each.
-    expect(count("matches.invalidate")).toBe(1);
-    expect(calls).toHaveLength(5); // 219 handler calls per query → 1 refetch each
+    // EVERY reader in the registry, exactly once. The total used to be a literal
+    // bumped by hand as queries joined (3 → 4 → 5, per this comment's own
+    // history) — the hand-kept-list shape #1432 removed from the handler. It is
+    // the registry's reader count now: still red on a duplicate refetch or a
+    // missing one, and no longer a number anyone has to remember to change.
+    const readers = new Set(Object.values(BROADCAST_READERS).flat());
+    expect(readers.size, "the registry lists no readers — nothing below is checked").toBeGreaterThan(0);
+    for (const r of readers) expect(count(`${r}.invalidate`), r).toBe(1);
+    expect(calls).toHaveLength(readers.size); // 219 handler calls per query → 1 refetch each
   });
 
   it("keeps DIFFERENT games separate — the key is not too coarse", () => {

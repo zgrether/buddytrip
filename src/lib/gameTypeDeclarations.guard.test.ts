@@ -5,6 +5,7 @@ import {
   type ResultKind,
   type GameContainer,
 } from "./gameTypes";
+import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
 
 /**
  * EVERY FORMAT DECLARES EVERY PROPERTY (PR 1 of the composable-competitions plan).
@@ -39,6 +40,12 @@ import {
 
 const RESULT_KINDS: ResultKind[] = ["head_to_head", "ranked"];
 const CONTAINERS: GameContainer[] = ["side_game", "head_to_head", "points_race"];
+/**
+ * `scoreTables` (#1432): any broadcasting table EXCEPT `games`. `tsc` already
+ * refuses a table outside `BROADCAST_TABLES`; `games` is in that list (its
+ * lifecycle broadcasts) but holds no scores, and the type cannot say so.
+ */
+const SCORE_TABLES: readonly BroadcastTable[] = BROADCAST_TABLES.filter((t) => t !== "games");
 
 /** Every problem with one format's declarations. Empty array = declared well. */
 function declarationFaults(d: GameTypeDefinition): string[] {
@@ -51,6 +58,7 @@ function declarationFaults(d: GameTypeDefinition): string[] {
   };
   set("resultKinds", d.resultKinds, RESULT_KINDS);
   set("allowedContainers", d.allowedContainers, CONTAINERS);
+  set("scoreTables", d.scoreTables, SCORE_TABLES);
   if (typeof d.teamDependent !== "boolean") faults.push("teamDependent is not a boolean");
   return faults;
 }
@@ -69,7 +77,7 @@ describe("declared format properties", () => {
   });
 
   it.each(GAME_TYPE_LIST.map((d) => [d.id, d] as const))(
-    "%s declares all three, with legal non-empty values",
+    "%s declares every property, with legal non-empty values",
     (_id, d) => {
       expect(declarationFaults(d)).toEqual([]);
     }
@@ -86,11 +94,30 @@ describe("declared format properties", () => {
       id: "gtt_stub",
       resultKinds: [] as ResultKind[],
       allowedContainers: [] as GameContainer[],
+      scoreTables: [] as BroadcastTable[],
     } as GameTypeDefinition;
     expect(declarationFaults(stub)).toEqual([
       "resultKinds is empty",
       "allowedContainers is empty",
+      "scoreTables is empty",
     ]);
+  });
+
+  it("rejects `games` as a score table — it broadcasts, but holds no scores (#1432)", () => {
+    const stub = {
+      ...GAME_TYPE_LIST[0],
+      id: "gtt_stub",
+      scoreTables: ["games", "game_results"] as BroadcastTable[],
+    } as GameTypeDefinition;
+    expect(declarationFaults(stub)).toContain("scoreTables has illegal value games");
+  });
+
+  it("every format declares game_results — the finalize writes it for all of them", () => {
+    // `games.finish` is the one finalize (CLAUDE.md #8) and every arm writes
+    // `game_results`; a format omitting it has declared a set that is wrong.
+    for (const d of GAME_TYPE_LIST) {
+      expect(d.scoreTables, d.id).toContain("game_results");
+    }
   });
 
   it("rejects a duplicate entry — `both kinds` must mean two kinds", () => {

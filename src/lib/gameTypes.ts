@@ -14,8 +14,9 @@
  * (points, course snapshot, modifiers-enabled); the code stores what that
  * reference MEANS.
  *
- * CLIENT-SAFE: this module imports only a pure type from `@/lib/courseIndex` and
- * defines const data — no Supabase, no tRPC server, no node deps. The add-game
+ * CLIENT-SAFE: this module imports only pure types (`@/lib/courseIndex`,
+ * `@/lib/broadcastTables`) and defines const data — no Supabase, no tRPC server,
+ * no node deps. The add-game
  * dialog imports `GAME_TYPES` directly, so the format chips are present before the
  * component even mounts: no fetch, no loading state, offline-safe.
  *
@@ -31,6 +32,7 @@
  */
 
 import type { ScorecardSchema } from "@/lib/courseIndex";
+import type { BroadcastTable } from "@/lib/broadcastTables";
 
 /** The scoring engines a format can dispatch to. `null` = manual / non-engine
  *  (finishing order entered by hand — cornhole, trivia, generic games). */
@@ -184,6 +186,25 @@ export interface GameTypeDefinition {
    * game configured as `matches` IS a match format.
    */
   allowedContainers: GameContainer[];
+
+  /**
+   * Every table this format's scores or results CAN land in (#1432) — a set,
+   * because entry mode and configuration move where they land: match play
+   * writes `score_entries` in score mode and `match_hole_outcomes` in outcome
+   * mode; a non-golf game writes `game_results`, `game_matches` or
+   * `bracket_matches` depending on its `competition_format`.
+   *
+   * NOT part of the inert PR 1 block above: its consumers exist on the day it
+   * lands. Typed `BroadcastTable[]`, so `tsc` refuses a table that is not in
+   * `BROADCAST_TABLES`; that list is held EQUAL to the tables that actually
+   * broadcast in the migrated schema (`broadcastRegistry.schema.test.ts`); and
+   * every broadcasting table has a reader in the client handler. So a new
+   * format's new score table cannot ship without a trigger and a reader —
+   * skins' `skins_hole_outcomes` did, and other devices saw its holes only on a
+   * poll until migration 192. `gameTypeDeclarations.guard.test.ts` refuses the
+   * values the type permits and the model does not (empty, duplicate, `games`).
+   */
+  scoreTables: BroadcastTable[];
 }
 
 /** The competition scoring-model axis (W-NONGOLF-02) — `competitions.scoring_model`. */
@@ -285,6 +306,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["ranked"],
     teamDependent: false,
     allowedContainers: ["side_game", "points_race"],
+    scoreTables: ["score_entries", "game_results"],
   },
   gtt_scramble: {
     id: "gtt_scramble",
@@ -336,6 +358,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["ranked"],
     teamDependent: true,
     allowedContainers: ["side_game", "points_race"],
+    scoreTables: ["score_entries", "game_results"],
   },
   gtt_skins: {
     id: "gtt_skins",
@@ -385,6 +408,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["ranked"],
     teamDependent: false,
     allowedContainers: ["side_game", "points_race"],
+    // Its own outcome table, and no stroke scores at all (games.skins.test.ts).
+    scoreTables: ["skins_hole_outcomes", "game_results"],
   },
   gtt_match_play: {
     // Refactor A1 — the unified match-play type (was gtt_match_play_singles +
@@ -419,6 +444,9 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["head_to_head"],
     teamDependent: true,
     allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // score_entries in score mode, match_hole_outcomes in outcome mode (all four
+    // BBMI 2026 rounds); a decided match's result on game_matches.
+    scoreTables: ["score_entries", "match_hole_outcomes", "game_matches", "game_results"],
   },
   gtt_rack_n_stack: {
     id: "gtt_rack_n_stack",
@@ -444,6 +472,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["head_to_head"],
     teamDependent: true,
     allowedContainers: ["head_to_head"],
+    scoreTables: ["score_entries", "game_results"],
   },
   gtt_generic_card: {
     id: "gtt_generic_card",
@@ -465,6 +494,9 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
     allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // By competition_format: placement → game_results; matches → game_matches.result;
+    // bracket → bracket_matches. The finalize writes game_results in every case.
+    scoreTables: ["game_results", "game_matches", "bracket_matches"],
   },
   gtt_generic_yard: {
     id: "gtt_generic_yard",
@@ -486,6 +518,9 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
     allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // By competition_format: placement → game_results; matches → game_matches.result;
+    // bracket → bracket_matches. The finalize writes game_results in every case.
+    scoreTables: ["game_results", "game_matches", "bracket_matches"],
   },
   gtt_pickem: {
     id: "gtt_pickem",
@@ -528,6 +563,9 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
     allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // A runner's slate result. Sheets (pickem_picks) are inputs, hidden until the
+    // reveal; pairings (game_matches) never carry a pick'em result.
+    scoreTables: ["pickem_slate_games", "game_results"],
   },
   gtt_generic_bar: {
     id: "gtt_generic_bar",
@@ -549,6 +587,9 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
     allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // By competition_format: placement → game_results; matches → game_matches.result;
+    // bracket → bracket_matches. The finalize writes game_results in every case.
+    scoreTables: ["game_results", "game_matches", "bracket_matches"],
   },
   gtt_manual: {
     id: "gtt_manual",
@@ -570,6 +611,9 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
     allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // By competition_format: placement → game_results; matches → game_matches.result;
+    // bracket → bracket_matches. The finalize writes game_results in every case.
+    scoreTables: ["game_results", "game_matches", "bracket_matches"],
   },
 };
 
