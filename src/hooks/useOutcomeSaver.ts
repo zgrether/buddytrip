@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { outcomeOutboxPut, outcomeOutboxClear, outcomeOutboxEntries } from "@/lib/outcomeOutbox";
-import { reconcileOutcomes } from "@/lib/outcomeReconcile";
+import { reconcileOutcomes, outcomeOverwrites, type OutcomeOverwrite } from "@/lib/outcomeReconcile";
+import { CONFIRM_GRACE_MS } from "@/lib/cellReconcile";
 import { isTerminalRefusal, refusalMessage, retryUnlessRefused } from "@/lib/terminalRefusal";
 import { showToast } from "@/lib/toast";
 import {
@@ -40,6 +41,11 @@ export function useOutcomeSaver(
   // surfaces that read `mergedOutcomeFor` stay on the pre-reset result until
   // the next scheduled poll; the caller uses this to refetch immediately.
   onCleared?: () => void,
+  // Fired when a hole THIS device entered has been overwritten by a different
+  // value (or cleared) on another device — #1437's notice. The hook decides
+  // WHEN (pure: `outcomeOverwrites`); the caller owns the words, since only it
+  // knows the sides' names.
+  onOverwritten?: (overwrites: OutcomeOverwrite[]) => void,
 ) {
   const [values, setValues] = useState<OutcomeValues>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatusMap>({});
@@ -51,6 +57,17 @@ export function useOutcomeSaver(
   useEffect(() => {
     saveStatusRef.current = saveStatus;
   }, [saveStatus]);
+  const valuesRef = useRef(values);
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
+  /** cellKey → when this device's write was CONFIRMED. Protected for
+   *  CONFIRM_GRACE_MS so a response already in flight when the write landed
+   *  cannot revert it — the same guard useScoreSaver has (#1437). */
+  const confirmedAtRef = useRef<Map<string, number>>(new Map());
+  /** Keys this device entered and still holds — the only holes an overwrite
+   *  notice can be about. A hole this device only watched stays silent. */
+  const enteredRef = useRef<Set<string>>(new Set());
 
   const upsertOutcome = trpc.matchOutcomes.upsertOutcome.useMutation({
     retry,
@@ -105,6 +122,8 @@ export function useOutcomeSaver(
           mark(key, "saved");
           outcomeOutboxClear(gameId, matchId, Number(hole));
           noteRefusal(key, null);
+          confirmedAtRef.current.set(key, Date.now());
+          enteredRef.current.add(key);
         })
         // Terminal → drop the outbox entry, or it is re-sent on every mount
         // forever against a server that has already refused it (#1230).
@@ -129,6 +148,8 @@ export function useOutcomeSaver(
       });
       mark(key, null);
       outcomeOutboxClear(gameId, matchId, Number(hole));
+      confirmedAtRef.current.delete(key);
+      enteredRef.current.delete(key);
       deleteOutcome
         .mutateAsync({ tripId, gameId, matchId, holeNumber: Number(hole) })
         // Confirmed gone server-side — let the caller refresh whatever else
@@ -148,24 +169,44 @@ export function useOutcomeSaver(
     [tripId, gameId, values, deleteOutcome, mark, noteRefusal, onCleared],
   );
 
-  /** Reflect server outcome truth into the local view without clobbering the
-   *  active enterer — same contract as useScoreSaver.reconcile. */
+  /**
+   * Reflect server outcome truth into the local view without clobbering the
+   * active enterer — useScoreSaver.reconcile's contract, now actually called
+   * (#1437: MatchGameView never took it, so a tap overrode the server for the
+   * life of the view and two phones stayed out of sync indefinitely).
+   *
+   * Protected: saving / error, in the outbox, or confirmed within
+   * CONFIRM_GRACE_MS. Everything else is server truth — including REMOVAL of a
+   * hole cleared on another device. `server` must be the game's complete set.
+   *
+   * The overwrite decision is made against `valuesRef` BEFORE the merge, and
+   * each reported key leaves `enteredRef` at once — so a second call with the
+   * same snapshot (StrictMode, a re-render) reports nothing twice.
+   */
   const reconcile = useCallback(
     (server: OutcomeValues) => {
-      setValues((cur) => {
-        const protectedKeys = new Set<string>();
-        for (const [k, st] of Object.entries(saveStatusRef.current)) {
-          if (st === "saving" || st === "error") protectedKeys.add(k);
+      const protectedKeys = new Set<string>();
+      for (const [k, st] of Object.entries(saveStatusRef.current)) {
+        if (st === "saving" || st === "error") protectedKeys.add(k);
+      }
+      if (gameId) {
+        for (const e of outcomeOutboxEntries(gameId)) {
+          protectedKeys.add(outcomeCellKey(e.matchId, e.holeNumber));
         }
-        if (gameId) {
-          for (const e of outcomeOutboxEntries(gameId)) {
-            protectedKeys.add(outcomeCellKey(e.matchId, e.holeNumber));
-          }
-        }
-        return reconcileOutcomes(cur, server, protectedKeys);
-      });
+      }
+      const now = Date.now();
+      for (const [k, at] of confirmedAtRef.current) {
+        if (now - at < CONFIRM_GRACE_MS) protectedKeys.add(k);
+        else confirmedAtRef.current.delete(k);
+      }
+
+      const overwrites = outcomeOverwrites(valuesRef.current, server, protectedKeys, enteredRef.current);
+      for (const o of overwrites) enteredRef.current.delete(outcomeCellKey(o.matchId, o.hole));
+
+      setValues((cur) => reconcileOutcomes(cur, server, protectedKeys));
+      if (overwrites.length > 0) onOverwritten?.(overwrites);
     },
-    [gameId],
+    [gameId, onOverwritten],
   );
 
   /** Re-fire the save for a flagged cell using its current value. */
