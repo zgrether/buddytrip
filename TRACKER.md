@@ -92,6 +92,18 @@ R1's shape has changed under it — see §2. What remains:
   - **Becomes live when:** more than one trip is expected on the same weekend, or
     before choosing a compute tier for BBMI 2027.
 
+- **Scoring presence: show who else is entering this match.** Nominated with #1437
+  (2026-09-25). #1437 made two phones that score the same hole differently
+  CONVERGE (last write wins) and tells the device whose entry was overwritten
+  ("Hole 3 changed to Halved"). That reports a collision after it happens. Presence
+  would PREVENT it: "Grether is scoring this match" on the entry view, the way Figma
+  and Docs show who else is in a document. The case for it is specific to golf: two
+  players tapping different results are disagreeing about what happened on the
+  course, and knowing someone else is scoring the same match is what lets them agree
+  before either taps. It is a bigger feature: a Realtime presence channel per match,
+  plus a surface for it. **Becomes live when:** overwrite notices show up in real
+  play, or two scorers per match turns out to be the normal way a crew plays.
+
 - **High-contrast theme: demoted by evidence, not rejected.** `LIGHT_MODE_SURVEY.md:256`
   recommended it as "the real answer to the sun". Zach tested light mode in daylight
   after the repairs (#1364, #1365) and it held, so it is no longer urgent. What it

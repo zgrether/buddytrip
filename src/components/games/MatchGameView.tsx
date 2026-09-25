@@ -78,6 +78,8 @@ import { enabledCount, isModifierEnabled, withoutModifier, type ModifiersMap } f
 import { DangerConfirmModal } from "@/components/DangerZone";
 import { unconfirmedCount, type Participant, type ScoreValues, type OutcomeValues } from "@/components/games/types";
 import { showToast } from "@/lib/toast";
+import type { OutcomeOverwrite } from "@/lib/outcomeReconcile";
+import { outcomeOverwriteNotice } from "@/components/games/outcomeOverwriteNotice";
 
 // One unified match-play type (Refactor A1). 1v1-vs-2v2 is per-match, derived from
 // each match's side type — not the game type. `MATCH_PLAY_DOUBLES` is retired.
@@ -393,6 +395,14 @@ export function MatchGameView() {
   // Refactor B: the outcome write path — same durability contract, unconditional
   // (hooks can't be conditional); inert for a score-mode game (nothing calls its
   // onChange/onClear there).
+  //
+  // #1437: the words of an overwrite notice need the matches' names, which are
+  // built further down (`groups`); the callback reads them through a ref so it
+  // can be handed to the saver here.
+  const overwriteNoticeRef = useRef<(o: OutcomeOverwrite) => string>((o) => `Hole ${o.hole} changed`);
+  const onOutcomeOverwritten = useCallback((overwrites: OutcomeOverwrite[]) => {
+    for (const o of overwrites) showToast(overwriteNoticeRef.current(o), "info");
+  }, []);
   const {
     values: outcomeValues,
     setValues: setOutcomeValues,
@@ -401,7 +411,8 @@ export function MatchGameView() {
     onChange: onOutcomeChange,
     onClear: onOutcomeClear,
     retryCell: retryOutcomeCell,
-  } = useOutcomeSaver(tripId, gameId, () => void outcomesQ.refetch());
+    reconcile: reconcileOutcome,
+  } = useOutcomeSaver(tripId, gameId, () => void outcomesQ.refetch(), onOutcomeOverwritten);
 
   const createGame = trpc.games.create.useMutation();
   // Still the NEW-GAME path's course apply (handleCreate snapshots the picked course
@@ -471,6 +482,23 @@ export function MatchGameView() {
     return v;
   }, [outcomesQ.data]);
   const mergedOutcomeFor = (matchId: string) => ({ ...(loadedOutcomeValues[matchId] ?? {}), ...(outcomeValues[matchId] ?? {}) });
+
+  // #1437 — outcome mode's counterpart to the score reconcile above, and it was
+  // MISSING: `useOutcomeSaver` returned a `reconcile` that nothing took. Local
+  // taps are spread LAST in `mergedOutcomeFor`, so without this a hole this
+  // device entered overrode the server for the life of the view — two phones
+  // that scored a hole differently stayed apart until one left, while the server
+  // recorded only the last write. Now a confirmed tap yields to server truth
+  // (protected while saving and for CONFIRM_GRACE_MS after), a hole cleared
+  // elsewhere is removed, and an overwrite of this device's entry is announced.
+  //
+  // Guarded on DATA, not on the memo: `loadedOutcomeValues` is `{}` before the
+  // first fetch, and reconciling against that would read as "every hole was
+  // cleared" — the payload's completeness is load-bearing (`reconcileCells`).
+  useEffect(() => {
+    if (!gameId || !outcomesQ.data) return;
+    reconcileOutcome(loadedOutcomeValues);
+  }, [gameId, outcomesQ.data, loadedOutcomeValues, reconcileOutcome]);
 
   // Max singles matches = floor(players ÷ 2): the standalone pool is
   // undifferentiated, so any two of the crew pair up (Slice B). In a 2-team
@@ -1477,6 +1505,17 @@ export function MatchGameView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [serverMatches, handicapOf, colorOf, nameOf, twoTeams, teamOfUser, teamById, membersOfSide, avatarIconOf, sided]
   );
+  // #1437's notice speaks in the matches' own names (see overwriteNoticeRef).
+  useEffect(() => {
+    overwriteNoticeRef.current = (o) => {
+      const g = groups.find((x) => x.matchId === o.matchId);
+      return outcomeOverwriteNotice(
+        o,
+        g ? { label: g.label, aName: g.a.name, bName: g.b.name } : undefined,
+        groups.length,
+      );
+    };
+  }, [groups]);
   // One match at a time: the strip tapped on the overview (falls back to the
   // first). Single-match entry — no shared keypad across matches.
   const selectedGroup = useMemo(

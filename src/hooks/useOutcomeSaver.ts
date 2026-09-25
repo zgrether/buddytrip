@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { outcomeOutboxPut, outcomeOutboxClear, outcomeOutboxEntries } from "@/lib/outcomeOutbox";
-import { reconcileOutcomes } from "@/lib/outcomeReconcile";
+import { reconcileOutcomes, outcomeOverwrites, type OutcomeOverwrite } from "@/lib/outcomeReconcile";
+import { createGraceGate } from "@/lib/graceGate";
 import { isTerminalRefusal, refusalMessage, retryUnlessRefused } from "@/lib/terminalRefusal";
 import { showToast } from "@/lib/toast";
 import {
@@ -40,6 +41,11 @@ export function useOutcomeSaver(
   // surfaces that read `mergedOutcomeFor` stay on the pre-reset result until
   // the next scheduled poll; the caller uses this to refetch immediately.
   onCleared?: () => void,
+  // Fired when a hole THIS device entered has been overwritten by a different
+  // value (or cleared) on another device — #1437's notice. The hook decides
+  // WHEN (pure: `outcomeOverwrites`); the caller owns the words, since only it
+  // knows the sides' names.
+  onOverwritten?: (overwrites: OutcomeOverwrite[]) => void,
 ) {
   const [values, setValues] = useState<OutcomeValues>({});
   const [saveStatus, setSaveStatus] = useState<SaveStatusMap>({});
@@ -51,6 +57,19 @@ export function useOutcomeSaver(
   useEffect(() => {
     saveStatusRef.current = saveStatus;
   }, [saveStatus]);
+  const valuesRef = useRef(values);
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
+  /** Just-confirmed holes are protected for CONFIRM_GRACE_MS, and — the part
+   *  the inline version lacked — revisited when that grace ends, so a
+   *  conflicting write that arrived inside it is not stranded (#1437). One
+   *  gate, shared with useScoreSaver. */
+  const [grace] = useState(() => createGraceGate<OutcomeValues>());
+  useEffect(() => () => grace.dispose(), [grace]);
+  /** Keys this device entered and still holds — the only holes an overwrite
+   *  notice can be about. A hole this device only watched stays silent. */
+  const enteredRef = useRef<Set<string>>(new Set());
 
   const upsertOutcome = trpc.matchOutcomes.upsertOutcome.useMutation({
     retry,
@@ -105,6 +124,8 @@ export function useOutcomeSaver(
           mark(key, "saved");
           outcomeOutboxClear(gameId, matchId, Number(hole));
           noteRefusal(key, null);
+          grace.confirm(key);
+          enteredRef.current.add(key);
         })
         // Terminal → drop the outbox entry, or it is re-sent on every mount
         // forever against a server that has already refused it (#1230).
@@ -114,7 +135,7 @@ export function useOutcomeSaver(
           noteRefusal(key, refusalMessage(err));
         });
     },
-    [tripId, gameId, upsertOutcome, mark, noteRefusal],
+    [tripId, gameId, upsertOutcome, mark, noteRefusal, grace],
   );
 
   const onClear = useCallback(
@@ -129,6 +150,8 @@ export function useOutcomeSaver(
       });
       mark(key, null);
       outcomeOutboxClear(gameId, matchId, Number(hole));
+      grace.forget(key);
+      enteredRef.current.delete(key);
       deleteOutcome
         .mutateAsync({ tripId, gameId, matchId, holeNumber: Number(hole) })
         // Confirmed gone server-side — let the caller refresh whatever else
@@ -145,15 +168,28 @@ export function useOutcomeSaver(
           }
         });
     },
-    [tripId, gameId, values, deleteOutcome, mark, noteRefusal, onCleared],
+    [tripId, gameId, values, deleteOutcome, mark, noteRefusal, onCleared, grace],
   );
 
-  /** Reflect server outcome truth into the local view without clobbering the
-   *  active enterer — same contract as useScoreSaver.reconcile. */
+  /**
+   * Reflect server outcome truth into the local view without clobbering the
+   * active enterer — useScoreSaver.reconcile's contract, now actually called
+   * (#1437: MatchGameView never took it, so a tap overrode the server for the
+   * life of the view and two phones stayed out of sync indefinitely).
+   *
+   * Protected: saving / error, in the outbox, or confirmed within
+   * CONFIRM_GRACE_MS. Everything else is server truth — including REMOVAL of a
+   * hole cleared on another device. `server` must be the game's complete set.
+   *
+   * The overwrite decision is made against `valuesRef` BEFORE the merge, and
+   * each reported key leaves `enteredRef` at once — so a second call with the
+   * same snapshot (StrictMode, a re-render) reports nothing twice.
+   */
   const reconcile = useCallback(
     (server: OutcomeValues) => {
-      setValues((cur) => {
-        const protectedKeys = new Set<string>();
+      // Through the gate: applied now, and again when the earliest grace ends.
+      grace.run(server, (srv, graceKeys) => {
+        const protectedKeys = new Set<string>(graceKeys);
         for (const [k, st] of Object.entries(saveStatusRef.current)) {
           if (st === "saving" || st === "error") protectedKeys.add(k);
         }
@@ -162,10 +198,15 @@ export function useOutcomeSaver(
             protectedKeys.add(outcomeCellKey(e.matchId, e.holeNumber));
           }
         }
-        return reconcileOutcomes(cur, server, protectedKeys);
+
+        const overwrites = outcomeOverwrites(valuesRef.current, srv, protectedKeys, enteredRef.current);
+        for (const o of overwrites) enteredRef.current.delete(outcomeCellKey(o.matchId, o.hole));
+
+        setValues((cur) => reconcileOutcomes(cur, srv, protectedKeys));
+        if (overwrites.length > 0) onOverwritten?.(overwrites);
       });
     },
-    [gameId],
+    [grace, gameId, onOverwritten],
   );
 
   /** Re-fire the save for a flagged cell using its current value. */

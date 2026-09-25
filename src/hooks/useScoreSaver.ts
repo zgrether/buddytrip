@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createGraceGate } from "@/lib/graceGate";
 import { trpc } from "@/lib/trpc-client";
 import { outboxPut, outboxClear, outboxClearAll, outboxEntries } from "@/lib/scoreOutbox";
 import { reconcileScores } from "@/lib/scoreReconcile";
@@ -80,7 +81,8 @@ const retry = retryUnlessRefused(MAX_RETRIES);
  * correctness knob: the cell is server truth either way once a fetch issued
  * after the write lands.
  */
-const CONFIRM_GRACE_MS = 10_000;
+// The value lives in `@/lib/cellReconcile`, shared with outcome entry (#1437) so
+// the two entry modes cannot disagree about it; the reasoning above stands.
 
 export function useScoreSaver(
   tripId: string | undefined,
@@ -132,9 +134,13 @@ export function useScoreSaver(
   useEffect(() => {
     saveStatusRef.current = saveStatus;
   }, [saveStatus]);
-  // cellKey → when the server confirmed it. Read by `reconcile` for the
-  // CONFIRM_GRACE_MS protection; a ref because it must not re-render anything.
-  const confirmedAtRef = useRef<Map<string, number>>(new Map());
+  // Just-confirmed cells: protected for CONFIRM_GRACE_MS, and revisited when
+  // the grace ends (#1437) — the inline version skipped a cell whose conflicting
+  // write arrived inside the grace and never came back to it, because the
+  // caller's effect only re-runs when the fetched data changes. One gate,
+  // shared with useOutcomeSaver.
+  const [grace] = useState(() => createGraceGate<ScoreValues>());
+  useEffect(() => () => grace.dispose(), [grace]);
 
   // suppressErrorToast: these own per-cell save UI (badge + banner), so the
   // global connectivity toast would double-signal — opt out of it.
@@ -215,7 +221,7 @@ export function useScoreSaver(
           noteRefusal(key, null);
           // Hands off to the CONFIRM_GRACE_MS protection as the outbox entry and
           // the `saving` flag both go — so the cell is never briefly unprotected.
-          confirmedAtRef.current.set(key, Date.now());
+          grace.confirm(key);
         })
         /**
          * KEEP the optimistic value on failure — flag it, never roll back.
@@ -237,7 +243,7 @@ export function useScoreSaver(
           noteRefusal(key, refusal);
         });
     },
-    [tripId, gameId, upsertEntry, mark, noteRefusal, typeOf],
+    [tripId, gameId, upsertEntry, mark, noteRefusal, typeOf, grace],
   );
 
   const onClear = useCallback(
@@ -256,7 +262,7 @@ export function useScoreSaver(
       outboxClear(gameId, participantId, unitLabel);
       // …and its confirmation, or the grace window would protect a cell we are
       // deliberately removing and the clear would bounce back on the next poll.
-      confirmedAtRef.current.delete(key);
+      grace.forget(key);
       // mutateAsync per call (see onChange): concurrent clears must each resolve
       // their own outcome, never be orphaned by a later one on the shared observer.
       deleteEntry
@@ -284,7 +290,7 @@ export function useScoreSaver(
           }
         });
     },
-    [tripId, gameId, values, deleteEntry, mark, noteRefusal, typeOf, onCleared],
+    [tripId, gameId, values, deleteEntry, mark, noteRefusal, typeOf, onCleared, grace],
   );
 
   /**
@@ -315,30 +321,27 @@ export function useScoreSaver(
    */
   const reconcile = useCallback(
     (server: ScoreValues) => {
-      setValues((cur) => {
-        // Protect cells with an unconfirmed local write — flagged saving/error, or
-        // still in the durable outbox (#543) — so the active enterer always wins.
-        const protectedKeys = new Set<string>();
-        for (const [k, st] of Object.entries(saveStatusRef.current)) {
-          if (st === "saving" || st === "error") protectedKeys.add(k);
-        }
-        if (gameId) {
-          for (const e of outboxEntries(gameId)) {
-            protectedKeys.add(scoreCellKey(e.participantId, e.unitLabel));
+      // Through the gate: applied now, and again when the earliest grace ends —
+      // just-confirmed cells (the server has them, but a response already in
+      // flight when the write landed wouldn't) are protected, then revisited.
+      grace.run(server, (srv, graceKeys) => {
+        setValues((cur) => {
+          // Protect cells with an unconfirmed local write — flagged saving/error, or
+          // still in the durable outbox (#543) — so the active enterer always wins.
+          const protectedKeys = new Set<string>(graceKeys);
+          for (const [k, st] of Object.entries(saveStatusRef.current)) {
+            if (st === "saving" || st === "error") protectedKeys.add(k);
           }
-        }
-        // Just-confirmed cells (see CONFIRM_GRACE_MS) — the server has them, but a
-        // response already in flight when the write landed wouldn't. Pruned as we
-        // go so the map can't grow for the life of the round.
-        const now = Date.now();
-        for (const [k, at] of confirmedAtRef.current) {
-          if (now - at < CONFIRM_GRACE_MS) protectedKeys.add(k);
-          else confirmedAtRef.current.delete(k);
-        }
-        return reconcileScores(cur, server, protectedKeys);
+          if (gameId) {
+            for (const e of outboxEntries(gameId)) {
+              protectedKeys.add(scoreCellKey(e.participantId, e.unitLabel));
+            }
+          }
+          return reconcileScores(cur, srv, protectedKeys);
+        });
       });
     },
-    [gameId],
+    [grace, gameId],
   );
 
   /** Re-fire the save for a flagged cell using its current value. */
