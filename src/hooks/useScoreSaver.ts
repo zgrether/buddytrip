@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CONFIRM_GRACE_MS } from "@/lib/cellReconcile";
 import { trpc } from "@/lib/trpc-client";
 import { outboxPut, outboxClear, outboxClearAll, outboxEntries } from "@/lib/scoreOutbox";
 import { reconcileScores } from "@/lib/scoreReconcile";
@@ -80,7 +81,8 @@ const retry = retryUnlessRefused(MAX_RETRIES);
  * correctness knob: the cell is server truth either way once a fetch issued
  * after the write lands.
  */
-const CONFIRM_GRACE_MS = 10_000;
+// The value lives in `@/lib/cellReconcile`, shared with outcome entry (#1437) so
+// the two entry modes cannot disagree about it; the reasoning above stands.
 
 export function useScoreSaver(
   tripId: string | undefined,

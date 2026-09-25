@@ -1,4 +1,5 @@
 import { scoreCellKey, type ScoreValues } from "@/components/games/types";
+import { reconcileCells } from "@/lib/cellReconcile";
 
 /**
  * reconcileScores — the pure merge behind useScoreSaver.reconcile (game-state
@@ -29,23 +30,7 @@ export function reconcileScores(
   server: ScoreValues,
   protectedKeys: ReadonlySet<string>,
 ): ScoreValues {
-  const next: ScoreValues = {};
-  // Keep a local cell only if the server still has it, or it's protected.
-  for (const pid of Object.keys(local)) {
-    const row: Record<string, number> = {};
-    for (const ul of Object.keys(local[pid])) {
-      if (server[pid]?.[ul] != null || protectedKeys.has(scoreCellKey(pid, ul))) {
-        row[ul] = local[pid][ul];
-      }
-    }
-    next[pid] = row;
-  }
-  // Overlay server truth — adds and edits from other devices.
-  for (const pid of Object.keys(server)) {
-    for (const ul of Object.keys(server[pid])) {
-      if (protectedKeys.has(scoreCellKey(pid, ul))) continue;
-      (next[pid] ??= {})[ul] = server[pid][ul];
-    }
-  }
-  return next;
+  // The rule lives in ONE place now, shared with outcome entry (#1437) — see
+  // `reconcileCells`. Behaviour unchanged; `scoreReconcile.test.ts` pins it.
+  return reconcileCells(local, server, protectedKeys, scoreCellKey);
 }
