@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 import { callerFailingRead } from "../../__tests__/helpers/failingRead";
 
@@ -54,6 +54,21 @@ beforeAll(async () => {
   });
   if (se.error) throw new Error(`seed score: ${se.error.message}`);
 }, 120_000);
+
+/**
+ * Every case starts from the same roster: member on Alpha, all three teams
+ * present. Without this a destructive write that got through in ONE case (which
+ * is exactly what a regression — or the fail-open mutant — produces) changed the
+ * starting state of the next: the mutant run showed the roster-lock case's
+ * removal turning the later MOVE control into an ADD, so an unrelated control
+ * went red. Each case now stands alone, and a red names its own guard.
+ */
+beforeEach(async () => {
+  await ctx.admin.from("team_assignments").upsert(
+    { competition_id: cup, team_id: teamA, user_id: member },
+    { onConflict: "competition_id,user_id" },
+  );
+});
 
 afterAll(async () => {
   await ctx.admin.from("score_entries").delete().eq("game_id", scoredGame);
