@@ -232,7 +232,6 @@ async function refuseRankedFormatInHeadToHead(
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the game: ${error.message}` });
   }
   if (!game?.competition_id) return; // standalone, or missing — the write reports that itself
-  if ((game.competition_format as string | null) === nextFormat) return; // re-sent, untouched
   const refusal = headToHeadResultRefusal(game.game_type_id as string | null, nextFormat);
   if (!refusal) return;
   const { data: comp, error: compErr } = await supabase
