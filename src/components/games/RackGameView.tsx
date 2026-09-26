@@ -43,7 +43,7 @@ import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/F
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
-import { playerStats, computeRack, rackProjectedTeamPoints, type RackPlayer, type RackMode } from "@/lib/rackNStack";
+import { playerStats, computeRack, rackProjectedTeamPoints, rackSides, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { pointsReady } from "@/lib/matchDraft";
 import { strokeHoles } from "@/lib/matchPlay";
@@ -206,10 +206,12 @@ export function RackGameView() {
   // sorting the assignment team_ids (a random text id → arbitrary order, the
   // flip this fixes). A/B is display-only — the server rack finish keys results
   // by team_id and computeRack is symmetric, so side order can't change scoring.
-  const teamIds = useMemo(
-    () => (teamsQ.data ?? []).map((t) => t.id as string),
-    [teamsQ.data]
-  );
+  // WHICH two teams is `rackSides` (ruling 12) — the answer the finalize and the
+  // board's projection share. Not a two-team cup → no sides, no competition view.
+  const teamIds = useMemo(() => {
+    const sides = rackSides((teamsQ.data ?? []).map((t) => t.id as string));
+    return sides ? [sides.A, sides.B] : [];
+  }, [teamsQ.data]);
   const teamOf = useMemo(() => {
     const m = new Map<string, "A" | "B">();
     for (const a of assignQ.data ?? []) {

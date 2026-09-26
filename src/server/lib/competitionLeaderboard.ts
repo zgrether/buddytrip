@@ -1115,6 +1115,8 @@ export async function computeCompetitionLeaderboard(
     });
   const live = await computeLiveProjections(supabase, competitionId, liveProjectionInputs, {
     pointsMode: scoringModel === "points",
+    // Rack's two sides are the cup's two teams (ruling 12).
+    cupTeamIds: teamIds,
   });
   const cannotProject = live.cannotProject;
   // Every cup team, explicitly, on every projected game. An arm reports only the

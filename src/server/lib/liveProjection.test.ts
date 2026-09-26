@@ -161,6 +161,7 @@ describe("projectGame — rack", () => {
       }),
       outcomes: [],
       userTeam: userTeam({ p1: "t1", p3: "t1", p2: "t2", p4: "t2" }),
+      cupTeamIds: ["t1", "t2"],
     };
     // rank-paired: (p1<p4) → t1, (p3<p2) → t1 → t1 sweeps both slots = 2 slots.
     // × per_match (3, points-per-slot) → 6 competition points (NOT raw 2).
@@ -183,6 +184,7 @@ describe("projectGame — rack", () => {
       }),
       outcomes: [],
       userTeam: userTeam({ p1: "t1", p3: "t1", p2: "t2", p4: "t2" }),
+      cupTeamIds: ["t1", "t2"],
     };
     expect(projectGame(input, data)).toEqual({ kind: "projected", byTeam: { t1: 2, t2: 0 } });
   });
@@ -358,6 +360,8 @@ describe("projectGame — cannot project", () => {
         gross: gross({ p1: { "1": 4 }, p2: { "1": 5 } }),
         outcomes: [],
         userTeam: userTeam({ p1: "t1", p2: "t1" }),
+        // The cup HAS two teams; nobody in the game is on the second.
+        cupTeamIds: ["t1", "t2"],
       }
     );
     expect(out).toEqual({ kind: "cannot", reason: "no_teams" });
