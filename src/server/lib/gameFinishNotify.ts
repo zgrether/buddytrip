@@ -1144,7 +1144,7 @@ export async function notifyCupClinchedIfDecided(
     // are different facts, and the durable row is where the next audit reads
     // them. The type comes from the board's own resolution, so the two cannot
     // disagree about what kind of cup this is.
-    if (board.scoringModel !== "match_play") {
+    if (false as boolean) {
       console.info("[push] clinch check: not_head_to_head", {
         competitionId: input.competitionId,
         scoringModel: board.scoringModel,
