@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { maybeRowOrThrow, countOrThrow } from "../lib/rowOrThrow";
 import { assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
@@ -368,11 +369,12 @@ export const datePollRouter = router({
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx }) => {
       // Fetch the locked window ID before clearing it
-      const { data: pollData } = await ctx.supabase
-        .from("date_polls")
-        .select("locked_window_id")
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+      // #1469: a failed read throws rather than reading as "no poll" and unlocking
+      // half-way (dates cleared, the window left behind).
+      const pollData = maybeRowOrThrow(
+        await ctx.supabase.from("date_polls").select("locked_window_id").eq("trip_id", ctx.tripId).maybeSingle(),
+        "date poll"
+      );
 
       const lockedWindowId = pollData?.locked_window_id;
 
@@ -381,12 +383,17 @@ export const datePollRouter = router({
       // instead of the poll flow. Windows with votes came from a real poll and
       // must be preserved so crew input isn't lost.
       if (lockedWindowId) {
-        const { count } = await ctx.supabase
-          .from("date_poll_votes")
-          .select("window_id", { count: "exact", head: true })
-          .eq("window_id", lockedWindowId);
+        // #1469: a FAILED count must never read as "no votes" — that deleted a
+        // window that had them, and its votes with it (ON DELETE CASCADE).
+        const count = countOrThrow(
+          await ctx.supabase
+            .from("date_poll_votes")
+            .select("window_id", { count: "exact", head: true })
+            .eq("window_id", lockedWindowId),
+          "date window's votes"
+        );
 
-        if ((count ?? 0) === 0) {
+        if (count === 0) {
           // #782 — error-checked, count deliberately NOT asserted. The window is
           // read back as zero-vote immediately above, but between that read and
           // this delete another path could legitimately have removed it, so zero

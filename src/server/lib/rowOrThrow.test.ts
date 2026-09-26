@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { TERMINAL_REFUSAL_CODES } from "@/lib/terminalRefusal";
-import { rowOrThrow, rowsOrThrow, maybeRowOrThrow } from "./rowOrThrow";
+import { rowOrThrow, rowsOrThrow, maybeRowOrThrow, countOrThrow } from "./rowOrThrow";
 
 /**
  * The property under test is not "it throws" — it is WHICH of two
@@ -145,5 +145,20 @@ describe("rowsOrThrow / maybeRowOrThrow — empty and absent are answers, a fail
   it("a FAILED single-row read throws — never null", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => maybeRowOrThrow({ data: null, error: FAILED }, "cup")).toThrow("Couldn't check the cup just now.");
+  });
+});
+
+describe("countOrThrow — zero is an answer, a failure is not (#1469)", () => {
+  it("returns the count, and zero as zero", () => {
+    expect(countOrThrow({ count: 3, error: null }, "votes")).toBe(3);
+    expect(countOrThrow({ count: 0, error: null }, "votes")).toBe(0);
+    expect(countOrThrow({ count: null, error: null }, "votes")).toBe(0);
+  });
+
+  it("a FAILED count throws — it never becomes the zero a guard acts on", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => countOrThrow({ count: null, error: { code: "PGRST003", message: "pool" } }, "votes")).toThrow(
+      "Couldn't check the votes just now.",
+    );
   });
 });

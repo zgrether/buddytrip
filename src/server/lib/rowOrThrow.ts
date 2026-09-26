@@ -106,8 +106,7 @@ function failed(error: unknown, what: string): never {
  * `rowOrThrow` would refuse a valid state:
  *
  *   - a list that may be empty (`data ?? []`: no matches yet, no assignments);
- *   - a count that may be zero (`count ?? 0`: no votes, no scores) — its
- *     `countOrThrow` lands with its first caller, #1469's guards;
+ *   - a count that may be zero (`count ?? 0`: no votes, no scores);
  *   - a single row that may be absent (`maybeSingle()` where absence is data).
  *
  * The rule under all four (CLAUDE.md, "a failed read is never data to anything
@@ -123,8 +122,20 @@ export function rowsOrThrow<T>(result: { data: T[] | null; error: unknown }, wha
 }
 
 /** A single-row read where ABSENCE is a valid answer (returns null). A failed
- *  read throws. */
-export function maybeRowOrThrow<T>(result: { data: T | null; error: unknown }, what: string): T | null {
+ *  read throws.
+ *
+ *  Declared as `{ data: T }`, not `{ data: T | null }`, for the reason
+ *  `rowOrThrow` gives: against supabase's success/failure union, `T | null`
+ *  infers `never` and every field read after it fails to type-check. */
+export function maybeRowOrThrow<T>(result: { data: T; error: unknown }, what: string): T | null {
   if (result.error) failed(result.error, what);
   return result.data ?? null;
+}
+
+/** A `{ count: "exact", head: true }` read where ZERO is a valid answer. A
+ *  failed read throws — it never becomes the zero a guard would act on (#1469:
+ *  a failed vote count read as "no votes" deleted a window that had them). */
+export function countOrThrow(result: { count: number | null; error: unknown }, what: string): number {
+  if (result.error) failed(result.error, what);
+  return result.count ?? 0;
 }
