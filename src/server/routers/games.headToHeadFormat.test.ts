@@ -5,17 +5,19 @@ import { headToHeadResultRefusal } from "../../lib/headToHeadResult";
 
 /**
  * Ruling 2 (PR 4): a Match Play cup accepts games whose result is head to head,
- * so it refuses switching a game INTO a bracket — through both writers of
- * `competition_format`, `games.saveConfig` and `games.update`.
+ * so it refuses a bracket — through both writers of `competition_format`,
+ * `games.saveConfig` and `games.update`.
  *
  * Each case is one a wrong build gets wrong:
- *  - no guard: the switch into a bracket lands (the first two cases);
- *  - a guard on the VALUE rather than the CHANGE: the grandfathered bracket —
- *    BBMI Test Cup has three — becomes unsaveable over a field nobody touched,
- *    migration 114's trap (the third case);
+ *  - no guard: the bracket lands (the first two cases);
  *  - a guard that ignores the cup's type: a points race loses its brackets;
  *  - a guard too wide on configuration: Simple / Matches / best-of-N, all head
  *    to head between two teams, are refused.
+ *
+ * There is deliberately NO "already a bracket stays saveable" case. The guard
+ * judges the value, because no Match Play bracket can exist to be re-sent (see
+ * `refuseRankedFormatInHeadToHead`), and a case for one would need a fixture in
+ * a state the app forbids.
  *
  * Saves are built with `configToNonGolfDraft` → `nonGolfDraftToPayload`, the
  * path the settings page takes, so the payload carries every key the app sends
@@ -73,15 +75,6 @@ describe("a Match Play cup refuses switching a game into a bracket", () => {
       ctx.caller().games.update({ tripId, gameId, competitionFormat: "bracket" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST", message: REFUSAL });
     expect(await formatOf(gameId)).toBeNull();
-  }, 60_000);
-
-  it("a game ALREADY a bracket stays saveable — the value is re-sent untouched, and only a change is refused", async () => {
-    const gameId = await newGame(ryderCup, "Grandfathered");
-    // The state BBMI Test Cup's three brackets are in: set before this rule existed.
-    const pre = await ctx.admin.from("games").update({ competition_format: "bracket" }).eq("id", gameId);
-    expect(pre.error).toBeNull();
-    await expect(saveNG(gameId, { name: "Grandfathered, renamed" })).resolves.toBeTruthy();
-    expect(await formatOf(gameId)).toBe("bracket");
   }, 60_000);
 
   it.each(["head_to_head", "matches", "best_of_n"] as const)(

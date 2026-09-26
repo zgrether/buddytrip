@@ -75,9 +75,8 @@ R1's shape has changed under it — see §2. What remains:
 
 - **PR 7's vocabulary sweep has strings waiting for it.** PR 7 settles the user-facing names
   (**head to head**, **points race**). PR 4 (#1447) added user-facing copy in today's words, which
-  the rename has to find, or a screen will say "Points cups only" next to one that says "points
-  race":
-  - the Bracket tile's badge, **"Points cups only"** (`NonGolfSettingsRows.tsx`);
+  the rename has to find, or a screen will say "Match Play cup" next to one that says "head to
+  head":
   - the bracket refusal, **"A Match Play cup is head to head … or run the bracket in a points
     cup"**, and its ranked-only sibling (`src/lib/headToHeadResult.ts`);
   - the two-team refusals, **"A Match Play cup is exactly two teams …"**

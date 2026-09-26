@@ -162,14 +162,13 @@ export function NonGolfSettingsRows({
         value={draft.competitionFormat}
         canEdit={canEdit}
         onChange={onFormatChange}
-        refusalFor={(key) =>
-          // Ruling 2 (PR 4): the server refuses switching INTO a placement format
-          // in a Match Play cup, from the same predicate — so the picker never
-          // offers it. The STORED format stays pickable: the server admits an
-          // untouched value, and a grandfathered bracket must stay reachable.
-          scoringModel === "match_play" && key !== game.competition_format
-            ? headToHeadResultRefusal(game.game_type_id, key)
-            : null
+        offers={(key) =>
+          // Ruling 2 (PR 4): a Match Play cup refuses a placement format (a
+          // bracket), and the server refuses it from this same predicate. HIDDEN,
+          // not dimmed: nothing a person can do in this cup enables it, and the
+          // add-game menu already hides incompatible types rather than disabling
+          // them. No exception for a stored bracket — a Match Play cup holds none.
+          scoringModel !== "match_play" || headToHeadResultRefusal(game.game_type_id, key) === null
         }
       />
       {bracketRows}
@@ -287,14 +286,14 @@ export function NonGolfSettingsRows({
  * — a "row of tiles" that nobody can read is not the ask.
  */
 function CompetitionFormatTiles({
-  value, canEdit, onChange, refusalFor,
+  value, canEdit, onChange, offers,
 }: {
   value: CompetitionFormat | null;
   canEdit: boolean;
   onChange: (format: CompetitionFormat | null) => void;
-  /** Why this cup can't take a format, or null — a policy refusal, distinct from
-   *  a format that isn't built yet ("Soon"). */
-  refusalFor: (key: string) => string | null;
+  /** Can this cup hold the format at all? A format it can't is not rendered —
+   *  distinct from one that isn't built yet, which shows dimmed as "Soon". */
+  offers: (key: string) => boolean;
 }) {
   const effective: CompetitionFormat = effectiveCompetitionFormat(value);
   return (
@@ -306,10 +305,8 @@ function CompetitionFormatTiles({
         Competition Format
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="competition-format-options">
-        {COMP_FORMATS.map((f) => {
-          const built = f.key === "head_to_head" || f.key === "bracket" || f.key === MATCHES_COMPETITION_FORMAT;
-          const refusal = built ? refusalFor(f.key) : null;
-          const enabled = built && refusal === null;
+        {COMP_FORMATS.filter((f) => offers(f.key)).map((f) => {
+          const enabled = f.key === "head_to_head" || f.key === "bracket" || f.key === MATCHES_COMPETITION_FORMAT;
           const selected = effective === f.key;
           return (
             <button
@@ -324,8 +321,6 @@ function CompetitionFormatTiles({
                 border: `1px solid ${selected ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
                 opacity: enabled ? 1 : 0.5,
               }}
-              title={refusal ?? undefined}
-              data-refused={refusal ? "true" : undefined}
               data-testid={`competition-format-tile-${f.key}`}
             >
               <div className="flex items-center gap-1.5">
@@ -337,7 +332,7 @@ function CompetitionFormatTiles({
                       className="ml-auto rounded px-1 py-0.5 text-[9px] font-bold uppercase"
                       style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
                     >
-                      {refusal ? "Points cups only" : "Soon"}
+                      Soon
                     </span>
                   )}
               </div>

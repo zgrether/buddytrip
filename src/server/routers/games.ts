@@ -202,15 +202,20 @@ async function refuseSplitOnPerMatchGame(
 
 /**
  * Ruling 2 (PR 4): a head-to-head cup accepts games whose result is head to head
- * (`headToHeadResultRefusal`, from PR 1's declared result kinds). In practice
- * that refuses switching a game INTO a bracket in a Match Play cup.
+ * (`headToHeadResultRefusal`, from PR 1's declared result kinds). In practice a
+ * Match Play cup never holds a bracket.
  *
- * ONLY a change is refused. A save that re-sends an untouched value must never
- * be refused — every non-golf save re-sends the whole config, so refusing the
- * stored value would make an untouched game unsaveable over a field nobody went
- * near (migration 114's lesson, and why #1402's guard lives at create time).
- * The three bracket games already in BBMI Test Cup stay saveable as grandfathered
- * test artifacts.
+ * It judges the VALUE, deliberately, and the reason is worth keeping because the
+ * general habit points the other way. Judging a change rather than a value is
+ * what keeps an untouched game saveable when a save re-sends its whole config
+ * (migration 114's lesson), and this guard first did exactly that, for the three
+ * brackets BBMI Test Cup held. Zach deleted those on 2026-09-26, and there is no
+ * other way into the state: `games.create` takes no format, `scoring_model` has
+ * no update path, and a game's cup is written only at create. With no Match Play
+ * bracket able to exist, "re-sent untouched" can never be a bracket here, so the
+ * distinction was no longer observable — and a test for it would have needed a
+ * fixture in a state the app forbids. If a way into that state is ever added,
+ * this is the line to revisit.
  *
  * `nextFormat` is the format this write establishes; `undefined` means the write
  * leaves it alone (the RPC's COALESCE-preserve), and there is nothing to judge.
@@ -224,7 +229,7 @@ async function refuseRankedFormatInHeadToHead(
   if (nextFormat === undefined) return;
   const { data: game, error } = await supabase
     .from("games")
-    .select("game_type_id, competition_format, competition_id")
+    .select("game_type_id, competition_id")
     .eq("id", gameId)
     .eq("trip_id", tripId)
     .maybeSingle();
@@ -232,7 +237,6 @@ async function refuseRankedFormatInHeadToHead(
     throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the game: ${error.message}` });
   }
   if (!game?.competition_id) return; // standalone, or missing — the write reports that itself
-  if ((game.competition_format as string | null) === nextFormat) return; // re-sent, untouched
   const refusal = headToHeadResultRefusal(game.game_type_id as string | null, nextFormat);
   if (!refusal) return;
   const { data: comp, error: compErr } = await supabase
@@ -1535,7 +1539,7 @@ export const gamesRouter = router({
       if (input.teeTime !== undefined) patch.tee_time = input.teeTime;
       if (input.scheduleItemId !== undefined) patch.schedule_item_id = input.scheduleItemId;
       if (input.competitionFormat !== undefined) {
-        // Ruling 2 (PR 4): refuse switching INTO a placement format in a Match Play cup.
+        // Ruling 2 (PR 4): a Match Play cup refuses a placement format (a bracket).
         await refuseRankedFormatInHeadToHead(ctx.supabase, ctx.tripId, input.gameId, input.competitionFormat);
         patch.competition_format = input.competitionFormat;
         // #1381: a format switch that makes the game pay match by match cannot
@@ -2043,9 +2047,8 @@ export const gamesRouter = router({
           }
         }
       }
-      // 1a · Ruling 2 (PR 4): a Match Play cup refuses a switch INTO a placement
-      //      format (a bracket). A change only — an untouched value re-sent by
-      //      every save is never refused. Absent → the RPC keeps the stored one.
+      // 1a · Ruling 2 (PR 4): a Match Play cup refuses a placement format (a
+      //      bracket). Absent → the RPC keeps the stored one, nothing to judge.
       await refuseRankedFormatInHeadToHead(
         ctx.supabase,
         ctx.tripId,

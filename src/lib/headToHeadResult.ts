@@ -20,7 +20,7 @@ import { isBracketGame } from "@/lib/resultStrategy";
  * head-to-head container only, and says so in its name, rather than claiming a
  * general answer it would get wrong elsewhere.
  *
- * Client-safe: the format picker disables what this refuses, and the server
+ * Client-safe: the format picker hides what this refuses, and the server
  * refuses it, from the one predicate — so the UI never offers what the backend
  * will turn down, and the two cannot drift.
  */

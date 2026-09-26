@@ -4,19 +4,20 @@ import { NonGolfSettingsRows } from "./NonGolfSettingsRows";
 import type { NonGolfConfigDraft } from "@/lib/configDraft";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { headToHeadResultRefusal } from "@/lib/headToHeadResult";
 
 /**
  * Ruling 2 (PR 4): the picker never offers what the server refuses. In a Match
- * Play cup the Bracket tile is disabled, from the same predicate the server
- * refuses with (`headToHeadResultRefusal`) — EXCEPT on a game that is already a
- * bracket, which the server admits re-sent untouched and which must stay
- * reachable. A points race offers it as before.
+ * Play cup Bracket is not rendered at all — HIDDEN, not dimmed, because nothing a
+ * person can do in that cup enables it, and the add-game menu already hides
+ * incompatible types rather than disabling them. No exception for a game that is
+ * already a bracket: a Match Play cup holds none (Zach deleted BBMI Test Cup's
+ * three on 2026-09-26). A points race offers it as before.
  *
- * Each tile is read from its OWN button, not from the whole markup: every tile
- * carries `disabled:` in its classes and a Soon tile carries a badge too, so a
- * document-wide substring would be satisfied by a neighbour (CLAUDE.md, the
- * substring corollary). `disabled=""` is the rendered attribute, not the word.
+ * Absence is asserted on the tile's own `data-testid`, a value nothing else in
+ * the markup emits, and each "present" case reads the tile's OWN button — every
+ * tile carries `disabled:` in its classes, so a document-wide substring would be
+ * satisfied by a neighbour (CLAUDE.md, the substring corollary). `disabled=""`
+ * is the rendered attribute, not the word.
  */
 
 const GAME: GameRow = {
@@ -51,20 +52,22 @@ const DRAFT: NonGolfConfigDraft = {
   matches: [],
 };
 
+const TILE = (key: string) => `data-testid="competition-format-tile-${key}"`;
+
 function tile(html: string, key: string): string {
-  const open = html.indexOf(`data-testid="competition-format-tile-${key}"`);
+  const open = html.indexOf(TILE(key));
   expect(open, `no ${key} tile rendered`).toBeGreaterThan(-1);
   const start = html.lastIndexOf("<button", open);
   const end = html.indexOf("</button>", open);
   return html.slice(start, end);
 }
 
-function render(scoringModel: ScoringModel, stored: string | null, drafted: NonGolfConfigDraft["competitionFormat"] = stored as NonGolfConfigDraft["competitionFormat"]) {
+function render(scoringModel: ScoringModel) {
   return renderToStaticMarkup(
     <NonGolfSettingsRows
-      game={{ ...GAME, competition_format: stored }}
+      game={GAME}
       scoringModel={scoringModel}
-      draft={{ ...DRAFT, competitionFormat: drafted }}
+      draft={DRAFT}
       canEdit
       capacity={{ count: 2, source: "teams" }}
       onFormatChange={() => {}}
@@ -75,37 +78,23 @@ function render(scoringModel: ScoringModel, stored: string | null, drafted: NonG
 }
 
 describe("the format picker in a Match Play cup", () => {
-  it("disables Bracket, says where it belongs, and carries the server's own sentence", () => {
-    const bracket = tile(render("match_play", null), "bracket");
-    expect(bracket).toContain('disabled=""');
-    expect(bracket).toContain('data-refused="true"');
-    expect(bracket).toContain(">Points cups only<");
-    expect(bracket).not.toContain(">Soon<");
-    expect(bracket).toContain(`title="${headToHeadResultRefusal("gtt_generic_card", "bracket")}"`);
+  it("does not render Bracket at all — not dimmed, absent", () => {
+    const html = render("match_play");
+    // The premise: the options row rendered, so an absent tile is not an absent row.
+    expect(html).toContain('data-testid="competition-format-options"');
+    expect(html).not.toContain(TILE("bracket"));
   });
 
-  it("still offers Simple and Matches — head to head between two teams", () => {
-    const html = render("match_play", null);
+  it("offers Simple and Matches, enabled — head to head between two teams", () => {
+    const html = render("match_play");
     for (const key of ["head_to_head", "matches"]) {
-      const t = tile(html, key);
-      expect(t, key).not.toContain('disabled=""');
-      expect(t, key).not.toContain("data-refused");
+      expect(tile(html, key), key).not.toContain('disabled=""');
     }
-  });
-
-  it("keeps Bracket reachable on a game that is ALREADY one — even with the draft moved to Simple", () => {
-    // The stored value is what the server admits re-sent; switching the draft
-    // away and back must not strand the game.
-    const bracket = tile(render("match_play", "bracket", "head_to_head"), "bracket");
-    expect(bracket).not.toContain('disabled=""');
-    expect(bracket).not.toContain("data-refused");
   });
 });
 
 describe("the format picker in a points race", () => {
-  it("offers Bracket as before", () => {
-    const bracket = tile(render("points", null), "bracket");
-    expect(bracket).not.toContain('disabled=""');
-    expect(bracket).not.toContain("data-refused");
+  it("offers Bracket, enabled, as before", () => {
+    expect(tile(render("points"), "bracket")).not.toContain('disabled=""');
   });
 });
