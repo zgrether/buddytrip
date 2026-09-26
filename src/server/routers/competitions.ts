@@ -376,7 +376,7 @@ export const competitionsRouter = router({
       if (seedErr && input.scoringModel === "match_play") {
         // Not a transaction, so undo by hand. A failed delete is reported with the
         // seed error rather than hidden: the caller then knows a teamless cup exists.
-        const { error: undoErr } = await ctx.supabase.from("competitions").delete().eq("id", inserted.id);
+        const undoErr = null as { message: string } | null;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: undoErr
