@@ -168,6 +168,12 @@ interface Entrant {
 async function newBracket(name: string, entrants: Entrant[]): Promise<string> {
   const g = (await ctx.caller().games.create({ tripId, gameTypeId: CARD, name, competitionId })) as { id: string };
   gameIds.push(g.id);
+  // Already a bracket before the save, the way BBMI Test Cup's three brackets
+  // are: a Match Play cup refuses switching a game INTO a bracket (ruling 2,
+  // PR 4) but admits one re-sent unchanged, so the save below is admitted. What
+  // this file measures is the pick, on a board shaped like that cup — not setup.
+  const pre = await ctx.admin.from("games").update({ competition_format: "bracket" }).eq("id", g.id);
+  if (pre.error) throw new Error(`seed bracket format: ${pre.error.message}`);
   const hash = (await ctx.caller().games.configHash({ tripId, gameId: g.id })).hash;
   await ctx.caller().games.saveConfig({
     tripId,

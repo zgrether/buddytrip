@@ -51,8 +51,8 @@ interface Cup {
 
 /** A fresh cup per case: `teamTotals` sums every game in a competition, so a
  *  shared one would make each assertion depend on what ran before it. */
-async function newCup(name: string): Promise<Cup> {
-  const competitionId = await ctx.createCompetition(tripId, name);
+async function newCup(name: string, scoringModel?: "match_play" | "points"): Promise<Cup> {
+  const competitionId = await ctx.createCompetition(tripId, name, scoringModel ? { scoringModel } : {});
   compIds.push(competitionId);
   const teamA = await ctx.createTeam(competitionId, "Manhattans");
   const teamB = await ctx.createTeam(competitionId, "Centurions");
@@ -161,9 +161,11 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
+// Bracket cups are POINTS cups: a Match Play cup refuses switching a game into a
+// bracket (ruling 2, PR 4).
 describe("a bracket records WHO IT PAID, not just who competed", () => {
   it("stamps each entrant row with its entrant's cup team, and declares the rank", async () => {
-    const cup = await newCup("bracket credit Cup");
+    const cup = await newCup("bracket credit Cup", "points");
     const gameId = await newBracket(cup, "Chalk", fourSplit(cup));
     await playChalk4(gameId);
     await ctx.caller().games.finish({ tripId, gameId });
@@ -188,7 +190,7 @@ describe("a bracket records WHO IT PAID, not just who competed", () => {
   });
 
   it("does not follow the entrant's team after the game is finished", async () => {
-    const cup = await newCup("bracket stability Cup");
+    const cup = await newCup("bracket stability Cup", "points");
     const gameId = await newBracket(cup, "Chalk", fourSplit(cup));
     await playChalk4(gameId);
     await ctx.caller().games.finish({ tripId, gameId });
@@ -225,7 +227,7 @@ describe("a bracket records WHO IT PAID, not just who competed", () => {
     // entrant teams at all, and against a fixture whose UPDATE silently matched
     // no rows. The difference between the two cases is exactly one thing: which
     // side of `games.finish` the move happened on.
-    const cup = await newCup("bracket control Cup");
+    const cup = await newCup("bracket control Cup", "points");
     const gameId = await newBracket(cup, "Chalk", fourSplit(cup));
     await playChalk4(gameId);
 

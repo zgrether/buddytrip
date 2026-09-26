@@ -51,7 +51,9 @@ async function saveNG(gameId: string, overrides: Partial<NonGolfConfigDraft>) {
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("saveConfig non-golf Trip");
-  competitionId = await ctx.createCompetition(tripId, "saveConfig non-golf Cup");
+  // A POINTS cup: a bracket pays by placement, and a Match Play cup refuses switching a
+  // game into one (ruling 2, PR 4). Brackets are tested where they can now be set up.
+  competitionId = await ctx.createCompetition(tripId, "saveConfig non-golf Cup", { scoringModel: "points" });
 });
 afterAll(async () => { await ctx.cleanup(); });
 

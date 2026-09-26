@@ -39,6 +39,7 @@ import { isDoubleElimination, resolveAnyDraw } from "@/lib/bracketFormat";
 import { readBracketDraw } from "../lib/bracketDraw";
 import { deriveBracketPlacements } from "../lib/bracketResults";
 import { resolveResultStrategy } from "@/lib/resultStrategy";
+import { headToHeadResultRefusal } from "@/lib/headToHeadResult";
 import { computePickemResults } from "@/server/lib/pickemResults";
 import { writeTeamMatchPoints } from "../lib/matchAwards";
 import type { PlaceCapacity } from "@/lib/gameConfig";
@@ -195,6 +196,54 @@ async function refuseSplitOnPerMatchGame(
         "This game pays match by match, so its points can't be split by place. " +
         "Set the game's total points instead — each match gets its share of it.",
     });
+  }
+}
+
+/**
+ * Ruling 2 (PR 4): a head-to-head cup accepts games whose result is head to head
+ * (`headToHeadResultRefusal`, from PR 1's declared result kinds). In practice
+ * that refuses switching a game INTO a bracket in a Match Play cup.
+ *
+ * ONLY a change is refused. A save that re-sends an untouched value must never
+ * be refused — every non-golf save re-sends the whole config, so refusing the
+ * stored value would make an untouched game unsaveable over a field nobody went
+ * near (migration 114's lesson, and why #1402's guard lives at create time).
+ * The three bracket games already in BBMI Test Cup stay saveable as grandfathered
+ * test artifacts.
+ *
+ * `nextFormat` is the format this write establishes; `undefined` means the write
+ * leaves it alone (the RPC's COALESCE-preserve), and there is nothing to judge.
+ */
+async function refuseRankedFormatInHeadToHead(
+  supabase: SupabaseClient,
+  tripId: string,
+  gameId: string,
+  nextFormat: string | null | undefined
+): Promise<void> {
+  if (nextFormat === undefined) return;
+  const { data: game, error } = await supabase
+    .from("games")
+    .select("game_type_id, competition_format, competition_id")
+    .eq("id", gameId)
+    .eq("trip_id", tripId)
+    .maybeSingle();
+  if (error) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the game: ${error.message}` });
+  }
+  if (!game?.competition_id) return; // standalone, or missing — the write reports that itself
+  if ((game.competition_format as string | null) === nextFormat) return; // re-sent, untouched
+  const refusal = headToHeadResultRefusal(game.game_type_id as string | null, nextFormat);
+  if (!refusal) return;
+  const { data: comp, error: compErr } = await supabase
+    .from("competitions")
+    .select("scoring_model")
+    .eq("id", game.competition_id as string)
+    .maybeSingle();
+  if (compErr) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the competition: ${compErr.message}` });
+  }
+  if (comp?.scoring_model === "match_play") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
   }
 }
 
@@ -1484,6 +1533,8 @@ export const gamesRouter = router({
       if (input.teeTime !== undefined) patch.tee_time = input.teeTime;
       if (input.scheduleItemId !== undefined) patch.schedule_item_id = input.scheduleItemId;
       if (input.competitionFormat !== undefined) {
+        // Ruling 2 (PR 4): refuse switching INTO a placement format in a Match Play cup.
+        await refuseRankedFormatInHeadToHead(ctx.supabase, ctx.tripId, input.gameId, input.competitionFormat);
         patch.competition_format = input.competitionFormat;
         // #1381: a format switch that makes the game pay match by match cannot
         // leave a placement split behind — that stale split is how BBMI 2026
@@ -1990,6 +2041,15 @@ export const gamesRouter = router({
           }
         }
       }
+      // 1a · Ruling 2 (PR 4): a Match Play cup refuses a switch INTO a placement
+      //      format (a bracket). A change only — an untouched value re-sent by
+      //      every save is never refused. Absent → the RPC keeps the stored one.
+      await refuseRankedFormatInHeadToHead(
+        ctx.supabase,
+        ctx.tripId,
+        input.gameId,
+        (input.payload as { competitionFormat?: string | null }).competitionFormat
+      );
       // 1b · DID THIS SAVE CHANGE GLORIOUS FINISHING HOLES? Read BEFORE the write,
       //      because the RPC overwrites `modifiers` and step 3's read (below) is
       //      too late to see what it was. One extra SELECT on a config save, which

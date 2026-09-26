@@ -138,7 +138,9 @@ beforeAll(async () => {
   planner = ctx.getUser("planner").id;
   member = ctx.getUser("member").id;
   outsider = ctx.getUser("outsider").id;
-  competitionId = await ctx.createCompetition(tripId, "saveConfig bracket Cup");
+  // A POINTS cup: a bracket pays by placement, and a Match Play cup refuses switching a
+  // game into one (ruling 2, PR 4). Brackets are tested where they can now be set up.
+  competitionId = await ctx.createCompetition(tripId, "saveConfig bracket Cup", { scoringModel: "points" });
   teamId = await ctx.createTeam(competitionId, "Bracket Team");
 });
 

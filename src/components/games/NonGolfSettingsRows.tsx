@@ -15,6 +15,7 @@ import type { PlaceCapacity } from "@/lib/gameConfig";
 import { effectiveCompetitionFormat, type NonGolfConfigDraft, type CompetitionFormat } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
+import { headToHeadResultRefusal } from "@/lib/headToHeadResult";
 import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
 
 /**
@@ -161,6 +162,15 @@ export function NonGolfSettingsRows({
         value={draft.competitionFormat}
         canEdit={canEdit}
         onChange={onFormatChange}
+        refusalFor={(key) =>
+          // Ruling 2 (PR 4): the server refuses switching INTO a placement format
+          // in a Match Play cup, from the same predicate — so the picker never
+          // offers it. The STORED format stays pickable: the server admits an
+          // untouched value, and a grandfathered bracket must stay reachable.
+          scoringModel === "match_play" && key !== game.competition_format
+            ? headToHeadResultRefusal(game.game_type_id, key)
+            : null
+        }
       />
       {bracketRows}
       {matchRows}
@@ -277,11 +287,14 @@ export function NonGolfSettingsRows({
  * — a "row of tiles" that nobody can read is not the ask.
  */
 function CompetitionFormatTiles({
-  value, canEdit, onChange,
+  value, canEdit, onChange, refusalFor,
 }: {
   value: CompetitionFormat | null;
   canEdit: boolean;
   onChange: (format: CompetitionFormat | null) => void;
+  /** Why this cup can't take a format, or null — a policy refusal, distinct from
+   *  a format that isn't built yet ("Soon"). */
+  refusalFor: (key: string) => string | null;
 }) {
   const effective: CompetitionFormat = effectiveCompetitionFormat(value);
   return (
@@ -294,7 +307,9 @@ function CompetitionFormatTiles({
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="competition-format-options">
         {COMP_FORMATS.map((f) => {
-          const enabled = f.key === "head_to_head" || f.key === "bracket" || f.key === MATCHES_COMPETITION_FORMAT;
+          const built = f.key === "head_to_head" || f.key === "bracket" || f.key === MATCHES_COMPETITION_FORMAT;
+          const refusal = built ? refusalFor(f.key) : null;
+          const enabled = built && refusal === null;
           const selected = effective === f.key;
           return (
             <button
@@ -309,6 +324,8 @@ function CompetitionFormatTiles({
                 border: `1px solid ${selected ? "var(--color-bt-accent-border)" : "var(--color-bt-border)"}`,
                 opacity: enabled ? 1 : 0.5,
               }}
+              title={refusal ?? undefined}
+              data-refused={refusal ? "true" : undefined}
               data-testid={`competition-format-tile-${f.key}`}
             >
               <div className="flex items-center gap-1.5">
@@ -320,7 +337,7 @@ function CompetitionFormatTiles({
                       className="ml-auto rounded px-1 py-0.5 text-[9px] font-bold uppercase"
                       style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
                     >
-                      Soon
+                      {refusal ? "Points cups" : "Soon"}
                     </span>
                   )}
               </div>

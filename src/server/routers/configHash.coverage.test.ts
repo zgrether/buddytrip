@@ -156,8 +156,12 @@ beforeAll(async () => {
   // the game seeded for game_matches/play_groups can never carry entrants, and a
   // table with no row makes this whole guard vacuous for it (the `toBeTruthy`
   // below is what turns that into a failure rather than a silent pass).
-  const teamId = await ctx.createTeam(competitionId, "Bracket Team");
-  const bg = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_generic_card", name: "Bracket", competitionId })) as { id: string };
+  // In its own POINTS cup: a bracket pays by placement, and a Match Play cup
+  // refuses switching a game into one (ruling 2, PR 4). The hashed tables are
+  // game-scoped, so which cup holds the game changes nothing this guard reads.
+  const bracketCup = await ctx.createCompetition(tripId, "hash coverage bracket Cup", { scoringModel: "points" });
+  const teamId = await ctx.createTeam(bracketCup, "Bracket Team");
+  const bg = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_generic_card", name: "Bracket", competitionId: bracketCup })) as { id: string };
   bracketGameId = bg.id;
   const bDraft = (await ctx.caller().games.getById({ tripId, gameId: bracketGameId })) as Record<string, unknown>;
   await ctx.caller().games.saveConfig({
