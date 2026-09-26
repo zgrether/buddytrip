@@ -22,13 +22,12 @@
  *
  * ── Why this is not shared with match play ──────────────────────────────────
  *
- * `MatchGameView` keeps its own resolver, gated on `teams.length === 2`, and
- * that gate is correct there: a match is two-sided, a match game cannot occur
- * in a competition with three teams (the add-game filter refuses it), and
- * "which two of three teams are in play" is not a question the model asks.
- * A points cup supports N teams, so the same gate here would blank the colours
- * on exactly the three-team competition that needs them. Two resolvers with
- * genuinely different rules — not a duplication to collapse.
+ * `MatchGameView` keeps its own resolver. It used to be gated on
+ * `teams.length === 2`, on the grounds that a match game could not occur in a
+ * three-team competition — true until PR 5 let match play into points races.
+ * Its colours now apply in any cup (`inCup`), the same rule as here; what is
+ * still two-team there is the side BINDING, which is a Match Play cup's alone.
+ * Collapsing the two resolvers is possible now and not done in PR 5.
  */
 export interface RosterTeam {
   id: string;

@@ -151,12 +151,21 @@ match derive its pairings the way rack does. Reorder is via **up/down arrows** (
 competition is **not** the same surface as a standalone one, and both differences are
 *intended*, not incidental:
 
-- **Pairing pool is team-bound per side (2-team competition only).** Each side's player picker
-  is constrained to that side's **team roster** (`team_assignments`), so a cross-team pair is
-  structurally unassemblable — *invalid made unrepresentable*, rather than validated after the
-  fact. A standalone game falls back to the whole trip crew. (This used to add "and a
-  competition that isn't exactly 2 teams" — since PR 4 there is no such case: a match game lives
-  only in a Match Play cup, which is exactly two teams, refused server-side both ways.)
+- **Pairing pool — by the kind of cup, never by the team count.**
+  - **Match Play cup** (head to head, exactly two teams): each side's player picker is
+    constrained to that side's **team roster** (`team_assignments`) — side A is team 1's, side B
+    team 2's — so a cross-team pair is structurally unassemblable.
+  - **Points race** (PR 5; any number of teams): nothing binds a side to a team. Any rostered
+    player may play either side, and same-team **opponents** are allowed — that match pays that
+    team (ruling 10). A two-team points race is still a points race; the old gate keyed on
+    "exactly two teams" and turned one into a Match Play cup.
+  - **Standalone**: the whole trip crew.
+  - **In any cup, a SIDE must resolve to one unit** (`sideUnit` / `splitSideRefusal`,
+    `src/lib/sideUnit.ts`): a 2v2 pair from two teams, or with an unteamed member, is refused by
+    the server in both writers. A side is what gets paid (ruling 7), and one spanning units has
+    nobody to pay. **Temporary**: it lifts when split payouts exist (TRACKER.md).
+  - **Credit in a points race:** only the game's two sides' teams get a result row. A team in no
+    match gets **no row** — it wasn't in the game — never a scored 0 (`teamsInGame`).
   Consequence worth stating: **a competition whose `team_assignments` are empty yields an empty
   pool on both sides** — the picker correctly shows "Everyone's assigned" and no pairing can be
   built. Assign rosters before pairing. The picker is policy; the rule underneath is structural:

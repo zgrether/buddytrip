@@ -87,6 +87,19 @@ R1's shape has changed under it — see §2. What remains:
   Display-string tier throughout. `competitions.scoring_model`'s DB values
   (`match_play` / `points`) are a separate, DB-value-tier question the rename must declare.
 
+- **Split payouts — a side's winnings divided among the units it contains.** Since PR 5 a
+  match side must resolve to ONE unit, and the server refuses one that doesn't
+  (`splitSideRefusal`, `src/lib/sideUnit.ts`). That refusal is **temporary by design**, and says
+  so in its message and code: it lifts when this exists. One mechanism, two uses waiting on it:
+  - **Cross-team partners** (Zach): a format where a pair drawn from two teams wins, and the two
+    teams split the points. Today that pair is refused.
+  - **2v2 in a teamless race** (PR 7): with no teams every person is their own unit, so every
+    two-person side spans two units, and under the one-unit rule 2v2 formats cannot exist in a
+    teamless race at all. Split payouts would pay each member their share. PR 7 must decide
+    which it wants; this is the mechanism if it wants 2v2.
+  The trigger: either of those becomes a real request. When it lands, `sideUnit` returns a split
+  rather than `null`, `awardMatches` credits each unit its share, and the refusal goes.
+
 ### PARKED behind launch (per the ranking)
 
 - **Trip concurrency is a breadth problem, not a depth one.** Moved here from #1282

@@ -453,11 +453,11 @@ export function StrokeGameView() {
    * roster: move someone between teams and every avatar on the page re-colours
    * with no other write. Same rule `MatchGameView`'s `teamColorOf` follows.
    *
-   * **Deliberately NOT gated on a team count.** Match play gates its equivalent
-   * on `teams.length === 2`, correctly — a match is two-sided, and a match game
-   * cannot occur in a competition with three teams. Stroke has no such
-   * constraint: a points cup supports N teams (BBMI 2024 has three), so gating
-   * this would blank the colours on exactly the competition that needs them.
+   * **Deliberately NOT gated on a team count.** A points cup supports N teams
+   * (BBMI 2024 has three), so gating this would blank the colours on exactly the
+   * competition that needs them. Match play used to gate its equivalent on two
+   * teams; since PR 5 a match game can sit in a three-team points race, and its
+   * colours follow this same rule.
    */
   const teamColorOf = useMemo(() => teamColorByUser(pickerTeams), [pickerTeams]);
   const handicapMeta = useMemo(() => {
