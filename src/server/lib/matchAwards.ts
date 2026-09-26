@@ -140,7 +140,7 @@ export async function writeTeamMatchPoints(
     allMatches,
     sideTeam,
     (compTeams ?? []).map((t) => t.id as string),
-    comp?.scoring_model === "match_play",
+    true,
   );
 
   // No team in the game (no teams, a read failed, or — in a points race — no
