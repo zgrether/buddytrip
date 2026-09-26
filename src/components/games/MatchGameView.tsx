@@ -72,6 +72,8 @@ import {
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import { matchRosterValid } from "@/lib/teamRoster";
+import { sideUnit } from "@/lib/sideUnit";
+import { pairingShape } from "@/lib/pairingShape";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
 import { ModifierCards } from "@/components/games/ModifierCards";
 import { enabledCount, isModifierEnabled, withoutModifier, type ModifiersMap } from "@/lib/modifiers";
@@ -609,9 +611,9 @@ export function MatchGameView() {
     () => (teamsQ.data ?? []) as { id: string; name: string; short_name: string; color: string }[],
     [teamsQ.data]
   );
-  // Team binding applies only to a game that's actually IN the competition (a
-  // 2-team Ryder cup) — a standalone match stays the neutral per-player flow.
-  const twoTeams = !!gameCompId && teams.length === 2;
+  // Binding (`headToHead`) vs identity (`inCup`) — two questions that were one
+  // `twoTeams` flag keyed on the team count; see `pairingShape` (PR 5).
+  const { headToHead, inCup } = pairingShape(!!gameCompId, competition.data?.scoring_model as string | undefined, teams.length);
   // user → team_id (the roster, from team_assignments).
   const teamOfUser = useMemo(() => {
     const m = new Map<string, string>();
@@ -620,26 +622,26 @@ export function MatchGameView() {
   }, [assignQ.data]);
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
   // The team a setup slot is bound to (side A → team[0], side B → team[1]).
-  const teamForSlot = (slot: "a" | "b") => (twoTeams ? teams[slot === "a" ? 0 : 1] : undefined);
+  const teamForSlot = (slot: "a" | "b") => (headToHead ? teams[slot === "a" ? 0 : 1] : undefined);
   // A side's team, DERIVED from its player(s): a user side → that user's team; a
-  // pair side → its members' team (both members share one, enforced at setup).
+  // pair side → its members' team, by the ONE pair rule (`sideUnit`) the finalize
+  // and the board projection also call — only when every member shares it.
   const teamOfSide = (sideId: string): { id: string; name: string; short_name: string; color: string } | undefined => {
     // Per-match (A2a): resolve the side's type from the data, not a game flag — a
-    // 2v2 side is a play_group (in `membersOfSide`) → its first member's team; a
-    // 1v1 side IS the user. So one game can mix both.
-    const memberId = membersOfSide.has(sideId) ? (membersOfSide.get(sideId) ?? [])[0] : sideId;
-    if (!memberId) return undefined;
-    const teamId = teamOfUser.get(memberId);
+    // 2v2 side is a play_group (in `membersOfSide`) → its members; a 1v1 side IS
+    // the user. So one game can mix both.
+    const members = membersOfSide.has(sideId) ? (membersOfSide.get(sideId) ?? []) : [sideId];
+    const teamId = sideUnit(members, (id) => teamOfUser.get(id));
     return teamId ? teamById.get(teamId) : undefined;
   };
-  // A side's display color: its TEAM color in a 2-team competition, else the
+  // A side's display color: its TEAM color in any competition, else the
   // per-player palette (standalone / non-team game) — unchanged for those.
-  const sideColor = (sideId: string) => (twoTeams ? teamOfSide(sideId)?.color : undefined) ?? colorOf.get(sideId);
+  const sideColor = (sideId: string) => (inCup ? teamOfSide(sideId)?.color : undefined) ?? colorOf.get(sideId);
   // THE canonical roster-based team-color resolver (team identity = the person's
-  // roster, never the slot). A user's team color in a 2-team competition; undefined
+  // roster, never the slot). A user's team color in any competition; undefined
   // when teamless or standalone → the consumer falls back to the neutral palette.
   // Shared by the Matches panel (MatchSetup) and the handicap selector.
-  const teamColorOf = (userId: string) => (twoTeams ? teamById.get(teamOfUser.get(userId) ?? "")?.color : undefined);
+  const teamColorOf = (userId: string) => (inCup ? teamById.get(teamOfUser.get(userId) ?? "")?.color : undefined);
   // The roster of one team — the constrained pool for that side's picker, so a
   // cross-team pair is impossible to assemble (Step 3: invalid unrepresentable).
   const rosterOfTeam = (teamId: string) =>
@@ -967,7 +969,7 @@ export function MatchGameView() {
     // teamColorOf/colorOf/nameOf are per-render closures over memoized maps; react to
     // the underlying data instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [configDraft.matches, nameOf, colorOf, teamById, teamOfUser, twoTeams]);
+  }, [configDraft.matches, nameOf, colorOf, teamById, teamOfUser, inCup]);
 
   const onPointsTotalChange = (next: number) => setPointsTotalDraft(next);
   const onPointsOverrideChange = (draftIdx: string, value: number | null) => {
@@ -1487,8 +1489,8 @@ export function MatchGameView() {
             strokesA: handicapOf.get(a.id) ?? 0,
             strokesB: handicapOf.get(b.id) ?? 0,
             // Team colors (Slice D) for the strip/entry, when in a 2-team comp.
-            leftColor: twoTeams ? teamOfSide(a.id)?.color : undefined,
-            rightColor: twoTeams ? teamOfSide(b.id)?.color : undefined,
+            leftColor: inCup ? teamOfSide(a.id)?.color : undefined,
+            rightColor: inCup ? teamOfSide(b.id)?.color : undefined,
             // The award rule, resolved once: this match's own override, else the
             // game's even share. Same `?? ` order the server uses when paying the
             // match out, so the number on the card is the number that lands.
@@ -1497,13 +1499,13 @@ export function MatchGameView() {
         }),
     // Team colors come from teamOfSide / sideParticipant, which are plain
     // per-render closures — so we depend on the DATA they read, including the
-    // team inputs (twoTeams, teamOfUser, teamById, membersOfSide). Without these,
+    // team inputs (inCup, teamOfUser, teamById, membersOfSide). Without these,
     // a `groups` computed BEFORE the teams/assignments queries resolved kept
     // stale neutral colors and never recovered when team data landed — the 2v2
     // "teams disappeared on re-entry" bug. Listing them recolors the moment team
     // data arrives. (eslint-disable: we list the data, not the closures.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [serverMatches, handicapOf, colorOf, nameOf, twoTeams, teamOfUser, teamById, membersOfSide, avatarIconOf, sided]
+    [serverMatches, handicapOf, colorOf, nameOf, inCup, teamOfUser, teamById, membersOfSide, avatarIconOf, sided]
   );
   // #1437's notice speaks in the matches' own names (see overwriteNoticeRef).
   useEffect(() => {
@@ -1622,7 +1624,7 @@ export function MatchGameView() {
     // remount, i.e. after exiting to the leaderboard). Plus handicaps, roster→team,
     // scorecard.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groups, loadedValues, values, loadedOutcomeValues, outcomeValues, outcomeMode, handicapOf, scIndex, scUnits, twoTeams, teamOfUser, teamById, membersOfSide, pointsPerMatch, pointValueByMatch, glorious]);
+  }, [groups, loadedValues, values, loadedOutcomeValues, outcomeValues, outcomeMode, handicapOf, scIndex, scUnits, inCup, teamOfUser, teamById, membersOfSide, pointsPerMatch, pointValueByMatch, glorious]);
 
   const entryPips = useMemo(() => {
     const m: Record<string, Set<string>> = {};
@@ -1932,7 +1934,7 @@ export function MatchGameView() {
         // from the slot-filled `allFilled` above. Only meaningful in a 2-team
         // competition (standalone match play has no teams → always roster-valid).
         const teamedUserIds = new Set(teamOfUser.keys());
-        const allRosterValid = !twoTeams || draft.every((d) => matchRosterValid(d.a, d.b, d.playersPerSide, teamedUserIds));
+        const allRosterValid = !inCup || draft.every((d) => matchRosterValid(d.a, d.b, d.playersPerSide, teamedUserIds));
         // C3: points > 0 joins the Enable gate (Phase C) — but ONLY for a
         // COMPETITION game. Points-per-match is a cup concept: the inline Points row
         // exists only when `gameCompId` is set (GameSetupRows gates it on
@@ -1985,7 +1987,7 @@ export function MatchGameView() {
         const maxMatchesForAdd = MAX_MATCHES;
         // §5 row copy — title/subtitle/state are now derived INSIDE
         // `MatchesAccordionRow` (shared with non-golf Matches), from `draft` +
-        // `twoTeams` + `teamedUserIds`, so this file no longer computes them.
+        // `inCup` + `teamedUserIds`, so this file no longer computes them.
         // `allFilled`/`allRosterValid`/`teamedUserIds` above stay — they also
         // feed `enableReady`/`enableBlockedReason`, which are this file's alone.
         // Handicaps is hard-gated on Matches AND Course (W-9HOLE-01): the per-hole
@@ -2231,7 +2233,7 @@ export function MatchGameView() {
                   avatarIconOf={avatarIconOf}
                   teamForSlot={teamForSlot}
                   maxMatches={maxMatchesForAdd}
-                  twoTeams={twoTeams}
+                  inCup={inCup}
                   teamedUserIds={teamedUserIds}
                   openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
                   expanded={openRows.has("matches")}

@@ -24,12 +24,12 @@ import type { DraftMatchConfig } from "@/lib/configDraft";
  *
  * ── The three-way state ─────────────────────────────────────────────────
  * `empty` — no matches yet (neutral, not red: a brand-new game isn't an error).
- * `invalid` — some slot unfilled, OR (in a 2-team competition) a filled slot
+ * `invalid` — some slot unfilled, OR (in any competition) a filled slot
  *   whose player has since lost their team (`matchRosterValid` — the
  *   dropped-after-paired case, a different question from "is the slot full").
  * `resolved` — every match filled and roster-valid.
  *
- * `twoTeams` gates the roster check — a standalone game has no teams to fall
+ * `inCup` gates the roster check — a standalone game has no teams to fall
  * out of, so it is vacuously valid there (mirrors `matchRosterValid`'s own
  * "unfilled → true" contract, one level up).
  *
@@ -50,7 +50,7 @@ export function MatchesAccordionRow({
   avatarIconOf,
   teamForSlot,
   maxMatches,
-  twoTeams,
+  inCup,
   teamedUserIds,
   openSelector,
   expanded,
@@ -69,11 +69,12 @@ export function MatchesAccordionRow({
   avatarIconOf: Map<string, string | null>;
   teamForSlot: (slot: "a" | "b") => { name: string; short_name: string; color: string } | undefined;
   maxMatches: number;
-  /** Is this a 2-team competition? Gates the roster-validity half of `invalid` —
-   *  a standalone game has no teams to fall out of. */
-  twoTeams: boolean;
+  /** Is this game in a competition? Gates the roster-validity half of `invalid` —
+   *  a standalone game has no teams to fall out of. Was `twoTeams` until PR 5: a
+   *  side must resolve to a team in a points race as much as in a Match Play cup. */
+  inCup: boolean;
   /** Every user id that currently has a team — `matchRosterValid`'s own input.
-   *  Only consulted when `twoTeams`. */
+   *  Only consulted when `inCup`. */
   teamedUserIds: ReadonlySet<string>;
   openSelector: (matchIdx: number, slot: "a" | "b", memberIdx: number) => void;
   expanded: boolean;
@@ -86,7 +87,7 @@ export function MatchesAccordionRow({
 }) {
   const filledDraft = filledMatches(draft);
   const allFilled = allMatchesFilled(draft);
-  const allRosterValid = !twoTeams || draft.every((d) => matchRosterValid(d.a, d.b, d.playersPerSide, teamedUserIds));
+  const allRosterValid = !inCup || draft.every((d) => matchRosterValid(d.a, d.b, d.playersPerSide, teamedUserIds));
 
   const singlesCount = draft.filter((d) => d.playersPerSide === 1).length;
   const doublesCount = draft.filter((d) => d.playersPerSide === 2).length;
