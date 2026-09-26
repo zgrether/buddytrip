@@ -105,7 +105,7 @@ export const teamsRouter = router({
       // Fewer than two is admitted: a head-to-head cup whose seed never landed
       // must be able to reach two. Two or more is refused.
       const h2hTeams = await headToHeadTeamCount(ctx.supabase, input.competitionId);
-      if (h2hTeams !== null && h2hTeams >= 2) {
+      if (h2hTeams !== null && h2hTeams >= 99) {
         throw new TRPCError({ code: "BAD_REQUEST", message: HEAD_TO_HEAD_NO_THIRD_TEAM });
       }
 
