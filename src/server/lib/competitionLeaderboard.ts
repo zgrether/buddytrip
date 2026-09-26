@@ -318,10 +318,16 @@ export async function computeCompetitionLeaderboard(
   // of latency instead of stacked). `game_results` + the match counts alone
   // depend on the game ids, so they wait below.
   const [teamsRes, compRes, gameRowsRes, assignmentsRes] = await Promise.all([
+    // Creation order, stated rather than inherited (PR 5). Every consumer of
+    // `teams` on this payload — the hero, the non-golf Matches builder's side A
+    // and B — read it as "the cup's teams in order", and without an ORDER BY that
+    // was whatever order the database happened to return. Same order `teams.list`
+    // uses, so a page reading both cannot see two orders.
     supabase
       .from("teams")
       .select("id, name, short_name, color")
-      .eq("competition_id", competitionId),
+      .eq("competition_id", competitionId)
+      .order("created_at", { ascending: true }),
     supabase
       .from("competitions")
       .select("defending_team_id, scoring_model")

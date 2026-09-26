@@ -447,8 +447,11 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // Per-match now — inert metadata (no runtime reader); kept as the max any
     // single match supports.
     maxPlayersPerSide: 2,
-    compatibleScoringModels: ["match_play"],
-    // `points_race` is PR 5's opening (ruling 5); today `compatibleScoringModels` still says match_play only.
+    // PR 5 (ruling 5): match play is allowed in a points race too, so this now
+    // agrees with `allowedContainers` for this format. A head-to-head game in a
+    // three-team race credits only its two sides (`teamsInGame`); a side must be
+    // one unit (`splitSideRefusal`). Rack stays head to head only.
+    compatibleScoringModels: ["match_play", "points"],
     resultKinds: ["head_to_head"],
     teamDependent: true,
     allowedContainers: ["side_game", "head_to_head", "points_race"],
@@ -690,8 +693,10 @@ export function isGameTypeForScoringModel(
 }
 
 /** The catalog filtered to a competition's scoring-model — what the add-game
- *  modal offers (only WIRED types: match_play → 1v1/2v2/rack + manual; points →
- *  Stroke + manual, until stableford/sabotage/skins are built). */
+ *  modal offers. Derived from each format's `compatibleScoringModels`, so a list
+ *  here would only go stale (it did: it still said "points → Stroke + manual"
+ *  after scramble and skins landed). Match play joined points in PR 5; rack is
+ *  the one match format that stays Match Play only. */
 export function gameTypesForScoringModel(
   scoringModel: ScoringModel | null | undefined,
   catalog: GameType[] = GAME_TYPES,

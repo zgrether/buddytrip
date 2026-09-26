@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { refuseSplitSides } from "../lib/splitSides";
 import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
@@ -111,34 +112,19 @@ export const matchesRouter = router({
         }
       }
 
-      // Setup-integrity backstop: in a competition, both members of a 2v2 pair
-      // MUST be on the same team (a side is one team's pair). The client's picker
-      // prevents it; this hard-blocks the raw API (defense in depth).
+      // A side must resolve to one unit until split payouts exist — the shared
+      // structural check `saveConfig` runs too (`refuseSplitSides`). This used to
+      // be an inline copy that let a teamed + unteamed pair through.
       const { data: gameRow } = await ctx.supabase
         .from("games")
         .select("competition_id")
         .eq("id", input.gameId)
         .maybeSingle();
-      const competitionId = (gameRow?.competition_id as string | null) ?? null;
-      if (competitionId) {
-        const { data: assigns } = await ctx.supabase
-          .from("team_assignments")
-          .select("user_id, team_id")
-          .eq("competition_id", competitionId);
-        const teamOf = new Map<string, string>();
-        for (const a of assigns ?? []) teamOf.set(a.user_id as string, a.team_id as string);
-        for (const m of input.matches) {
-          if (m.playersPerSide !== 2) continue;
-          for (const side of [m.sideA, m.sideB]) {
-            if (!side) continue;
-            const t0 = teamOf.get(side.members[0]);
-            const t1 = teamOf.get(side.members[1]);
-            if (t0 && t1 && t0 !== t1) {
-              throw new TRPCError({ code: "BAD_REQUEST", message: "A 2v2 pair must be from the same team" });
-            }
-          }
-        }
-      }
+      await refuseSplitSides(
+        ctx.supabase,
+        (gameRow?.competition_id as string | null) ?? null,
+        input.matches.flatMap((m) => [m.sideA, m.sideB]).filter((s) => s !== null).map((s) => s.members),
+      );
 
       // Clean replace (setup-time, before scoring). Order: matches + participants
       // reference play_groups (ON DELETE SET NULL), so clear children then groups.

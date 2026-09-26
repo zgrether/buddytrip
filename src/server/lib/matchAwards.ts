@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
-import { tallyMatchAwards, type SideRef } from "@/lib/matchAwards";
+import { tallyMatchAwards, teamsInGame, type SideRef } from "@/lib/matchAwards";
+import { playGroupUnits } from "@/lib/sideUnit";
 
 /**
  * The DB-WRITE half of the per-match team award — see `@/lib/matchAwards` for
@@ -78,22 +79,19 @@ export async function writeTeamMatchPoints(
     userTeam.set(a.user_id as string, a.team_id as string);
   }
 
-  // play_group → team (2v2): a side is a pair, so resolve its team via a member.
-  // Both partners are on the same team in a two-team competition. Empty for 1v1.
+  // play_group → its unit (2v2), by the ONE rule every surface uses (`sideUnit`):
+  // the members' team only when they all share it. Empty for 1v1.
   const { data: pgMembers } = await supabase
     .from("game_participants")
     .select("user_id, play_group_id")
     .eq("game_id", gameId);
-  const pgTeam = new Map<string, string>();
-  for (const gp of pgMembers ?? []) {
-    const pg = gp.play_group_id as string | null;
-    if (!pg || pgTeam.has(pg)) continue;
-    const team = userTeam.get(gp.user_id as string);
-    if (team) pgTeam.set(pg, team);
-  }
-  // A side resolves to its team via the user map (1v1) or the play_group map (2v2).
+  const pgTeam = playGroupUnits(
+    (pgMembers ?? []) as { user_id: string; play_group_id: string | null }[],
+    (id) => userTeam.get(id),
+  );
+  // A side resolves to its unit via the user map (1v1) or the play_group map (2v2).
   const sideTeam = (s: SideRef): string | undefined =>
-    s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id);
+    (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? undefined;
 
   // Fold `resultByMatch`'s fresh-outcome overrides onto each row before handing
   // off to the pure tally — `tallyMatchAwards` reads `m.result` verbatim, so the
@@ -106,7 +104,15 @@ export async function writeTeamMatchPoints(
     Object.entries(tallyMatchAwards(withFreshResults, sideTeam, evenShareFallback))
   );
 
-  // EVERY team in the competition gets a row — including one that won NOTHING.
+  // Every team IN THE GAME gets a row — including one that won NOTHING. In a
+  // Match Play cup that is both teams, always; in a points race it is the teams
+  // a paired side resolves to, and a team in no match gets NO row (PR 5,
+  // `teamsInGame`: a 0 means played and lost, a missing row means wasn't in it).
+  //
+  // History: this was EVERY team in the competition, which in a points race
+  // banked a scored 0 for a team that never played. And before that it was the
+  // teams in the AWARDS, which failed as below — so what matters is not which
+  // set, but that an empty one never reaches the write.
   //
   // This used to build the row set from `teamPoints`, i.e. from the AWARDS, and a
   // team only enters that map by winning or halving. Two failures followed, both
@@ -126,15 +132,21 @@ export async function writeTeamMatchPoints(
   // 7–1 into the same 1st/2nd and discard the margin the model exists to
   // preserve. `raw_score` is NUMERIC (migration 048) and genuinely carries the
   // halves.
-  const { data: compTeams } = await supabase
-    .from("teams")
-    .select("id")
-    .eq("competition_id", competitionId);
-  const teamIds = (compTeams ?? []).map((t) => t.id as string);
+  const [{ data: compTeams }, { data: comp }] = await Promise.all([
+    supabase.from("teams").select("id").eq("competition_id", competitionId),
+    supabase.from("competitions").select("scoring_model").eq("id", competitionId).maybeSingle(),
+  ]);
+  const teamIds = teamsInGame(
+    allMatches,
+    sideTeam,
+    (compTeams ?? []).map((t) => t.id as string),
+    comp?.scoring_model === "match_play",
+  );
 
-  // No teams (or the read failed) → there is nothing to say about this game, and
-  // an empty scoped write is destructive rather than neutral: it would delete
-  // whatever team rows already exist. Leave them alone.
+  // No team in the game (no teams, a read failed, or — in a points race — no
+  // paired side resolves to a team) → there is nothing to say about this game,
+  // and an empty scoped write is destructive rather than neutral: it would
+  // delete whatever team rows already exist. Leave them alone.
   if (teamIds.length === 0) return;
 
   const rows = teamIds.map((teamId) => ({

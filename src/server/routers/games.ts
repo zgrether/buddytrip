@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { throwIfUnrostered } from "../lib/unrosteredRefusal";
+import { refuseSplitSides } from "../lib/splitSides";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
@@ -2046,6 +2047,23 @@ export const gamesRouter = router({
             throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });
           }
         }
+      }
+      // 1a′ · A match side must resolve to one unit until split payouts exist
+      //       (`refuseSplitSides`, shared with `matches.setPairings`). Only when
+      //       this save carries matches; a standalone game has no units.
+      const savedMatches = (input.payload as { matches?: { a: string[]; b: string[] }[] }).matches;
+      if (savedMatches && savedMatches.length > 0) {
+        const { data: owner } = await ctx.supabase
+          .from("games")
+          .select("competition_id")
+          .eq("id", input.gameId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle();
+        await refuseSplitSides(
+          ctx.supabase,
+          (owner?.competition_id as string | null) ?? null,
+          savedMatches.flatMap((m) => [m.a, m.b]),
+        );
       }
       // 1a · Ruling 2 (PR 4): a Match Play cup refuses a placement format (a
       //      bracket). Absent → the RPC keeps the stored one, nothing to judge.

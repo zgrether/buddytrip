@@ -26,9 +26,9 @@ describe("isGameTypeForScoringModel", () => {
     expect(isGameTypeForScoringModel(stroke, "match_play")).toBe(false);
   });
 
-  it("match play is match_play-only", () => {
+  it("match play fits both cups — a points race takes it since PR 5 (ruling 5)", () => {
     expect(isGameTypeForScoringModel(matchPlay, "match_play")).toBe(true);
-    expect(isGameTypeForScoringModel(matchPlay, "points")).toBe(false);
+    expect(isGameTypeForScoringModel(matchPlay, "points")).toBe(true);
   });
 
   it("rack-n-stack is match_play (net-stroke ENTRY is not the points scoring-model)", () => {
@@ -56,15 +56,15 @@ describe("gameTypesForScoringModel — the offered menu", () => {
     expect(offered).not.toContain("gtt_stroke_play");
   });
 
-  it("a points comp offers Stroke + manual, NOT the match-play golf formats", () => {
+  it("a points comp offers Stroke, match play and manual — NOT rack, which stays head to head only", () => {
     const offered = gameTypesForScoringModel("points").map(id);
     expect(offered).toContain("gtt_stroke_play");
     expect(offered).toContain("gtt_manual");
-    expect(offered).not.toContain("gtt_match_play");
+    expect(offered).toContain("gtt_match_play"); // PR 5
     expect(offered).not.toContain("gtt_rack_n_stack");
   });
 
-  it("points golf is Stroke + Scramble + Skins today (sabotage unbuilt)", () => {
+  it("points golf is Stroke + Scramble + Skins + Match Play today (sabotage unbuilt)", () => {
     // Was "Stroke-only", then "Stroke + Scramble". Skins is the third, and
     // Stableford is STILL not on the list: it is a `games.config.scoringType` on
     // a stroke game, not a format — which is the distinction this list keeps
@@ -75,7 +75,9 @@ describe("gameTypesForScoringModel — the offered menu", () => {
     // cup scores. It is NOT in a match-play cup — that arm is asserted below,
     // beside scramble's.
     const golfOffered = gameTypesForScoringModel("points").filter((t) => t.isGolf).map(id);
-    expect(golfOffered).toEqual(["gtt_stroke_play", "gtt_scramble", "gtt_skins"]);
+    // Match play joined in PR 5 — head to head between two sides, in a race that
+    // may have more than two units; only its two sides are credited.
+    expect(golfOffered).toEqual(["gtt_stroke_play", "gtt_match_play", "gtt_scramble", "gtt_skins"]);
   });
 
   it("SKINS IS NOT OFFERED IN A TEAM-BASED CUP", () => {
@@ -123,8 +125,8 @@ describe("formatRefusalForScoringModel — the server's half of the same rule (#
   });
 
   it("names the cup, the format, and what the cup DOES take", () => {
-    expect(formatRefusalForScoringModel("gtt_match_play", "points")).toBe(
-      "A Points cup can't hold Match Play. It takes: " +
+    expect(formatRefusalForScoringModel("gtt_rack_n_stack", "points")).toBe(
+      "A Points cup can't hold Rack-n-Stack. It takes: " +
         gameTypesForScoringModel("points").map((t) => t.name).join(", ") + "."
     );
     const r = formatRefusalForScoringModel("gtt_stroke_play", "match_play")!;
@@ -135,7 +137,9 @@ describe("formatRefusalForScoringModel — the server's half of the same rule (#
   });
 
   it("the known refusals, spelled out so a catalog re-tag shows up as a named failure", () => {
-    expect(formatRefusalForScoringModel("gtt_match_play", "points")).not.toBeNull();
+    // Match play left this list in PR 5 (ruling 5): a points race takes it. Rack
+    // is the head-to-head format a points cup still refuses.
+    expect(formatRefusalForScoringModel("gtt_match_play", "points")).toBeNull();
     expect(formatRefusalForScoringModel("gtt_rack_n_stack", "points")).not.toBeNull();
     for (const golf of ["gtt_stroke_play", "gtt_scramble", "gtt_skins"]) {
       expect(formatRefusalForScoringModel(golf, "match_play"), golf).not.toBeNull();
