@@ -241,17 +241,31 @@ describe("A2b — a doubles override awards on the play_group side", () => {
  */
 describe("team rows are derived from the competition's teams", () => {
   it("writes a row per team even when no side resolves to one — never an empty wipe", async () => {
-    // Teams exist, but NOBODY is assigned to them: every match hits the
+    // Teams exist, but NOBODY is assigned to them at finish: every match hits the
     // `!aTeam || !bTeam` skip, so the awards map comes out empty.
+    //
+    // Reached the way the app still can. Pairing unassigned players directly is
+    // refused since migration 193 (a Ryder cup's participants are rostered), so
+    // the players are rostered, paired, and then taken off their teams before any
+    // score — `teamAssignments.remove`, which the roster lock allows until the
+    // first score. That removal direction is roster changes (PR 8), and it is why
+    // this defence is still worth pinning.
     const comp = await ctx.createCompetition(tripId, "Unassigned Roster");
     const blue = await ctx.createTeam(comp, "Blue", { color: "#2563eb" });
     const red = await ctx.createTeam(comp, "Red", { color: "#dc2626" });
+    await ctx.assignTeam(comp, blue, [owner]);
+    await ctx.assignTeam(comp, red, [member]);
 
     const gameId = await makeGame(comp, "No Assignments");
     await ctx.caller().matches.setPairings({
       tripId, gameId,
       matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
     });
+    await ctx.caller().teamAssignments.remove({ tripId, competitionId: comp, userId: owner });
+    await ctx.caller().teamAssignments.remove({ tripId, competitionId: comp, userId: member });
+    const { count: stillRostered } = await ctx.admin
+      .from("team_assignments").select("user_id", { count: "exact", head: true }).eq("competition_id", comp);
+    expect(stillRostered).toBe(0); // the premise: nobody resolves to a team
     await setTotal(gameId, 2, [], 1);
     await blueSweeps(gameId, owner, member, "user");
     await ctx.caller().games.finish({ tripId, gameId });

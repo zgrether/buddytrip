@@ -206,6 +206,16 @@ beforeAll(async () => {
   memberId = ctx.getUser("member").id;
   plannerId = ctx.getUser("planner").id;
   competitionId = await ctx.createCompetition(tripId, "Perf Cup", { scoringModel: "match_play" });
+  // Rostered: a Ryder cup refuses an unrostered participant since migration 193,
+  // and the participant inserts above do not check their error — unrostered, the
+  // games would be measured with no participants. (The stroke game in this
+  // match_play cup is itself a state `games.create` refuses since #1304; left as
+  // is, because this file measures read cost, not format rules, and runs only
+  // under MEASURE=1.)
+  const blue = await ctx.createTeam(competitionId, "Blue");
+  const red = await ctx.createTeam(competitionId, "Red");
+  await ctx.assignTeam(competitionId, blue, [ownerId, plannerId]);
+  await ctx.assignTeam(competitionId, red, [memberId]);
 }, 120000);
 
 afterAll(async () => {

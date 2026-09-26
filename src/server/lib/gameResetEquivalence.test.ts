@@ -259,6 +259,11 @@ beforeAll(async () => {
     id: teamId, competition_id: competitionId, name: "Alpha", short_name: "ALP",
     color: "#2dd4bf", color_dim: "#1c8f82",
   }));
+  // The owner is `configure()`'s participant, in a cup that defaults to
+  // match_play: migration 193 refuses an unrostered participant there, so they
+  // are rostered first. `team_assignments` is competition-scoped, not
+  // game-scoped, so it is outside what this file compares.
+  await ctx.assignTeam(competitionId, teamId, [ctx.user.id]);
 }, 60_000);
 
 afterAll(async () => { await ctx?.cleanup(); });

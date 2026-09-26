@@ -214,8 +214,13 @@ describe("RLS audit 2026-08-20 — the closed findings stay closed", () => {
 
     beforeAll(async () => {
       gameId = genId("game");
+      // Its own POINTS cup. The member below is on no team, and migration 193
+      // refuses an unrostered participant in a Ryder cup (the Audit Cup defaults
+      // to match_play). Provenance is about who signed a score, not about the
+      // cup, and F8/F9 below owns the Audit Cup's roster.
+      const provenanceCup = await ctx.createCompetition(tripId, "Provenance Cup", { scoringModel: "points" });
       await ctx.admin.from("games").insert({
-        id: gameId, trip_id: tripId, competition_id: competitionId,
+        id: gameId, trip_id: tripId, competition_id: provenanceCup,
         game_type_id: "gtt_manual", name: "Provenance",
         status: "active", scoring_enabled: true,
         pairings_published_at: new Date().toISOString(),

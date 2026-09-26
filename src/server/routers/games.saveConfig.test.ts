@@ -105,6 +105,13 @@ beforeAll(async () => {
   member = ctx.getUser("member").id;
   outsider = ctx.getUser("outsider").id;
   competitionId = await ctx.createCompetition(tripId, "saveConfig Cup");
+  // A Ryder cup (the default) refuses an unrostered participant since migration
+  // 193. Everyone this file pairs is rostered first — the order the app's
+  // match builder requires, since it offers only rostered players.
+  const blue = await ctx.createTeam(competitionId, "Blue");
+  const red = await ctx.createTeam(competitionId, "Red");
+  await ctx.assignTeam(competitionId, blue, [owner, planner]);
+  await ctx.assignTeam(competitionId, red, [member, outsider]);
 });
 
 afterAll(async () => {

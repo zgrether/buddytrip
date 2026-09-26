@@ -115,6 +115,14 @@ beforeAll(async () => {
   await ctx.addTripMember(tripId, "planner", "Organizer");
   competitionId = await ctx.createCompetition(tripId, "stability cup");
   users = [ctx.user.id, ctx.getUser("member").id, ctx.getUser("planner").id];
+  // Rostered before pairing: a Ryder cup (the default) refuses an unrostered
+  // participant since migration 193, and the app's pairing picker offers only
+  // rostered players. The clean-replace re-inserts all three on every pairing
+  // save, so all three need a team.
+  const blue = await ctx.createTeam(competitionId, "Blue");
+  const red = await ctx.createTeam(competitionId, "Red");
+  await ctx.assignTeam(competitionId, blue, [users[0], users[2]]);
+  await ctx.assignTeam(competitionId, red, [users[1]]);
 
   const g = (await ctx.caller().games.create({
     tripId,

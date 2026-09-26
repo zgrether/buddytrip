@@ -43,6 +43,7 @@ interface MatchRow {
 let ctx: TestContext;
 let tripId: string;
 let competitionId: string;
+let teamB: string;
 let owner: string, planner: string, member: string, outsider: string;
 
 /** Read the game's matches straight from the table — the seat, not a rendering of it. */
@@ -86,9 +87,16 @@ async function pairedGame(name: string): Promise<{ gameId: string; m1: string; m
   return { gameId: game.id, m1: matches[0].id, m2: matches[1].id };
 }
 
-/** Put `member` back on the trip — every test here removes them. */
+/** Put `member` back on the trip AND the roster — every test here removes them,
+ *  and removal clears their team assignment along with the seat. The next
+ *  pairing needs them rostered again (migration 193). Upsert, because a test
+ *  whose removal was REFUSED leaves the assignment in place. */
 async function restoreMember() {
   await ctx.addTripMemberById(tripId, member, "Member");
+  const { error } = await ctx.admin
+    .from("team_assignments")
+    .upsert({ competition_id: competitionId, team_id: teamB, user_id: member }, { onConflict: "competition_id,user_id" });
+  if (error) throw new Error(`restore member's assignment: ${error.message}`);
 }
 
 beforeAll(async () => {
@@ -103,10 +111,15 @@ beforeAll(async () => {
   member = ctx.getUser("member").id;
   outsider = ctx.getUser("outsider").id;
   competitionId = await ctx.createCompetition(tripId, "Vacate Seat Cup");
-  // A team so the cup has the shape the leaderboard expects. Nobody is assigned
-  // to it — an assignment would add a second thing removal clears, and this file
-  // is about the seat.
-  await ctx.createTeam(competitionId, "Vacate A", { shortName: "VA" });
+  // Two rostered teams. This used to assign nobody, so that removal had only the
+  // seat to clear — but the cup defaults to match_play, and a Ryder cup refuses an
+  // unrostered participant since migration 193: an unassigned pairing is a state
+  // the app cannot produce. Removal now clears the assignment too, which
+  // `restoreMember` puts back; every assertion here is about seats and results.
+  const teamA = await ctx.createTeam(competitionId, "Vacate A", { shortName: "VA" });
+  teamB = await ctx.createTeam(competitionId, "Vacate B", { shortName: "VB" });
+  await ctx.assignTeam(competitionId, teamA, [owner, planner]);
+  await ctx.assignTeam(competitionId, teamB, [member, outsider]);
 }, 120_000);
 
 afterAll(async () => {
