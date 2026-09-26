@@ -55,7 +55,9 @@ async function teamRows(gameId: string): Promise<Record<string, number>> {
 }
 
 /** Non-golf Matches save through the settings page's own RPC path. */
-async function saveNonGolfMatches(gameId: string, matches: { a: string[]; b: string[] }[]) {
+/** `live` takes the game live in the same save, as the settings page does —
+ *  entering a result requires scoring to be on (`matches.setResult`). */
+async function saveNonGolfMatches(gameId: string, matches: { a: string[]; b: string[] }[], live = false) {
   const { data: g } = await ctx.admin.from("games").select("*").eq("id", gameId).single();
   const { hash } = await ctx.caller().games.configHash({ tripId, gameId });
   return ctx.caller().games.saveConfig({
@@ -65,7 +67,7 @@ async function saveNonGolfMatches(gameId: string, matches: { a: string[]; b: str
     payload: {
       name: (g!.name as string) ?? "Matches",
       rulesForToday: null,
-      scoringEnabled: false,
+      scoringEnabled: live,
       pointsTotal: (g!.points_total as number | null) ?? 4,
       pointsDistribution: g!.points_distribution ?? null,
       courseId: null,
@@ -151,7 +153,7 @@ describe("PR 5 — a head-to-head game in a three-team points race credits only 
 
   it("non-golf Matches: the same, through the other finalize path", async () => {
     const gameId = await nonGolfMatchesGame("Cards Blue v Red");
-    await saveNonGolfMatches(gameId, [{ a: [owner], b: [member] }]);
+    await saveNonGolfMatches(gameId, [{ a: [owner], b: [member] }], true);
     const { data: m } = await ctx.admin.from("game_matches").select("id").eq("game_id", gameId).single();
     await ctx.caller().matches.setResult({ tripId, gameId, matchId: (m as { id: string }).id, result: "b_win" });
     await ctx.caller().games.finish({ tripId, gameId });
