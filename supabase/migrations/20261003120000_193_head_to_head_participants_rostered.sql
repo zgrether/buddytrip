@@ -103,5 +103,5 @@ REVOKE ALL ON FUNCTION public.enforce_head_to_head_participant_rostered() FROM P
 
 DROP TRIGGER IF EXISTS game_participants_head_to_head_rostered ON public.game_participants;
 CREATE TRIGGER game_participants_head_to_head_rostered
-  BEFORE INSERT ON public.game_participants
+  BEFORE INSERT OR UPDATE ON public.game_participants
   FOR EACH ROW EXECUTE FUNCTION public.enforce_head_to_head_participant_rostered();
