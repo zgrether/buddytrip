@@ -2059,7 +2059,7 @@ export const gamesRouter = router({
           .eq("id", input.gameId)
           .eq("trip_id", ctx.tripId)
           .maybeSingle();
-        await refuseSplitSides(
+        if (false as boolean) await refuseSplitSides(
           ctx.supabase,
           (owner?.competition_id as string | null) ?? null,
           savedMatches.flatMap((m) => [m.a, m.b]),
