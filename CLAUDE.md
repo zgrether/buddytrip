@@ -532,6 +532,30 @@ seam, never on a calendar.
   if the fix requires a surface the reader's role or format cannot reach, the refusal
   itself is the bug.
 
+- **A FAILED READ IS NEVER DATA TO ANYTHING THAT WRITES.** With supabase-js a
+  failed query returns `data: null` / `count: null` plus a separate `error`, so
+  `data ?? []` and `count ?? 0` turn a PostgREST 502 into "no rows" and "zero" —
+  and whatever acts on that answer turns a transient failure into a lasting
+  state change. Painting a wrong board for one poll heals; releasing a claim,
+  deleting a voted window or zeroing a finished game's results does not.
+  Two sightings through the same door: #1411, where a failed results read made
+  `reconcileClinchClaim` release a held claim (the next finalize announced the
+  clinch twice), and the sweep after it (#1468–#1471), where a failed games read
+  made the clinch check claim a clinch that never happened, and guards failed
+  OPEN (`datePoll.unlock` deleting a window with votes). Failed reads cluster
+  under peak load — the 2026-09-11 stall was 474 failed requests in a minute —
+  which is exactly when games are finalized and rosters edited.
+
+  **How to apply:** read every result through the `rowOrThrow` family
+  (`src/server/lib/rowOrThrow.ts`): `rowOrThrow` (a row that must exist),
+  `maybeRowOrThrow` (a row that may be absent), `rowsOrThrow` (a list that may
+  be empty). A failure throws a retryable 500 and never reaches the write. The
+  surface that reported one of these is rarely the only one — sweep for what
+  else WRITES on the strength of the same read. Test with a fake that fails
+  exactly one read, beside a control proving the fake can express the write
+  (the release is an RPC, not an `.update()` — a test watching the wrong door
+  stays green against the bug).
+
 - **EMPTY IS NOT UNKNOWN, AND JAVASCRIPT WILL NOT HELP YOU.** Five instances in one
   feature, each a different disguise on one mistake — a value that means "resolved to
   nothing" rendering identically to one that means "nothing yet":

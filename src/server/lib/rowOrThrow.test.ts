@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { TERMINAL_REFUSAL_CODES } from "@/lib/terminalRefusal";
-import { rowOrThrow } from "./rowOrThrow";
+import { rowOrThrow, rowsOrThrow, maybeRowOrThrow } from "./rowOrThrow";
 
 /**
  * The property under test is not "it throws" — it is WHICH of two
@@ -106,5 +106,44 @@ describe("rowOrThrow", () => {
   it("treats a falsy-but-present row as present", () => {
     expect(rowOrThrow({ data: 0 as unknown as number, error: null }, ABSENT, "thing")).toBe(0);
     expect(rowOrThrow({ data: "" as unknown as string, error: null }, ABSENT, "thing")).toBe("");
+  });
+});
+
+/**
+ * The family's other two shapes (#1468): a list that may be EMPTY and a row
+ * that may be ABSENT. Both are legitimate answers there, so neither throws on
+ * them — but a FAILED read throws exactly as `rowOrThrow` does, through the
+ * same path, and never becomes the empty answer a writer would act on.
+ */
+describe("rowsOrThrow / maybeRowOrThrow — empty and absent are answers, a failure is not", () => {
+  const FAILED = { code: "PGRST003", message: "Timed out acquiring connection from connection pool" };
+
+  it("an empty list is returned as empty", () => {
+    expect(rowsOrThrow({ data: [], error: null }, "matches")).toEqual([]);
+    expect(rowsOrThrow({ data: null, error: null }, "matches")).toEqual([]);
+  });
+
+  it("an absent row is returned as null", () => {
+    expect(maybeRowOrThrow({ data: null, error: null }, "cup")).toBeNull();
+  });
+
+  it("a FAILED list read throws the same retryable error rowOrThrow does — never []", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let thrown: unknown;
+    try {
+      rowsOrThrow({ data: null, error: FAILED }, "matches");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Couldn't check the matches just now. This is temporary — try again in a moment.",
+    });
+    expect(TERMINAL_REFUSAL_CODES).not.toContain("INTERNAL_SERVER_ERROR");
+  });
+
+  it("a FAILED single-row read throws — never null", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => maybeRowOrThrow({ data: null, error: FAILED }, "cup")).toThrow("Couldn't check the cup just now.");
   });
 });
