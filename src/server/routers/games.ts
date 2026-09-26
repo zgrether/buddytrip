@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
@@ -929,6 +930,7 @@ export const gamesRouter = router({
         .from("game_participants")
         .upsert(rows, { onConflict: "game_id,user_id", ignoreDuplicates: true });
       if (error) {
+        throwIfUnrostered(error); // migration 193 — a Match Play cup's players are rostered
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to add participants: ${error.message}`,
