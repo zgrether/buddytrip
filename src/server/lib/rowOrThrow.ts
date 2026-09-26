@@ -67,28 +67,64 @@ export function rowOrThrow<T>(
    *  message the reader sees and in the log line. */
   what: string
 ): NonNullable<T> {
-  if (result.error) {
-    console.error(
-      JSON.stringify({
-        tag: "query-failed",
-        what,
-        error:
-          result.error instanceof Error
-            ? result.error.message
-            : typeof result.error === "object" && result.error !== null
-              ? result.error
-              : String(result.error),
-      })
-    );
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: `Couldn't check the ${what} just now. This is temporary — try again in a moment.`,
-    });
-  }
-
+  if (result.error) failed(result.error, what);
   if (result.data == null) {
     throw new TRPCError(absent);
   }
-
   return result.data;
+}
+
+/**
+ * The shared failure path — ONE log line and ONE sentence for every shape in
+ * this family. `never`: it always throws.
+ */
+function failed(error: unknown, what: string): never {
+  console.error(
+    JSON.stringify({
+      tag: "query-failed",
+      what,
+      error:
+        error instanceof Error
+          ? error.message
+          : typeof error === "object" && error !== null
+            ? error
+            : String(error),
+    })
+  );
+  throw new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: `Couldn't check the ${what} just now. This is temporary — try again in a moment.`,
+  });
+}
+
+/*
+ * ── The rest of the family (#1468, and #1469 / #1470 / #1471 next) ─────────
+ *
+ * `rowOrThrow` serves one shape: a single row that MUST exist, where absence is
+ * a refusal. The post-#1411 sweep found the same root class — a failed read
+ * read as an answer — in shapes where an empty answer is LEGITIMATE, so
+ * `rowOrThrow` would refuse a valid state:
+ *
+ *   - a list that may be empty (`data ?? []`: no matches yet, no assignments);
+ *   - a count that may be zero (`count ?? 0`: no votes, no scores) — its
+ *     `countOrThrow` lands with its first caller, #1469's guards;
+ *   - a single row that may be absent (`maybeSingle()` where absence is data).
+ *
+ * The rule under all four (CLAUDE.md, "a failed read is never data to anything
+ * that writes"): `error` means WE COULD NOT CHECK, and it must never be read as
+ * the empty answer. These are the same helper for those shapes, sharing
+ * `failed` — not a second utility doing `rowOrThrow`'s job.
+ */
+
+/** A list read where EMPTY is a valid answer. A failed read throws. */
+export function rowsOrThrow<T>(result: { data: T[] | null; error: unknown }, what: string): T[] {
+  if (result.error) failed(result.error, what);
+  return result.data ?? [];
+}
+
+/** A single-row read where ABSENCE is a valid answer (returns null). A failed
+ *  read throws. */
+export function maybeRowOrThrow<T>(result: { data: T | null; error: unknown }, what: string): T | null {
+  if (result.error) failed(result.error, what);
+  return result.data ?? null;
 }

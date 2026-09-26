@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { TRPCError } from "@trpc/server";
+import { rowsOrThrow, maybeRowOrThrow } from "@/server/lib/rowOrThrow";
 import { rollUp, placementDetail, placementPoints, awardedForGame, settledPool, bankedOnlyWhenFinished, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, effectiveDistribution, payingSchedule, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
@@ -380,9 +380,11 @@ export async function computeCompetitionLeaderboard(
       .select("team_id")
       .eq("competition_id", competitionId),
   ]);
-  const teams = teamsRes.data;
+  // EVERY read below either succeeds or throws (#1411, #1468) — see the note at
+  // the second wave. None of them is ever read as the empty answer.
+  const teams = rowsOrThrow(teamsRes, "cup's teams");
   const teamIds = (teams ?? []).map((t) => t.id as string);
-  const comp = compRes.data;
+  const comp = maybeRowOrThrow(compRes, "cup");
   // Scoring-model axis (independent of team count; default match_play). Branches
   // ONLY the non-golf result award below — the hero stays on teams.length.
   const scoringModel = ((comp?.scoring_model as string | null) ?? "match_play") as ScoringModel;
@@ -390,9 +392,9 @@ export async function computeCompetitionLeaderboard(
   // the format definitions in code (W-PERF-01), no longer a DB template fetch.
   // Only manual games get the match-play winner-take-all award; golf untouched.
   const isManualType = (typeId: string | null) => isManualGameType(typeId);
-  const allGames = gameRowsRes.data ?? [];
+  const allGames = rowsOrThrow(gameRowsRes, "cup's games");
   const sizeByTeam = new Map<string, number>();
-  for (const a of assignmentsRes.data ?? []) {
+  for (const a of rowsOrThrow(assignmentsRes, "cup's rosters")) {
     const tid = a.team_id as string;
     sizeByTeam.set(tid, (sizeByTeam.get(tid) ?? 0) + 1);
   }
@@ -434,13 +436,13 @@ export async function computeCompetitionLeaderboard(
           .select("game_id, entity_id, entity_type, position, raw_score, value_kind, credited_team_id")
           .in("game_id", gameIds)
           .in("entity_type", ["team", "entrant"])
-      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[] }),
+      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[], error: null }),
     gameIds.length
       ? supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[] }),
+      : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[], error: null }),
     gameIds.length
       ? supabase.from("game_participants").select("game_id, play_group_id").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string; play_group_id: string | null }[] }),
+      : Promise.resolve({ data: [] as { game_id: string; play_group_id: string | null }[], error: null }),
     // Has it begun producing results? The §A "started" signal (R1): an `active`
     // game that has is genuinely underway (On Tap); an `active` game that has
     // not is enabled/pairings-up but not started (Ready for Play).
@@ -457,7 +459,7 @@ export async function computeCompetitionLeaderboard(
     // correctly stay out of On Tap until they finish.
     gameIds.length
       ? supabase.from("game_started").select("game_id").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string }[] }),
+      : Promise.resolve({ data: [] as { game_id: string }[], error: null }),
     // The bracket roll-up's ONE extra input: which cup team each entrant plays
     // for. `bracket_entrants.team_id` is what makes a 2v2 pairing unable to span
     // two teams (migration 112), which is precisely what makes "so its points
@@ -468,48 +470,35 @@ export async function computeCompetitionLeaderboard(
       // `game_id` rides along for the New/Configuring split — a seeded entrant is a
       // configuration act, and this query is already being issued.
       ? supabase.from("bracket_entrants").select("id, game_id, team_id").in("game_id", bracketGameIds)
-      : Promise.resolve({ data: [] as { id: string; game_id: string; team_id: string | null }[] }),
+      : Promise.resolve({ data: [] as { id: string; game_id: string; team_id: string | null }[], error: null }),
   ]);
-  const results = resultsRes.data;
   /**
-   * A failed RESULTS read is an ERROR, not an empty board (#1411).
+   * A FAILED READ IS NEVER DATA TO ANYTHING THAT WRITES (#1411, #1468).
    *
-   * Every format's standings come from this one read. Unchecked, a failure — a
-   * PostgREST 502, an aborted request — left `results` null, every arm took its
-   * "no rows yet" branch, and the board rendered a decided cup as nobody having
-   * scored: confident, well-formed and wrong, with nothing saying so.
+   * Every read in both waves either succeeds or throws (`rowsOrThrow` /
+   * `maybeRowOrThrow`, the family `rowOrThrow` began, #1279). Unchecked, a
+   * failure — a PostgREST 502, an aborted request — became the empty answer: no
+   * results, no teams, no games. The board then rendered a decided cup as nobody
+   * having scored, and, worse, the two WRITERS built on it acted on that:
    *
-   * PR 5 made that worse by giving a missing row a MEANING. In a points race a
-   * team with no row for a finished game "wasn't in it", so a failed read now
-   * fakes "didn't play" for every team at once. So it throws, and each reader
-   * gets the failure instead of a board:
+   * - `reconcileClinchClaim` read a held claim as no longer decided and
+   *   RELEASED it, so the next finalize announced the same clinch twice (a
+   *   failed results read, #1411; a failed teams read, #1468);
+   * - the clinch check, with a failed GAMES read, saw `pointsAvailable = 0` —
+   *   and a defending team's `pointsToClinch` became 0, so it claimed and
+   *   pushed "X clinched" to the whole cup: a clinch that never happened;
+   * - a failed COMPETITIONS read defaulted a points race to `match_play`,
+   *   passing the head-to-head-only clinch gate (ruling 4).
    *
-   * - `competitions.leaderboard` → a query error. The board already does the
-   *   right thing with one (`CompetitionLeaderboard`: TanStack keeps the last
-   *   good data through a failed refetch; a failed FIRST load renders "Couldn't
-   *   load the leaderboard" with a retry — never an empty board, which is now a
-   *   claim).
-   * - the clinch check → its `threw` outcome, recorded, rather than deciding
-   *   nobody has clinched from no data.
-   * - `reconcileClinchClaim` → its catch, rather than RELEASING a held claim
-   *   because the empty board said the holder was no longer decided — which let
-   *   the next finalize announce the same clinch twice.
+   * Since PR 5 a missing row also MEANS something ("wasn't in it"), so a
+   * failed read fakes that for every team at once.
    *
-   * History: this check was added (logging only) when migration 191 moved the
-   * bracket's credit onto the result row, and the bracket arm alone treated a
-   * failure as unknown. That arm's special case is gone; the throw covers it.
+   * Each reader now gets the failure instead of a board: the board's query
+   * errors, and `CompetitionLeaderboard` keeps its last good data (a failed
+   * FIRST load shows "Couldn't load the leaderboard", never an empty board); the
+   * clinch check records `threw`; `reconcileClinchClaim` leaves the claim alone.
    */
-  const resultsReadError = (resultsRes as { error?: { message: string } | null }).error ?? null;
-  if (resultsReadError) {
-    console.error("[competitionLeaderboard] results read failed — refusing to render the board", {
-      competitionId,
-      error: resultsReadError.message,
-    });
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: `Couldn't read this cup's results, so the board can't be shown yet: ${resultsReadError.message}`,
-    });
-  }
+  const results = rowsOrThrow(resultsRes, "cup's results");
   /**
    * ── `teamByEntrant` USED TO BE BUILT HERE, AND IS GONE ───────────────────
    *
@@ -529,38 +518,19 @@ export async function computeCompetitionLeaderboard(
    */
   /** Seeded entrants per bracket game — a configuration act, so it feeds `isNew`. */
   const entrantCountByGame = new Map<string, number>();
-  for (const e of (entrantRowsRes.data ?? []) as { game_id: string }[]) {
+  for (const e of rowsOrThrow(entrantRowsRes, "cup's bracket entrants") as { game_id: string }[]) {
     entrantCountByGame.set(e.game_id, (entrantCountByGame.get(e.game_id) ?? 0) + 1);
   }
-  /**
-   * Did that read FAIL, as opposed to returning nothing?
-   *
-   * The distinction is the whole of CLAUDE.md #16's landmine pointed at this
-   * function. "No entrants" and "we could not read the entrants" produce the same
-   * empty map, and an unchecked failure would make every entrant look teamless —
-   * so a finished bracket would quietly award nobody anything while the board
-   * rendered as though that were the result. Points vanishing with no error is
-   * the expensive failure, not points missing with one.
-   *
-   * The bracket branch below treats this as UNPOSTED rather than as zero: the
-   * game contributes its pool and shows no awards yet, which is the honest
-   * reading of "we don't know", and the next poll recovers. It is deliberately
-   * not a throw — one sub-read failing should not blank a whole competition's
-   * board — but it IS logged, because a silent degrade nobody can see is how the
-   * six-week version of this bug happened.
-   */
-  const entrantReadError = (entrantRowsRes as { error?: { message: string } | null }).error ?? null;
-  if (entrantReadError) {
-    console.error("[competitionLeaderboard] bracket entrant read failed — brackets will show as unposted", {
-      competitionId,
-      bracketGameIds,
-      error: entrantReadError.message,
-    });
-  }
+  // The entrant read THROWS on failure now (#1468). It used to log and carry on,
+  // deliberately — "one sub-read failing should not blank a whole competition's
+  // board". That reasoning predated two facts: the client keeps the LAST GOOD
+  // board through a failed refetch, so a throw no longer blanks anything; and a
+  // half-read board is what the clinch writers act on. The bracket arm's own
+  // "unknown, not zero" branch went with #1411.
   // Games that have begun producing results — the view already unions every
   // format's source, so there is nothing to merge here any more.
   const startedByGame = new Set<string>(
-    ((startedRowsRes.data ?? []) as { game_id: string }[]).map((r) => r.game_id)
+    (rowsOrThrow(startedRowsRes, "cup's started games") as { game_id: string }[]).map((r) => r.game_id)
   );
   // Participant rows per game — "field picked" (stroke). For rack we track the
   // GROUPED count separately: rack readiness needs players assigned to a playing
@@ -568,7 +538,7 @@ export async function computeCompetitionLeaderboard(
   // same bar the server enable guard uses, so the two can't disagree.
   const participantCountByGame = new Map<string, number>();
   const groupedParticipantCountByGame = new Map<string, number>();
-  for (const r of (participantRowsRes.data ?? []) as { game_id: string; play_group_id: string | null }[]) {
+  for (const r of rowsOrThrow(participantRowsRes, "cup's participants") as { game_id: string; play_group_id: string | null }[]) {
     participantCountByGame.set(r.game_id, (participantCountByGame.get(r.game_id) ?? 0) + 1);
     if (r.play_group_id != null) {
       groupedParticipantCountByGame.set(r.game_id, (groupedParticipantCountByGame.get(r.game_id) ?? 0) + 1);
@@ -588,7 +558,7 @@ export async function computeCompetitionLeaderboard(
   // configured only when EVERY row is paired (`paired === total`), the SAME bar
   // the setup-page Enable gate uses (`matchPlayReady`) — readiness rework P1b.
   const totalMatchRowsByGame = new Map<string, number>();
-  for (const r of (matchRowsRes.data ?? []) as { game_id: string; side_a: unknown; side_b: unknown }[]) {
+  for (const r of rowsOrThrow(matchRowsRes, "cup's matches") as { game_id: string; side_a: unknown; side_b: unknown }[]) {
     totalMatchRowsByGame.set(r.game_id, (totalMatchRowsByGame.get(r.game_id) ?? 0) + 1);
     if (r.side_a == null || r.side_b == null) continue;
     matchCountByGame.set(r.game_id, (matchCountByGame.get(r.game_id) ?? 0) + 1);
