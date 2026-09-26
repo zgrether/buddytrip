@@ -296,8 +296,11 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
 
   it("a match-play game is Setting up until pairings are assigned, then earns Ready (§A readiness gate)", async () => {
     const comp = await ctx.createCompetition(tripId, "D2 Roster Gate Comp");
-    await ctx.createTeam(comp, "A", { shortName: "A" });
+    const teamA = await ctx.createTeam(comp, "A", { shortName: "A" });
     await ctx.createTeam(comp, "B", { shortName: "B" });
+    // Rostered before pairing — a Ryder cup refuses an unrostered participant
+    // (migration 193), and the app's picker offers only rostered players.
+    await ctx.assignTeam(comp, teamA, [ctx.user.id]);
     const g = await ctx.caller().games.create({
       tripId, gameTypeId: "gtt_match_play", name: "Roster Gate", competitionId: comp,
       pointsDistribution: { type: "per_match", value: 2 },

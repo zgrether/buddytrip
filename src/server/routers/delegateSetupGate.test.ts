@@ -40,6 +40,13 @@ beforeAll(async () => {
   await ctx.addTripMember(tripId, "member", "Member"); // plain Member = delegate target
   memberId = ctx.getUser("member").id;
   competitionId = await ctx.createCompetition(tripId, "Delegate gate comp");
+  // A Ryder cup (the default) refuses an unrostered participant since migration
+  // 193, and these pair / group owner and member — so both are rostered first,
+  // the order the app's pickers require.
+  const blue = await ctx.createTeam(competitionId, "Blue");
+  const red = await ctx.createTeam(competitionId, "Red");
+  await ctx.assignTeam(competitionId, blue, [ctx.getUser("owner").id]);
+  await ctx.assignTeam(competitionId, red, [memberId]);
 });
 
 afterAll(async () => {

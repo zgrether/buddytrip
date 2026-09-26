@@ -110,6 +110,13 @@ beforeAll(async () => {
   const planner = ctx.getUser("planner").id;
   const member = ctx.getUser("member").id;
   const outsider = ctx.getUser("outsider").id;
+  // Rostered before pairing: the cup defaults to match_play, where migration 193
+  // refuses an unrostered participant — and the app's picker offers only rostered
+  // players, so this is the order a real save happens in.
+  const blue = await ctx.createTeam(competitionId, "Blue");
+  const red = await ctx.createTeam(competitionId, "Red");
+  await ctx.assignTeam(competitionId, blue, [owner, planner]);
+  await ctx.assignTeam(competitionId, red, [member, outsider]);
   const draft = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
   await ctx.caller().games.saveConfig({
     tripId,
