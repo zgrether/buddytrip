@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { TRPCError } from "@trpc/server";
 import { rollUp, placementDetail, placementPoints, awardedForGame, settledPool, bankedOnlyWhenFinished, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, effectiveDistribution, payingSchedule, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
@@ -471,25 +472,42 @@ export async function computeCompetitionLeaderboard(
   ]);
   const results = resultsRes.data;
   /**
-   * Did the RESULTS read fail, as opposed to returning nothing?
+   * A failed RESULTS read is an ERROR, not an empty board (#1411).
    *
-   * Checked here because migration 191 moved what the bracket's roll-up depends
-   * on. It used to take its entrant→team map from `bracket_entrants`, and
-   * `entrantReadError` below was the "unknown, not zero" guard on exactly that.
-   * The credit now rides on the result row, so that guard would have gone INERT
-   * while still reading like protection — a thing this codebase has found nine
-   * times and has a rule about. The guard moves to the read it now guards.
+   * Every format's standings come from this one read. Unchecked, a failure — a
+   * PostgREST 502, an aborted request — left `results` null, every arm took its
+   * "no rows yet" branch, and the board rendered a decided cup as nobody having
+   * scored: confident, well-formed and wrong, with nothing saying so.
    *
-   * Deliberately NOT extended to the other arms in this PR. Every format's
-   * standings have always come from this same unchecked read, so a failure has
-   * always made every finished game render as unposted, silently — a real
-   * finding, wider than this change, and filed as #1411 rather than folded in.
+   * PR 5 made that worse by giving a missing row a MEANING. In a points race a
+   * team with no row for a finished game "wasn't in it", so a failed read now
+   * fakes "didn't play" for every team at once. So it throws, and each reader
+   * gets the failure instead of a board:
+   *
+   * - `competitions.leaderboard` → a query error. The board already does the
+   *   right thing with one (`CompetitionLeaderboard`: TanStack keeps the last
+   *   good data through a failed refetch; a failed FIRST load renders "Couldn't
+   *   load the leaderboard" with a retry — never an empty board, which is now a
+   *   claim).
+   * - the clinch check → its `threw` outcome, recorded, rather than deciding
+   *   nobody has clinched from no data.
+   * - `reconcileClinchClaim` → its catch, rather than RELEASING a held claim
+   *   because the empty board said the holder was no longer decided — which let
+   *   the next finalize announce the same clinch twice.
+   *
+   * History: this check was added (logging only) when migration 191 moved the
+   * bracket's credit onto the result row, and the bracket arm alone treated a
+   * failure as unknown. That arm's special case is gone; the throw covers it.
    */
   const resultsReadError = (resultsRes as { error?: { message: string } | null }).error ?? null;
   if (resultsReadError) {
-    console.error("[competitionLeaderboard] results read failed — every game will show as unposted", {
+    console.error("[competitionLeaderboard] results read failed — refusing to render the board", {
       competitionId,
       error: resultsReadError.message,
+    });
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Couldn't read this cup's results, so the board can't be shown yet: ${resultsReadError.message}`,
     });
   }
   /**
@@ -681,11 +699,9 @@ export async function computeCompetitionLeaderboard(
      * bracket-specific guess about what the organizer meant.
      */
     if (isBracketGame(g.game_type_id as string | null, g.competition_format as string | null)) {
-      // A failed RESULTS read is "unknown", not "nobody scored". Empty standings
-      // here give the pre-decision shape — the game keeps its pool and awards
-      // nothing until the next poll recovers. (This gated on `entrantReadError`
-      // until 191; see the note beside `resultsReadError` for why it moved.)
-      const entrantStandings = resultsReadError ? [] : entrantStandingsByGame.get(g.id as string) ?? [];
+      // A failed results read never reaches here: it throws above (#1411), which
+      // replaced this arm's own "unknown, not nobody scored" special case.
+      const entrantStandings = entrantStandingsByGame.get(g.id as string) ?? [];
       // `effectiveDistribution`, NOT `isPlacement(...) ? values : []`. The empty
       // array awarded 0 to every entrant, and this branch returns before the
       // winner-take-all flatten below — so a bracket with no authored split paid
