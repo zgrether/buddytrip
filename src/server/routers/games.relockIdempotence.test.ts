@@ -103,6 +103,15 @@ beforeAll(async () => {
   await ctx.addTripMember(tripId, "member", "Member");
   memberId = ctx.getUser("member").id;
   competitionId = await ctx.createCompetition(tripId, "Relock Cup", { scoringModel: "match_play" });
+  // Rostered, so the participant insert above is ADMITTED. A Ryder cup refuses an
+  // unrostered participant since migration 193, and that insert's error is not
+  // checked — without this, the "before" state would be a game with no
+  // participants, finalized, and this file would compare a path the app never
+  // produces against itself and pass.
+  const blue = await ctx.createTeam(competitionId, "Blue");
+  const red = await ctx.createTeam(competitionId, "Red");
+  await ctx.assignTeam(competitionId, blue, [ownerId]);
+  await ctx.assignTeam(competitionId, red, [memberId]);
 }, 120000);
 
 afterAll(async () => {

@@ -76,7 +76,10 @@ describe("181 — a scramble group's score is writable by its members", () => {
     // Sequential, never Promise.all — these race and flake (CLAUDE.md).
     tripId = await ctx.createTrip("Scramble RLS Trip");
     await ctx.addTripMember(tripId, "member", "Member");
-    competitionId = await ctx.createCompetition(tripId, "Scramble Cup");
+    // A POINTS cup: scramble and stroke are refused in a Ryder cup (games.create,
+    // #1304), and migration 193 refuses an unrostered participant in one — so the
+    // defaulted match_play cup this used to make was a state the app cannot reach.
+    competitionId = await ctx.createCompetition(tripId, "Scramble Cup", { scoringModel: "points" });
 
     scrambleGameId = await makeGame("gtt_scramble", "Scramble");
     // The member's own team group. `groupStrokeParticipants` creates the group

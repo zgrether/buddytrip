@@ -253,6 +253,12 @@ beforeAll(async () => {
   competitionId = await ctx.createCompetition(tripId, "Bracket Perf Cup", { scoringModel: "match_play" });
   teamA = await ctx.createTeam(competitionId, "Manhattans");
   teamB = await ctx.createTeam(competitionId, "Old Fashioneds");
+  // Rostered to match the bracket entrants' teams below. A Ryder cup refuses an
+  // unrostered participant since migration 193, and `makeMatchGame`'s participant
+  // insert does not check its error — unrostered, the match games would be
+  // measured with no participants at all.
+  await ctx.assignTeam(competitionId, teamA, [owner, member]);
+  await ctx.assignTeam(competitionId, teamB, [planner, outsider]);
 }, 180000);
 
 afterAll(async () => {

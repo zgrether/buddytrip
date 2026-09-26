@@ -108,6 +108,13 @@ beforeAll(async () => {
   member = ctx.getUser("member").id;
   outsider = ctx.getUser("outsider").id;
   competitionId = await ctx.createCompetition(tripId, "saveConfig P2 Cup");
+  // A Ryder cup (the default) refuses an unrostered participant since migration
+  // 193. Everyone this file groups is rostered first — the order the app's rack
+  // group builder requires, since it offers only the two teams' rosters.
+  const blue = await ctx.createTeam(competitionId, "Blue");
+  const red = await ctx.createTeam(competitionId, "Red");
+  await ctx.assignTeam(competitionId, blue, [owner, planner]);
+  await ctx.assignTeam(competitionId, red, [member, outsider]);
 });
 
 afterAll(async () => {

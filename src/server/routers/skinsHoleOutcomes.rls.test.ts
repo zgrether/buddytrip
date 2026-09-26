@@ -44,7 +44,10 @@ describe("184 — skins hole outcomes", () => {
     // Organizer would be admitted by the policy's earlier OR-branch and would
     // prove nothing about the member tier.
     await ctx.addTripMember(tripId, "planner", "Member");
-    competitionId = await ctx.createCompetition(tripId, "Skins Cup");
+    // A POINTS cup: skins is refused in a Ryder cup (games.create, #1304), and
+    // migration 193 refuses an unrostered participant in one — so the defaulted
+    // match_play cup this used to make was a state the app cannot reach.
+    competitionId = await ctx.createCompetition(tripId, "Skins Cup", { scoringModel: "points" });
 
     gameId = genId("game");
     await ctx.admin.from("games").insert({

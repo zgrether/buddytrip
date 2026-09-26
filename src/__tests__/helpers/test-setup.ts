@@ -258,6 +258,24 @@ export class TestContext {
     return teamId;
   }
 
+  /**
+   * Roster users onto a team. A Ryder cup (`scoring_model = 'match_play'`, the
+   * column's DEFAULT) refuses an unrostered game participant since migration
+   * 193, so a fixture that pairs or groups players in one must roster them
+   * FIRST — the order the app requires, since its pickers offer only rostered
+   * players. Cleared with the competition (FK cascade).
+   */
+  async assignTeam(competitionId: string, teamId: string, userIds: string[]): Promise<void> {
+    if (userIds.length === 0) return;
+    await withSeedRetry(
+      () =>
+        this.admin.from("team_assignments").insert(
+          userIds.map((userId) => ({ competition_id: competitionId, team_id: teamId, user_id: userId })),
+        ),
+      "Failed to assign team"
+    );
+  }
+
   /** Create a play group under an event. */
   async createPlayGroup(
     eventId: string,
