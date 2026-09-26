@@ -99,10 +99,15 @@ describe("co-admin = owner-minus-destructive (both phases)", () => {
   it("co-admin can edit teams but CANNOT delete the competition (destructive = owner only)", async () => {
     const coadmin = ctx.callerAs("planner");
 
-    // Edit teams — co-admin work.
+    // Edit teams — co-admin work. In a POINTS cup: the Co-admin Cup is head to
+    // head (the default), which is exactly two teams and refuses a third or the
+    // loss of one (ruling 2, PR 4). This case is about WHO may edit teams, not
+    // how many a cup holds, and co-admin derives from the trip role, so it
+    // holds on any cup in the trip.
+    const pointsCup = await ctx.createCompetition(tripId, "Co-admin Points Cup", { scoringModel: "points" });
     const t = await coadmin.teams.create({
       tripId,
-      competitionId,
+      competitionId: pointsCup,
       name: "Green",
       shortName: "GRN",
       color: "#22c55e",
@@ -113,7 +118,7 @@ describe("co-admin = owner-minus-destructive (both phases)", () => {
     await expect(
       coadmin.teams.delete({ tripId, teamId: (t as { id: string }).id })
     ).resolves.toBeTruthy();
-    const teams = await coadmin.teams.list({ tripId, competitionId });
+    const teams = await coadmin.teams.list({ tripId, competitionId: pointsCup });
     expect((teams as { name: string }[]).some((x) => x.name === "Green")).toBe(false);
 
     // Destructive: delete the competition — owner only.

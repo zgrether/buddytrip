@@ -198,43 +198,30 @@ async function newBracket(name: string, entrants: Entrant[]): Promise<string> {
 }
 
 /**
- * A finalized 1v1 match game — ballast, so `competitions.leaderboard` has the
- * live-projection work a real cup gives it. Measuring a pick against an
- * otherwise-empty competition would understate the batch's slowest member,
- * which is the whole question here.
+ * A finalized placement game — ballast, so `competitions.leaderboard` has a
+ * cup's worth of work to do. Measuring a pick against an otherwise-empty
+ * competition would understate the batch's slowest member, which is the whole
+ * question here.
+ *
+ * It was a finalized 1v1 MATCH game until PR 4. A bracket can no longer live in
+ * a Match Play cup (ruling 2), and a match game cannot live in a points cup
+ * until PR 5, so the Phase 0 board — brackets beside match games in one cup —
+ * is a state the app now forbids. The cup is a points race and the ballast is a
+ * finished non-golf placement game. Numbers from this file are therefore NOT
+ * comparable with the 2026-08 Phase 0 run (PR 935/936).
  */
-async function makeMatchGame(name: string, holes = 18): Promise<string> {
-  const id = genId("bperf-match");
+async function makeBallastGame(name: string): Promise<string> {
+  const id = genId("bperf-ballast");
   gameIds.push(id);
-  const par = Array.from({ length: holes }, () => 4);
   await ctx.admin.from("games").insert({
-    id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_match_play",
+    id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_generic_yard",
     name, status: "complete", corrections_open: false, scoring_enabled: true,
-    scorecard_schema: { units: { count: holes, label: "hole", metadata: { par, handicap_index: par.map((_, i) => i + 1) } } },
-    points_distribution: { type: "per_match", value: 2 }, points_total: 2,
-    modifiers: {}, competition_format: "head_to_head",
+    points_distribution: { type: "placement", values: [2] }, points_total: 2,
     pairings_published_at: new Date(0).toISOString(),
   });
-  await ctx.admin.from("game_participants").insert([
-    { id: genId("p"), game_id: id, user_id: owner, handicap_strokes: 3 },
-    { id: genId("p"), game_id: id, user_id: member, handicap_strokes: 0 },
-  ]);
-  const entries = [];
-  for (let h = 1; h <= holes; h++) {
-    entries.push(
-      { id: genId("se"), game_id: id, participant_id: owner, participant_type: "user", unit_label: String(h), value: 4 },
-      { id: genId("se"), game_id: id, participant_id: member, participant_type: "user", unit_label: String(h), value: 5 }
-    );
-  }
-  await ctx.admin.from("score_entries").insert(entries);
-  await ctx.admin.from("game_matches").insert({
-    id: genId("gm"), game_id: id, match_number: 1, display_order: 0,
-    side_a: { type: "user", id: owner }, side_b: { type: "user", id: member },
-    result: "a_win", margin: "18up", status: "complete",
-  });
   await ctx.admin.from("game_results").insert([
-    { id: genId("gr"), game_id: id, entity_id: owner, entity_type: "user", value_kind: "rank", position: 1, raw_score: 18 },
-    { id: genId("gr"), game_id: id, entity_id: member, entity_type: "user", value_kind: "rank", position: 2, raw_score: 0 },
+    { id: genId("gr"), game_id: id, entity_id: teamA, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
+    { id: genId("gr"), game_id: id, entity_id: teamB, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
   ]);
   return id;
 }
@@ -250,13 +237,11 @@ beforeAll(async () => {
   planner = ctx.getUser("planner").id;
   member = ctx.getUser("member").id;
   outsider = ctx.getUser("outsider").id;
-  competitionId = await ctx.createCompetition(tripId, "Bracket Perf Cup", { scoringModel: "match_play" });
+  // A POINTS cup: a bracket can no longer live in a Match Play cup (ruling 2, PR 4).
+  competitionId = await ctx.createCompetition(tripId, "Bracket Perf Cup", { scoringModel: "points" });
   teamA = await ctx.createTeam(competitionId, "Manhattans");
   teamB = await ctx.createTeam(competitionId, "Old Fashioneds");
-  // Rostered to match the bracket entrants' teams below. A Ryder cup refuses an
-  // unrostered participant since migration 193, and `makeMatchGame`'s participant
-  // insert does not check its error — unrostered, the match games would be
-  // measured with no participants at all.
+  // Rostered to match the bracket entrants' teams below, the way a real cup is.
   await ctx.assignTeam(competitionId, teamA, [owner, member]);
   await ctx.assignTeam(competitionId, teamB, [planner, outsider]);
 }, 180000);
@@ -274,8 +259,8 @@ afterAll(async () => {
 describe("PHASE 0 — what one bracket pick costs", () => {
   it("measures the pick, and the four queries it invalidates", async () => {
     // Ballast first, so the leaderboard has real work to do.
-    await makeMatchGame("Ballast 1");
-    await makeMatchGame("Ballast 2");
+    await makeBallastGame("Ballast 1");
+    await makeBallastGame("Ballast 2");
 
     const eight: Entrant[] = [
       { seed: 1, teamId: teamA, userIds: [owner] },

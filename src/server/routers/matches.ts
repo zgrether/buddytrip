@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireGameEdit, canEditGame } from "../middleware";
@@ -209,7 +210,10 @@ export const matchesRouter = router({
         const { error } = await ctx.supabase
           .from("game_participants")
           .upsert(partRows, { onConflict: "game_id,user_id" });
-        if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to seed players: ${error.message}` });
+        if (error) {
+          throwIfUnrostered(error); // migration 193 — a Match Play cup's players are rostered
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to seed players: ${error.message}` });
+        }
       }
       const { error } = await ctx.supabase.from("game_matches").insert(matchRows);
       if (error) {
@@ -332,8 +336,7 @@ export const matchesRouter = router({
       // #780 — error-checked only. `ignoreDuplicates: true` means zero rows is
       // the NORMAL outcome whenever the row already exists, so a count assertion
       // here would fail on the common path.
-      assertNoError(
-        await ctx.supabase.from("game_participants").upsert(
+      const seated = await ctx.supabase.from("game_participants").upsert(
         {
           id: crypto.randomUUID(),
           game_id: input.gameId,
@@ -342,7 +345,10 @@ export const matchesRouter = router({
           team_id: null,
         },
         { onConflict: "game_id,user_id", ignoreDuplicates: true }
-        ),
+      );
+      throwIfUnrostered(seated.error); // migration 193 — a Match Play cup's players are rostered
+      assertNoError(
+        seated,
         "ensure the player has a participant row"
       );
 

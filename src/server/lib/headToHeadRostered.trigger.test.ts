@@ -113,14 +113,20 @@ describe("migration 193 — Ryder cup participants are rostered", () => {
     expect((data as { user_id: string }).user_id).toBe(member);
   }, 60000);
 
-  it("reaches a real caller: grouping an unrostered player into a Ryder cup rack is refused", async () => {
-    const gameId = await game(await ryderCup("Real caller"));
+  it("reaches a real caller: grouping an unrostered player into a Ryder cup rack is refused, as its sentence", async () => {
+    // PR 4's `throwIfUnrostered` turns the trigger's `UNROSTERED:` refusal into
+    // the sentence it carries, as a 412 — not a 500 wrapping a code. Exact
+    // message, so a build that forgot the unwrap (which still CONTAINS the
+    // sentence, after "Failed to add players: UNROSTERED: ") fails here.
     await expect(
       ctx.caller().playGroups.setFoursomes({
         tripId,
-        gameId,
+        gameId: await game(await ryderCup("Real caller")),
         groups: [{ name: "G1", userIds: [owner, planner, member] }],
       }),
-    ).rejects.toThrow(`UNROSTERED: ${memberName} isn't on either team in this cup.`);
+    ).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: `${memberName} isn't on either team in this cup. Add them to a team in Rosters first.`,
+    });
   }, 60000);
 });

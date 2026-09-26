@@ -359,14 +359,31 @@ export const competitionsRouter = router({
       // the shared palette (Team A/B/C/D…, renameable later in the team editor). Rosters are
       // built later in the Team Rosters page. Best-effort: a seed failure doesn't block
       // creation (the team builder can still add teams), so the competition is usable either way.
+      //
+      // EXCEPT head to head (ruling 2, PR 4): a Match Play cup is exactly two teams,
+      // and the team editor hides add on one — so a head-to-head cup whose seed failed
+      // could never be repaired from the UI. There the seed is part of the create: if
+      // it fails, the competition is removed and the create fails, rather than leaving
+      // a head-to-head cup with fewer than two teams.
       const teamCount = input.scoringModel === "match_play" ? 2 : input.teamCount;
-      await ctx.supabase.from("teams").insert(
+      const { error: seedErr } = await ctx.supabase.from("teams").insert(
         Array.from({ length: teamCount }, (_, i) => {
           const { name, shortName } = seedTeamName(i);
           const swatch = SEED_TEAM_COLORS[i] ?? SEED_TEAM_COLORS[SEED_TEAM_COLORS.length - 1];
           return { competition_id: inserted.id, name, short_name: shortName, color: swatch.color, color_dim: swatch.colorDim };
         }),
       );
+      if (seedErr && input.scoringModel === "match_play") {
+        // Not a transaction, so undo by hand. A failed delete is reported with the
+        // seed error rather than hidden: the caller then knows a teamless cup exists.
+        const { error: undoErr } = await ctx.supabase.from("competitions").delete().eq("id", inserted.id);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: undoErr
+            ? `Failed to create the cup's two teams (${seedErr.message}), and failed to remove the half-made cup (${undoErr.message}).`
+            : `Failed to create the cup's two teams, so the cup wasn't created: ${seedErr.message}`,
+        });
+      }
 
       const { data, error } = await ctx.supabase
         .from("competitions")

@@ -56,7 +56,9 @@ interface Cup {
 /** A fresh competition with two teams. Sequential, never `Promise.all` — the
  *  seed helpers race (CLAUDE.md's local-stack conventions). */
 async function newCup(name: string): Promise<Cup> {
-  const competitionId = await ctx.createCompetition(tripId, name);
+  // A POINTS cup: a bracket pays by placement, and a Match Play cup refuses switching a
+  // game into one (ruling 2, PR 4). Brackets are tested where they can now be set up.
+  const competitionId = await ctx.createCompetition(tripId, name, { scoringModel: "points" });
   compIds.push(competitionId);
   const teamA = await ctx.createTeam(competitionId, "Manhattans");
   const teamB = await ctx.createTeam(competitionId, "Centurions");

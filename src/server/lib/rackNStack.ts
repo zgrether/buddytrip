@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { playerStats, computeRack, type RackPlayer, type Team } from "@/lib/rackNStack";
+import { playerStats, computeRack, rackSides, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
@@ -68,16 +68,30 @@ export async function computeRackNStackResults(
   if (!par || !strokeIndex) return [];
   const coursePar = par.reduce((a, p) => a + p, 0);
 
-  // user_id → team_id, for this game's competition (the two teams).
-  const { data: assigns } = await supabase
-    .from("team_assignments")
-    .select("user_id, team_id")
-    .eq("competition_id", game.competition_id as string);
+  // The two sides are the COMPETITION's two teams (`rackSides`, ruling 12) —
+  // one answer shared with the board's projection and the rack screen, in the
+  // cup's creation order. Then user_id → team_id for scoring.
+  const [{ data: cupTeams }, { data: assigns }] = await Promise.all([
+    supabase
+      .from("teams")
+      .select("id")
+      .eq("competition_id", game.competition_id as string)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("team_assignments")
+      .select("user_id, team_id")
+      .eq("competition_id", game.competition_id as string),
+  ]);
+  const sides = rackSides((cupTeams ?? []).map((t) => t.id as string));
+  if (!sides) return []; // not a two-team cup — not a rack a person can build
   const teamOf = new Map<string, string>();
   for (const a of assigns ?? []) teamOf.set(a.user_id as string, a.team_id as string);
-  const teamIds = [...new Set([...teamOf.values()])].sort(); // deterministic A/B
-  if (teamIds.length < 2) return []; // need exactly the two competing teams
-  const slot: Record<string, Team> = { [teamIds[0]]: "A", [teamIds[1]]: "B" };
+  // A side nobody is rostered on writes nothing, as it always has. What an empty
+  // side SHOULD pay is ruling 9 (forfeit), which is PR 3's, not this one's.
+  const rostered = new Set(teamOf.values());
+  if (!rostered.has(sides.A) || !rostered.has(sides.B)) return [];
+  const teamIds = [sides.A, sides.B];
+  const slot: Record<string, Team> = { [sides.A]: "A", [sides.B]: "B" };
 
   const { data: parts } = await supabase
     .from("game_participants")

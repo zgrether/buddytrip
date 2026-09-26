@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
@@ -39,6 +40,7 @@ import { isDoubleElimination, resolveAnyDraw } from "@/lib/bracketFormat";
 import { readBracketDraw } from "../lib/bracketDraw";
 import { deriveBracketPlacements } from "../lib/bracketResults";
 import { resolveResultStrategy } from "@/lib/resultStrategy";
+import { headToHeadResultRefusal } from "@/lib/headToHeadResult";
 import { computePickemResults } from "@/server/lib/pickemResults";
 import { writeTeamMatchPoints } from "../lib/matchAwards";
 import type { PlaceCapacity } from "@/lib/gameConfig";
@@ -195,6 +197,58 @@ async function refuseSplitOnPerMatchGame(
         "This game pays match by match, so its points can't be split by place. " +
         "Set the game's total points instead — each match gets its share of it.",
     });
+  }
+}
+
+/**
+ * Ruling 2 (PR 4): a head-to-head cup accepts games whose result is head to head
+ * (`headToHeadResultRefusal`, from PR 1's declared result kinds). In practice a
+ * Match Play cup never holds a bracket.
+ *
+ * It judges the VALUE, deliberately, and the reason is worth keeping because the
+ * general habit points the other way. Judging a change rather than a value is
+ * what keeps an untouched game saveable when a save re-sends its whole config
+ * (migration 114's lesson), and this guard first did exactly that, for the three
+ * brackets BBMI Test Cup held. Zach deleted those on 2026-09-26, and there is no
+ * other way into the state: `games.create` takes no format, `scoring_model` has
+ * no update path, and a game's cup is written only at create. With no Match Play
+ * bracket able to exist, "re-sent untouched" can never be a bracket here, so the
+ * distinction was no longer observable — and a test for it would have needed a
+ * fixture in a state the app forbids. If a way into that state is ever added,
+ * this is the line to revisit.
+ *
+ * `nextFormat` is the format this write establishes; `undefined` means the write
+ * leaves it alone (the RPC's COALESCE-preserve), and there is nothing to judge.
+ */
+async function refuseRankedFormatInHeadToHead(
+  supabase: SupabaseClient,
+  tripId: string,
+  gameId: string,
+  nextFormat: string | null | undefined
+): Promise<void> {
+  if (nextFormat === undefined) return;
+  const { data: game, error } = await supabase
+    .from("games")
+    .select("game_type_id, competition_id")
+    .eq("id", gameId)
+    .eq("trip_id", tripId)
+    .maybeSingle();
+  if (error) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the game: ${error.message}` });
+  }
+  if (!game?.competition_id) return; // standalone, or missing — the write reports that itself
+  const refusal = headToHeadResultRefusal(game.game_type_id as string | null, nextFormat);
+  if (!refusal) return;
+  const { data: comp, error: compErr } = await supabase
+    .from("competitions")
+    .select("scoring_model")
+    .eq("id", game.competition_id as string)
+    .maybeSingle();
+  if (compErr) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the competition: ${compErr.message}` });
+  }
+  if (comp?.scoring_model === "match_play") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
   }
 }
 
@@ -880,6 +934,7 @@ export const gamesRouter = router({
         .from("game_participants")
         .upsert(rows, { onConflict: "game_id,user_id", ignoreDuplicates: true });
       if (error) {
+        throwIfUnrostered(error); // migration 193 — a Match Play cup's players are rostered
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to add participants: ${error.message}`,
@@ -1484,6 +1539,8 @@ export const gamesRouter = router({
       if (input.teeTime !== undefined) patch.tee_time = input.teeTime;
       if (input.scheduleItemId !== undefined) patch.schedule_item_id = input.scheduleItemId;
       if (input.competitionFormat !== undefined) {
+        // Ruling 2 (PR 4): a Match Play cup refuses a placement format (a bracket).
+        await refuseRankedFormatInHeadToHead(ctx.supabase, ctx.tripId, input.gameId, input.competitionFormat);
         patch.competition_format = input.competitionFormat;
         // #1381: a format switch that makes the game pay match by match cannot
         // leave a placement split behind — that stale split is how BBMI 2026
@@ -1990,6 +2047,14 @@ export const gamesRouter = router({
           }
         }
       }
+      // 1a · Ruling 2 (PR 4): a Match Play cup refuses a placement format (a
+      //      bracket). Absent → the RPC keeps the stored one, nothing to judge.
+      await refuseRankedFormatInHeadToHead(
+        ctx.supabase,
+        ctx.tripId,
+        input.gameId,
+        (input.payload as { competitionFormat?: string | null }).competitionFormat
+      );
       // 1b · DID THIS SAVE CHANGE GLORIOUS FINISHING HOLES? Read BEFORE the write,
       //      because the RPC overwrites `modifiers` and step 3's read (below) is
       //      too late to see what it was. One extra SELECT on a config save, which

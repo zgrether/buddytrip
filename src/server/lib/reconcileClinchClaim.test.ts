@@ -66,7 +66,8 @@ async function reseed() {
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("Reconcile Trip");
-  compId = await ctx.createCompetition(tripId, "Reconcile Cup", { scoringModel: "points" });
+  // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
+  compId = await ctx.createCompetition(tripId, "Reconcile Cup", { scoringModel: "match_play" });
   winner = await ctx.createTeam(compId, "Winner", { shortName: "WIN" });
   loser = await ctx.createTeam(compId, "Loser", { shortName: "LOS", color: "#ef4444", colorDim: "#2a0a0a" });
 }, 120_000);

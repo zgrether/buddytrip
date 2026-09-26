@@ -4,7 +4,7 @@ import { gloriousConfig } from "@/lib/gloriousHoles";
 import type { ModifiersMap } from "@/lib/modifiers";
 import { effectiveStrokes } from "@/lib/handicap";
 import { rollupMatchPlay, type ProjMatch, type CannotProjectReason } from "@/lib/gameProjection";
-import { playerStats, rackProjectedTeamPoints, type RackPlayer, type Team } from "@/lib/rackNStack";
+import { playerStats, rackProjectedTeamPoints, rackSides, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import {
   liveMatchPointsPerMatch,
@@ -127,6 +127,10 @@ export interface GameProjectionData {
   outcomes: { match_id: string; hole_number: number; result: HoleOutcomeRow["result"] }[];
   /** user_id → team_id (competition-level). */
   userTeam: Map<string, string>;
+  /** The competition's teams — rack's two sides come from here (`rackSides`,
+   *  ruling 12), not from whoever happens to be in the game. Absent reads as
+   *  no cup teams — not a two-team cup — so only rack's fixtures need it. */
+  cupTeamIds?: readonly string[];
   /** Pick'em only: its config, clock, slate and sheets. Absent = no
    *  `pickem_games` row, which is a game whose picks never opened. */
   pickem?: PickemProjectionData | null;
@@ -217,7 +221,7 @@ export async function computeLiveProjections(
   supabase: SupabaseClient,
   competitionId: string,
   games: LiveProjectionInput[],
-  opts: { pointsMode?: boolean } = {}
+  opts: { pointsMode?: boolean; cupTeamIds?: readonly string[] } = {}
 ): Promise<LiveProjectionResult> {
   const out: LiveProjections = {};
   const cannotProject: Record<string, CannotProjectReason> = {};
@@ -377,6 +381,7 @@ export async function computeLiveProjections(
       gross: grossByGame.get(g.id) ?? new Map(),
       outcomes: outcomesByGame.get(g.id) ?? [],
       userTeam,
+      cupTeamIds: opts.cupTeamIds ?? [],
       pickem: pickemIds.includes(g.id) ? pickemDataFor(g.id) : null,
       pointsMode: opts.pointsMode ?? false,
     });
@@ -592,7 +597,7 @@ function projectPickem(g: LiveProjectionInput, data: GameProjectionData): Projec
  *  "projected" mode (pace-normalized net-to-par) and read-only. Returns raw slot
  *  points per team (matching `RackGameView`'s projection row — see file header). */
 function projectRack(g: LiveProjectionInput, data: GameProjectionData): ProjectionOutcome {
-  const { parts, gross, userTeam } = data;
+  const { parts, gross, userTeam, cupTeamIds } = data;
   // Effective par/index: the game's course snapshot, else its format's default.
   let schema = data.schema;
   if (!schema?.units?.metadata?.par && g.gameTypeId) {
@@ -603,17 +608,22 @@ function projectRack(g: LiveProjectionInput, data: GameProjectionData): Projecti
   if (!par || !strokeIndex) return cannot("no_course");
   const coursePar = par.reduce((a, p) => a + p, 0);
 
-  // The two competing teams, sorted deterministically for a stable A/B (the same
-  // convention `computeRackNStackResults` uses). computeRack is symmetric, so the
-  // A/B choice can't change a team's points — we map slot back to team id below.
+  // The two sides are the COMPETITION's two teams (`rackSides`, ruling 12) — the
+  // same answer the finalize and the rack screen use. computeRack is symmetric,
+  // so which is A can't change a team's points; slot maps back to team id below.
+  const sides = rackSides(cupTeamIds ?? []);
+  if (!sides) return cannot("no_teams");
   const teamOf = new Map<string, string>();
   for (const p of parts) {
     const t = userTeam.get(p.user_id);
     if (t) teamOf.set(p.user_id, t);
   }
-  const teamIds = [...new Set([...teamOf.values()])].sort();
-  if (teamIds.length < 2) return cannot("no_teams");
-  const slot: Record<string, Team> = { [teamIds[0]]: "A", [teamIds[1]]: "B" };
+  // A side with nobody in the game projects nothing, as it always has — what an
+  // empty side should pay is ruling 9 (forfeit), PR 3's.
+  const present = new Set(teamOf.values());
+  if (!present.has(sides.A) || !present.has(sides.B)) return cannot("no_teams");
+  const teamIds = [sides.A, sides.B];
+  const slot: Record<string, Team> = { [sides.A]: "A", [sides.B]: "B" };
 
   const players: RackPlayer[] = [];
   for (const p of parts) {

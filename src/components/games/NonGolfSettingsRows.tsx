@@ -15,6 +15,7 @@ import type { PlaceCapacity } from "@/lib/gameConfig";
 import { effectiveCompetitionFormat, type NonGolfConfigDraft, type CompetitionFormat } from "@/lib/configDraft";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
+import { headToHeadResultRefusal } from "@/lib/headToHeadResult";
 import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
 
 /**
@@ -161,6 +162,14 @@ export function NonGolfSettingsRows({
         value={draft.competitionFormat}
         canEdit={canEdit}
         onChange={onFormatChange}
+        offers={(key) =>
+          // Ruling 2 (PR 4): a Match Play cup refuses a placement format (a
+          // bracket), and the server refuses it from this same predicate. HIDDEN,
+          // not dimmed: nothing a person can do in this cup enables it, and the
+          // add-game menu already hides incompatible types rather than disabling
+          // them. No exception for a stored bracket — a Match Play cup holds none.
+          scoringModel !== "match_play" || headToHeadResultRefusal(game.game_type_id, key) === null
+        }
       />
       {bracketRows}
       {matchRows}
@@ -277,11 +286,14 @@ export function NonGolfSettingsRows({
  * — a "row of tiles" that nobody can read is not the ask.
  */
 function CompetitionFormatTiles({
-  value, canEdit, onChange,
+  value, canEdit, onChange, offers,
 }: {
   value: CompetitionFormat | null;
   canEdit: boolean;
   onChange: (format: CompetitionFormat | null) => void;
+  /** Can this cup hold the format at all? A format it can't is not rendered —
+   *  distinct from one that isn't built yet, which shows dimmed as "Soon". */
+  offers: (key: string) => boolean;
 }) {
   const effective: CompetitionFormat = effectiveCompetitionFormat(value);
   return (
@@ -293,7 +305,7 @@ function CompetitionFormatTiles({
         Competition Format
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="competition-format-options">
-        {COMP_FORMATS.map((f) => {
+        {COMP_FORMATS.filter((f) => offers(f.key)).map((f) => {
           const enabled = f.key === "head_to_head" || f.key === "bracket" || f.key === MATCHES_COMPETITION_FORMAT;
           const selected = effective === f.key;
           return (

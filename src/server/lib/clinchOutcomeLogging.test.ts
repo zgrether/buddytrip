@@ -69,7 +69,8 @@ function outcomes(): string[] {
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("Clinch outcome logging");
-  compId = await ctx.createCompetition(tripId, "Outcome Cup", { scoringModel: "points" });
+  // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
+  compId = await ctx.createCompetition(tripId, "Outcome Cup", { scoringModel: "match_play" });
   winner = await ctx.createTeam(compId, "Winner", { shortName: "WIN" });
   loser = await ctx.createTeam(compId, "Loser", { shortName: "LOS", color: "#ef4444", colorDim: "#2a0a0a" });
 }, 120_000);
@@ -243,5 +244,61 @@ describe("clinch check — every path announces itself", () => {
     const os = outcomes();
     expect(os[0]).toBe("entry");
     expect(os.slice(1)).toHaveLength(1);
+  }, 60_000);
+});
+
+/**
+ * Ruling 4 (PR 4): head to head owns CUP clinch. A points race computes
+ * `pointsToClinch` all the same — the placement arithmetic does not know what
+ * kind of cup it is in — so this case builds a points cup that the arithmetic
+ * calls DECIDED (the winner holds every point there is) and asserts the push
+ * never claims it. With the type check removed, the same call logs `claimed`
+ * and writes the claim; that is the mutant this case exists to kill.
+ *
+ * Its own outcome, `not_head_to_head`, rather than `no_clincher`: "skipped
+ * because of the cup's type" and "ran and found nobody decided" are different
+ * facts, and the row is where the next audit reads them.
+ */
+describe("clinch check — a points race never fires a cup clinch", () => {
+  let pointsComp: string;
+
+  afterAll(async () => {
+    await ctx.admin.from("push_send_log").delete().eq("competition_id", pointsComp);
+  });
+
+  it("a DECIDED points cup: logs entry then not_head_to_head, claims nothing, records the row", async () => {
+    pointsComp = await ctx.createCompetition(tripId, "Points Race", { scoringModel: "points" });
+    const lead = await ctx.createTeam(pointsComp, "Lead", { shortName: "LED" });
+    const trail = await ctx.createTeam(pointsComp, "Trail", { shortName: "TRL", color: "#ef4444", colorDim: "#2a0a0a" });
+    const id = crypto.randomUUID();
+    const g = await ctx.admin.from("games").insert({
+      id, trip_id: tripId, competition_id: pointsComp, game_type_id: "gtt_generic_yard",
+      name: "only game", status: "complete", scoring_enabled: true,
+      points_total: 2, points_distribution: { type: "placement", values: [2] },
+    });
+    if (g.error) throw new Error(`seed game: ${g.error.message}`);
+    gameIds.push(id);
+    const r = await ctx.admin.from("game_results").insert([
+      { id: crypto.randomUUID(), game_id: id, entity_id: lead, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
+      { id: crypto.randomUUID(), game_id: id, entity_id: trail, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
+    ]);
+    if (r.error) throw new Error(`seed results: ${r.error.message}`);
+
+    await notifyCupClinchedIfDecided({
+      tripId,
+      competitionId: pointsComp,
+      actorUserId: ctx.getUser("owner").id,
+      admin: ctx.admin,
+    });
+
+    expect(outcomes()).toEqual(["entry", "not_head_to_head"]);
+
+    const { data: comp } = await ctx.admin
+      .from("competitions").select("clinch_notified_team_id").eq("id", pointsComp).single();
+    expect(comp?.clinch_notified_team_id ?? null).toBeNull();
+
+    const { data: rows } = await ctx.admin
+      .from("push_send_log").select("trigger, outcome").eq("competition_id", pointsComp);
+    expect(rows).toEqual([{ trigger: "cup_clinched", outcome: "not_head_to_head" }]);
   }, 60_000);
 });

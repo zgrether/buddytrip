@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireGameEdit, canEditGame } from "../middleware";
@@ -60,7 +61,10 @@ export const playGroupsRouter = router({
         const { error: pErr } = await ctx.supabase
           .from("game_participants")
           .upsert(rows, { onConflict: "game_id,user_id", ignoreDuplicates: true });
-        if (pErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to add players: ${pErr.message}` });
+        if (pErr) {
+          throwIfUnrostered(pErr); // migration 193 — a Match Play cup's players are rostered
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to add players: ${pErr.message}` });
+        }
       }
 
       // Rebuild play_groups (SET NULL clears participants' play_group_id first).

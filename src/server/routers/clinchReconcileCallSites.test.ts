@@ -32,7 +32,8 @@ async function stored(compId: string): Promise<string | null> {
 /** A 3-game, 1-point-each competition — available 3, winNumber 2. Games are
  *  created but NOT finalized; the caller decides the finalize order. */
 async function seedThreeGameCup() {
-  const compId = await ctx.createCompetition(tripId, "Reconcile E2E Cup", { scoringModel: "points" });
+  // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
+  const compId = await ctx.createCompetition(tripId, "Reconcile E2E Cup", { scoringModel: "match_play" });
   const winner = await ctx.createTeam(compId, "Winner", { shortName: "WIN" });
   const loser = await ctx.createTeam(compId, "Loser", { shortName: "LOS", color: "#ef4444", colorDim: "#2a0a0a" });
   const games: string[] = [];
@@ -176,7 +177,8 @@ describe("games.setPointsTotal — a config edit that REMOVES a clinch", () => {
 
 describe("games.setPointsDistribution — redistributing a FIXED total moves the leader", () => {
   it("a split change can un-clinch without a re-finish, and without changing pointsAvailable", async () => {
-    const compId = await ctx.createCompetition(tripId, "Split Cup", { scoringModel: "points" });
+    // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
+    const compId = await ctx.createCompetition(tripId, "Split Cup", { scoringModel: "match_play" });
     const a = await ctx.createTeam(compId, "A", { shortName: "A" });
     const b = await ctx.createTeam(compId, "B", { shortName: "B", color: "#ef4444", colorDim: "#2a0a0a" });
     // ONE game worth 3, split [3,0] — winner-take-all.
@@ -214,23 +216,38 @@ describe("games.setPointsDistribution — redistributing a FIXED total moves the
   }, 60_000);
 });
 
-describe("teams.delete — a manual (non-golf) competition, where the roster lock doesn't block", () => {
-  it("competitionHasScore (score_entries) is false for a manual competition, so the lock doesn't fire", async () => {
+/**
+ * This block used to delete the CLINCHING team and assert the stale claim was
+ * released. PR 4 made that state unreachable from both sides: only a
+ * head-to-head cup fires a cup clinch (ruling 4), and a head-to-head cup is
+ * exactly two teams, so it refuses the loss of one (ruling 2). A points race can
+ * still delete a team, but it can no longer hold a claim.
+ *
+ * So what is pinned now is the refusal, on exactly the state the old case built:
+ * a decided cup whose roster lock does NOT block (manual games never write
+ * `score_entries`), so the ONLY thing standing between this call and releasing
+ * the announcement is the two-team rule. Remove it and this fails twice — the
+ * delete resolves, and the claim is released.
+ *
+ * `teams.delete` still calls `reconcileClinchClaim` after a delete. It is kept
+ * as a defence rather than removed: harmless, and it is what would be needed if
+ * a head-to-head cup ever held more than two teams again.
+ */
+describe("teams.delete — a decided head-to-head cup keeps both teams, and its clinch", () => {
+  it("refuses to delete the clinching team, even where the roster lock would not block", async () => {
     const { compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser);
     expect(await stored(compId)).toBe(winner);
 
-    // The roster lock is gated on score_entries specifically; manual games
-    // never write there, so this competition — fully decided — is unlocked.
+    // The premise: the roster lock is gated on score_entries specifically, and
+    // manual games never write there, so it is NOT what refuses below.
     const { competitionHasScore } = await import("../lib/rosterLock");
     expect(await competitionHasScore(ctx.admin, compId)).toBe(false);
 
-    // Deleting the CLINCHING team removes it from `teams` entirely — the
-    // recompute no longer has an entry for it, so it reads as un-decided and
-    // the stale announcement is released.
-    await ctx.caller().teams.delete({ tripId, teamId: winner });
-    expect(await stored(compId), "the announced team no longer exists — released").toBeNull();
+    const { HEAD_TO_HEAD_KEEPS_BOTH_TEAMS } = await import("./teams");
+    await expect(ctx.caller().teams.delete({ tripId, teamId: winner })).rejects.toThrow(HEAD_TO_HEAD_KEEPS_BOTH_TEAMS);
+    expect(await stored(compId), "the refused delete released nothing").toBe(winner);
   }, 60_000);
 });
 

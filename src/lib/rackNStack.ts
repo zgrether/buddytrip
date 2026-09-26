@@ -195,3 +195,27 @@ export function fmtPoints(p: number): string {
   if (Math.abs(p - whole - 0.5) < 0.001) return whole === 0 ? "½" : `${whole}½`;
   return String(Math.round(p * 100) / 100);
 }
+
+/**
+ * Rack's two sides are the COMPETITION's two teams (ruling 12, PR 4) — the one
+ * answer to "which two teams is this rack between", read by the finalize
+ * (`computeRackNStackResults`), the board's projection (`projectRack`) and the
+ * rack screen (`RackGameView`).
+ *
+ * Those three used to derive it three ways: the finalize from every roster
+ * assignment in the cup, sorted by id; the projection from the teams of the
+ * game's own participants, sorted by id; the screen from the cup's team list in
+ * creation order. Since PR 4 a head-to-head cup is exactly two teams and every
+ * participant is rostered on one of them, so the three agreed on WHICH two teams
+ * in every state the app can produce — they differed only in which was A, and
+ * `computeRack` is symmetric in A and B. This removes duplication, not a live
+ * divergence; what it prevents is a fourth derivation, and a cup that ever holds
+ * a third team being split three ways at once.
+ *
+ * Takes the cup's teams in the order the caller holds them and returns them as
+ * sides A and B — or null when the cup does not have exactly two, which is not a
+ * rack a person can build.
+ */
+export function rackSides(cupTeamIds: readonly string[]): { A: string; B: string } | null {
+  return cupTeamIds.length === 2 ? { A: cupTeamIds[0], B: cupTeamIds[1] } : null;
+}
