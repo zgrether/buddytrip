@@ -73,14 +73,9 @@ describe("CompetitionFace data layer", () => {
   it("teams unassigned — members exist but no assignments yet", async () => {
     const caller = ctx.caller();
     const competition = await caller.competitions.getByTrip({ tripId });
-    await caller.teams.create({
-      tripId,
-      competitionId: competition!.id,
-      name: "Team A",
-      shortName: "A",
-      color: "#3b82f6",
-      colorDim: "#0a1a2a",
-    });
+    // No teams.create here any more: `competitions.create` already seeded this
+    // head-to-head cup's two teams (asserted above), and a third is refused
+    // since PR 4 (ruling 2). The two seeded teams are the "teams exist" half.
 
     const [teams, assignments, members] = await Promise.all([
       caller.teams.list({ tripId, competitionId: competition!.id }),

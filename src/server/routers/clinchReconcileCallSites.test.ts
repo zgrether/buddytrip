@@ -216,23 +216,38 @@ describe("games.setPointsDistribution — redistributing a FIXED total moves the
   }, 60_000);
 });
 
-describe("teams.delete — a manual (non-golf) competition, where the roster lock doesn't block", () => {
-  it("competitionHasScore (score_entries) is false for a manual competition, so the lock doesn't fire", async () => {
+/**
+ * This block used to delete the CLINCHING team and assert the stale claim was
+ * released. PR 4 made that state unreachable from both sides: only a
+ * head-to-head cup fires a cup clinch (ruling 4), and a head-to-head cup is
+ * exactly two teams, so it refuses the loss of one (ruling 2). A points race can
+ * still delete a team, but it can no longer hold a claim.
+ *
+ * So what is pinned now is the refusal, on exactly the state the old case built:
+ * a decided cup whose roster lock does NOT block (manual games never write
+ * `score_entries`), so the ONLY thing standing between this call and releasing
+ * the announcement is the two-team rule. Remove it and this fails twice — the
+ * delete resolves, and the claim is released.
+ *
+ * `teams.delete` still calls `reconcileClinchClaim` after a delete. It is kept
+ * as a defence rather than removed: harmless, and it is what would be needed if
+ * a head-to-head cup ever held more than two teams again.
+ */
+describe("teams.delete — a decided head-to-head cup keeps both teams, and its clinch", () => {
+  it("refuses to delete the clinching team, even where the roster lock would not block", async () => {
     const { compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser);
     expect(await stored(compId)).toBe(winner);
 
-    // The roster lock is gated on score_entries specifically; manual games
-    // never write there, so this competition — fully decided — is unlocked.
+    // The premise: the roster lock is gated on score_entries specifically, and
+    // manual games never write there, so it is NOT what refuses below.
     const { competitionHasScore } = await import("../lib/rosterLock");
     expect(await competitionHasScore(ctx.admin, compId)).toBe(false);
 
-    // Deleting the CLINCHING team removes it from `teams` entirely — the
-    // recompute no longer has an entry for it, so it reads as un-decided and
-    // the stale announcement is released.
-    await ctx.caller().teams.delete({ tripId, teamId: winner });
-    expect(await stored(compId), "the announced team no longer exists — released").toBeNull();
+    const { HEAD_TO_HEAD_KEEPS_BOTH_TEAMS } = await import("./teams");
+    await expect(ctx.caller().teams.delete({ tripId, teamId: winner })).rejects.toThrow(HEAD_TO_HEAD_KEEPS_BOTH_TEAMS);
+    expect(await stored(compId), "the refused delete released nothing").toBe(winner);
   }, 60_000);
 });
 

@@ -32,6 +32,51 @@ export async function listTeams(
   return data ?? [];
 }
 
+/**
+ * Ruling 2 (PR 4): a head-to-head cup (`scoring_model = 'match_play'`) is
+ * EXACTLY two teams. `competitions.create` seeds two, and the team editor hides
+ * add and delete on one (`structureLocked`) — but that is a picker hiding a
+ * control, not a refusal, and ruling 11 puts structural rules on the server.
+ *
+ * Both refusals name what the reader CAN do. The only reader who reaches one is
+ * an API caller or a stale client, and "not allowed" alone leaves them nowhere.
+ */
+export const HEAD_TO_HEAD_NO_THIRD_TEAM =
+  "A Match Play cup is exactly two teams, so it can't take another. Rename or recolour one of the two in Rosters instead.";
+export const HEAD_TO_HEAD_KEEPS_BOTH_TEAMS =
+  "A Match Play cup is exactly two teams, so neither can be deleted. Rename it in Rosters instead, or delete the whole cup in its settings.";
+
+/**
+ * How many teams a head-to-head cup holds, or null when the competition is not
+ * head to head (a points race takes any number). Read, then written by the
+ * caller — two concurrent creates could both read 1 and both add. Not defended:
+ * the add control is hidden on a head-to-head cup, so that race needs two
+ * direct API calls in the same instant, and a lock would buy nothing a person
+ * can reach.
+ */
+async function headToHeadTeamCount(
+  supabase: SupabaseClient,
+  competitionId: string,
+): Promise<number | null> {
+  const { data: comp, error } = await supabase
+    .from("competitions")
+    .select("scoring_model")
+    .eq("id", competitionId)
+    .maybeSingle();
+  if (error) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the competition: ${error.message}` });
+  }
+  if (!comp || comp.scoring_model !== "match_play") return null;
+  const { count, error: countErr } = await supabase
+    .from("teams")
+    .select("id", { count: "exact", head: true })
+    .eq("competition_id", competitionId);
+  if (countErr) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to count teams: ${countErr.message}` });
+  }
+  return count ?? 0;
+}
+
 export const teamsRouter = router({
   // -----------------------------------------------------------------------
   // list — all teams for a competition
@@ -57,6 +102,13 @@ export const teamsRouter = router({
     )
     .use(requireCompetitionRole("co_admin"))
     .mutation(async ({ ctx, input }) => {
+      // Fewer than two is admitted: a head-to-head cup whose seed never landed
+      // must be able to reach two. Two or more is refused.
+      const h2hTeams = await headToHeadTeamCount(ctx.supabase, input.competitionId);
+      if (h2hTeams !== null && h2hTeams >= 2) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: HEAD_TO_HEAD_NO_THIRD_TEAM });
+      }
+
       const { data: inserted, error: insertErr } = await ctx.supabase
         .from("teams")
         .insert({
@@ -170,6 +222,12 @@ export const teamsRouter = router({
         .eq("id", input.teamId)
         .maybeSingle();
       if (team?.competition_id) {
+        // Structure before the roster lock: a head-to-head cup can never lose a
+        // team, scored or not, so that is the truer reason to give.
+        const h2hTeams = await headToHeadTeamCount(ctx.supabase, team.competition_id as string);
+        if (h2hTeams !== null && h2hTeams <= 2) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: HEAD_TO_HEAD_KEEPS_BOTH_TEAMS });
+        }
         await assertRosterUnlocked(ctx.supabase, team.competition_id as string);
       }
 

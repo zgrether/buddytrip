@@ -18,7 +18,11 @@ describe("roster-removal lock", () => {
     tripId = await ctx.createTrip("Roster Lock Test");
     await ctx.addTripMember(tripId, "member", "Member");
     await ctx.addTripMember(tripId, "planner", "Member"); // the post-lock "pure add"
-    competitionId = await ctx.createCompetition(tripId, "Roster Lock Cup");
+    // A POINTS cup. The roster lock is type-agnostic, but these cases DELETE
+    // teams — and a head-to-head cup is exactly two teams, refusing the loss of
+    // one before the lock is ever consulted (ruling 2, PR 4). A points race is
+    // the only cup where team deletion, and so this lock on it, is reachable.
+    competitionId = await ctx.createCompetition(tripId, "Roster Lock Cup", { scoringModel: "points" });
     teamA = await ctx.createTeam(competitionId, "Team A");
     teamB = await ctx.createTeam(competitionId, "Team B");
     ownerId = ctx.user.id;
@@ -52,7 +56,7 @@ describe("roster-removal lock", () => {
       const gameId = genId("rl-game");
       await ctx.admin.from("games").insert({
         id: gameId, trip_id: tripId, competition_id: competitionId,
-        game_type_id: "gtt_match_play", name: "Locker", status: "active",
+        game_type_id: "gtt_stroke_play", name: "Locker", status: "active", // a points-cup format
         points_distribution: { type: "per_match", value: 2 },
       });
       const { error } = await ctx.admin.from("score_entries").insert({
