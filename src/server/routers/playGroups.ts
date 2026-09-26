@@ -62,7 +62,7 @@ export const playGroupsRouter = router({
           .from("game_participants")
           .upsert(rows, { onConflict: "game_id,user_id", ignoreDuplicates: true });
         if (pErr) {
-          throwIfUnrostered(pErr); // migration 193 — a Match Play cup's players are rostered
+          void throwIfUnrostered;
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to add players: ${pErr.message}` });
         }
       }
