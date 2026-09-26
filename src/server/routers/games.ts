@@ -2046,12 +2046,6 @@ export const gamesRouter = router({
       // 1a · Ruling 2 (PR 4): a Match Play cup refuses a switch INTO a placement
       //      format (a bracket). A change only — an untouched value re-sent by
       //      every save is never refused. Absent → the RPC keeps the stored one.
-      await refuseRankedFormatInHeadToHead(
-        ctx.supabase,
-        ctx.tripId,
-        input.gameId,
-        (input.payload as { competitionFormat?: string | null }).competitionFormat
-      );
       // 1b · DID THIS SAVE CHANGE GLORIOUS FINISHING HOLES? Read BEFORE the write,
       //      because the RPC overwrites `modifiers` and step 3's read (below) is
       //      too late to see what it was. One extra SELECT on a config save, which
