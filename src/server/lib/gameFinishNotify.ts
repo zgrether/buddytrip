@@ -1065,7 +1065,7 @@ async function recordClinchOutcome(
   // `already_claimed`, so a REFUSED write recorded itself as correct
   // suppression. Recording them under that label would have re-created the lie
   // in the durable table, which is the one place it would outlive the logs.
-  outcome: "no_clincher" | "already_claimed" | "claim_error" | "claim_no_row" | "threw",
+  outcome: "not_head_to_head" | "no_clincher" | "already_claimed" | "claim_error" | "claim_no_row" | "threw",
   error?: string
 ): Promise<void> {
   await recordPushAttempt(
@@ -1129,6 +1129,29 @@ export async function notifyCupClinchedIfDecided(
         .maybeSingle(),
     ]);
     const heldClaim = (claimRow.data?.clinch_notified_team_id as string | null) ?? null;
+
+    // Ruling 4 (PR 4): head to head owns CUP clinch. No other competition type
+    // fires one. A points race computes `pointsToClinch` all the same — the
+    // placement arithmetic does not know what kind of cup it is in — so without
+    // this the push would go out the day a points leader's margin passed the
+    // points left to play, announcing a "clinch" nobody set out to race for.
+    // Production had run this check 25 times on points cups (BBMI 2024, 2025),
+    // all `no_clincher`, so nothing has misfired yet; this closes it by type
+    // rather than by the numbers happening to fall short.
+    //
+    // Recorded as its OWN outcome, not folded into `no_clincher`: "skipped
+    // because the cup is not head to head" and "ran and found nobody decided"
+    // are different facts, and the durable row is where the next audit reads
+    // them. The type comes from the board's own resolution, so the two cannot
+    // disagree about what kind of cup this is.
+    if (board.scoringModel !== "match_play") {
+      console.info("[push] clinch check: not_head_to_head", {
+        competitionId: input.competitionId,
+        scoringModel: board.scoringModel,
+      });
+      await recordClinchOutcome(admin, input, "not_head_to_head");
+      return;
+    }
 
     const teams = (board.teams ?? []) as { id: string; name: string | null }[];
     const toClinch = (board.pointsToClinch ?? {}) as Record<string, number>;

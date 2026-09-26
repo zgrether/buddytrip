@@ -72,7 +72,8 @@ async function storedClaim(): Promise<string | null> {
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("Clinch End-to-End Trip");
-  compId = await ctx.createCompetition(tripId, "Decided Cup", { scoringModel: "points" });
+  // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
+  compId = await ctx.createCompetition(tripId, "Decided Cup", { scoringModel: "match_play" });
   // Sequential, never Promise.all — these can race and flake (CLAUDE.md).
   winner = await ctx.createTeam(compId, "Team Winner", { shortName: "WIN" });
   loser = await ctx.createTeam(compId, "Team Loser", { shortName: "LOS", color: "#ef4444", colorDim: "#2a0a0a" });
@@ -143,7 +144,8 @@ describe("cup clinched — the assembled notify path", () => {
     // Control: without it, a test that always claimed would pass for the wrong
     // reason — and "always fires" is as broken as "never fires".
     const otherTrip = await ctx.createTrip("Undecided Trip");
-    const otherComp = await ctx.createCompetition(otherTrip, "Open Cup", { scoringModel: "points" });
+    // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
+    const otherComp = await ctx.createCompetition(otherTrip, "Open Cup", { scoringModel: "match_play" });
     const a = await ctx.createTeam(otherComp, "A", { shortName: "A" });
     const b = await ctx.createTeam(otherComp, "B", { shortName: "B" });
 

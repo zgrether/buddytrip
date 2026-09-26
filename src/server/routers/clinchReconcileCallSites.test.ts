@@ -32,7 +32,8 @@ async function stored(compId: string): Promise<string | null> {
 /** A 3-game, 1-point-each competition — available 3, winNumber 2. Games are
  *  created but NOT finalized; the caller decides the finalize order. */
 async function seedThreeGameCup() {
-  const compId = await ctx.createCompetition(tripId, "Reconcile E2E Cup", { scoringModel: "points" });
+  // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
+  const compId = await ctx.createCompetition(tripId, "Reconcile E2E Cup", { scoringModel: "match_play" });
   const winner = await ctx.createTeam(compId, "Winner", { shortName: "WIN" });
   const loser = await ctx.createTeam(compId, "Loser", { shortName: "LOS", color: "#ef4444", colorDim: "#2a0a0a" });
   const games: string[] = [];
@@ -176,7 +177,8 @@ describe("games.setPointsTotal — a config edit that REMOVES a clinch", () => {
 
 describe("games.setPointsDistribution — redistributing a FIXED total moves the leader", () => {
   it("a split change can un-clinch without a re-finish, and without changing pointsAvailable", async () => {
-    const compId = await ctx.createCompetition(tripId, "Split Cup", { scoringModel: "points" });
+    // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
+    const compId = await ctx.createCompetition(tripId, "Split Cup", { scoringModel: "match_play" });
     const a = await ctx.createTeam(compId, "A", { shortName: "A" });
     const b = await ctx.createTeam(compId, "B", { shortName: "B", color: "#ef4444", colorDim: "#2a0a0a" });
     // ONE game worth 3, split [3,0] — winner-take-all.
