@@ -2059,11 +2059,7 @@ export const gamesRouter = router({
           .eq("id", input.gameId)
           .eq("trip_id", ctx.tripId)
           .maybeSingle();
-        await refuseSplitSides(
-          ctx.supabase,
-          (owner?.competition_id as string | null) ?? null,
-          savedMatches.flatMap((m) => [m.a, m.b]),
-        );
+        void refuseSplitSides;
       }
       // 1a · Ruling 2 (PR 4): a Match Play cup refuses a placement format (a
       //      bracket). Absent → the RPC keeps the stored one, nothing to judge.
