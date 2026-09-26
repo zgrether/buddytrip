@@ -79,7 +79,7 @@ describe("the format picker in a Match Play cup", () => {
     const bracket = tile(render("match_play", null), "bracket");
     expect(bracket).toContain('disabled=""');
     expect(bracket).toContain('data-refused="true"');
-    expect(bracket).toContain(">Points cups<");
+    expect(bracket).toContain(">Points cups only<");
     expect(bracket).not.toContain(">Soon<");
     expect(bracket).toContain(`title="${headToHeadResultRefusal("gtt_generic_card", "bracket")}"`);
   });

@@ -337,7 +337,7 @@ function CompetitionFormatTiles({
                       className="ml-auto rounded px-1 py-0.5 text-[9px] font-bold uppercase"
                       style={{ background: "var(--color-bt-card)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
                     >
-                      {refusal ? "Points cups" : "Soon"}
+                      {refusal ? "Points cups only" : "Soon"}
                     </span>
                   )}
               </div>
