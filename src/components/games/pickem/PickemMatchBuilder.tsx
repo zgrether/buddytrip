@@ -222,6 +222,7 @@ export function PickemMatchBuilder({
           sided
           teamLabel={teamForSlot(selector.slot)?.name}
           teamColor={teamForSlot(selector.slot)?.color}
+          colorOf={teamColorOf}
           draft={draft}
           // The pool is THIS side's roster, which is what makes a cross-team
           // pair unbuildable rather than merely discouraged.

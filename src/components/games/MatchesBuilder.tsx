@@ -125,6 +125,7 @@ export function MatchesBuilder({
           sided
           teamLabel={teamForSlot(selector.slot)?.name}
           teamColor={teamForSlot(selector.slot)?.color}
+          colorOf={teamColorOf}
           draft={draft}
           crew={poolFor(selector.slot)}
           nameOf={nameMap}

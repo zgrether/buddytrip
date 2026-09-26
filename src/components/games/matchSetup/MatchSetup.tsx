@@ -505,6 +505,7 @@ export function PlayerSelector({
   sided,
   teamLabel,
   teamColor,
+  colorOf,
   draft,
   crew,
   nameOf,
@@ -519,6 +520,12 @@ export function PlayerSelector({
    *  team, so a cross-team pair can't be built. Undefined for standalone. */
   teamLabel?: string;
   teamColor?: string;
+  /** Each player's OWN team colour — team identity is the person's roster, never
+   *  the slot. Needed wherever a list mixes teams (a points race, PR 5), where a
+   *  row coloured by its slot shows no team at all; in a Match Play cup it agrees
+   *  with `teamColor`, because the list is that one team. Falls back to
+   *  `teamColor` for a player with no team. */
+  colorOf?: (userId: string) => string | undefined;
   draft: DraftMatch[];
   crew: string[];
   nameOf: Map<string, string>;
@@ -562,7 +569,7 @@ export function PlayerSelector({
         <div className="mt-2 flex flex-col gap-1.5">
           {available.length === 0 && <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Everyone&apos;s assigned.</span>}
           {available.map((id) => (
-            <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} teamColor={teamColor} onClick={() => onPick(id)} />
+            <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} teamColor={colorOf?.(id) ?? teamColor} onClick={() => onPick(id)} />
           ))}
         </div>
         {taken.length > 0 && (
@@ -570,7 +577,7 @@ export function PlayerSelector({
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 16 }}>Already in a match</div>
             <div className="mt-2 flex flex-col gap-1.5">
               {taken.map((id) => (
-                <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} teamColor={teamColor} sub={`Match ${(inMatch.get(id) ?? 0) + 1}`} dim onClick={() => onPick(id)} />
+                <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} teamColor={colorOf?.(id) ?? teamColor} sub={`Match ${(inMatch.get(id) ?? 0) + 1}`} dim onClick={() => onPick(id)} />
               ))}
             </div>
             <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
@@ -614,8 +621,8 @@ function SelectorRow({ name, teamColor, sub, dim, onClick }: { name: string; tea
   return (
     <button onClick={onClick} className="@container flex w-full items-center justify-between gap-2 text-left" style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)", opacity: dim ? 0.55 : 1 }}>
       <span className="flex min-w-0 items-center gap-2.5">
-        {/* §11 team initial, no avatarIcon (closes #477). teamColor is the slot's
-            team — correct here: the picker list is constrained to that team. */}
+        {/* §11 team initial, no avatarIcon (closes #477). teamColor is the
+            PLAYER's team (`colorOf`), else the slot's — see PlayerSelector. */}
         <Avatar name={name} teamColor={teamColor} sizePx={30} collapse />
         <span style={{ fontSize: 15, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
       </span>

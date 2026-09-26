@@ -2453,6 +2453,7 @@ export function MatchGameView() {
             sided={sided}
             teamLabel={slotTeam?.name}
             teamColor={slotTeam?.color}
+            colorOf={teamColorOf}
             draft={draft}
             crew={selectorCrew}
             nameOf={nameOf}
