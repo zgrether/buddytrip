@@ -87,16 +87,22 @@ async function pairedGame(name: string): Promise<{ gameId: string; m1: string; m
   return { gameId: game.id, m1: matches[0].id, m2: matches[1].id };
 }
 
-/** Put `member` back on the trip AND the roster — every test here removes them,
- *  and removal clears their team assignment along with the seat. The next
- *  pairing needs them rostered again (migration 193). Upsert, because a test
- *  whose removal was REFUSED leaves the assignment in place. */
-async function restoreMember() {
-  await ctx.addTripMemberById(tripId, member, "Member");
+/** Put a removed person back on the trip AND the roster. Removal clears their
+ *  team assignment along with the seat, and the next pairing needs them
+ *  rostered again (migration 193). Both people these tests remove — `member`
+ *  and `outsider` — are on team B. Upsert, because a test whose removal was
+ *  REFUSED leaves the assignment in place. */
+async function restore(userId: string) {
+  await ctx.addTripMemberById(tripId, userId, "Member");
   const { error } = await ctx.admin
     .from("team_assignments")
-    .upsert({ competition_id: competitionId, team_id: teamB, user_id: member }, { onConflict: "competition_id,user_id" });
-  if (error) throw new Error(`restore member's assignment: ${error.message}`);
+    .upsert({ competition_id: competitionId, team_id: teamB, user_id: userId }, { onConflict: "competition_id,user_id" });
+  if (error) throw new Error(`restore ${userId}'s assignment: ${error.message}`);
+}
+
+/** Put `member` back — every test here removes them. */
+async function restoreMember() {
+  await restore(member);
 }
 
 beforeAll(async () => {
@@ -196,7 +202,7 @@ describe("removing a crew member vacates their match seat", () => {
     expect((await participantIds(game.id)).sort()).toEqual([owner, planner].sort());
 
     await restoreMember();
-    await ctx.addTripMemberById(tripId, outsider, "Member");
+    await restore(outsider);
   }, 120_000);
 
   it("leaves every match alone when the person is in none of them", async () => {
