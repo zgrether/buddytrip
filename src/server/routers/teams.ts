@@ -225,7 +225,7 @@ export const teamsRouter = router({
         // Structure before the roster lock: a head-to-head cup can never lose a
         // team, scored or not, so that is the truer reason to give.
         const h2hTeams = await headToHeadTeamCount(ctx.supabase, team.competition_id as string);
-        if (h2hTeams !== null && h2hTeams <= 2) {
+        if (h2hTeams !== null && h2hTeams <= 0) {
           throw new TRPCError({ code: "BAD_REQUEST", message: HEAD_TO_HEAD_KEEPS_BOTH_TEAMS });
         }
         await assertRosterUnlocked(ctx.supabase, team.competition_id as string);
