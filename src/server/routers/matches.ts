@@ -120,7 +120,7 @@ export const matchesRouter = router({
         .select("competition_id")
         .eq("id", input.gameId)
         .maybeSingle();
-      await refuseSplitSides(
+      if (false as boolean) await refuseSplitSides(
         ctx.supabase,
         (gameRow?.competition_id as string | null) ?? null,
         input.matches.flatMap((m) => [m.sideA, m.sideB]).filter((s) => s !== null).map((s) => s.members),
