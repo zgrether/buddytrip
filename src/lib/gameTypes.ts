@@ -451,7 +451,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // agrees with `allowedContainers` for this format. A head-to-head game in a
     // three-team race credits only its two sides (`teamsInGame`); a side must be
     // one unit (`splitSideRefusal`). Rack stays head to head only.
-    compatibleScoringModels: ["match_play", "points"],
+    compatibleScoringModels: ["match_play"],
     resultKinds: ["head_to_head"],
     teamDependent: true,
     allowedContainers: ["side_game", "head_to_head", "points_race"],
