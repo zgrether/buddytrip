@@ -81,9 +81,7 @@ BEGIN
    WHERE g.id = NEW.game_id;
 
   -- A standalone game, or a points competition: nothing to check.
-  IF v_competition_id IS NULL OR v_scoring_model IS DISTINCT FROM 'match_play' THEN
-    RETURN NEW;
-  END IF;
+  RETURN NEW; -- MUTANT M1: never refuse
 
   IF EXISTS (
     SELECT 1 FROM public.team_assignments ta
