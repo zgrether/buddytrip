@@ -154,10 +154,14 @@ competition is **not** the same surface as a standalone one, and both difference
 - **Pairing pool is team-bound per side (2-team competition only).** Each side's player picker
   is constrained to that side's **team roster** (`team_assignments`), so a cross-team pair is
   structurally unassemblable — *invalid made unrepresentable*, rather than validated after the
-  fact. Standalone (and a competition that isn't exactly 2 teams) falls back to the whole trip
-  crew. Consequence worth stating: **a competition whose `team_assignments` are empty yields an
-  empty pool on both sides** — the picker correctly shows "Everyone's assigned" and no pairing
-  can be built. Assign rosters before pairing.
+  fact. A standalone game falls back to the whole trip crew. (This used to add "and a
+  competition that isn't exactly 2 teams" — since PR 4 there is no such case: a match game lives
+  only in a Match Play cup, which is exactly two teams, refused server-side both ways.)
+  Consequence worth stating: **a competition whose `team_assignments` are empty yields an empty
+  pool on both sides** — the picker correctly shows "Everyone's assigned" and no pairing can be
+  built. Assign rosters before pairing. The picker is policy; the rule underneath is structural:
+  since migration 193 the server refuses an unrostered participant in a Match Play cup's game
+  (`UNROSTERED: <name> isn't on either team in this cup…`), whichever writer tries it.
 - **Points join the go-live gate — competition games only.** Enabling scoring additionally
   requires **points-per-match > 0** on a competition game. Points are a *cup* concept: a
   standalone match has no points at all (created with a null distribution and no Points row),
@@ -217,13 +221,14 @@ refused server-side when a game is created in a Points cup), and a Match Play co
 created with exactly two teams. A rack game outside a two-team competition is a
 configuration error, not a case to score.
 
-> **Team count — the code does not enforce it yet.** The slot model is two-team by
-> construction (`computeRackNStackResults`, `server/lib/rackNStack.ts`, gives slots A/B to the
-> first two team ids), but a third team is **not refused**: its players are skipped, and a
-> result row is still written for it with no points (`raw_score` is `NaN` under per-match).
-> What holds the rule today is upstream — the two-team lock when a Match Play competition is
-> created, and the add-team control being hidden on one. Neither is a server-side refusal on
-> adding a team later. No production rack game sits outside a two-team competition.
+> **Team count — enforced on the server since PR 4.** A Match Play cup is exactly two teams:
+> `teams.create` refuses a third, `teams.delete` refuses either of the two, and
+> `competitions.create` fails rather than leave a Match Play cup with fewer than two if its
+> seed fails. (This note used to say the code did not enforce it, and that what held the rule
+> was a hidden add-team control.) Rack's two sides are the COMPETITION's two teams, answered
+> once by `rackSides` (`src/lib/rackNStack.ts`) for the finalize, the board's projection and
+> the rack screen — which used to derive them three ways. A cup that is not exactly two teams
+> gets no sides, and so no rack result, rather than a result for whichever two came first.
 
 **Scoring — short-handed (INTENT: even distribution over the live pairable count).** When
 teams are uneven, sort each team, pair slot-k vs slot-k; the deeper team's **worst-scoring

@@ -47,8 +47,16 @@ export type ResultStrategy = "stroke_total" | "match_play" | "rack_n_stack" | "p
  * A format declares the kinds it CAN produce, usually exactly one. Where it can
  * produce both, the GAME's own configuration pins which is in play — `roll_up`
  * for pick'em, `competition_format` for the manual types (a non-golf `matches`
- * game is head-to-head; the same type in `placement` is ranked). The format
+ * game is head-to-head; the same type as a `bracket` is ranked). The format
  * says what is possible, the instance says what is actual.
+ *
+ * **Configuration AND container, not configuration alone** (PR 4). Simple
+ * (`head_to_head` / null) is head to head in a head-to-head cup only because
+ * that cup has exactly two teams; the same Simple setup in a three-team points
+ * race pays by placement. So a game's kind is pinned by its configuration and by
+ * the container it sits in — see `resultKindInHeadToHead`
+ * (`src/lib/headToHeadResult.ts`), which answers for the head-to-head container
+ * only and is named for it.
  *
  * NOT a direction. Which way a result RANKS is a property of the result ROW —
  * `position` is a rank, `raw_score` is points already decided — and it is
