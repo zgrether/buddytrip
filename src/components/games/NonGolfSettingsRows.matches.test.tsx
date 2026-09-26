@@ -215,7 +215,7 @@ describe("The Matches panel is golf's accordion, with the shapes summary (§3, i
         avatarIconOf={new Map()}
         teamForSlot={teamForSlot}
         maxMatches={24}
-        twoTeams
+        inCup
         teamedUserIds={new Set(["u1", "u2", "u3", "u4", "u5", "u6"])}
         openSelector={() => {}}
         expanded={false}

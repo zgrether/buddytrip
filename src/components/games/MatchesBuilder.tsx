@@ -5,6 +5,7 @@ import { PlayerSelector } from "@/components/games/matchSetup/MatchSetup";
 import type { DraftMatchConfig } from "@/lib/configDraft";
 import { assignInDraft } from "@/lib/matchDraft";
 import type { LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
+import { slotPool } from "@/lib/pairingShape";
 
 /**
  * Non-golf Matches' pairing, in settings — the non-golf ADAPTER over
@@ -33,6 +34,7 @@ export function MatchesBuilder({
   draft,
   setDraft,
   teams,
+  headToHead,
   rosterByTeam,
   nameMap,
   colorMap,
@@ -46,11 +48,15 @@ export function MatchesBuilder({
 }: {
   draft: DraftMatchConfig[];
   setDraft: (fn: (prev: DraftMatchConfig[]) => DraftMatchConfig[]) => void;
-  /** The cup's two teams — side A binds to teams[0], side B to teams[1], same
-   *  as the scoreboard's `NonGolfMatchControl` so a runner sees ONE pair of
-   *  colors across both surfaces. Renders nothing for a standalone game
-   *  (Matches needs two teams to pair between — see the caller's gate). */
+  /** The cup's teams, in creation order. In a Match Play cup side A binds to
+   *  teams[0] and side B to teams[1], same as the scoreboard's
+   *  `NonGolfMatchControl`, so a runner sees ONE pair of colors across both
+   *  surfaces. Renders nothing for a cup with no teams. */
   teams: LBTeamLite[];
+  /** Is the cup head to head (Match Play)? Binds each side to its team. A points
+   *  race binds nothing (PR 5): any rostered player may play either side, from
+   *  any of its teams, same-team opponents included (ruling 10). */
+  headToHead: boolean;
   /** team id → member user ids — the PICKER'S pool per side, and (flattened)
    *  the roster-validity check's input. `LBTeamLite` itself carries no
    *  roster, so this is the caller's own team→crew index (built off
@@ -66,14 +72,18 @@ export function MatchesBuilder({
   selector: { matchIdx: number; slot: "a" | "b"; memberIdx: number } | null;
   setSelector: (s: { matchIdx: number; slot: "a" | "b"; memberIdx: number } | null) => void;
 }) {
-  const [a, b] = teams;
-  if (!a || !b) return null;
+  // This used to take `const [a, b] = teams` in EVERY cup, so in a points race
+  // with three teams, team 3 could never be paired and counted as roster-invalid,
+  // and which two teams became A and B followed an unordered query.
+  if (teams.length === 0) return null;
+  if (headToHead && teams.length !== 2) return null; // a Match Play cup is exactly two
 
-  const teamForSlot = (slot: "a" | "b") => (slot === "a" ? a : b);
-  // Always a 2-team competition here (the gate above already refused
-  // otherwise), so the roster-validity half of `invalid` is always live —
-  // unlike golf, which also serves a standalone (no-team) shape.
-  const teamedUserIds = new Set([...(rosterByTeam.get(a.id) ?? []), ...(rosterByTeam.get(b.id) ?? [])]);
+  const teamForSlot = (slot: "a" | "b") => (headToHead ? (slot === "a" ? teams[0] : teams[1]) : undefined);
+  // Everyone rostered, in team order — the pool in a points race, and the
+  // roster-validity check's input in either kind of cup.
+  const rostered = teams.flatMap((t) => rosterByTeam.get(t.id) ?? []);
+  const teamedUserIds = new Set(rostered);
+  const poolFor = (slot: "a" | "b") => slotPool(headToHead, teams.map((t) => t.id), rosterByTeam, slot);
 
   return (
     <>
@@ -88,7 +98,7 @@ export function MatchesBuilder({
         // The generous ceiling every non-pick'em caller uses — no team-size cap
         // (a 2v2 game can outgrow either roster's size, e.g. guests filling in).
         maxMatches={24}
-        twoTeams
+        inCup
         teamedUserIds={teamedUserIds}
         openSelector={(matchIdx, slot, memberIdx) => setSelector({ matchIdx, slot, memberIdx })}
         expanded={expanded}
@@ -115,8 +125,9 @@ export function MatchesBuilder({
           sided
           teamLabel={teamForSlot(selector.slot)?.name}
           teamColor={teamForSlot(selector.slot)?.color}
+          colorOf={teamColorOf}
           draft={draft}
-          crew={rosterByTeam.get(teamForSlot(selector.slot)?.id ?? "") ?? []}
+          crew={poolFor(selector.slot)}
           nameOf={nameMap}
           onPick={(userId) => {
             // The shared assigner (#708/#747): one removal pass across every

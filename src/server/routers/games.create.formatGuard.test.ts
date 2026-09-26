@@ -59,15 +59,12 @@ afterAll(async () => {
 }, 60_000);
 
 describe("games.create refuses a format its cup cannot hold (#1304)", () => {
-  it("a Match Play game in a Points cup — refused, named, and not written", async () => {
-    const err = await refusal(pointsCup, "gtt_match_play");
-    expect(err.code).toBe("BAD_REQUEST");
-    expect(err.message).toMatch(/^A Points cup can't hold Match Play\. It takes: /);
-    expect(await gamesIn(pointsCup, "gtt_match_play")).toBe(0);
-  }, 60_000);
-
-  it("Rack-n-Stack in a Points cup — refused, not written", async () => {
+  // Match play in a points cup was the first case here until PR 5 opened it
+  // (ruling 5). It is now in the admitted list below; rack is the head-to-head
+  // format a points cup still refuses.
+  it("Rack-n-Stack in a Points cup — refused, named, not written", async () => {
     const err = await refusal(pointsCup, "gtt_rack_n_stack");
+    expect(err.code).toBe("BAD_REQUEST");
     expect(err.message).toMatch(/^A Points cup can't hold Rack-n-Stack\./);
     expect(await gamesIn(pointsCup, "gtt_rack_n_stack")).toBe(0);
   }, 60_000);
@@ -83,6 +80,7 @@ describe("games.create refuses a format its cup cannot hold (#1304)", () => {
       [pointsCup, "gtt_stroke_play"],
       [pointsCup, "gtt_pickem"],
       [pointsCup, "gtt_manual"],
+      [pointsCup, "gtt_match_play"], // PR 5
       [matchCup, "gtt_match_play"],
       [matchCup, "gtt_rack_n_stack"],
       [matchCup, "gtt_pickem"],

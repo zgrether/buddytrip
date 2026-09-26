@@ -48,7 +48,7 @@ describe("match pairing column header", () => {
         avatarIconOf={new Map()}
         teamForSlot={over?.teamForSlot ?? teamForSlot}
         maxMatches={24}
-        twoTeams
+        inCup
         teamedUserIds={new Set(["u1", "u2"])}
         openSelector={() => {}}
         expanded

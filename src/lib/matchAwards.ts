@@ -78,3 +78,41 @@ export function tallyMatchAwardsDetailed(
     })
   );
 }
+
+/**
+ * Which cup teams a match game gets a result row for (PR 5) — the "didn't play"
+ * half of the award.
+ *
+ * A 0 means PLAYED AND LOST; a missing row means WASN'T IN IT. They are
+ * different facts, and a board that reads both as 0 is the empty-is-not-unknown
+ * mistake (CLAUDE.md). The finalize used to write a row for every team in the
+ * cup, so in a three-team points race a team in none of the game's matches
+ * banked a scored 0 and the finish push listed it last.
+ *
+ * - **Head to head** (a Match Play cup): both teams, always. The game IS between
+ *   the cup's two teams, so neither is ever "not in it" — unchanged from before.
+ * - **Points race**: the teams a paired side resolves to (`sideUnit`), whether or
+ *   not that side has won anything yet. A team in no match is absent.
+ *
+ * Can return EMPTY (a points race where no side resolves to a team). The caller
+ * must then write nothing — an empty scoped write deletes the game's existing
+ * team rows, which is the production wipe the old all-teams rule was built to
+ * prevent.
+ */
+export function teamsInGame(
+  matches: readonly { side_a: unknown; side_b: unknown }[],
+  sideTeam: (s: SideRef) => string | undefined,
+  cupTeamIds: readonly string[],
+  headToHead: boolean,
+): string[] {
+  if (headToHead) return [...cupTeamIds];
+  const inGame = new Set<string>();
+  for (const m of matches) {
+    for (const side of [m.side_a, m.side_b] as (SideRef | null)[]) {
+      if (!side?.id) continue;
+      const team = sideTeam(side);
+      if (team) inGame.add(team);
+    }
+  }
+  return cupTeamIds.filter((id) => inGame.has(id));
+}

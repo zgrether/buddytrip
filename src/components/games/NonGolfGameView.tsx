@@ -37,6 +37,7 @@ import {
 import type { PointsMatch } from "@/components/games/MatchPointsRow";
 import { isPlacement, isPerMatch, effectiveDistribution, projectableMatchShare, type PointsDistribution } from "@/lib/pointsDistribution";
 import { tallyMatchAwards, type SideRef as MatchSideRef } from "@/lib/matchAwards";
+import { sideUnit } from "@/lib/sideUnit";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
 import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
 import { BracketScoringSurface } from "@/components/games/bracket/BracketScoringSurface";
@@ -706,17 +707,14 @@ export function NonGolfGameView() {
   // applies (`onMatchResultPick`) — through the SAME pure `tallyMatchAwards`
   // the persisted write and the board's own live projection call, so this
   // row, the board pill, and the eventual saved result can't disagree about
-  // the award rule itself (CLAUDE.md #8). `sideTeam`'s 2v2 resolution (a
-  // side's team via its play_group's first member) mirrors the server-side
-  // version in `matchAwards.ts`/`liveProjection.ts` exactly.
+  // the award rule itself (CLAUDE.md #8). `sideTeam`'s 2v2 resolution is the
+  // ONE pair rule (`sideUnit`) the finalize and the board projection also call —
+  // it used to be "the first member" here and "the first row with a team" there,
+  // which only agreed while a pair could not span teams.
   const matchesProjection = useMemo(() => {
     if (!isMatches || matchesShare == null) return null;
-    const pgTeam = new Map<string, string>();
-    for (const [pg, members] of membersOfSide) {
-      const first = members[0];
-      const t = first ? teamByUser[first] : null;
-      if (t) pgTeam.set(pg, t);
-    }
+    const pgTeam = new Map<string, string | null>();
+    for (const [pg, members] of membersOfSide) pgTeam.set(pg, sideUnit(members, (id) => teamByUser[id]));
     const sideTeam = (s: MatchSideRef): string | undefined =>
       (s.type === "play_group" ? pgTeam.get(s.id) : teamByUser[s.id]) ?? undefined;
     return tallyMatchAwards(
@@ -1212,6 +1210,7 @@ export function NonGolfGameView() {
                   draft={configDraft.matches}
                   setDraft={(fn) => setMatchesDraft(fn(configDraft.matches))}
                   teams={teams}
+                  headToHead={scoringModel === "match_play"}
                   rosterByTeam={rosterByTeam}
                   nameMap={matchesNameMap}
                   colorMap={matchesColorMap}

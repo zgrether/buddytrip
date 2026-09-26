@@ -6,6 +6,7 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { rollupMatchPlay, type ProjMatch, type CannotProjectReason } from "@/lib/gameProjection";
 import { playerStats, rackProjectedTeamPoints, rackSides, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
+import { playGroupUnits } from "@/lib/sideUnit";
 import {
   liveMatchPointsPerMatch,
   liveRackPointsPerSlot,
@@ -417,14 +418,9 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Project
   for (const p of parts) hcap.set(p.user_id, effectiveStrokes(p));
   for (const pg of playGroups) hcap.set(pg.id, effectiveStrokes(pg));
 
-  // play_group → team (2v2): resolve a pair's team via any member (both partners
-  // share a team in a two-team competition).
-  const pgTeam = new Map<string, string>();
-  for (const p of parts) {
-    if (!p.play_group_id || pgTeam.has(p.play_group_id)) continue;
-    const t = userTeam.get(p.user_id);
-    if (t) pgTeam.set(p.play_group_id, t);
-  }
+  // play_group → its unit (2v2), by the ONE rule the finalize and both game pages
+  // use (`sideUnit`): the members' team only when they all share it.
+  const pgTeam = playGroupUnits(parts, (id) => userTeam.get(id));
   const sideTeam = (s: SideRef | null): string | null => {
     if (!s?.id) return null;
     return (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? null;
@@ -490,12 +486,8 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Project
 function projectMatches(g: LiveProjectionInput, data: GameProjectionData): ProjectionOutcome {
   const { matches, parts, userTeam } = data;
 
-  const pgTeam = new Map<string, string>();
-  for (const p of parts) {
-    if (!p.play_group_id || pgTeam.has(p.play_group_id)) continue;
-    const t = userTeam.get(p.user_id);
-    if (t) pgTeam.set(p.play_group_id, t);
-  }
+  // The ONE pair rule (`sideUnit`), as in `projectMatch` above.
+  const pgTeam = playGroupUnits(parts, (id) => userTeam.get(id));
   const sideTeam = (s: SideRef): string | undefined =>
     (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? undefined;
 
