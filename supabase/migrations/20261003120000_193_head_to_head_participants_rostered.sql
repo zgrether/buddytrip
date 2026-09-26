@@ -81,7 +81,7 @@ BEGIN
    WHERE g.id = NEW.game_id;
 
   -- A standalone game, or a points competition: nothing to check.
-  IF v_competition_id IS NULL OR v_scoring_model IS DISTINCT FROM 'match_play' THEN
+  IF v_competition_id IS NULL THEN -- MUTANT M3: points cups refused too
     RETURN NEW;
   END IF;
 
