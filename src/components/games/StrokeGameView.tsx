@@ -1393,7 +1393,10 @@ export function StrokeGameView() {
            * honest state is none rather than a roster of settings that score
            * nothing. Recorded as a decision in #1335 rather than left as a gap.
            */
-          settingsRows={<>{!isScramble && groupingsRow}{pointDistributionRow}{!isScramble && handicapsRow}</>}
+          // Point Distribution only in a competition: a side game has no points
+          // to distribute (ruling 27; Zach's look on PR 6b). Same gate the page
+          // applies to Total Points and the BOARD roll-up.
+          settingsRows={<>{!isScramble && groupingsRow}{gameCompetitionId && pointDistributionRow}{!isScramble && handicapsRow}</>}
           rulesValue={configDraft.rulesForToday}
           onRulesChange={setRulesDraft}
           saveBar={

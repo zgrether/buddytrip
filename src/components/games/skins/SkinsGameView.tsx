@@ -722,28 +722,31 @@ export function SkinsGameView() {
                   so the row reads "resolved" either way rather than nagging.
                   Capacity is the TEAM count, because the cup scores the team
                   rows this game banks. */}
-              <ChecklistRow
-                icon={Scale}
-                title="Point Distribution"
-                subtitle={
-                  distIsWta
-                    ? "Winner takes all"
-                    : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
-                }
-                state="resolved"
-                expanded={openAccordion === "distribution"}
-                onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
-                testId="row-point-distribution"
-              >
-                <FormatPointsPanel
-                  game={gameQ.data as unknown as GameRow}
-                  canEdit={canEdit}
-                  controlled={placementControlled}
-                  part="distribution"
-                  winnerTakesAll
-                  capacity={teamPlaceCapacity(teamsQ.data?.length)}
-                />
-              </ChecklistRow>
+              {/* Competition only (PR 6b, ruling 27): a side game has no points. */}
+              {competitionId && (
+                <ChecklistRow
+                  icon={Scale}
+                  title="Point Distribution"
+                  subtitle={
+                    distIsWta
+                      ? "Winner takes all"
+                      : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
+                  }
+                  state="resolved"
+                  expanded={openAccordion === "distribution"}
+                  onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
+                  testId="row-point-distribution"
+                >
+                  <FormatPointsPanel
+                    game={gameQ.data as unknown as GameRow}
+                    canEdit={canEdit}
+                    controlled={placementControlled}
+                    part="distribution"
+                    winnerTakesAll
+                    capacity={teamPlaceCapacity(teamsQ.data?.length)}
+                  />
+                </ChecklistRow>
+              )}
               <ChecklistRow
                 icon={Users}
                 title="Groupings"

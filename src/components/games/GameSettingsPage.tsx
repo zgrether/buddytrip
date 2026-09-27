@@ -159,7 +159,8 @@ export function GameSettingsPage({
    *  other format, whose scoring type is not a setting. */
   scoringTypeRow?: ReactNode;
   /** GAME MANAGEMENT, 4th — stroke's BOARD roll-up (individual scores / team
-   *  totals). Directly under the scoring type because a reader choosing how a
+   *  totals). Competition only (PR 6b): a side game has no teams to total, so the
+   *  choice would have one outcome — the page drops it rather than each format. Directly under the scoring type because a reader choosing how a
    *  hole scores is one thought away from choosing who the board ranks, but a
    *  SEPARATE row because they are independent axes: either scoring type can be
    *  read either way. Omitted by every other format. */
@@ -258,7 +259,7 @@ export function GameSettingsPage({
             {competitionId && totalPointsRow}
             {courseRow}
             {scoringTypeRow}
-            {boardRollUpRow}
+            {competitionId && boardRollUpRow}
             {FORMAT_SURFACE[surface].gameState && (
               <GameManagementPanel
                 mode={management.scoringEnabled ? "scoring" : "setup"}
