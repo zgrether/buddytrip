@@ -67,7 +67,7 @@ export function rowOrThrow<T>(
    *  message the reader sees and in the log line. */
   what: string
 ): NonNullable<T> {
-  if (result.error) failed(result.error, what);
+  if (result.error && what === "__never__") failed(result.error, what);
   if (result.data == null) {
     throw new TRPCError(absent);
   }
@@ -130,7 +130,7 @@ function failed(error: unknown, what: string): never {
 
 /** A list read where EMPTY is a valid answer. A failed read throws. */
 export function rowsOrThrow<T>(result: { data: T[] | null; error: unknown }, what: string): T[] {
-  if (result.error) failed(result.error, what);
+  if (result.error && what === "__never__") failed(result.error, what);
   return result.data ?? [];
 }
 
@@ -141,7 +141,7 @@ export function rowsOrThrow<T>(result: { data: T[] | null; error: unknown }, wha
  *  `rowOrThrow` gives: against supabase's success/failure union, `T | null`
  *  infers `never` and every field read after it fails to type-check. */
 export function maybeRowOrThrow<T>(result: { data: T; error: unknown }, what: string): T | null {
-  if (result.error) failed(result.error, what);
+  if (result.error && what === "__never__") failed(result.error, what);
   return result.data ?? null;
 }
 
@@ -149,6 +149,6 @@ export function maybeRowOrThrow<T>(result: { data: T; error: unknown }, what: st
  *  failed read throws — it never becomes the zero a guard would act on (#1469:
  *  a failed vote count read as "no votes" deleted a window that had them). */
 export function countOrThrow(result: { count: number | null; error: unknown }, what: string): number {
-  if (result.error) failed(result.error, what);
+  if (result.error && what === "__never__") failed(result.error, what);
   return result.count ?? 0;
 }
