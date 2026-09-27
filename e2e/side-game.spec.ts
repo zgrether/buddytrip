@@ -139,10 +139,17 @@ test("side game spine — create → set up → live → score → finalize → 
     await page.getByRole("button", { name: "Confirm score" }).click();
   }
 
-  // 8. Back on the board it reads LIVE — a side game has no score broadcast, so
-  //    this is the board refetching on reveal.
-  await page.goto(`/trips/${tripId}?view=cup`);
-  await expect(page.getByTestId("games-section-on-tap")).toContainText(title, { timeout: 20_000 });
+  // 8. Back to the board BY THE APP'S OWN BACK BUTTON (not a reload) and it reads
+  //    LIVE. A score write calls no board invalidator, and a side game has no
+  //    score broadcast, so the ONLY thing that can move this row is the side
+  //    board refetching on reveal (SIDE_BOARD_QUERY, staleTime 0). A reload here
+  //    would fetch fresh anyway and prove nothing — which is why it is the back
+  //    button. Step 6 covers the other path (the invalidator after a save).
+  const board = page.getByTestId("games-section-on-tap");
+  for (let i = 0; i < 4 && !(await page.getByTestId("board-pane").isVisible()); i++) {
+    await page.getByTestId("game-back").click();
+  }
+  await expect(board).toContainText(title, { timeout: 20_000 });
 
   // 9. Holes 2–18 seeded (keypad already proven above): the owner shoots 4s, the
   //    member 5s, so the owner wins outright.
