@@ -37,11 +37,14 @@ export default defineConfig({
     { name: "setup", testMatch: /auth\.setup\.ts/ },
     {
       // The merge-blocking CI gate: the real-UI scoring SPINES — stroke
-      // (critical-path) and match-play (the reference format the config-checklist
-      // + future formats build on). The other e2e/*.spec.ts files are the
-      // deferred mocked set (Issue #29) and match no project, so they don't run.
+      // (critical-path), match-play (the reference format the config-checklist
+      // + future formats build on), and the SIDE GAME (PR 6: a game with no
+      // competition, created → live → scored → finalized → winner shown — the
+      // spec that would have caught side games reading as stuck). The other
+      // e2e/*.spec.ts files are the deferred mocked set (Issue #29) and match no
+      // project, so they don't run.
       name: "critical-path",
-      testMatch: /(critical-path|match-play)\.spec\.ts/,
+      testMatch: /(critical-path|match-play|side-game)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
       dependencies: ["setup"],
     },

@@ -182,9 +182,13 @@ seam, never on a calendar.
 
 - Every new tRPC router gets a Vitest unit test before the task is considered done
 - Every new database query gets tested against the test DB the suite uses
-- **Critical-path E2E must stay green in CI (merge-blocking).** Three Playwright
+- **Critical-path E2E must stay green in CI (merge-blocking).** Four Playwright
   specs run merge-blocking — `e2e/critical-path.spec.ts` (auth → stroke game →
-  scores → scorecard), `e2e/match-play.spec.ts`, and `e2e/chat-action.spec.ts`
+  scores → scorecard), `e2e/match-play.spec.ts`, `e2e/side-game.spec.ts` (a game
+  with NO competition: create → set up → live → score → finalize → winner shown
+  in Completed — PR 6's definition of done, added after side games read as
+  stuck because every "tell the board" call was `if (competitionId)`), and
+  `e2e/chat-action.spec.ts`
   (chat opens as an overlay without changing the selected tab, and closing —
   including via back — returns to it, on both the desktop and mobile chrome
   variants) — guarding the assembled spine is reachable, the class of break
@@ -194,10 +198,10 @@ seam, never on a calendar.
   aspirational and unmet.) E2E auth is a `storageState` login as `test-owner`
   (`e2e/auth.setup.ts`); tests seed a unique trip and tear it down. The other
   13 `e2e/*.spec.ts` are a deferred, mock-based set no Playwright project runs
-  yet.
+  yet (the count is of those deferred files, and the side-game spec is not one).
 - Tests live next to what they test (`trips.test.ts` alongside `trips.ts`)
 - No task is considered complete until its tests pass
-- CI runs Vitest (full) + the three merge-blocking Playwright specs on every
+- CI runs Vitest (full) + the four merge-blocking Playwright specs on every
   push via GitHub Actions
 - **Local-stack test conventions (learned the hard way, ~6× this refactor).**
   CI and local dev both run the server-router suites against an EPHEMERAL LOCAL
