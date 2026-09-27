@@ -1173,8 +1173,15 @@ These patterns have been established through prior work. Follow them exactly —
       untouched by this.
     - **A broadcast failure must never roll back a write.** Two independent layers:
       `realtime.send` already swallows its own errors (`RAISE WARNING`), and the trigger
-      body has its own `WHEN OTHERS` handler. Standalone games (~40% of prod) simply
-      early-return — the null-competition path is the COMMON case, not an edge case.
+      body has its own `WHEN OTHERS` handler. A game with no competition simply
+      early-returns — and since PR 6b that is a **side game**, the path the Games page
+      exists for (ruling 1), so it gets **no live broadcast**: its section refreshes on
+      the backstop poll and local-mutation invalidation until a trip-scoped topic exists.
+      **This line used to say "Standalone games (~40% of prod) … the COMMON case", and
+      it was false twice when measured — 0 of 40 games, then 0 of 60 (2026-09-27): no
+      game could be created without a competition through any screen.** It was the
+      claim that seeded the build plan's wrong premise about side games, which is why
+      the correction says so rather than silently changing a number.
     - **The topic string is a two-sided contract** between the SQL trigger and
       `scoreEventsTopic()`, and a mismatch fails SILENTLY — scores still save, the board
       still renders, live updates just stop. `broadcastScoreEvents.test.ts` imports the
