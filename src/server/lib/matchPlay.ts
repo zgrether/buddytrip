@@ -268,10 +268,6 @@ async function matchPlayResults(
     await supabase.from("games").select("competition_id, points_distribution, points_total").eq("id", gameId).maybeSingle(),
     "game"
   );
-  const writeTeams =
-    gameInfo?.competition_id && isPerMatch(gameInfo.points_distribution)
-      ? await prepareTeamMatchPoints(supabase, gameId, gameInfo.competition_id as string)
-      : null;
 
   // Replace game_results for the processed sides only — when skipComplete, a
   // frozen match's rows are left intact; otherwise the whole game is rewritten.
@@ -290,6 +286,11 @@ async function matchPlayResults(
     matchUpdates,
     onFailure,
   });
+
+  const writeTeams =
+    gameInfo?.competition_id && isPerMatch(gameInfo.points_distribution)
+      ? await prepareTeamMatchPoints(supabase, gameId, gameInfo.competition_id as string)
+      : null;
 
   // Competition adapter: if this game is in a per_match competition, compute
   // per-team match totals and write entity_type='team' rows to game_results.
