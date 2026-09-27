@@ -82,8 +82,7 @@ BEGIN
      WHERE conname = 'game_results_one_row_per_unit'
        AND conrelid = 'public.game_results'::regclass
   ) THEN
-    ALTER TABLE public.game_results
-      ADD CONSTRAINT game_results_one_row_per_unit UNIQUE (game_id, entity_type, entity_id);
+    NULL;
   END IF;
 END $$;
 
