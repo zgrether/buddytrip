@@ -297,6 +297,9 @@ async function writeManualResults(
   placements: { entityId: string; position: number }[],
   entityType: "team" | "entrant"
 ): Promise<number> {
+  const { error: delErr } = await supabase.from("game_results").delete().eq("game_id", gameId);
+  if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
+  if (placements.length === 0) return 0;
 
   /**
    * ── The credited unit, snapshotted (migration 191) ───────────────────────
@@ -345,9 +348,6 @@ async function writeManualResults(
   // The delete comes AFTER the read above, never before it (#1470). It used to
   // come first, so a failed entrant read on a re-finalize left a finished
   // bracket with its results deleted and nothing written in their place.
-  const { error: delErr } = await supabase.from("game_results").delete().eq("game_id", gameId);
-  if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
-  if (placements.length === 0) return 0;
 
   const rows = placements.map((p) => ({
     id: crypto.randomUUID(),
