@@ -124,10 +124,22 @@ describe("reconcileClinchClaim — the held team is no longer decided", () => {
     await claimClinchNotification(ctx.admin, compId, winner);
 
     // Flip g1 and g2 to loser instead — loser now has the 2, winner has 1.
-    await ctx.admin.from("game_results").update({ entity_id: loser }).eq("game_id", gameIds[0]).eq("entity_id", winner);
-    await ctx.admin.from("game_results").update({ entity_id: winner }).eq("game_id", gameIds[0]).eq("entity_id", loser);
-    await ctx.admin.from("game_results").update({ entity_id: loser }).eq("game_id", gameIds[1]).eq("entity_id", winner);
-    await ctx.admin.from("game_results").update({ entity_id: winner }).eq("game_id", gameIds[1]).eq("entity_id", loser);
+    //
+    // A real SWAP, through a placeholder id. This used to be two plain updates
+    // (winner→loser, then loser→winner), which never swapped anything: the
+    // first made two LOSER rows and the second turned both into WINNER rows, so
+    // each game held two rows for one team — a state the app cannot produce.
+    // Migration 194's one-row-per-unit constraint refuses that, which is how it
+    // was found. Every write is checked so a refusal cannot pass silently again.
+    const swap = async (gameId: string) => {
+      const tmp = `swap-${gameId}`;
+      for (const [from, to] of [[winner, tmp], [loser, winner], [tmp, loser]]) {
+        const { error } = await ctx.admin.from("game_results").update({ entity_id: to }).eq("game_id", gameId).eq("entity_id", from);
+        if (error) throw new Error(`swap ${from}→${to}: ${error.message}`);
+      }
+    };
+    await swap(gameIds[0]);
+    await swap(gameIds[1]);
 
     await reconcileClinchClaim(compId, ctx.admin);
     // The claim named WINNER, and winner is no longer decided (loser is, now) —
