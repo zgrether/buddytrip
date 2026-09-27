@@ -91,7 +91,10 @@ describe("competitions router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("create — duplicate per trip rejected (MVP one-per-trip)", async () => {
+  // The READ-FIRST branch: the common case, refused with a sentence before the
+  // insert. Since migration 195 it is no longer the guard — the database is, and
+  // `competitions.oneCupPerTrip.test.ts` pins that refusal and the race past this one.
+  it("create — a second competition on the trip is refused, readably (read-first branch)", async () => {
     const caller = ctx.caller();
     await expect(
       caller.competitions.create({ tripId, name: "Second one" })

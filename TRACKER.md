@@ -73,6 +73,17 @@ R1's shape has changed under it — see §2. What remains:
 
 ### Composable competitions — carried notes (the build plan lives outside the repo)
 
+- **One competition per trip is a DATABASE rule, and lifting it is a deliberate decision.**
+  `competitions_one_per_trip` (UNIQUE (trip_id), migration 195, PR 6a — ruled 2026-09-22).
+  Before 195 it was a read-first `if` in `competitions.create`, whose comment called the
+  missing constraint deliberate so a *seasonal series* stayed possible; two concurrent creates
+  could pass it. A trip that one day wants a cup **and** a side points race, or a series, drops
+  the constraint **on purpose**, and in the same change decides:
+  - what Team chat's "your team" becomes (`viewerTeam.ts` picks the earliest competition);
+  - what *counts toward* offers at game creation (PR 6 assumes one competition to name);
+  - PR 7's create flow, which assumes one.
+  Not drift to be tidied: a limit the model checks.
+
 - **PR 7's vocabulary sweep has strings waiting for it.** PR 7 settles the user-facing names
   (**head to head**, **points race**). PR 4 (#1447) added user-facing copy in today's words, which
   the rename has to find, or a screen will say "Match Play cup" next to one that says "head to

@@ -43,7 +43,13 @@ afterAll(async () => {
 });
 
 async function makeComp(name: string): Promise<{ comp: string; blue: string; red: string }> {
-  const comp = await ctx.createCompetition(tripId, name);
+  // A trip OF ITS OWN, made here rather than reusing the file's: this runs inside
+  // the test, and a retried test (CI retries a PostgREST 502) must not try to put
+  // a second cup on the trip its first attempt already used — a trip holds one
+  // (migration 195). The helpers below read `tripId`, so repointing it is enough.
+  const cup = await ctx.createCupTrip({ name, members: [["planner", "Organizer"], "member", "outsider"] });
+  tripId = cup.tripId;
+  const comp = cup.competitionId;
   const blue = await ctx.createTeam(comp, "Blue", { shortName: "BLU", color: "#3b82f6" });
   const red = await ctx.createTeam(comp, "Red", { shortName: "RED", color: "#ef4444" });
   await ctx.admin.from("team_assignments").insert([
