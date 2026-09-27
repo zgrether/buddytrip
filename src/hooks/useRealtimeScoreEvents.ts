@@ -101,6 +101,14 @@ export const SCORE_EVENT = "score_changed";
 export const scoreEventsTopic = (competitionId: string) => `competition_events:${competitionId}`;
 
 /**
+ * Topic for a SIDE game's events: a game with no competition broadcasts on its
+ * TRIP (migration 196, #1498). Keyed by trip because that is the board a side
+ * game is shown on, the Games page. Its own prefix, distinct from both
+ * `competition:{tripId}` (useRealtimeCompetition) and `competition_events:`.
+ */
+export const tripEventsTopic = (tripId: string) => `trip_events:${tripId}`;
+
+/**
  * Join `topic` (creating the channel if this is the first caller) and return a
  * release fn. EXPORTED for tests: the ref-counting is the part with real failure
  * modes — a premature teardown silently kills live updates for a surface that is

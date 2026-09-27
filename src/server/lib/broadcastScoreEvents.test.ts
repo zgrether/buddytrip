@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import { TestContext } from "../../__tests__/helpers/test-setup";
-import { scoreEventsTopic, SCORE_EVENT } from "../../hooks/useRealtimeScoreEvents";
+import { scoreEventsTopic, SCORE_EVENT, tripEventsTopic } from "../../hooks/useRealtimeScoreEvents";
 
 /**
  * Migration 096 — the score-event broadcast trigger, end to end.
@@ -33,6 +33,8 @@ let soloGameId: string;
 
 let rt: SupabaseClient;
 let channel: RealtimeChannel;
+/** The TRIP topic, where a side game broadcasts since migration 196 (#1498). */
+let tripChannel: RealtimeChannel | null = null;
 /**
  * Whether a Realtime websocket is actually reachable in this environment.
  *
@@ -60,6 +62,16 @@ function requireRealtime(t: { skip: (note?: string) => void }): boolean {
 }
 /** Every broadcast seen on the competition's topic, in arrival order. */
 let received: Array<Record<string, unknown>> = [];
+/** Every broadcast seen on the TRIP topic (side games, 196). */
+let tripReceived: Array<Record<string, unknown>> = [];
+
+/** Wait for `n` side-game broadcasts on the trip topic, or give up. */
+async function waitForTrip(n: number, ms = 8000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (tripReceived.length < n && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
 
 const rid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -135,6 +147,25 @@ beforeAll(async () => {
       break;
     }
   }
+
+  // The side-game half (196, #1498): this trip carries a cup AND a game with no
+  // competition, which is exactly the mixed Games page. Joined only once Realtime
+  // is known to be up, so an unreachable stack still skips rather than fails.
+  if (realtimeUp) {
+    const tc = rt.channel(tripEventsTopic(tripId));
+    tc.on("broadcast", { event: SCORE_EVENT }, (m) => {
+      tripReceived.push((m?.payload ?? {}) as Record<string, unknown>);
+    });
+    const tripStatus = await new Promise<string>((resolve) => {
+      const t = setTimeout(() => resolve("LOCAL_TIMEOUT"), 15_000);
+      tc.subscribe((s) => {
+        clearTimeout(t);
+        resolve(s);
+      });
+    });
+    if (tripStatus !== "SUBSCRIBED") throw new Error(`trip topic did not subscribe: ${tripStatus}`);
+    tripChannel = tc;
+  }
 }, 120_000);
 
 /**
@@ -147,9 +178,11 @@ beforeAll(async () => {
 beforeEach(async () => {
   await settle(1500);
   received = [];
+  tripReceived = [];
 });
 
 afterAll(async () => {
+  if (tripChannel) await rt.removeChannel(tripChannel);
   if (channel) await rt.removeChannel(channel);
   await ctx?.cleanup();
 });
@@ -222,12 +255,14 @@ describe("096 broadcast trigger — score writes", () => {
     await ctx.admin.from("score_entries").delete().eq("id", id);
   }, 60_000);
 
-  it("stays silent for a STANDALONE game, and does not fail the write", async (t) => {
+  // REVISED by 196 (#1498). This was "stays silent for a STANDALONE game": a
+  // game with no competition had no board. It is now a SIDE game on the trip's
+  // Games page, so it broadcasts on the TRIP topic and still never on the cup's.
+  it("a SIDE game's score reaches the TRIP topic, never the cup's, and the write succeeds", async (t) => {
     if (!requireRealtime(t)) return;
     const id = rid("se");
 
-    // 40% of production games have no competition — this is the common path, not
-    // an edge case. The write must succeed and nothing may be emitted.
+    // The write must succeed whatever the broadcast does.
     const ins = await ctx.admin.from("score_entries").insert({
       id,
       game_id: soloGameId,
@@ -241,8 +276,15 @@ describe("096 broadcast trigger — score writes", () => {
     const { data } = await ctx.admin.from("score_entries").select("value").eq("id", id).single();
     expect(data?.value).toBe(5); // the score actually landed
 
+    await waitForTrip(1);
     await settle();
+    // Not on the cup's topic: a side game is no part of it.
     expect(received).toEqual([]);
+    // On the trip's: the signal and only the signal (public topic). `id` is
+    // realtime.send's own message id, as in the cup case above.
+    expect(tripReceived.length).toBeGreaterThan(0);
+    expect(Object.keys(tripReceived[0]).sort()).toEqual(["gameId", "id", "kind", "tripId"]);
+    expect(tripReceived[0]).toMatchObject({ gameId: soloGameId, tripId, kind: "score" });
 
     await ctx.admin.from("score_entries").delete().eq("id", id);
   }, 60_000);
@@ -380,12 +422,12 @@ describe("109 broadcast trigger — a game appears or disappears", () => {
     expect(received[0].kind).toBe("game");
   }, 60_000);
 
-  it("stays silent for a STANDALONE game on both insert and delete", async (t) => {
+  // REVISED by 196 (#1498): a SIDE game appearing or disappearing moves the
+  // trip's Games page, so both reach the TRIP topic. The DELETE is the case worth
+  // having: the game row is gone, so the trip can only be read off OLD.
+  it("a SIDE game's insert and delete reach the TRIP topic, never the cup's", async (t) => {
     if (!requireRealtime(t)) return;
 
-    // ~40% of production games have no competition. There is no board to update,
-    // so the null-competition early return must still hold on the new triggers —
-    // and the writes must still succeed.
     const id = rid("game-solo-new");
     const ins = await ctx.admin.from("games").insert({
       id,
@@ -399,8 +441,14 @@ describe("109 broadcast trigger — a game appears or disappears", () => {
     const del = await ctx.admin.from("games").delete().eq("id", id);
     expect(del.error).toBeNull();
 
+    await waitForTrip(2);
     await settle();
     expect(received).toEqual([]);
+    const mine = tripReceived.filter((p) => p.gameId === id).map(({ gameId, tripId: t, kind }) => ({ gameId, tripId: t, kind }));
+    expect(mine).toEqual([
+      { gameId: id, tripId, kind: "game" },
+      { gameId: id, tripId, kind: "game" },
+    ]);
   }, 60_000);
 });
 
@@ -536,11 +584,11 @@ describe("118 broadcast trigger — a bracket pick", () => {
     await ctx.admin.from("bracket_entrants").delete().eq("game_id", compGameId);
   }, 60_000);
 
-  it("stays silent for a STANDALONE bracket", async (t) => {
+  // Since 196 (#1498) a game with no competition broadcasts on its TRIP, so
+  // "silent" here means silent on the CUP's topic, which is what `received` hears.
+  it("a bracket with no competition sends nothing on the cup's topic", async (t) => {
     if (!requireRealtime(t)) return;
 
-    // The null-competition early return, on the newest trigger. ~40% of
-    // production games have no competition, so this path is the common case.
     const matchId = await seedDraw(soloGameId);
     await settle(1500);
     received = [];
@@ -652,7 +700,8 @@ describe("173 broadcast trigger — a Matches result", () => {
     await ctx.admin.from("game_matches").delete().eq("id", matchId);
   }, 60_000);
 
-  it("stays silent for a STANDALONE game", async (t) => {
+  // Since 196 (#1498): silent on the CUP's topic; a side game uses its trip's.
+  it("a match with no competition sends nothing on the cup's topic", async (t) => {
     if (!requireRealtime(t)) return;
 
     const matchId = await seedMatch(soloGameId);
@@ -807,11 +856,12 @@ describe("160 broadcast trigger — a pick'em result", () => {
     await ctx.admin.from("pickem_slate_games").delete().eq("game_id", compGameId);
   }, 60_000);
 
-  it("a STANDALONE pick'em game emits nothing — no board to update", async (t) => {
+  // Since 196 (#1498) a game with no competition broadcasts on its TRIP, so this
+  // pins only that the CUP's topic hears nothing. (Pick'em cannot be a side game;
+  // this row is a fixture state, kept because the trigger must still not misroute it.)
+  it("a pick'em game with no competition sends nothing on the cup's topic", async (t) => {
     if (!requireRealtime(t)) return;
 
-    // ~40% of production games have no competition. The null-competition path is
-    // the common case, not an edge case, and it must stay quiet and cheap.
     const sgId = await seedSlateGame(soloGameId);
     await settle(1500);
     received = [];
