@@ -22,8 +22,9 @@ const SCOREBOARD_STYLES = [
 /**
  * competitions — top-level container per trip.
  *
- * MVP rule: one competition per trip, enforced in this router (the schema
- * allows multiple to leave the door open for future series-style usage).
+ * One competition per trip — enforced by the DATABASE since migration 195
+ * (`competitions_one_per_trip`, UNIQUE (trip_id)). The router's read-first check
+ * below is for the friendly message only; the constraint is what holds it.
  */
 export const competitionsRouter = router({
   /**
@@ -300,13 +301,17 @@ export const competitionsRouter = router({
     )
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
-      // MVP: only one competition per trip. The DB schema allows N for
-      // future-proofing (e.g. seasonal series), but the UI is built for 1.
+      // One competition per trip. Since migration 195 the DATABASE holds this
+      // (`competitions_one_per_trip`); this read-first check only gives the
+      // common case a readable refusal. It is not the guard: two organizers
+      // tapping Create at once both pass it, and the constraint refuses the
+      // second insert — mapped to the same CONFLICT below. (Before 195 this `if`
+      // WAS the only guard, and its comment said the missing constraint was
+      // deliberate, to keep a seasonal series possible. That door is now a
+      // decision recorded in TRACKER.md, not an unguarded race.)
       //
-      // ── TEAM CHAT DEPENDS ON THIS GUARD ───────────────────────────────────
-      // Read this before relaxing it. There is no UNIQUE(competitions.trip_id)
-      // behind it — deliberately, so the seasonal series above stays possible —
-      // which makes this `if` the only thing holding the invariant.
+      // ── TEAM CHAT DEPENDS ON THIS RULE ────────────────────────────────────
+      // Read this before lifting it.
       //
       // "Your team" has to name exactly one team for the Team chat tab to be
       // unambiguous (`src/server/lib/viewerTeam.ts`, and it says the same thing
@@ -347,6 +352,15 @@ export const competitionsRouter = router({
         .select("id")
         .single();
 
+      // The race the read above cannot see: a concurrent create won, and the
+      // constraint (migration 195) refused this one. Same answer as the read-first
+      // branch, because it is the same fact.
+      if (insertErr?.code === "23505" && insertErr.message.includes("competitions_one_per_trip")) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A competition already exists for this trip",
+        });
+      }
       if (insertErr || !inserted) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",

@@ -15,11 +15,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * ── The rule, and the guard it rests on ───────────────────────────────────
  *
- * "The trip's competition" is the EARLIEST CREATED one. That is only
- * unambiguous because `competitions.create` refuses a second competition per
- * trip (`src/server/routers/competitions.ts`, the `CONFLICT` branch) — an
- * application guard, not a constraint. The schema allows N per trip and the
- * guard's own comment anticipates a future "seasonal series".
+ * "The trip's competition" is the EARLIEST CREATED one. That is unambiguous
+ * because a trip has at most one: `competitions_one_per_trip`, UNIQUE (trip_id),
+ * migration 195. (Until 195 this rested on an application guard in
+ * `competitions.create` — a read-first `if` two concurrent creates could both
+ * pass.) Lifting the constraint for a "seasonal series" is recorded in
+ * TRACKER.md as a deliberate decision, and this function is one of the places
+ * it has to change.
  *
  * TEAM CHAT DEPENDS ON THAT GUARD. With two competitions a person could hold
  * two team assignments in one trip, "your team" would name two rooms, and this
@@ -29,7 +31,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * holding assignments in two competitions of the SAME trip (3 hold them across
  * different trips, which is fine and expected).
  *
- * If that guard is ever relaxed, this function is one of the places that has to
+ * If that constraint is ever dropped, this function is one of the places that has to
  * change — and the Team tab is the surface where getting it wrong is visible to
  * a user rather than merely wrong in a colour.
  */
