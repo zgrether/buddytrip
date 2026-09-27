@@ -781,7 +781,7 @@ export function PickemGameView() {
   // standalone route or a cold deep-link there is no entry to pop and it exits
   // the app (#808). `oneFinalizePath.test.ts` enumerates every game surface and
   // fails the build for exactly this — it caught this file.
-  const exitToBoard = useExitToBoard(tripId, q.data?.game.competition_id as string | null);
+  const exitToBoard = useExitToBoard(tripId);
 
   /**
    * ── THE RESULTS AXIS, adopted wholesale rather than a column at a time ─────

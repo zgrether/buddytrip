@@ -65,6 +65,7 @@ import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { Participant } from "@/components/games/types";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
+import { gamesPageHref } from "@/lib/gameRoutes";
 
 const SKINS = "gtt_skins";
 
@@ -131,7 +132,6 @@ export function SkinsGameView() {
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid }
   );
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
-  const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   /**
    * THE GAME'S competition — read directly, never inferred from the trip.
    *
@@ -154,9 +154,9 @@ export function SkinsGameView() {
    *
    * A STANDALONE game keeps a null competition and gets no teams, which is
    * correct — it has none, and borrowing the trip's would be an inference with
-   * nothing behind it. The trip-level competition is read for exactly one thing,
-   * the board exit below, where "back to the leaderboard" is a trip-level idea
-   * rather than this game's.
+   * nothing behind it. The trip-level competition used to be read for the board
+   * exit alone; that exit is now the Games page for every game (`gamesPageHref`,
+   * PR 6b), so this view no longer reads the trip's cup at all.
    *
    * (Historical note worth keeping, because it misled me: on a shared LOCAL
    * stack this trip had two competitions, left by test fixtures, and the avatars
@@ -167,7 +167,6 @@ export function SkinsGameView() {
   const competitionId = gameQ.data
     ? (((gameQ.data as { competition_id?: string | null }).competition_id ?? undefined) || undefined)
     : undefined;
-  const tripCompetitionId = competition.data?.id as string | undefined;
   const teamsQ = trpc.teams.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
@@ -571,7 +570,7 @@ export function SkinsGameView() {
   // here is exactly the divergence #24 catalogues.
   const { isLocked: locked } = gameLockState({ status: gameQ.data?.status, correctionsOpen });
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
-  const exitToBoard = useExitToBoard(tripId, competitionId ?? tripCompetitionId ?? null);
+  const exitToBoard = useExitToBoard(tripId);
   const { finalize, isPending: finalizePending } = useGameFinalize({
     tripId,
     gameId: gid,
@@ -673,7 +672,7 @@ export function SkinsGameView() {
           canManageGame={canManageGame}
           onChanged={() => void refreshGame()}
           onScoresReset={refetchHoles}
-          onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+          onDeleted={() => router.push(gamesPageHref(tripId!))}
           nameValue={configDraft.name}
           onNameChange={setNameDraft}
           delegateValue={configDraft.delegates[0] ?? null}

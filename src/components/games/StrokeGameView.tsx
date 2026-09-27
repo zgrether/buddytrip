@@ -7,7 +7,7 @@ import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
-import { isScrambleFormat } from "@/lib/gameRoutes";
+import { gamesPageHref, isScrambleFormat } from "@/lib/gameRoutes";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
@@ -1038,7 +1038,7 @@ export function StrokeGameView() {
   // a second header. Handicaps/modifiers are inline panels now (P3 3.3), so there's no
   // drill-down that covers the bar. Standalone route keeps its headers.
   const inPanel = useInGamePanel();
-  const exitToBoard = useExitToBoard(tripId, gameCompetitionId);
+  const exitToBoard = useExitToBoard(tripId);
   const { finalize, isPending: finalizePending } = useGameFinalize({
     tripId,
     gameId: gameQ.data?.id as string | undefined,
@@ -1304,7 +1304,7 @@ export function StrokeGameView() {
           canManageGame={canManageGame}
           onChanged={() => void refreshGame()}
           onScoresReset={clearScores}
-          onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+          onDeleted={() => router.push(gamesPageHref(tripId!))}
           nameValue={configDraft.name}
           onNameChange={setNameDraft}
           delegateValue={configDraft.delegates[0] ?? null}

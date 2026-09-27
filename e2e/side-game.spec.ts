@@ -183,4 +183,39 @@ test("side game spine — create → set up → live → score → finalize → 
   const completed = page.getByTestId("games-section-completed");
   await expect(completed).toContainText(title, { timeout: 20_000 });
   await expect(completed.getByTestId("side-game-winners")).toContainText("E2E Owner");
+
+  // 12. The push's deep link, opened COLD: `game_finished` for a side game now
+  //     links to its panel over the Games page (it used to link to the game's
+  //     standalone route, whose exit landed on the Trip tab). Same URL shape
+  //     `gameUrl` builds, so this proves the target it sends people to opens.
+  await page.goto(`/trips/${tripId}?view=cup&game=${gameId}`);
+  await expect(page.getByTestId("game-title")).toContainText(title, { timeout: 20_000 });
+
+  // 13. Reopen for correction, the one step of a side game's life nothing else
+  //     walks. A reopened game stays `complete` with corrections open, so its row
+  //     stays in Completed and reads IN REVIEW in place of its winners.
+  const correct = page.getByTestId("game-correct").getByRole("button");
+  await expect(correct).toBeEnabled({ timeout: 20_000 });
+  await correct.click();
+  // Back to the board by the app's own back button, for as long as a game
+  // surface is still showing one; the section itself is the arrival signal.
+  for (let i = 0; i < 4 && !(await completed.isVisible()); i++) {
+    const back = page.getByTestId("game-back");
+    if (await back.isVisible()) await back.click();
+    else break;
+  }
+  const reviewRow = completed.getByTestId("open-game-panel").filter({ hasText: title });
+  await expect(reviewRow.getByTestId("game-in-review")).toBeVisible({ timeout: 20_000 });
+  await expect(reviewRow.getByTestId("side-game-winners")).toHaveCount(0);
+
+  // 14. Delete it, from its settings. You land on the GAMES page, not the Trip
+  //     tab: the destination used to be `competitionId ? leaderboard : trip
+  //     home`, and a side game has no competition.
+  await reviewRow.click();
+  await page.getByTestId("game-settings-gear").click();
+  await page.getByTestId("game-delete-btn").click();
+  await page.getByTestId("game-delete-confirm").click();
+  await expect(page).toHaveURL(/[?&]view=cup(&|$)/, { timeout: 20_000 });
+  await expect(page.getByTestId("start-competition-card")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("open-game-panel").filter({ hasText: title })).toHaveCount(0);
 });

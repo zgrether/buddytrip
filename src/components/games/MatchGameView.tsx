@@ -83,6 +83,7 @@ import { showToast } from "@/lib/toast";
 import type { OutcomeOverwrite } from "@/lib/outcomeReconcile";
 import { outcomeOverwriteNotice } from "@/components/games/outcomeOverwriteNotice";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
+import { gamesPageHref } from "@/lib/gameRoutes";
 
 // One unified match-play type (Refactor A1). 1v1-vs-2v2 is per-match, derived from
 // each match's side type — not the game type. `MATCH_PLAY_DOUBLES` is retired.
@@ -157,23 +158,7 @@ export function MatchGameView() {
   const me = useCurrentUser();
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
 
-  // Competition roster (Slice D): a competition game pairs from the players
-  // assigned to its teams, not the whole trip crew. Names still resolve from
-  // crew (the roster is a subset of trip members). All STRUCTURE — kept.
-  const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
-  const competitionId = competition.data?.id as string | undefined;
   const utils = trpc.useUtils();
-  const assignQ = trpc.teamAssignments.list.useQuery(
-    { tripId: tripId!, competitionId: competitionId! },
-    { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
-  );
-  // Teams (Slice D, ordered by created_at). A Ryder-cup match binds a side to a
-  // team: side A → team[0], side B → team[1]. That makes the pair picker
-  // constrainable to one team (no cross-team pair) and the strip team-colored.
-  const teamsQ = trpc.teams.list.useQuery(
-    { tripId: tripId!, competitionId: competitionId! },
-    { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
-  );
 
   const [gameId, setGameId] = useState<string | null>(search.get("game"));
   // #501 Part 1: delegate-aware canEdit (owner/org OR this game's delegate),
@@ -295,6 +280,33 @@ export function MatchGameView() {
   // it — not on the fast score cadence — so it caches as structure too). Only the
   // raw scores stay short, so a reopen refreshes them while the rest is instant.
   const gameQ = trpc.games.getById.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
+  // THE GAME'S competition, from its own row: never the trip's cup (PR 6b). This
+  // view used to read `competitions.getByTrip` and decide everything from that,
+  // which was the same answer while every game had a cup. A SIDE game on a trip
+  // that has one broke it: the view rendered the cup's standings header over a
+  // game that counts toward nothing. Null until the row loads, and null for a
+  // side game, which has no teams to fetch.
+  const gameCompId = (gameQ.data?.competition_id as string | null) ?? null;
+  // The game's competition ROW, for its scoring model. Fetched through the trip
+  // lookup because nothing reads a competition by id, and ADMITTED only when it is
+  // this game's: a side game gets null however many cups the trip has. (One cup
+  // per trip is enforced by migration 195, so a cup game always matches.)
+  const tripCompetitionQ = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompId });
+  const gameCompetition = gameCompId && tripCompetitionQ.data?.id === gameCompId ? tripCompetitionQ.data : null;
+  // Competition roster (Slice D): a competition game pairs from the players
+  // assigned to its teams, not the whole trip crew. Names still resolve from
+  // crew (the roster is a subset of trip members). All STRUCTURE — kept.
+  const assignQ = trpc.teamAssignments.list.useQuery(
+    { tripId: tripId!, competitionId: gameCompId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompId }
+  );
+  // Teams (Slice D, ordered by created_at). A Ryder-cup match binds a side to a
+  // team: side A → team[0], side B → team[1]. That makes the pair picker
+  // constrainable to one team (no cross-team pair) and the strip team-colored.
+  const teamsQ = trpc.teams.list.useQuery(
+    { tripId: tripId!, competitionId: gameCompId! },
+    { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompId }
+  );
   // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record(s).
   const { rows: teeRows, courseName: scorecardCourseName } = useScorecardTeeRows(tripId, gameQ.data);
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
@@ -440,7 +452,7 @@ export function MatchGameView() {
   // drifted — it used `gameQ.refetch()` where the other three used
   // `utils.games.getById.invalidate()` — which is the divergence-by-coincidence
   // #24 describes, in a handler nobody had reason to look at twice.
-  const { correct: correctGame, isPending: correctPending } = useOpenCorrection(tripId, gameId, competitionId);
+  const { correct: correctGame, isPending: correctPending } = useOpenCorrection(tripId, gameId, gameCompId);
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
     for (const c of crew.data ?? []) m.set(c.user_id, c.displayName ?? c.user?.name ?? "Player");
@@ -510,7 +522,6 @@ export function MatchGameView() {
   // Build-as-you-go (W-GAMEPAGE-01 §6.1): matches start at one and grow via
   // "+ Add match" — no pre-seeded count, so the old crew/roster match caps that
   // sized the initial draft are gone.
-  const gameCompId = (gameQ.data?.competition_id as string | null) ?? null;
 
   // Score/lifecycle events (#20) — see the note in RackGameView. `useRealtimeGame`
   // covers CONFIG; this covers SCORES, which is what moves the match state and the
@@ -614,7 +625,7 @@ export function MatchGameView() {
   );
   // Binding (`headToHead`) vs identity (`inCup`) — two questions that were one
   // `twoTeams` flag keyed on the team count; see `pairingShape` (PR 5).
-  const { headToHead, inCup } = pairingShape(!!gameCompId, competition.data?.scoring_model as string | undefined, teams.length);
+  const { headToHead, inCup } = pairingShape(!!gameCompId, gameCompetition?.scoring_model as string | undefined, teams.length);
   // user → team_id (the roster, from team_assignments).
   const teamOfUser = useMemo(() => {
     const m = new Map<string, string>();
@@ -1349,8 +1360,9 @@ export function MatchGameView() {
           utils.games.getById.invalidate({ tripId: tripId!, gameId: gameId! }),
           utils.matches.listByGame.invalidate({ tripId: tripId!, gameId: gameId! }),
         ]);
-        utils.games.listByTrip.invalidate({ tripId: tripId! });
-        if (competitionId) utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
+        // The ONE board invalidator (PR 6b): a rename on a SIDE game has to reach
+        // games.sideBoard too, which the hand-written pair here never did.
+        invalidateGameBoards(utils, { tripId: tripId!, competitionId: gameCompId });
       }
       // Delegates live in game_delegates (not the config hash), and neither cascade
       // above touches listOrganizers — so a delegate change would read stale until
@@ -1537,11 +1549,11 @@ export function MatchGameView() {
   // owner gear + scorecard) instead of rendering our own header. On a standalone
   // route (no provider) `inPanel` is false → we keep our own headers below.
   const inPanel = useInGamePanel();
-  const exitToBoard = useExitToBoard(tripId, gameCompId ?? competitionId ?? null);
+  const exitToBoard = useExitToBoard(tripId);
   const { finalize, isPending: finishing } = useGameFinalize({
     tripId,
     gameId,
-    competitionId,
+    competitionId: gameCompId,
     // Match REFETCHES its three reads rather than invalidating one — kept as-is
     // (it is what this view already did; swapping it would be an unrelated
     // change). The hook is what stops it being awaited.
@@ -1857,7 +1869,7 @@ export function MatchGameView() {
       {!cfgOpen && screen === "overview" && (
         <GamePageHeader
           tripId={tripId}
-          competitionId={competitionId}
+          competitionId={gameCompId}
           projection={{
             perTeam: projectionPerTeam,
             gameName: (gameQ.data?.name as string | undefined)?.trim() || (sided ? "2v2 Match Play" : "Singles Match Play"),
@@ -2053,7 +2065,7 @@ export function MatchGameView() {
             canManageGame={canManageGame && !!gameQ.data}
             onChanged={onSetupChanged}
             onScoresReset={clearScores}
-            onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+            onDeleted={() => router.push(gamesPageHref(tripId!))}
             nameValue={configDraft.name}
             onNameChange={setNameDraft}
             delegateValue={configDraft.delegates[0] ?? null}

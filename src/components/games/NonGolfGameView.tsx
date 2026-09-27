@@ -59,6 +59,7 @@ import { placementsFrom, pointsForPlacements } from "@/lib/placementGroups";
 import { reconcileOrderDraft } from "@/lib/teamDraft";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { gameLockState } from "@/lib/gameLifecycle";
+import { gamesPageHref } from "@/lib/gameRoutes";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
 
@@ -138,7 +139,7 @@ export function NonGolfGameView() {
   // Where posting a result leaves you. The three golf formats adopted this in
   // #806; non-golf kept a bare `router.back()` and so kept the cold-deep-link
   // exposure the hook exists to close (#808).
-  const exitToBoard = useExitToBoard(tripId, competitionId);
+  const exitToBoard = useExitToBoard(tripId);
 
   // Live standings. useRealtimeGame (below) covers this game's CONFIG; this
   // covers score/lifecycle events across the whole competition, which is what
@@ -1128,7 +1129,7 @@ export function NonGolfGameView() {
         canDelegate={canManageGame}
         canManageGame={canManageGame}
         onChanged={() => void refreshGame()}
-        onDeleted={() => router.push(`/trips/${tripId}/leaderboard`)}
+        onDeleted={() => router.push(gamesPageHref(tripId!))}
         // Scores wiped server-side → drop the local outcome the picker is
         // holding. Non-golf's counterpart to the golf formats' `clearScores`.
         //
