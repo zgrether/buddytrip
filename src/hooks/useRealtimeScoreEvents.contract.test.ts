@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { scoreEventsTopic, SCORE_EVENT } from "./useRealtimeScoreEvents";
+import { scoreEventsTopic, SCORE_EVENT, tripEventsTopic } from "./useRealtimeScoreEvents";
 
 /**
  * The topic + event name are a TWO-SIDED CONTRACT between the emitting trigger
@@ -150,20 +150,35 @@ describe("the effective emit/listen contract (all migrations, not one filename)"
     expect(effective.body).not.toMatch(/'competition:'\s*\|\|/);
   });
 
-  it("broadcasts as a PUBLIC topic, which is only safe with a data-free payload", () => {
-    expect(effective.body).toMatch(/jsonb_build_object\(\s*'gameId'[^)]*'competitionId'[^)]*\)/);
-    // The payload carries the two ids and the event KIND, and nothing else. If
-    // this fails because a field was added, remove the field — the topic is
-    // public and #15 depends on us not applying payload data to the cache.
-    // (`kind` was added deliberately by 189, #1284, and is pinned below to be a
-    // literal about the trigger rather than a value from the row.)
-    const payload = effective.body.match(/jsonb_build_object\(([^)]*)\)/)?.[1] ?? "";
-    const keys = [...payload.matchAll(/'([a-zA-Z]+)',/g)].map((m) => m[1]);
+  it("a SIDE game emits on the exact trip topic the hook subscribes to (196, #1498)", () => {
+    const prefix = tripEventsTopic("");
+    expect(prefix).toBe("trip_events:");
     expect(
-      keys.sort(),
+      effective.body,
+      `${effective.name} emits side-game events on a topic the hook does not subscribe to`,
+    ).toContain(`'${prefix}' || v_trip_id`);
+  });
+
+  it("broadcasts as a PUBLIC topic, which is only safe with a data-free payload", () => {
+    // EVERY payload the emitter builds, not the first: since 196 there are two,
+    // one per topic, and a field added to the second would hide behind a check
+    // that read only the first. Each carries the ids its topic is keyed by and
+    // the event KIND, and nothing else. If this fails because a field was added,
+    // remove the field — the topic is public and #15 depends on us not applying
+    // payload data to the cache. (`kind` was added deliberately by 189, #1284,
+    // and is pinned below to be a literal about the trigger, not the row.)
+    const payloads = [...effective.body.matchAll(/jsonb_build_object\(([^)]*)\)/g)].map((m) =>
+      [...m[1].matchAll(/'([a-zA-Z]+)',/g)].map((k) => k[1]).sort(),
+    );
+    expect(payloads, `${effective.name}: expected one cup payload and one side-game payload`).toHaveLength(2);
+    expect(
+      payloads,
       `${effective.name} puts extra fields in a PUBLIC broadcast payload. The topic is ` +
         `private => false, so this is what an unauthenticated listener receives. Remove the field.`,
-    ).toEqual(["competitionId", "gameId", "kind"]);
+    ).toEqual(expect.arrayContaining([
+      ["competitionId", "gameId", "kind"],
+      ["gameId", "kind", "tripId"],
+    ]));
   });
 
   it("the event KIND is a literal chosen from the TRIGGER's table — never a value read off the row", () => {
@@ -219,7 +234,17 @@ describe("the effective emit/listen contract (all migrations, not one filename)"
     expect(effective.body).toContain("WHEN OTHERS THEN");
   });
 
-  it("returns early for a standalone game instead of broadcasting", () => {
-    expect(effective.body).toMatch(/IF v_competition_id IS NULL THEN\s*\n\s*RETURN NULL;/);
+  // REVERSED by 196 (#1498). This case used to pin "returns early for a
+  // standalone game instead of broadcasting", which was right while a game with
+  // no competition had no board. Since PR 6b it is a SIDE game on the trip's
+  // Games page, so it broadcasts on the trip topic and returns early only when
+  // no trip can be found at all.
+  it("a game with no competition broadcasts on its trip, and is silent only with no trip", () => {
+    const sideArm = effective.body.match(/IF v_competition_id IS NULL THEN([\s\S]*?)\n  END IF;/)?.[1] ?? "";
+    expect(sideArm, "no side-game arm found").toContain(`'${tripEventsTopic("")}' || v_trip_id`);
+    expect(sideArm).toMatch(/IF v_trip_id IS NULL THEN\s*\n\s*RETURN NULL;/);
+    // The early return must not come BEFORE the send, or the arm is inert.
+    expect(sideArm.indexOf("realtime.send")).toBeGreaterThan(sideArm.indexOf("IF v_trip_id IS NULL"));
+    expect(sideArm).not.toMatch(/^\s*RETURN NULL;/);
   });
 });
