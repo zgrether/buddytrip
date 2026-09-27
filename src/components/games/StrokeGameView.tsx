@@ -1344,16 +1344,19 @@ export function StrokeGameView() {
               />
             )
           }
-          // Points term of the go-live gate (competition games only) — mirrors Match's
-          // C3 gate. Standalone games (gameCompetitionId null) are unaffected. Stroke had
-          // no client readiness gate at all before this (server still enforces mandatory
-          // groupings independently; that gap is untouched — out of scope here, tracked
-          // separately) — this adds ONLY the points term, not a general readiness gate.
+          // The go-live gate, in the SAME two terms as rack and skins: at least one
+          // grouped player (the server's own bar — save_game_config refuses a stroke or
+          // scramble game with no grouped participant, 089/182), then the points term
+          // for a competition game. Stroke used to carry only the points term, so an
+          // ungrouped game — every new SIDE game, which has no points term at all —
+          // offered Scoring with no lock and failed on Save with the generic
+          // "finish setting up this game" (#706).
           management={{
             scoringEnabled: configDraft.scoringEnabled,
-            ready: !gameCompetitionId || pointsReady(configDraft.pointsTotal ?? 0),
-            blockedReason:
-              gameCompetitionId && !pointsReady(configDraft.pointsTotal ?? 0)
+            ready: draftGroupCount > 0 && (!gameCompetitionId || pointsReady(configDraft.pointsTotal ?? 0)),
+            blockedReason: draftGroupCount === 0
+              ? "Add at least one group before enabling scoring"
+              : gameCompetitionId && !pointsReady(configDraft.pointsTotal ?? 0)
                 ? "Set a point value before enabling scoring"
                 : null,
             onEnable: handleEnable,

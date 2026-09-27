@@ -103,8 +103,18 @@ test("side game spine — create → set up → live → score → finalize → 
   await expect(page.getByTestId("games-section-skeleton")).toContainText(title);
   await row.click();
 
-  // 4. Set up: group both players. A side game has no points — no Total Points
-  //    stepper, no Point Distribution, no BOARD roll-up (ruling 27).
+  // 4a. Before anyone is grouped, Scoring is LOCKED and says why. The server
+  //     refuses an ungrouped stroke game anyway; before #706 the client offered
+  //     Scoring with no lock, and the Save failed on the generic "finish setting
+  //     up this game". Anchored to the button's disabled ATTRIBUTE and the
+  //     reason's own testid, not to page text.
+  await expect(page.getByTestId("mode-scoring")).toBeDisabled({ timeout: 20_000 });
+  await expect(page.getByTestId("game-state-blocked-reason")).toHaveText(
+    "Add at least one group before enabling scoring",
+  );
+
+  // 4b. Set up: group both players. A side game has no points — no Total Points
+  //     stepper, no Point Distribution, no BOARD roll-up (ruling 27).
   await page.getByTestId("row-groupings").click();
   await page.getByRole("button", { name: "Add group" }).click();
   await page.getByRole("button", { name: "Add player" }).click();
