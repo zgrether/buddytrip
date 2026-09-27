@@ -44,6 +44,7 @@ import { deriveBracketPlacements } from "../lib/bracketResults";
 import { resolveResultStrategy } from "@/lib/resultStrategy";
 import { headToHeadResultRefusal } from "@/lib/headToHeadResult";
 import { computePickemResults } from "@/server/lib/pickemResults";
+import { computeSideBoard } from "@/server/lib/sideBoard";
 import { writeTeamMatchPoints } from "../lib/matchAwards";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "@/server/lib/myDelegateGameIds";
@@ -511,18 +512,37 @@ export const gamesRouter = router({
         if (refusal) throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
       }
 
-      let displayOrder: number | null = null;
-      if (input.competitionId) {
-        const { data: last } = await ctx.supabase
+      // A SIDE game (no competition) only for a format that records a result
+      // without one — read from the declaration (`allowedContainers`, #1493), not a
+      // list here, so PR 7 opens more formats by editing one declaration. The
+      // picker offers only these; this is the door for a direct call, and the
+      // reason matters: a side pick'em would finish with nothing recorded.
+      if (!input.competitionId) {
+        const def = getGameTypeDefinition(input.gameTypeId);
+        if (def && !def.allowedContainers.includes("side_game")) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `${def.name} records its result against a competition's teams, so it can't be a side game. Add it to the trip's competition.`,
+          });
+        }
+      }
+
+      // Display order is per TRIP (PR 6b): side games and the cup's games share
+      // one order on the games page. Every game gets one — a side game used to
+      // get NULL because this was computed per competition. Read through the
+      // family: a failed read is not "no games yet" (#1470's rule).
+      const last = maybeRowOrThrow(
+        await ctx.supabase
           .from("games")
           .select("display_order")
-          .eq("competition_id", input.competitionId)
+          .eq("trip_id", ctx.tripId)
           .not("display_order", "is", null)
           .order("display_order", { ascending: false })
           .limit(1)
-          .maybeSingle();
-        displayOrder = ((last?.display_order as number | null) ?? 0) + 1;
-      }
+          .maybeSingle(),
+        "trip's games"
+      );
+      const displayOrder: number | null = ((last?.display_order as number | null) ?? 0) + 1;
       // The creator is a trip member, so games_select passes on the new row —
       // no INSERT/SELECT split needed (unlike trips.create).
       const { error: insertErr } = await ctx.supabase.from("games").insert({
@@ -587,6 +607,14 @@ export const gamesRouter = router({
       }
       return data ?? [];
     }),
+
+  // sideBoard — any trip member. The trip's side games (no competition) as board
+  // rows, built by the same `boardRow` the leaderboard uses (PR 6b). See
+  // `computeSideBoard` for what a side game carries instead of team points.
+  sideBoard: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(({ ctx }) => computeSideBoard(ctx.supabase, ctx.tripId)),
 
   // getById — any trip member. Returns the game + its participants.
   getById: authedProcedure
@@ -2551,34 +2579,33 @@ export const gamesRouter = router({
     .input(
       z.object({
         tripId: z.string(),
-        competitionId: z.string(),
-        // Capped, like every other array input in this router. A competition
-        // with more than 200 games is not a thing; the bound is here so a
-        // malformed client cannot ask for an unbounded write.
+        // Optional since PR 6b: the order is per TRIP — the games page lists the
+        // cup's games and side games in one sequence. Accepted and ignored so an
+        // older client's payload still parses.
+        competitionId: z.string().optional(),
+        // Capped, like every other array input in this router. A trip with more
+        // than 200 games is not a thing; the bound is here so a malformed client
+        // cannot ask for an unbounded write.
         gameIds: z.array(z.string().min(1)).min(1).max(200),
       })
     )
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
-      // Scope check BEFORE writing: every id must belong to THIS competition in
-      // THIS trip. Without it the ids are caller-supplied and a crafted list
-      // could stamp display_order onto another trip's games — RLS would likely
-      // refuse, but "likely" is not a guard, and an id that silently no-ops
-      // would also renumber the survivors wrongly.
-      const { data: owned, error: readErr } = await ctx.supabase
-        .from("games")
-        .select("id")
-        .eq("trip_id", ctx.tripId)
-        .eq("competition_id", input.competitionId);
-      if (readErr) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read games: ${readErr.message}` });
-      }
-      const ownedIds = new Set((owned ?? []).map((g) => g.id as string));
+      // Scope check BEFORE writing: every id must belong to THIS trip. Without it
+      // the ids are caller-supplied and a crafted list could stamp display_order
+      // onto another trip's games — RLS would likely refuse, but "likely" is not a
+      // guard, and an id that silently no-ops would also renumber the survivors
+      // wrongly. Per TRIP rather than per competition since PR 6b.
+      const owned = rowsOrThrow(
+        await ctx.supabase.from("games").select("id").eq("trip_id", ctx.tripId),
+        "trip's games"
+      );
+      const ownedIds = new Set(owned.map((g) => g.id as string));
       const unknown = input.gameIds.filter((id) => !ownedIds.has(id));
       if (unknown.length > 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `Not games of this competition: ${unknown.join(", ")}`,
+          message: `Not games of this trip: ${unknown.join(", ")}`,
         });
       }
 

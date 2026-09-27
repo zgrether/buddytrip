@@ -28,11 +28,12 @@ const CARD = "gtt_generic_card";
 
 let ctx: TestContext;
 let tripId: string;
+let competitionId: string;
 let owner: string, member: string;
 const gameIds: string[] = [];
 
 async function newMatchesGame(name: string): Promise<string> {
-  const g = (await ctx.caller().games.create({ tripId, gameTypeId: CARD, name })) as { id: string };
+  const g = (await ctx.caller().games.create({ tripId, competitionId, gameTypeId: CARD, name })) as { id: string };
   gameIds.push(g.id);
   return g.id;
 }
@@ -103,8 +104,14 @@ async function declareResult(matchId: string, result: "a_win" | "b_win" | "halve
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("saveConfig Matches Trip");
-  await ctx.addTripMember(tripId, "member", "Member");
+  // A card game is not a side game (`allowedContainers`), so it lives in the
+  // trip's cup. A POINTS cup: it holds a Matches game without the two-team
+  // roster a Match Play cup would require of every paired player.
+  ({ tripId, competitionId } = await ctx.createCupTrip({
+    name: "saveConfig Matches Trip",
+    scoringModel: "points",
+    members: [["member", "Member"]],
+  }));
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
 });

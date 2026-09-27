@@ -135,10 +135,17 @@ describe("games router (Slice A — stroke play)", () => {
 describe("games router — result_strategy dispatch guard", () => {
   let ctx: TestContext;
   let tripId: string;
+  let competitionId: string;
 
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Dispatch Guard Trip");
+    // The manual games below are not side games (`allowedContainers`), so they
+    // live in the trip's cup — a POINTS cup, which takes placement formats. The
+    // stroke and unregistered-type games stay side games on the same trip.
+    ({ tripId, competitionId } = await ctx.createCupTrip({
+      name: "Dispatch Guard Trip",
+      scoringModel: "points",
+    }));
   });
 
   afterAll(async () => {
@@ -155,7 +162,7 @@ describe("games router — result_strategy dispatch guard", () => {
    * compute — so that is what is pinned, on BOTH the refusal and success paths.
    */
   it("finish — manual game (strategy=null) without placements throws BAD_REQUEST, nothing written", async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: "gtt_manual", name: "Cornhole" });
+    const game = await ctx.caller().games.create({ tripId, competitionId, gameTypeId: "gtt_manual", name: "Cornhole" });
     await expect(ctx.caller().games.finish({ tripId, gameId: game.id })).rejects.toMatchObject({
       message: expect.stringContaining("finishing order"),
     });
@@ -165,7 +172,7 @@ describe("games router — result_strategy dispatch guard", () => {
   });
 
   it("finish — manual game WITH placements writes the entered order and locks, via the same procedure", async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: "gtt_manual", name: "Cornhole 2" });
+    const game = await ctx.caller().games.create({ tripId, competitionId, gameTypeId: "gtt_manual", name: "Cornhole 2" });
     // entity ids are opaque to the manual arm (teams in production); the point
     // here is that the null arm commits an ORDER rather than computing scores.
     await ctx.caller().games.finish({

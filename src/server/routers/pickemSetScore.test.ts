@@ -31,6 +31,7 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 
 let ctx: TestContext;
 let tripId: string;
+let competitionId: string;
 let gameId: string;
 let otherGameId: string;
 let slateId: string;
@@ -47,11 +48,17 @@ async function scoreRow(id = slateId) {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Pick'em Score Entry Trip");
-  await ctx.addTripMember(tripId, "member", "Member");
+  // Pick'em is not a side game (`allowedContainers`), so both slates live in
+  // the trip's cup — a POINTS cup, which needs no team roster to hold one.
+  ({ tripId, competitionId } = await ctx.createCupTrip({
+    name: "Pick'em Score Entry Trip",
+    scoringModel: "points",
+    members: [["member", "Member"]],
+  }));
 
   const g = (await ctx.caller().games.create({
     tripId,
+    competitionId,
     gameTypeId: "gtt_pickem",
     name: "Scores",
   })) as { id: string };
@@ -67,6 +74,7 @@ beforeAll(async () => {
    */
   const g2 = (await ctx.caller().games.create({
     tripId,
+    competitionId,
     gameTypeId: "gtt_pickem",
     name: "Other slate",
   })) as { id: string };

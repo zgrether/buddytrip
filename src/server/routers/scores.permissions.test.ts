@@ -157,26 +157,50 @@ describe("2v2 match — the unit is the match (its two side groups)", () => {
 
 describe("rack — the unit is the play_group (cart)", () => {
   let gameId: string;
+  // Rack is not a side game (`allowedContainers`): it needs a Match Play cup of
+  // exactly two teams, so it gets a trip of its own — same people, same roles.
+  let rackTripId: string;
   beforeAll(async () => {
-    const g = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name: "Rack Perms" });
+    const cup = await ctx.createCupTrip({
+      name: "Score Perms Rack Trip",
+      scoringModel: "match_play",
+      members: [
+        ["planner", "Organizer"],
+        ["member", "Member"],
+        ["outsider", "Member"],
+      ],
+    });
+    rackTripId = cup.tripId;
+    // Migration 193 refuses an unrostered participant in a Match Play cup, so
+    // roster everyone first — one of each team in each cart.
+    const teamA = await ctx.createTeam(cup.competitionId, "Team A");
+    const teamB = await ctx.createTeam(cup.competitionId, "Team B");
+    await ctx.assignTeam(cup.competitionId, teamA, [member, owner]);
+    await ctx.assignTeam(cup.competitionId, teamB, [outsider, planner]);
+    const g = await ctx.caller().games.create({
+      tripId: rackTripId,
+      competitionId: cup.competitionId,
+      gameTypeId: RACK,
+      name: "Rack Perms",
+    });
     gameId = g.id;
     // Two carts: g1 = member+outsider, g2 = owner+planner.
     await ctx.caller().playGroups.setFoursomes({
-      tripId,
+      tripId: rackTripId,
       gameId,
       groups: [{ userIds: [member, outsider] }, { userIds: [owner, planner] }],
     });
-    await ctx.caller().games.enableScoring({ tripId, gameId });
+    await ctx.caller().games.enableScoring({ tripId: rackTripId, gameId });
   });
 
   it("a member scores anyone in their OWN cart", async () => {
-    expect((await ctx.callerAs("member").scores.upsertEntry({ tripId, gameId, participantId: member, unitLabel: "1", value: 4 })).value).toBe(4);
-    expect((await ctx.callerAs("member").scores.upsertEntry({ tripId, gameId, participantId: outsider, unitLabel: "1", value: 5 })).value).toBe(5);
+    expect((await ctx.callerAs("member").scores.upsertEntry({ tripId: rackTripId, gameId, participantId: member, unitLabel: "1", value: 4 })).value).toBe(4);
+    expect((await ctx.callerAs("member").scores.upsertEntry({ tripId: rackTripId, gameId, participantId: outsider, unitLabel: "1", value: 5 })).value).toBe(5);
   });
 
   it("a member CANNOT score a player in a DIFFERENT cart", async () => {
     await expect(
-      ctx.callerAs("member").scores.upsertEntry({ tripId, gameId, participantId: owner, unitLabel: "1", value: 3 }),
+      ctx.callerAs("member").scores.upsertEntry({ tripId: rackTripId, gameId, participantId: owner, unitLabel: "1", value: 3 }),
     ).rejects.toMatchObject(FORBIDDEN);
   });
 });

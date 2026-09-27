@@ -717,6 +717,16 @@ export function gameTypesForScoringModel(
   return catalog.filter((t) => isGameTypeForScoringModel(t, scoringModel));
 }
 
+/**
+ * The formats a SIDE game may be (PR 6b) — read from `allowedContainers`, the
+ * declaration #1493 made truthful, so the add-game picker and `games.create`'s
+ * refusal read ONE claim. PR 7 opens more formats by editing the declaration,
+ * not a list here.
+ */
+export function gameTypesForSideGame(catalog: GameType[] = GAME_TYPES): GameType[] {
+  return catalog.filter((t) => getGameTypeDefinition(t.id)?.allowedContainers.includes("side_game") === true);
+}
+
 const SCORING_MODEL_LABEL: Record<ScoringModel, string> = {
   match_play: "Match Play",
   points: "Points",
