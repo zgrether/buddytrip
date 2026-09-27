@@ -30,6 +30,17 @@ export interface LBTeam {
 export interface LBGame {
   id: string;
   name: string;
+  /**
+   * A SIDE game — counts toward no competition (PR 6b, ruling 1). It sits in the
+   * same lifecycle sections as the cup's games, tagged, with no points column and
+   * no team results; a finished one shows `winners` instead. Absent reads as a
+   * cup game, which is every row the leaderboard itself returns.
+   */
+  sideGame?: boolean;
+  /** Finished side games: everyone at first (a tie lists them all). */
+  winners?: string[];
+  /** Position in the trip's ONE game order (PR 6b: per trip, not per cup). */
+  displayOrder?: number | null;
   distribution: number[] | null;
   status: string;
   gameTypeId: string | null;
@@ -175,81 +186,39 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 
   const data = lb as LeaderboardData | undefined;
 
-  // Games THIS user delegates (§10) — marked on the same normal board everyone
-  // sees (no filtered view). Empty for non-delegates (including the Owner on
-  // their own, undelegated games — the marker means "I'm personally running
-  // this," not "no one else is"), so the badge never shows for them either.
-  const { data: myDelegateIds = [] } = trpc.games.myDelegateGameIds.useQuery(
-    { tripId },
-    { ...STRUCTURE_QUERY, enabled: !!tripId }
-  );
-  const mineSet = useMemo(
-    () => new Set(myDelegateIds as string[]),
-    [myDelegateIds]
-  );
-
-  // The viewer's identity for the delegate marker (§10). The marker is the
-  // viewer's avatar in THEIR TEAM color (competition identity); only the rows the
-  // viewer delegates render it. `getMe` + the team assignment list are both cheap
-  // + cached. teamColor is null when the viewer isn't on a team → Avatar falls
-  // back to its accent ("you") treatment.
-  const { data: me } = trpc.users.getMe.useQuery(undefined, STRUCTURE_QUERY);
-  const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
-    { tripId, competitionId },
-    { ...STRUCTURE_QUERY, enabled: !!competitionId }
-  );
-  const viewer = useMemo<LBViewer>(() => {
-    const myTeamId =
-      (assignments as { user_id: string; team_id: string }[]).find((a) => a.user_id === me?.id)?.team_id ?? null;
-    const teamColor = myTeamId ? (data?.teams.find((t) => t.id === myTeamId)?.color ?? null) : null;
-    return {
-      name: (me?.name as string | null) ?? null,
-      avatarIcon: (me?.avatar_icon as string | null) ?? null,
-      teamColor,
-    };
-  }, [me, assignments, data?.teams]);
-
-  // The Owner's "who did I hand this off to" chip (§10) — every explicit
-  // delegate grant across the trip, resolved to a real identity. Owner-only:
-  // fetched (and rendered) only when isOwner, since nobody else gets a roster
-  // of who's running everyone else's games.
-  const { data: delegateGrants = [] } = trpc.games.delegatesByTrip.useQuery(
-    { tripId },
-    { ...STRUCTURE_QUERY, enabled: isOwner && !!tripId }
-  );
-  const { data: members = [] } = trpc.tripMembers.list.useQuery(
-    { tripId },
-    { enabled: isOwner && !!tripId }
-  );
-  const delegateOfByGame = useMemo(() => {
-    if (!isOwner) return new Map<string, { name: string; avatarIcon: string | null; teamColor: string | null }>();
-    const memberById = new Map(
-      (members as { memberId: string; displayName: string; user?: { avatar_icon?: string | null } | null }[]).map(
-        (m) => [m.memberId, m]
-      )
-    );
-    const colorByTeam = new Map((data?.teams ?? []).map((t) => [t.id, t.color]));
-    const colorByUser = new Map<string, string>();
-    for (const a of assignments as { user_id: string; team_id: string }[]) {
-      const c = colorByTeam.get(a.team_id);
-      if (c) colorByUser.set(a.user_id, c);
-    }
-    const m = new Map<string, { name: string; avatarIcon: string | null; teamColor: string | null }>();
-    for (const grant of delegateGrants as { gameId: string; userId: string }[]) {
-      const member = memberById.get(grant.userId);
-      if (!member) continue; // e.g. the delegate has since left the trip
-      m.set(grant.gameId, {
-        name: member.displayName,
-        avatarIcon: member.user?.avatar_icon ?? null,
-        teamColor: colorByUser.get(grant.userId) ?? null,
-      });
-    }
-    return m;
-  }, [isOwner, delegateGrants, members, assignments, data?.teams]);
+  // Viewer identity, delegate markers and the row prefetch — shared with the
+  // side-game board (PR 6b) through ONE hook, not a second copy.
+  const { mineSet, viewer, delegateOfByGame, prefetchGame } = useGameRowContext({
+    tripId,
+    competitionId,
+    teams: data?.teams,
+    isOwner,
+  });
 
   const liveGames = useMemo(
     () => data?.games ?? [],
     [data]
+  );
+
+  /**
+   * SIDE games (PR 6b) — the trip's games that count toward no competition. They
+   * join the lifecycle SECTIONS only: the hero, the points matrix, the clinch and
+   * the "games remaining" count all keep reading `data.games`, so a side game
+   * can never move a cup score. Merged into one sequence by the trip's display
+   * order (per TRIP since 6b), stable for ties.
+   *
+   * Refresh: side games have no competition topic, so migration 096's score
+   * broadcast skips them (it returns early for a game with none). This rides the
+   * board's backstop poll and local-mutation invalidation until a trip-scoped
+   * topic exists.
+   */
+  const { data: sideRows } = trpc.games.sideBoard.useQuery(
+    { tripId },
+    { ...LEADERBOARD_QUERY, enabled: useVisibleEnabled(true) }
+  );
+  const sectionGames = useMemo(
+    () => mergeByDisplayOrder(liveGames as LBGame[], (sideRows ?? []) as LBGame[]),
+    [liveGames, sideRows]
   );
 
   const cellsByGame = useMemo(() => {
@@ -275,22 +244,6 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   useEffect(() => {
     void utils.tripMembers.list.prefetch({ tripId }, STRUCTURE_QUERY);
   }, [utils, tripId]);
-  // The STRUCTURE prefetches carry STRUCTURE_QUERY (staleTime Infinity) so they
-  // NO-OP when the structure is already cached at any age — without it the
-  // prefetch's own default 60s staleTime would re-fetch fresh structure in the
-  // background on every >60s reopen, defeating the kept-structure cut on the
-  // consuming page. (Invalidation still overrides Infinity, so a structural
-  // mutation re-warms them.) Only `scores` (STATE) stays on the short default so
-  // a reopen warms fresh scores.
-  const prefetchGame = useCallback(
-    (gameId: string) => {
-      void utils.games.getById.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
-      void utils.scores.listByGame.prefetch({ tripId, gameId });
-      void utils.matches.listByGame.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
-      void utils.games.listOrganizers.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
-    },
-    [utils, tripId],
-  );
 
   // The clincher's team id, derived ABOVE the early returns because
   // `useFirstClinchView` is a hook and hook order has to be stable across every
@@ -459,7 +412,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
 
       {/* Games — the session list once games exist, the empty prompt before. */}
       <GamesSection
-        games={liveGames}
+        games={sectionGames}
         competitionId={competitionId}
         teams={teams}
         cellsByGame={cellsByGame}
@@ -478,15 +431,130 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   );
 }
 
+/**
+ * What a game ROW needs about the viewer, shared by the cup's board and the
+ * side-game board (PR 6b) — extracted from `CompetitionLeaderboard` so a board
+ * without a competition derives it the same way:
+ *  - `mineSet` / `viewer`: the "I'm running this" delegate marker (§10);
+ *  - `delegateOfByGame`: the Owner's "who did I hand this to" chip;
+ *  - `prefetchGame`: the pointer-intent warm-up behind an instant panel open.
+ * `teams` only colours markers; absent (no competition) they fall back to the
+ * Avatar's own treatment.
+ */
+export function useGameRowContext({
+  tripId,
+  competitionId,
+  teams,
+  isOwner,
+}: {
+  tripId: string;
+  competitionId?: string;
+  teams: LBTeam[] | undefined;
+  isOwner: boolean;
+}) {
+  const utils = trpc.useUtils();
+  // Games THIS user delegates (§10) — marked on the same normal board everyone
+  // sees (no filtered view). Empty for non-delegates (including the Owner on
+  // their own, undelegated games — the marker means "I'm personally running
+  // this," not "no one else is"), so the badge never shows for them either.
+  const { data: myDelegateIds = [] } = trpc.games.myDelegateGameIds.useQuery(
+    { tripId },
+    { ...STRUCTURE_QUERY, enabled: !!tripId }
+  );
+  const mineSet = useMemo(
+    () => new Set(myDelegateIds as string[]),
+    [myDelegateIds]
+  );
+
+  // The viewer's identity for the delegate marker (§10). The marker is the
+  // viewer's avatar in THEIR TEAM color (competition identity); only the rows the
+  // viewer delegates render it. `getMe` + the team assignment list are both cheap
+  // + cached. teamColor is null when the viewer isn't on a team → Avatar falls
+  // back to its accent ("you") treatment.
+  const { data: me } = trpc.users.getMe.useQuery(undefined, STRUCTURE_QUERY);
+  const { data: assignments = [] } = trpc.teamAssignments.list.useQuery(
+    { tripId, competitionId: competitionId ?? "" },
+    { ...STRUCTURE_QUERY, enabled: !!competitionId }
+  );
+  const viewer = useMemo<LBViewer>(() => {
+    const myTeamId =
+      (assignments as { user_id: string; team_id: string }[]).find((a) => a.user_id === me?.id)?.team_id ?? null;
+    const teamColor = myTeamId ? (teams?.find((t) => t.id === myTeamId)?.color ?? null) : null;
+    return {
+      name: (me?.name as string | null) ?? null,
+      avatarIcon: (me?.avatar_icon as string | null) ?? null,
+      teamColor,
+    };
+  }, [me, assignments, teams]);
+
+  // The Owner's "who did I hand this off to" chip (§10) — every explicit
+  // delegate grant across the trip, resolved to a real identity. Owner-only:
+  // fetched (and rendered) only when isOwner, since nobody else gets a roster
+  // of who's running everyone else's games.
+  const { data: delegateGrants = [] } = trpc.games.delegatesByTrip.useQuery(
+    { tripId },
+    { ...STRUCTURE_QUERY, enabled: isOwner && !!tripId }
+  );
+  const { data: members = [] } = trpc.tripMembers.list.useQuery(
+    { tripId },
+    { enabled: isOwner && !!tripId }
+  );
+  const delegateOfByGame = useMemo(() => {
+    if (!isOwner) return new Map<string, { name: string; avatarIcon: string | null; teamColor: string | null }>();
+    const memberById = new Map(
+      (members as { memberId: string; displayName: string; user?: { avatar_icon?: string | null } | null }[]).map(
+        (m) => [m.memberId, m]
+      )
+    );
+    const colorByTeam = new Map((teams ?? []).map((t) => [t.id, t.color]));
+    const colorByUser = new Map<string, string>();
+    for (const a of assignments as { user_id: string; team_id: string }[]) {
+      const c = colorByTeam.get(a.team_id);
+      if (c) colorByUser.set(a.user_id, c);
+    }
+    const m = new Map<string, { name: string; avatarIcon: string | null; teamColor: string | null }>();
+    for (const grant of delegateGrants as { gameId: string; userId: string }[]) {
+      const member = memberById.get(grant.userId);
+      if (!member) continue; // e.g. the delegate has since left the trip
+      m.set(grant.gameId, {
+        name: member.displayName,
+        avatarIcon: member.user?.avatar_icon ?? null,
+        teamColor: colorByUser.get(grant.userId) ?? null,
+      });
+    }
+    return m;
+  }, [isOwner, delegateGrants, members, assignments, teams]);
+
+  // The STRUCTURE prefetches carry STRUCTURE_QUERY (staleTime Infinity) so they
+  // NO-OP when the structure is already cached at any age — without it the
+  // prefetch's own default 60s staleTime would re-fetch fresh structure in the
+  // background on every >60s reopen, defeating the kept-structure cut on the
+  // consuming page. (Invalidation still overrides Infinity, so a structural
+  // mutation re-warms them.) Only `scores` (STATE) stays on the short default so
+  // a reopen warms fresh scores.
+  const prefetchGame = useCallback(
+    (gameId: string) => {
+      void utils.games.getById.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
+      void utils.scores.listByGame.prefetch({ tripId, gameId });
+      void utils.matches.listByGame.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
+      void utils.games.listOrganizers.prefetch({ tripId, gameId }, STRUCTURE_QUERY);
+    },
+    [utils, tripId],
+  );
+
+  return { mineSet, viewer, delegateOfByGame, prefetchGame };
+}
+
 // ── GamesSection ─────────────────────────────────────────────────────────────
 // The board's GAMES home (retired the setup guide's games panel as the sole
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
-function GamesSection({
+export function GamesSection({
   games, competitionId, teams, cellsByGame, projections, cannotProject, scoringModel, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame,
 }: {
   games: LBGame[];
-  competitionId: string;
+  /** Absent on a trip with no competition — the games page lists side games only. */
+  competitionId?: string;
   teams: LBTeam[];
   cellsByGame: Map<string, Map<string, LBCell>>;
   projections: Record<string, Record<string, number>>;
@@ -538,8 +606,6 @@ function GamesSection({
       positions.forEach((pos, i) => {
         next[pos] = nextIds[i];
       });
-      if (!competitionId) return;
-      const input = { tripId, competitionId };
 
       // Optimistic: reorder the cached `games` ARRAY to the new sequence before
       // the round trip. Without this the drop was worse than a plain wait — the
@@ -550,17 +616,23 @@ function GamesSection({
       // the array they're mapped over does, so a plain reorder is the whole fix
       // — unlike `useOpenCorrection`'s single-boolean flip, this patches a list.
       const byId = new Map(games.map((g) => [g.id, g]));
-      utils.competitions.leaderboard.setData(input, (prev: LeaderboardQueryData | undefined) =>
-        prev
-          ? {
-              ...prev,
-              games: next.map((id) => byId.get(id)).filter((g): g is LBGame => !!g) as LeaderboardQueryData["games"],
-            }
-          : prev
+      const ordered = next.map((id) => byId.get(id)).filter((g): g is LBGame => !!g);
+      // The order is per TRIP (PR 6b): cup games and side games share it, and each
+      // cache holds its own subset in that order.
+      const lbInput = competitionId ? { tripId, competitionId } : null;
+      if (lbInput) {
+        utils.competitions.leaderboard.setData(lbInput, (prev: LeaderboardQueryData | undefined) =>
+          prev
+            ? { ...prev, games: ordered.filter((g) => !g.sideGame) as LeaderboardQueryData["games"] }
+            : prev
+        );
+      }
+      utils.games.sideBoard.setData({ tripId }, (prev) =>
+        prev ? (ordered.filter((g) => g.sideGame) as unknown as typeof prev) : prev
       );
 
       reorder.mutate(
-        { ...input, gameIds: next },
+        { tripId, competitionId, gameIds: next },
         {
           onSuccess: () => {
             // Server truth, un-awaited — the optimistic order is already on
@@ -568,9 +640,10 @@ function GamesSection({
             // alone: the Live face re-seeds `competitions.leaderboard` FROM
             // `faceBootstrap` on mount, so invalidating only the child is
             // silently undone.
-            void utils.competitions.leaderboard.invalidate(input);
+            if (lbInput) void utils.competitions.leaderboard.invalidate(lbInput);
             void utils.competitions.faceBootstrap.invalidate({ tripId });
             void utils.games.listByTrip.invalidate({ tripId });
+            void utils.games.sideBoard.invalidate({ tripId });
           },
           onError: () => {
             // Rollback = re-pull server truth (CLAUDE.md #1), not a snapshot
@@ -578,7 +651,8 @@ function GamesSection({
             // broadcast (or another client's own reorder) may already have
             // moved the cache, and restoring a snapshot would put back a value
             // that is stale in a second, unrelated way.
-            void utils.competitions.leaderboard.invalidate(input);
+            if (lbInput) void utils.competitions.leaderboard.invalidate(lbInput);
+            void utils.games.sideBoard.invalidate({ tripId });
           },
         }
       );
@@ -772,6 +846,20 @@ function NTeamRankedList({
       </div>
     </div>
   );
+}
+
+/**
+ * One trip-wide game sequence from the cup's games and the side games (PR 6b).
+ * Ordered by `displayOrder` (per trip); a row without one sorts after those that
+ * have one; ties keep their input order (cup games, then side games) — a STABLE
+ * merge, so a game never jumps on a refetch that changed nothing.
+ */
+export function mergeByDisplayOrder(cupGames: LBGame[], sideGames: LBGame[]): LBGame[] {
+  const key = (g: LBGame) => g.displayOrder ?? Number.POSITIVE_INFINITY;
+  return [...cupGames, ...sideGames]
+    .map((g, i) => ({ g, i }))
+    .sort((a, b) => key(a.g) - key(b.g) || a.i - b.i)
+    .map(({ g }) => g);
 }
 
 // ── SessionBreakdown ─────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@ import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { SurfaceVisibility } from "@/lib/surfaceVisibility";
 import { GameActionRow } from "@/components/shell/GameActionRow";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
+import { SideGamesBoard } from "./SideGamesBoard";
+import { CompetitionSetupPanel } from "./CompetitionSetupPanel";
 import { CompetitionSettingsModal } from "./CompetitionSettingsModal";
 import { RostersOverlay } from "./RostersOverlay";
 import { TeamSheet, type Team } from "./TeamsPanel";
@@ -52,7 +54,14 @@ interface Competition {
 
 interface Props {
   tripId: string;
-  competition: Competition;
+  /**
+   * The trip's competition, or NULL (PR 6b). The face is the trip's GAMES page
+   * whether or not one exists (ruling 24): with a competition the board is the
+   * cup's leaderboard; without one it is the side-game board. The panel host —
+   * everything that opens a game over the board — is the same either way, which
+   * is why this is one component and not two that would drift.
+   */
+  competition: Competition | null;
   canEdit: boolean;
   isOwner: boolean;
   /** Fired after the owner deletes the competition (host resets its flag). */
@@ -93,6 +102,9 @@ export function CompetitionFace({
   const openSettings = () => setSettingsOpen(true);
   const [addingGame, setAddingGame] = useState(false);
   const [rostersOpen, setRostersOpen] = useState(false);
+  // No competition yet: "Start one" opens the existing create flow in place of
+  // the side-game board; it closes itself once the competition exists.
+  const [setupOpen, setSetupOpen] = useState(false);
   // Leaderboard team-name tap → a STANDALONE identity editor (owner / captain-of-
   // that-team), NOT the overlay; non-permitted taps fall to the read-only overlay.
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
@@ -223,7 +235,10 @@ export function CompetitionFace({
   // identity editable, roster read-only; member: all read-only). We only need
   // the team rows here to resolve the tapped id. faceBootstrap-seeded STRUCTURE
   // (cache hit).
-  const { data: teamsList = [] } = trpc.teams.list.useQuery({ tripId, competitionId: competition.id }, STRUCTURE_QUERY);
+  const { data: teamsList = [] } = trpc.teams.list.useQuery(
+    { tripId, competitionId: competition?.id ?? "" },
+    { ...STRUCTURE_QUERY, enabled: !!competition }
+  );
 
   const handleEditTeam = (teamId: string) => {
     const team = (teamsList as Team[]).find((t) => t.id === teamId);
@@ -238,21 +253,22 @@ export function CompetitionFace({
   // Roster-setup progression (building → saved → dismissed). Optimistic so the
   // Team Rosters button → signpost → clean transition is instant; the face reads
   // roster_setup from the faceBootstrap snapshot, so invalidate that too (#10).
-  const rosterSetup = competition.roster_setup ?? "building";
+  const rosterSetup = competition?.roster_setup ?? "building";
   const advanceRoster = trpc.competitions.update.useMutation({
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
       utils.competitions.faceBootstrap.invalidate({ tripId });
     },
   });
-  const setRosterSetup = (next: "saved" | "dismissed") =>
-    advanceRoster.mutate({ tripId, competitionId: competition.id, rosterSetup: next });
+  const setRosterSetup = (next: "saved" | "dismissed") => {
+    if (competition) advanceRoster.mutate({ tripId, competitionId: competition.id, rosterSetup: next });
+  };
 
   // ── Board (the home, setup + live) ──────────────────────────────────────────
   // The merged hero (identity + gear + scores) lives INSIDE the leaderboard now
   // (the standalone CompetitionHeader strip was retired with the old full-page
   // settings sub-surface); the hero's gear opens the settings modal.
-  const scoringModel = competition.scoring_model ?? "match_play";
+  const scoringModel = competition?.scoring_model ?? "match_play";
   return (
     /**
      * ONE COLUMN, at every width. This comment used to say "DESKTOP
@@ -344,6 +360,19 @@ export function CompetitionFace({
         * rediscover it.
         */}
       <SurfaceVisibility visible={!panelOpen}>
+      {!competition ? (
+        setupOpen && canEdit ? (
+          <CompetitionSetupPanel tripId={tripId} onCancel={() => setSetupOpen(false)} />
+        ) : (
+          <SideGamesBoard
+            tripId={tripId}
+            canEdit={canEdit}
+            isOwner={isOwner}
+            onAddGame={() => setAddingGame(true)}
+            onStartCompetition={() => setSetupOpen(true)}
+          />
+        )
+      ) : (
       <CompetitionLeaderboard
         competitionId={competition.id}
         tripId={tripId}
@@ -363,6 +392,7 @@ export function CompetitionFace({
         // edits identity (roster read-only), a plain member sees it read-only.
         onEditTeam={handleEditTeam}
       />
+      )}
       </SurfaceVisibility>
       </div>
 
@@ -375,13 +405,15 @@ export function CompetitionFace({
       {addingGame && canEdit && (
         <GameSheet
           tripId={tripId}
-          competitionId={competition.id}
+          competitionId={competition?.id ?? null}
+          competitionName={competition?.name ?? null}
           types={gameTypes}
           canEdit={canEdit}
-          scoringModel={scoringModel}
+          scoringModel={competition ? scoringModel : null}
           onClose={() => {
             setAddingGame(false);
             utils.competitions.faceBootstrap.invalidate({ tripId });
+            utils.games.sideBoard.invalidate({ tripId });
           }}
         />
       )}
@@ -389,7 +421,7 @@ export function CompetitionFace({
       {/* Rosters overlay — the one home for team management (W-TEAMSURFACE-01),
           member-visible, owner-editable. Opened ONLY via the Rosters button (or a
           non-permitted team-name tap). Carries the relocated "Save rosters" commit. */}
-      {rostersOpen && (
+      {rostersOpen && competition && (
         <RostersOverlay
           tripId={tripId}
           competitionId={competition.id}
@@ -413,7 +445,7 @@ export function CompetitionFace({
           The team-management home: identity + roster, self-gated by role
           (useCanEditTeam). showRoster defaults true here (the standalone home);
           the in-overlay per-card pencil passes false. */}
-      {editingTeam && (
+      {editingTeam && competition && (
         <TeamSheet
           tripId={tripId}
           competitionId={competition.id}
@@ -637,7 +669,7 @@ export function CompetitionFace({
           (the TripSettingsModal idiom): a card-float overlay whose menu drills
           into Competition details / Scoring model / the danger-zone confirms.
           Opened from the header gear; owns its own back-button handling. */}
-      {settingsOpen && (
+      {settingsOpen && competition && (
         <CompetitionSettingsModal
           competition={competition}
           tripId={tripId}

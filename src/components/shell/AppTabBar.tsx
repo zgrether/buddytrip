@@ -46,7 +46,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: "home", label: "Home", Icon: Home },
   { id: "trip", label: "Trip", Icon: Calendar },
-  { id: "cup", label: "Cup", Icon: Trophy },
+  { id: "cup", label: "Games", Icon: Trophy },
 ];
 
 /** Publish the rendered height so bottom-anchored surfaces can clear the bar.

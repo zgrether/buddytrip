@@ -2,8 +2,6 @@
 
 import { useMemo } from "react";
 import { useTripId } from "@/components/TripIdProvider";
-import Link from "next/link";
-import { Trophy } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/router";
 import { trpc } from "@/lib/trpc-client";
@@ -14,7 +12,6 @@ import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useRealtimeMyDelegations } from "@/hooks/useRealtimeMyDelegations";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { CompetitionFace } from "@/components/competition/CompetitionFace";
-import { CompetitionSetupPanel } from "@/components/competition/CompetitionSetupPanel";
 
 /**
  * The Live face — the competition face's client root, rendered inside
@@ -198,12 +195,13 @@ function LiveFaceInner({
       </div>
     );
   } else if (!competition) {
-    // No competition row yet. Editors land DIRECTLY on the create form (the
-    // shape chooser + name) — the old "Enable Competition Mode" intro panel was
-    // pure ceremony (a button that only revealed the form) and was removed, so
-    // "Set it up" is one decision: pick a shape, name it, create. Everyone else
-    // gets a calm placeholder.
-    body = canEdit ? <CompetitionSetupPanel tripId={tripId} /> : <NotSetUpEmptyState />;
+    // No competition row. This is the trip's GAMES page all the same (PR 6b,
+    // ruling 24: the tab exists from the moment the trip does): side games in the
+    // lifecycle sections, add-game, and — for Owner/Organizer — the invitation to
+    // start a competition, which opens the existing create flow. It used to land
+    // editors straight on that create form and everyone else on "hasn't been set
+    // up yet", because a game could not exist without a competition.
+    body = <CompetitionFace tripId={tripId} competition={null} canEdit={canEdit} isOwner={isOwner} />;
   } else {
     // Option A: a competition is visible to the WHOLE crew as soon as it exists
     // — there is no competition-level reveal gate any more (GO LIVE was removed;
@@ -239,62 +237,4 @@ function LiveFaceInner({
   // Mobile keeps a page's own padding, now 16px to match Trip's rather than the
   // 12px this alone carried.
   return <main className={`${SURFACE_BOX} lg:h-full lg:min-h-0`}>{body}</main>;
-}
-
-// ── Empty states ────────────────────────────────────────────────────────────
-
-function NotSetUpEmptyState() {
-  return (
-    <EmptyState
-      title="Competition hasn't been set up yet"
-      body="The owner will set this up before the trip."
-    />
-  );
-}
-
-function EmptyState({ title, body }: { title: string; body: string }) {
-  const { tripId } = useTripId();
-  return (
-    <div
-      className="mt-6 flex flex-col items-center justify-center rounded-xl px-6 py-16 text-center"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
-      data-testid="comp-face-empty"
-    >
-      <div
-        className="flex h-16 w-16 items-center justify-center rounded-2xl"
-        style={{
-          background: "var(--color-bt-accent-faint)",
-          color: "var(--color-bt-accent)",
-        }}
-      >
-        <Trophy size={28} />
-      </div>
-      <h2
-        className="mt-4 text-lg font-semibold"
-        style={{ color: "var(--color-bt-text)" }}
-      >
-        {title}
-      </h2>
-      <p
-        className="mt-2 max-w-xs text-sm leading-relaxed"
-        style={{ color: "var(--color-bt-text-dim)" }}
-      >
-        {body}
-      </p>
-      <Link
-        href={`/trips/${tripId}`}
-        className="mt-5 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold"
-        style={{
-          background: "var(--color-bt-card-raised)",
-          color: "var(--color-bt-text)",
-          border: "1px solid var(--color-bt-border)",
-        }}
-      >
-        Back to trip
-      </Link>
-    </div>
-  );
 }

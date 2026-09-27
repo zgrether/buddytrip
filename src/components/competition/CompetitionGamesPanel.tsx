@@ -41,7 +41,7 @@ import { CATEGORY_ICONS } from "@/lib/gameCategoryIcon";
 // here, read synchronously, never fetched. Re-exported below so existing
 // consumers (CompetitionFace, GameSetupRows) keep their `from "./CompetitionGamesPanel"`
 // import path.
-import { gameTypesForScoringModel, type GameType, type ScoringModel } from "@/lib/gameTypes";
+import { gameTypesForScoringModel, gameTypesForSideGame, type GameType, type ScoringModel } from "@/lib/gameTypes";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 
 export type { GameType };
@@ -144,10 +144,14 @@ export function formatLabel(key: string | null): string | null {
 // ── Game sheet (A1 P-D: single tab — the light add/edit skeleton) ──────────────
 
 export function GameSheet({
-  tripId, competitionId, types, canEdit, scoringModel, onClose,
+  tripId, competitionId, competitionName, types, canEdit, scoringModel, onClose,
 }: {
   tripId: string;
-  competitionId: string;
+  /** The trip's competition, or null when it has none (PR 6b: a game needs no
+   *  competition). With one, the sheet asks what the game COUNTS TOWARD. */
+  competitionId: string | null;
+  /** The competition's name, for the counts-toward choice. */
+  competitionName?: string | null;
   types: GameType[];
   canEdit: boolean;
   /** The competition's scoring-model (W-TYPE-01) — the create picker offers only
@@ -160,9 +164,22 @@ export function GameSheet({
   // structurally dead and are gone — this component only ever CREATES a game.
   const utils = trpc.useUtils();
 
-  // W-TYPE-01: the create picker offers only formats whose scoring-model matches
-  // the competition's (match_play → 1v1/2v2/rack + manual; points → Stroke + manual).
-  const offerable = gameTypesForScoringModel(scoringModel, types);
+  /**
+   * COUNTS TOWARD — chosen here, at creation (PR 6: ruling 25 revised 2026-09-27).
+   * `games.create` stays the only writer of `competition_id`, so every
+   * cup-membership rule keeps running at its one door. Shown only when the trip
+   * has a competition, defaulting to it (ruling 26); a trip with none can only
+   * add side games. A wrong choice is fixed by deleting and re-adding the game,
+   * which costs nothing while it is still in setup.
+   */
+  const [countsToward, setCountsToward] = useState<"competition" | "side">(competitionId ? "competition" : "side");
+  const isSide = countsToward === "side" || !competitionId;
+
+  // What can be offered depends on the container: a cup's scoring-model filter
+  // (W-TYPE-01), or — for a side game — the formats DECLARED able to be one
+  // (`allowedContainers`, read by `gameTypesForSideGame`), the same declaration
+  // `games.create`'s refusal reads.
+  const offerable = isSide ? gameTypesForSideGame(types) : gameTypesForScoringModel(scoringModel, types);
   const [category, setCategory] = useState<string>("golf");
   const [gameTypeId, setGameTypeId] = useState<string>(
     offerable.find((t) => t.category === "golf")?.id ?? offerable[0]?.id ?? ""
@@ -225,16 +242,22 @@ export function GameSheet({
       const createDistribution: PointsDistribution | null = isMatchPlay
         ? { type: "per_match", value: 0 }
         : null;
-      const created = (await create.mutateAsync({
-        tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId,
-        pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : 0,
-      })) as { id: string };
+      // A side game has no points at all (ruling 27) — no distribution, no total.
+      const created = (await create.mutateAsync(
+        isSide
+          ? { tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId: null }
+          : {
+              tripId, gameTypeId: effectiveTypeId, name: title.trim(), competitionId,
+              pointsDistribution: createDistribution, pointsTotal: isMatchPlay ? null : 0,
+            }
+      )) as { id: string };
       const gameId = created.id;
       // Course / match rows are NOT seeded here — set on the setup pages (A1 P-C / C1).
       if (canEdit) await assignDelegate(gameId);
       utils.games.listByTrip.invalidate({ tripId });
       utils.games.listOrganizers.invalidate({ tripId, gameId });
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      if (competitionId) utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+      utils.games.sideBoard.invalidate({ tripId });
       // #10 — NEVER the child alone. `LiveFaceClient` re-seeds
       // `competitions.leaderboard` FROM `faceBootstrap` on mount, so invalidating
       // only the child is silently undone: the re-seed writes the bootstrap's
@@ -283,6 +306,13 @@ export function GameSheet({
               (Rules → setup GameRulesNote, Modifiers → setup rows, MakeItReady → dead)
               are gone. The Game tab is the whole light skeleton. */}
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
+            {competitionId && (
+              <CountsToward
+                competitionName={competitionName ?? "The competition"}
+                value={countsToward}
+                onChange={setCountsToward}
+              />
+            )}
             <GameTab
                 canEdit={canEdit}
                 categoriesPresent={categoriesPresent}
@@ -296,7 +326,7 @@ export function GameSheet({
                 setTitle={setTitle}
                 isGolf={isGolf}
                 tripId={tripId}
-                competitionId={competitionId}
+                competitionId={isSide ? undefined : competitionId ?? undefined}
                 delegateId={delegateId}
                 setDelegateId={setDelegateId}
               />
@@ -322,6 +352,64 @@ export function GameSheet({
   );
 }
 
+// ── Counts toward ─────────────────────────────────────────────────────────────
+
+/**
+ * The one extra question add-game asks, and only on a trip with a competition:
+ * does this game count toward it, or is it a side game? Two options, so a
+ * segmented control rather than a picker. The side-game option's consequence is
+ * said where the choice is made — no points — since that is the difference a
+ * person would otherwise discover later on the settings page.
+ */
+function CountsToward({
+  competitionName,
+  value,
+  onChange,
+}: {
+  competitionName: string;
+  value: "competition" | "side";
+  onChange: (v: "competition" | "side") => void;
+}) {
+  const opts: { v: "competition" | "side"; label: string }[] = [
+    { v: "competition", label: competitionName },
+    { v: "side", label: "Side game" },
+  ];
+  return (
+    <div data-testid="counts-toward">
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+        Counts toward
+      </p>
+      <div className="flex gap-1 rounded-xl p-1" style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}>
+        {opts.map((o) => {
+          const on = o.v === value;
+          return (
+            <button
+              key={o.v}
+              type="button"
+              onClick={() => onChange(o.v)}
+              aria-pressed={on}
+              data-testid={`counts-toward-${o.v}`}
+              className="min-w-0 flex-1 truncate rounded-lg px-3 py-2 text-[13px] font-semibold"
+              style={{
+                background: on ? "var(--color-bt-card-raised)" : "transparent",
+                color: on ? "var(--color-bt-text)" : "var(--color-bt-text-dim)",
+                border: on ? "1px solid var(--color-bt-border)" : "1px solid transparent",
+              }}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+      {value === "side" && (
+        <p className="mt-1.5 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
+          Played for fun — no points toward {competitionName}.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Game tab ──────────────────────────────────────────────────────────────────
 
 function GameTab({
@@ -336,7 +424,7 @@ function GameTab({
   delegateId: string | null; setDelegateId: (id: string | null) => void;
   /** Both threaded to the shared `DelegatePicker` — it fetches the crew itself
    *  (so `members` is no longer passed down) and resolves team colours. */
-  tripId: string; competitionId: string;
+  tripId: string; competitionId?: string;
 }) {
   const readOnly = !canEdit;
   return (
@@ -428,7 +516,7 @@ function DelegationBlock({
 }: {
   canEdit: boolean;
   tripId: string;
-  competitionId: string;
+  competitionId?: string;
   delegateId: string | null;
   setDelegateId: (id: string | null) => void;
 }) {

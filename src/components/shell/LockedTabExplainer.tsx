@@ -26,8 +26,8 @@ const COPY: Record<LockedExplainerView, { Icon: LucideIcon; head: string; body: 
   },
   cup: {
     Icon: Trophy,
-    head: "Cups turn games into a competition",
-    body: "Build teams, set matches, assign points. Scores roll up to one standing the whole crew can watch.",
+    head: "Games live here",
+    body: "The practice round, skins on the back nine, or a whole competition with teams and points — every game the crew plays on this trip.",
   },
   chat: {
     Icon: MessageCircle,

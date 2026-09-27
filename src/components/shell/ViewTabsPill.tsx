@@ -34,7 +34,7 @@ import type { AppView } from "./useAppView";
 
 const TABS: { id: Exclude<AppView, "home">; label: string; Icon: LucideIcon }[] = [
   { id: "trip", label: "Trip", Icon: Calendar },
-  { id: "cup", label: "Cup", Icon: Trophy },
+  { id: "cup", label: "Games", Icon: Trophy },
 ];
 
 export function ViewTabsPill({
