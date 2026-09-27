@@ -87,6 +87,11 @@ let gameId: string;
 /** The bracket game — a SECOND populated game, because the bracket tables hang off
  *  a non-golf format and the match-play game above can never have rows in them. */
 let bracketGameId: string;
+/** The bracket game's own trip — its points cup cannot share `tripId`, because a
+ *  trip holds one competition (migration 195). */
+let bracketTripId: string;
+/** The trip a seeded game lives on. */
+const tripOf = (forGame: string) => (forGame === bracketGameId ? bracketTripId : tripId);
 /** A third game, for the same reason the bracket needs a second: a match-play
  *  game has no `pickem_games` row, and a table with no row makes this guard
  *  vacuous for it. */
@@ -166,15 +171,23 @@ beforeAll(async () => {
   // In its own POINTS cup: a bracket pays by placement, and a Match Play cup
   // refuses switching a game into one (ruling 2, PR 4). The hashed tables are
   // game-scoped, so which cup holds the game changes nothing this guard reads.
-  const bracketCup = await ctx.createCompetition(tripId, "hash coverage bracket Cup", { scoringModel: "points" });
+  // Its own trip too: a trip holds one competition (migration 195).
+  const bracketCupTrip = await ctx.createCupTrip({
+    title: "hash coverage bracket Trip",
+    name: "hash coverage bracket Cup",
+    scoringModel: "points",
+    members: [["planner", "Organizer"], "member", "outsider"],
+  });
+  bracketTripId = bracketCupTrip.tripId;
+  const bracketCup = bracketCupTrip.competitionId;
   const teamId = await ctx.createTeam(bracketCup, "Bracket Team");
-  const bg = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_generic_card", name: "Bracket", competitionId: bracketCup })) as { id: string };
+  const bg = (await ctx.caller().games.create({ tripId: bracketTripId, gameTypeId: "gtt_generic_card", name: "Bracket", competitionId: bracketCup })) as { id: string };
   bracketGameId = bg.id;
-  const bDraft = (await ctx.caller().games.getById({ tripId, gameId: bracketGameId })) as Record<string, unknown>;
+  const bDraft = (await ctx.caller().games.getById({ tripId: bracketTripId, gameId: bracketGameId })) as Record<string, unknown>;
   await ctx.caller().games.saveConfig({
-    tripId,
+    tripId: bracketTripId,
     gameId: bracketGameId,
-    baseHash: (await ctx.caller().games.configHash({ tripId, gameId: bracketGameId })).hash,
+    baseHash: (await ctx.caller().games.configHash({ tripId: bracketTripId, gameId: bracketGameId })).hash,
     payload: {
       name: (bDraft.name as string) ?? "Bracket",
       rulesForToday: null,
@@ -287,7 +300,7 @@ type HashInput = {
   pickem: Record<string, unknown> | null;
 };
 
-async function rpcInput(client: SupabaseClient, forGame: string, forTrip = tripId): Promise<HashInput> {
+async function rpcInput(client: SupabaseClient, forGame: string, forTrip = tripOf(forGame)): Promise<HashInput> {
   const { data, error } = await client.rpc("game_config_hash_input", { p_trip_id: forTrip, p_game_id: forGame });
   expect(error).toBeNull();
   return data as HashInput;
@@ -302,7 +315,7 @@ async function rpcInput(client: SupabaseClient, forGame: string, forTrip = tripI
  */
 async function postgrestInput(client: SupabaseClient, forGame: string): Promise<HashInput> {
   const [g, parts, groups, matches, delegates, entrants, draw, pickem] = await Promise.all([
-    client.from("games").select(HASH_COLS.games).eq("id", forGame).eq("trip_id", tripId).maybeSingle(),
+    client.from("games").select(HASH_COLS.games).eq("id", forGame).eq("trip_id", tripOf(forGame)).maybeSingle(),
     client.from("game_participants").select(HASH_COLS.game_participants).eq("game_id", forGame).order("user_id", { ascending: true }),
     client.from("play_groups").select(HASH_COLS.play_groups).eq("game_id", forGame).order("id", { ascending: true }),
     client.from("game_matches").select(HASH_COLS.game_matches).eq("game_id", forGame).order("id", { ascending: true }),

@@ -35,7 +35,9 @@ const MATCH_PLAY = "gtt_match_play";
 const CARD = "gtt_generic_card";
 
 let ctx: TestContext;
-let tripId: string;
+// The match play cup lives on `tripId`; the points cup on its own trip, since a
+// trip holds one competition (migration 195).
+let tripId: string, pointsTripId: string;
 let owner: string, member: string;
 let mpCup: string, alpha: string, bravo: string;
 let pointsCup: string, ptsAlpha: string, ptsBravo: string;
@@ -56,7 +58,12 @@ beforeAll(async () => {
   await ctx.assignTeam(mpCup, bravo, [member]);
 
   // Brackets are set up in points cups (ruling 2, PR 4).
-  pointsCup = await ctx.createCompetition(tripId, "Points cup", { scoringModel: "points" });
+  ({ tripId: pointsTripId, competitionId: pointsCup } = await ctx.createCupTrip({
+    title: "Result writers fail closed",
+    name: "Points cup",
+    scoringModel: "points",
+    members: ["member"],
+  }));
   ptsAlpha = await ctx.createTeam(pointsCup, "Alpha");
   ptsBravo = await ctx.createTeam(pointsCup, "Bravo");
   await ctx.assignTeam(pointsCup, ptsAlpha, [owner]);
@@ -106,9 +113,9 @@ async function decidedGolfMatch(name: string): Promise<{ gameId: string; matchId
   return { gameId: game.id, matchId: matches[0].id };
 }
 
-const finish = (gameId: string) => ctx.caller().games.finish({ tripId, gameId });
-const failingFinish = (gameId: string, table: string, columns: string) =>
-  callerFailingRead(ctx, "owner", { table, columns }).games.finish({ tripId, gameId });
+const finish = (gameId: string, trip: string = tripId) => ctx.caller().games.finish({ tripId: trip, gameId });
+const failingFinish = (gameId: string, table: string, columns: string, trip: string = tripId) =>
+  callerFailingRead(ctx, "owner", { table, columns }).games.finish({ tripId: trip, gameId });
 
 describe("golf match play — games.finish", () => {
   it("a failed ROSTER read neither completes the game nor writes the teams 0", async () => {
@@ -199,6 +206,7 @@ describe("the SETUP path — a pairing edit on a finished game", () => {
 
 describe("bracket — the entrant read comes before the delete", () => {
   it("a failed entrant read on a re-finalize leaves the bracket's results in place", async () => {
+    const tripId = pointsTripId;
     const g = (await ctx.caller().games.create({ tripId, gameTypeId: CARD, name: "Bracket", competitionId: pointsCup })) as { id: string };
     const gameId = g.id;
     const { hash } = await ctx.caller().games.configHash({ tripId, gameId });
@@ -220,15 +228,15 @@ describe("bracket — the entrant read comes before the delete", () => {
     const read = ["bracket_entrants", "id, team_id"] as const;
     const refusal = "Failed to read the bracket's entrants";
 
-    await expect(failingFinish(gameId, ...read)).rejects.toThrow(refusal);
+    await expect(failingFinish(gameId, ...read, tripId)).rejects.toThrow(refusal);
     expect(await status(gameId)).not.toBe("complete");
 
-    await finish(gameId);
+    await finish(gameId, tripId);
     const written = await allRows(gameId);
     expect(written.length).toBe(2);
 
     // Before #1470 the writer deleted first, so this left the bracket with none.
-    await expect(failingFinish(gameId, ...read)).rejects.toThrow(refusal);
+    await expect(failingFinish(gameId, ...read, tripId)).rejects.toThrow(refusal);
     expect(await allRows(gameId)).toEqual(written);
   }, 180_000);
 });

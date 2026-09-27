@@ -42,15 +42,17 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 const MANUAL = "gtt_manual";
 
 let ctx: TestContext;
-let tripId: string;
+/** Each cup's own trip — a trip holds one competition (migration 195). */
+const tripOfCup = new Map<string, string>();
 const gameIds: string[] = [];
 
 /** A match-play cup with two teams — BBMI's shape, and the default everywhere. */
-async function matchPlayCup(name: string): Promise<{ comp: string; ta: string; tb: string }> {
-  const comp = await ctx.createCompetition(tripId, name); // omitted → DB default 'match_play'
+async function matchPlayCup(name: string): Promise<{ tripId: string; comp: string; ta: string; tb: string }> {
+  const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "MatchPlay Distribution Trip", name }); // omitted → DB default 'match_play'
+  tripOfCup.set(comp, tripId);
   const ta = await ctx.createTeam(comp, "A", { shortName: "A" });
   const tb = await ctx.createTeam(comp, "B", { shortName: "B" });
-  return { comp, ta, tb };
+  return { tripId, comp, ta, tb };
 }
 
 async function manualGame(
@@ -58,7 +60,7 @@ async function manualGame(
   name: string,
   cols: { points_total?: number | null; points_distribution?: unknown }
 ): Promise<string> {
-  const g = (await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name, competitionId: comp })) as { id: string };
+  const g = (await ctx.caller().games.create({ tripId: tripOfCup.get(comp)!, gameTypeId: MANUAL, name, competitionId: comp })) as { id: string };
   gameIds.push(g.id);
   await ctx.admin.from("games").update(cols).eq("id", g.id);
   return g.id;
@@ -83,7 +85,6 @@ async function finishFirstSecond(gameId: string, ta: string, tb: string) {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("MatchPlay Distribution Trip");
 });
 
 afterAll(async () => {
@@ -96,7 +97,7 @@ afterAll(async () => {
 
 describe("match-play cup — a manual game with NO split of its own is unchanged", () => {
   it("winner takes the whole total; the loser gets nothing", async () => {
-    const { comp, ta, tb } = await matchPlayCup("WTA Cup");
+    const { tripId, comp, ta, tb } = await matchPlayCup("WTA Cup");
     const gameId = await manualGame(comp, "Cornhole", { points_total: 8, points_distribution: null });
     await finishFirstSecond(gameId, ta, tb);
 
@@ -107,7 +108,7 @@ describe("match-play cup — a manual game with NO split of its own is unchanged
   });
 
   it("a TIE splits the total — the averaged convention, still applied", async () => {
-    const { comp, ta, tb } = await matchPlayCup("Tie Cup");
+    const { tripId, comp, ta, tb } = await matchPlayCup("Tie Cup");
     const gameId = await manualGame(comp, "Tied Cornhole", { points_total: 8, points_distribution: null });
     // Both at position 1 is how a tie is recorded; placementPoints averages [8,0].
     // Finished, like every game this file reads a result from (see finishFirstSecond).
@@ -125,7 +126,7 @@ describe("match-play cup — a manual game with NO split of its own is unchanged
 
 describe("match-play cup — a manual game WITH its own split is awarded by it", () => {
   it("the split decides the payout, not winner-take-all", async () => {
-    const { comp, ta, tb } = await matchPlayCup("Split Cup");
+    const { tripId, comp, ta, tb } = await matchPlayCup("Split Cup");
     const gameId = await manualGame(comp, "Cornhole", {
       points_total: 8,
       points_distribution: { type: "placement", values: [5, 3] },
@@ -153,7 +154,7 @@ describe("match-play cup — a manual game WITH its own split is awarded by it",
     // (`hasPerMatchRows`). The distribution's shape is not what decides it. See
     // `matchesCupPayout.test.ts` for the same distribution WITH match rows,
     // which must not flatten.
-    const { comp, ta, tb } = await matchPlayCup("PerMatch Manual Cup");
+    const { tripId, comp, ta, tb } = await matchPlayCup("PerMatch Manual Cup");
     const gameId = await manualGame(comp, "Odd One", {
       points_total: 6,
       points_distribution: { type: "per_match", value: 3 },
@@ -173,7 +174,7 @@ describe("match-play cup — a manual game WITH its own split is awarded by it",
     // distribution sum — so it starts contributing to points-available, and
     // therefore to the win number, while still awarding nobody anything until
     // results exist. That asymmetry is the whole reason this case is pinned.
-    const { comp, ta, tb } = await matchPlayCup("Null Total Cup");
+    const { tripId, comp, ta, tb } = await matchPlayCup("Null Total Cup");
     const gameId = await manualGame(comp, "Legacy Shape", {
       points_total: null,
       points_distribution: { type: "placement", values: [9, 6] },
@@ -192,7 +193,10 @@ describe("match-play cup — a manual game WITH its own split is awarded by it",
 
 describe("points cup — untouched by any of this", () => {
   it("still awards by its split", async () => {
-    const comp = await ctx.createCompetition(tripId, "Points Cup", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({
+      title: "MatchPlay Distribution Trip", name: "Points Cup", scoringModel: "points",
+    });
+    tripOfCup.set(comp, tripId);
     const ta = await ctx.createTeam(comp, "A", { shortName: "A" });
     const tb = await ctx.createTeam(comp, "B", { shortName: "B" });
     const gameId = await manualGame(comp, "Points Cornhole", {

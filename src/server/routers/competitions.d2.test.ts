@@ -115,8 +115,9 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
   });
 
   it("clinched: pointsToClinch <= 0 when a team reaches winNumber", async () => {
-    // Create a fresh competition for a clean slate
-    const cleanComp = await ctx.createCompetition(tripId, "D2 Clinch Comp", { scoringModel: "points" });
+    // Create a fresh competition for a clean slate — on its own trip, since a
+    // trip holds one competition (migration 195).
+    const { tripId, competitionId: cleanComp } = await ctx.createCupTrip({ name: "D2 Clinch Comp", scoringModel: "points" });
     const ta = await ctx.createTeam(cleanComp, "Blue2", { shortName: "B2" });
     const tb = await ctx.createTeam(cleanComp, "Red2", { shortName: "R2" });
 
@@ -149,7 +150,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
   });
 
   it("retain case: defending team clinches at half (not > half)", async () => {
-    const cleanComp = await ctx.createCompetition(tripId, "D2 Retain Comp", { scoringModel: "points" });
+    const { tripId, competitionId: cleanComp } = await ctx.createCupTrip({ name: "D2 Retain Comp", scoringModel: "points" });
     const defender = await ctx.createTeam(cleanComp, "Defender", { shortName: "DEF" });
     const challenger = await ctx.createTeam(cleanComp, "Challenger", { shortName: "CHL" });
 
@@ -190,7 +191,7 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
 
 describe("D2 §6 — N-team (3+ teams) ranked list data", () => {
   it("3-team competition: winNumber and pointsToClinch work for all three teams", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 3-Team Comp", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 3-Team Comp", scoringModel: "points" });
     const t1 = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const t2 = await ctx.createTeam(comp, "Beta", { shortName: "BET" });
     const t3 = await ctx.createTeam(comp, "Gamma", { shortName: "GAM" });
@@ -230,7 +231,7 @@ describe("D2 §6 — N-team (3+ teams) ranked list data", () => {
 
 describe("D2 §6 — non-engine game with no entry shows at 0, not hidden", () => {
   it("manual game with no results contributes to pointsAvailable but has no cells", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 NoEntry Comp", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 NoEntry Comp", scoringModel: "points" });
     await ctx.createTeam(comp, "X", { shortName: "X" });
     await ctx.createTeam(comp, "Y", { shortName: "Y" });
 
@@ -258,7 +259,7 @@ describe("D2 §6 — non-engine game with no entry shows at 0, not hidden", () =
 
 describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
   it("game_type_id and defendingTeamId are present in response", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 Shape Comp");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Shape Comp" });
     await ctx.createTeam(comp, "A", { shortName: "A" });
     const g = await ctx.caller().games.create({
       tripId, gameTypeId: MANUAL, name: "Shape Test", competitionId: comp,
@@ -282,7 +283,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
   });
 
   it("a game with no points configured is NOT ready (drives the 'needs setup' row)", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 Unready Comp");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Unready Comp" });
     await ctx.createTeam(comp, "A", { shortName: "A" });
     // Bare game — no distribution, no owner total.
     const g = await ctx.caller().games.create({ tripId, gameTypeId: MANUAL, name: "Unready", competitionId: comp }) as { id: string };
@@ -295,7 +296,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
   });
 
   it("a match-play game is Setting up until pairings are assigned, then earns Ready (§A readiness gate)", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 Roster Gate Comp");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Roster Gate Comp" });
     const teamA = await ctx.createTeam(comp, "A", { shortName: "A" });
     await ctx.createTeam(comp, "B", { shortName: "B" });
     // Rostered before pairing — a Ryder cup refuses an unrostered participant
@@ -345,7 +346,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     // The threshold fix: the list called a match game ready at ≥1 paired, while the
     // setup page only enables when ALL are paired. A 1-of-2 game must now read
     // Setting up (not Ready), so the two surfaces agree.
-    const comp = await ctx.createCompetition(tripId, "D2 Partial Pairing Comp");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Partial Pairing Comp" });
     await ctx.createTeam(comp, "A", { shortName: "A" });
     await ctx.createTeam(comp, "B", { shortName: "B" });
     const g = await ctx.caller().games.create({
@@ -380,7 +381,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
   it("pointsTotal (§A5 outer column) reads the distribution sum when no owner total is set", async () => {
     // The board row's `N PTS` must match what rollUp counts as available, even
     // for a distribution-only placement game (no explicit points_total). 9+6=15.
-    const comp = await ctx.createCompetition(tripId, "D2 Pts Comp", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Pts Comp", scoringModel: "points" });
     const t1 = await ctx.createTeam(comp, "A", { shortName: "A" });
     const t2 = await ctx.createTeam(comp, "B", { shortName: "B" });
     expect([t1, t2].length).toBe(2);
@@ -398,7 +399,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
   it("reads competitionPlacement.ts — rollUp matches the endpoint's teamTotals", async () => {
     // This test proves the endpoint delegates to the lib (CLAUDE.md #8 — single
     // source of truth). We run the same inputs through rollUp directly and compare.
-    const comp = await ctx.createCompetition(tripId, "D2 Delegation Comp", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Delegation Comp", scoringModel: "points" });
     const t1 = await ctx.createTeam(comp, "P", { shortName: "P" });
     const t2 = await ctx.createTeam(comp, "Q", { shortName: "Q" });
 
@@ -437,7 +438,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
 
 describe("D2 R1 — `started` (On Tap ↔ Ready for Play split)", () => {
   it("started is false with no score entries, true once one exists", async () => {
-    const comp = await ctx.createCompetition(tripId, "D2 Started Comp", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Started Comp", scoringModel: "points" });
     const g = await ctx.caller().games.create({
       tripId, gameTypeId: MANUAL, name: "Startable", competitionId: comp,
       pointsDistribution: { type: "placement", values: [9, 6] },

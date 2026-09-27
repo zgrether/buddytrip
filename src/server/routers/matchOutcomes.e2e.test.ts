@@ -14,13 +14,10 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 const MATCH_PLAY = "gtt_match_play";
 
 let ctx: TestContext;
-let tripId: string;
 let owner: string, member: string;
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Outcome E2E Trip");
-  await ctx.addTripMember(tripId, "member", "Member");
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
 });
@@ -31,7 +28,7 @@ afterAll(async () => {
 
 describe("Refactor B2 acceptance case — outcome entry, tap by tap, posts like a stroke game", () => {
   it("records 3&2 via real upsertOutcome calls, finishes, and posts to the leaderboard — zero score_entries", async () => {
-    const comp = await ctx.createCompetition(tripId, "Outcome E2E Cup");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "Outcome E2E Cup", members: ["member"] });
     const blue = await ctx.createTeam(comp, "Blue");
     const red = await ctx.createTeam(comp, "Red");
     await ctx.admin.from("team_assignments").insert([
@@ -85,7 +82,7 @@ describe("Refactor B2 acceptance case — outcome entry, tap by tap, posts like 
 
 describe("Refactor B3 — presence + live projection for an in-progress outcome-mode game", () => {
   it("an outcome-mode game reads 'started' and gets a live-projection pill as soon as ≥1 hole is decided", async () => {
-    const comp = await ctx.createCompetition(tripId, "Outcome B3 Presence Cup");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "Outcome B3 Presence Cup", members: ["member"] });
     const blue = await ctx.createTeam(comp, "Blue");
     const red = await ctx.createTeam(comp, "Red");
     await ctx.admin.from("team_assignments").insert([

@@ -16,12 +16,12 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 const MANUAL = "gtt_manual";
 
 let ctx: TestContext;
-let tripId: string;
 const gameIds: string[] = [];
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("MatchPlay NonGolf Trip");
+  // Each case builds its own trip + cup (`createCupTrip`): a trip holds one
+  // competition (migration 195).
 });
 
 afterAll(async () => {
@@ -34,7 +34,7 @@ afterAll(async () => {
 
 describe("match_play (default) — non-golf game scores winner-take-all", () => {
   it("winner takes the game's points; loser gets 0", async () => {
-    const comp = await ctx.createCompetition(tripId, "MP Win Comp");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "MatchPlay NonGolf Trip", name: "MP Win Comp" });
     const ta = await ctx.createTeam(comp, "A", { shortName: "A" });
     const tb = await ctx.createTeam(comp, "B", { shortName: "B" });
     // pointsTotal only, NO distribution — winner-take-all is derived from total.
@@ -56,7 +56,7 @@ describe("match_play (default) — non-golf game scores winner-take-all", () => 
   });
 
   it("a tie splits the points evenly (P/2 each)", async () => {
-    const comp = await ctx.createCompetition(tripId, "MP Tie Comp");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "MatchPlay NonGolf Trip", name: "MP Tie Comp" });
     const ta = await ctx.createTeam(comp, "A", { shortName: "A" });
     const tb = await ctx.createTeam(comp, "B", { shortName: "B" });
     const g = (await ctx.caller().games.create({
@@ -78,7 +78,7 @@ describe("match_play (default) — non-golf game scores winner-take-all", () => 
 
 describe("points comp — keeps #430's placement model (regression)", () => {
   it("the configured distribution awards per position, NOT winner-take-all", async () => {
-    const comp = await ctx.createCompetition(tripId, "Points Comp");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "MatchPlay NonGolf Trip", name: "Points Comp" });
     const ta = await ctx.createTeam(comp, "A", { shortName: "A" });
     const tb = await ctx.createTeam(comp, "B", { shortName: "B" });
     // Flip this comp to the points scoring model (independent of its 2 teams).

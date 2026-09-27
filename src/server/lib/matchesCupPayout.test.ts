@@ -42,7 +42,6 @@ import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 const MANUAL = "gtt_generic_card";
 
 let ctx: TestContext;
-let tripId: string;
 const gameIds: string[] = [];
 const guestIds: string[] = [];
 
@@ -57,7 +56,7 @@ const guestIds: string[] = [];
  * The first draft of this file reused two accounts across matches, and the
  * app's own builder rejected it — a fixture the product cannot produce.
  */
-async function guest(name: string): Promise<string> {
+async function guest(tripId: string, name: string): Promise<string> {
   const id = `ghost-${crypto.randomUUID()}`;
   await ctx.admin.from("users").insert({ id, name, is_guest: true });
   guestIds.push(id);
@@ -73,7 +72,7 @@ interface Slice {
 }
 
 /** The real payload builder's shape — mirrors `games.saveConfig.matches.test.ts`. */
-async function saveMatches(gameId: string, slices: Slice[]) {
+async function saveMatches(tripId: string, gameId: string, slices: Slice[]) {
   const { data: g } = await ctx.admin.from("games").select("*").eq("id", gameId).single();
   const hash = (await ctx.caller().games.configHash({ tripId, gameId })).hash;
   return ctx.caller().games.saveConfig({
@@ -116,7 +115,8 @@ async function matchIds(gameId: string): Promise<string[]> {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Matches Payout Trip");
+  // Each case builds its own trip + cup (`createCupTrip`): a trip holds one
+  // competition (migration 195).
 });
 
 afterAll(async () => {
@@ -139,7 +139,7 @@ describe("non-golf Matches in a match-play cup", () => {
     // The shape from the cup where this was found, kept deliberately: side A is
     // the LOSING team in every match. An inverted read is invisible when the
     // winner happens to sit in slot A, so the fixture puts them in slot B.
-    const comp = await ctx.createCompetition(tripId, "Matches Cup");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "Matches Payout Trip", name: "Matches Cup" });
     const losing = await ctx.createTeam(comp, "Manhattans", { shortName: "MAN" });
     const winning = await ctx.createTeam(comp, "Centurions", { shortName: "CEN" });
 
@@ -147,10 +147,10 @@ describe("non-golf Matches in a match-play cup", () => {
     const owner = ctx.getUser("owner").id;
     const member = ctx.getUser("member").id;
     await ctx.addTripMemberById(tripId, member, "Member");
-    const lostA = await guest("Losing Ghost A");
-    const lostB = await guest("Losing Ghost B");
-    const wonA = await guest("Winning Ghost A");
-    const wonB = await guest("Winning Ghost B");
+    const lostA = await guest(tripId, "Losing Ghost A");
+    const lostB = await guest(tripId, "Losing Ghost B");
+    const wonA = await guest(tripId, "Winning Ghost A");
+    const wonB = await guest(tripId, "Winning Ghost B");
     await ctx.admin.from("team_assignments").insert([
       { competition_id: comp, user_id: owner, team_id: losing },
       { competition_id: comp, user_id: lostA, team_id: losing },
@@ -180,7 +180,7 @@ describe("non-golf Matches in a match-play cup", () => {
       })
       .eq("id", g.id);
 
-    await saveMatches(g.id, [
+    await saveMatches(tripId, g.id, [
       { matchNumber: 1, a: lostA, b: wonA, pointValue: 1 },
       { matchNumber: 2, a: owner, b: member, pointValue: 2 },
       { matchNumber: 3, a: lostB, b: wonB, pointValue: null },
@@ -221,15 +221,18 @@ describe("non-golf Matches in a match-play cup", () => {
     // re-finalize, rather than starting from a game that never had any. Those
     // are different states — the first has `game_results` rows already written
     // — and only the first is what was reported.
-    const comp = await ctx.createCompetition(tripId, "Cleared Cup");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "Matches Payout Trip", name: "Cleared Cup" });
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
     const owner = ctx.getUser("owner").id;
     const member = ctx.getUser("member").id;
-    const clearA = await guest("Cleared Ghost A1");
-    const clearB = await guest("Cleared Ghost B1");
-    const clearC = await guest("Cleared Ghost A2");
-    const clearD = await guest("Cleared Ghost B2");
+    // This cup's trip is its own, so the member joins it here (the shared trip
+    // this case used to borrow got them from the case above).
+    await ctx.addTripMemberById(tripId, member, "Member");
+    const clearA =await guest(tripId, "Cleared Ghost A1");
+    const clearB = await guest(tripId, "Cleared Ghost B1");
+    const clearC = await guest(tripId, "Cleared Ghost A2");
+    const clearD = await guest(tripId, "Cleared Ghost B2");
     await ctx.admin.from("team_assignments").insert([
       { competition_id: comp, user_id: owner, team_id: teamA },
       { competition_id: comp, user_id: clearA, team_id: teamA },
@@ -255,7 +258,7 @@ describe("non-golf Matches in a match-play cup", () => {
       })
       .eq("id", g.id);
 
-    await saveMatches(g.id, [
+    await saveMatches(tripId, g.id, [
       { matchNumber: 1, a: clearA, b: clearB, pointValue: 1 },
       { matchNumber: 2, a: owner, b: member, pointValue: 2 },
       { matchNumber: 3, a: clearC, b: clearD, pointValue: null },
@@ -301,7 +304,7 @@ describe("ranking-convention reconciliation", () => {
     // `low_wins` path, and these rows carry POINTS with no position — the exact
     // pairing #1245 was. Before #1381 this threw; before #1245 it paid the side
     // that scored 0.
-    const comp = await ctx.createCompetition(tripId, "Invariant Cup");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "Matches Payout Trip", name: "Invariant Cup" });
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
 
@@ -350,7 +353,7 @@ describe("ranking-convention reconciliation", () => {
     // The false-positive direction. Positions are what `low_wins` is FOR, so a
     // guard that fired here would be unshippable — it would throw on the most
     // common shape on the board.
-    const comp = await ctx.createCompetition(tripId, "Placement Quiet Cup");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "Matches Payout Trip", name: "Placement Quiet Cup" });
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
 

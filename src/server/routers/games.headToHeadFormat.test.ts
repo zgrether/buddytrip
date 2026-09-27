@@ -28,11 +28,11 @@ const CARD = "gtt_generic_card";
 const REFUSAL = headToHeadResultRefusal(CARD, "bracket")!;
 
 let ctx: TestContext;
-let tripId: string;
-let ryderCup: string;
-let pointsCup: string;
+type Cup = { tripId: string; competitionId: string };
+let ryderCup: Cup;
+let pointsCup: Cup;
 
-async function newGame(competitionId: string, name: string): Promise<string> {
+async function newGame({ tripId, competitionId }: Cup, name: string): Promise<string> {
   const g = (await ctx.caller().games.create({ tripId, gameTypeId: CARD, name, competitionId })) as { id: string };
   return g.id;
 }
@@ -40,7 +40,7 @@ async function formatOf(gameId: string): Promise<string | null> {
   const { data } = await ctx.admin.from("games").select("competition_format").eq("id", gameId).single();
   return (data as { competition_format: string | null }).competition_format;
 }
-async function saveNG(gameId: string, overrides: Partial<NonGolfConfigDraft>) {
+async function saveNG(tripId: string, gameId: string, overrides: Partial<NonGolfConfigDraft>) {
   const game = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown>;
   const delegates = ((await ctx.caller().games.listOrganizers({ tripId, gameId })) as { user_id: string }[]).map((d) => d.user_id);
   const draft: NonGolfConfigDraft = { ...configToNonGolfDraft(game, delegates), ...overrides };
@@ -50,9 +50,9 @@ async function saveNG(gameId: string, overrides: Partial<NonGolfConfigDraft>) {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("H2H format trip");
-  ryderCup = await ctx.createCompetition(tripId, "Ryder", { scoringModel: "match_play" });
-  pointsCup = await ctx.createCompetition(tripId, "Points", { scoringModel: "points" });
+  // One trip per cup: a trip holds one competition (migration 195).
+  ryderCup = await ctx.createCupTrip({ name: "Ryder", scoringModel: "match_play" });
+  pointsCup = await ctx.createCupTrip({ name: "Points", scoringModel: "points" });
 }, 60_000);
 
 afterAll(async () => {
@@ -62,7 +62,7 @@ afterAll(async () => {
 describe("a Match Play cup refuses switching a game into a bracket", () => {
   it("saveConfig: refused with the shared sentence, and nothing is written", async () => {
     const gameId = await newGame(ryderCup, "Cards");
-    await expect(saveNG(gameId, { competitionFormat: "bracket" })).rejects.toMatchObject({
+    await expect(saveNG(ryderCup.tripId, gameId, { competitionFormat: "bracket" })).rejects.toMatchObject({
       code: "BAD_REQUEST",
       message: REFUSAL,
     });
@@ -72,7 +72,7 @@ describe("a Match Play cup refuses switching a game into a bracket", () => {
   it("games.update: refused the same way", async () => {
     const gameId = await newGame(ryderCup, "Cards via update");
     await expect(
-      ctx.caller().games.update({ tripId, gameId, competitionFormat: "bracket" }),
+      ctx.caller().games.update({ tripId: ryderCup.tripId, gameId, competitionFormat: "bracket" }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST", message: REFUSAL });
     expect(await formatOf(gameId)).toBeNull();
   }, 60_000);
@@ -81,7 +81,7 @@ describe("a Match Play cup refuses switching a game into a bracket", () => {
     "admits %s — head to head between two teams",
     async (format) => {
       const gameId = await newGame(ryderCup, `Cards ${format}`);
-      await expect(saveNG(gameId, { competitionFormat: format })).resolves.toBeTruthy();
+      await expect(saveNG(ryderCup.tripId, gameId, { competitionFormat: format })).resolves.toBeTruthy();
       expect(await formatOf(gameId)).toBe(format);
     },
     60_000,
@@ -90,7 +90,7 @@ describe("a Match Play cup refuses switching a game into a bracket", () => {
   it("leaves a points race alone — a bracket is what it pays by", async () => {
     const gameId = await newGame(pointsCup, "Points bracket");
     await expect(
-      ctx.caller().games.update({ tripId, gameId, competitionFormat: "bracket" }),
+      ctx.caller().games.update({ tripId: pointsCup.tripId, gameId, competitionFormat: "bracket" }),
     ).resolves.toBeTruthy();
     expect(await formatOf(gameId)).toBe("bracket");
   }, 60_000);

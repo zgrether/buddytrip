@@ -210,12 +210,59 @@ export class TestContext {
     );
   }
 
-  /** Create a competition for a trip. */
+  /**
+   * A trip and ITS competition, created together — THE sanctioned way to get a
+   * competition in a test.
+   *
+   * A trip holds one competition (ruled 2026-09-22; UNIQUE (trip_id), migration
+   * 195). Suites used to share one trip across a file and hang a fresh cup off it
+   * per case for isolation, which built a state the app refuses: 37 files and 120
+   * tests did it, and only the database constraint exposed them. So a test that
+   * wants a cup gets a trip with it. `members` are added to the NEW trip (the
+   * owner is added by `createTrip`), so a case needing a member or an organizer
+   * says so here rather than borrowing another case's trip.
+   */
+  async createCupTrip(
+    opts: {
+      title?: string;
+      name?: string;
+      scoringModel?: "match_play" | "points";
+      members?: Array<UserRole | [UserRole, "Owner" | "Organizer" | "Member"]>;
+    } = {}
+  ): Promise<{ tripId: string; competitionId: string }> {
+    const tripId = await this.createTrip(opts.title ?? opts.name ?? "Cup Trip");
+    for (const m of opts.members ?? []) {
+      const [role, tripRole] = Array.isArray(m) ? m : [m, "Member" as const];
+      await this.addTripMember(tripId, role, tripRole);
+    }
+    const competitionId = await this.createCompetition(tripId, opts.name, { scoringModel: opts.scoringModel });
+    return { tripId, competitionId };
+  }
+
+  /**
+   * Create a competition for a trip that does not have one yet.
+   *
+   * REFUSES a trip that already holds a competition, before the database is
+   * asked — so a fixture cannot rebuild the forbidden state even where migration
+   * 195's constraint is absent, and the failure names the fix. For a fresh trip
+   * with its own cup, use `createCupTrip`.
+   */
   async createCompetition(
     tripId: string,
     name = "Test Competition",
     opts: { scoringModel?: "match_play" | "points" } = {}
   ): Promise<string> {
+    const { count, error: countErr } = await this.admin
+      .from("competitions")
+      .select("id", { count: "exact", head: true })
+      .eq("trip_id", tripId);
+    if (countErr) throw new Error(`createCompetition: couldn't check the trip's competitions: ${countErr.message}`);
+    if ((count ?? 0) > 0) {
+      throw new Error(
+        `createCompetition: trip ${tripId} already has a competition, and a trip holds one ` +
+          `(migration 195). Use ctx.createCupTrip() to get a trip with its own competition.`
+      );
+    }
     const competitionId = `test-comp-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 6)}`;

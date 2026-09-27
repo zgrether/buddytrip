@@ -49,7 +49,6 @@ const STROKE = "gtt_stroke_play";
 const BBMI = STABLEFORD_PRESETS.bbmi_2024.rubric;
 
 let ctx: TestContext;
-let tripId: string;
 let owner: string;
 let member: string;
 const gameIds: string[] = [];
@@ -88,9 +87,15 @@ async function insertCard(gameId: string, participantId: string, card: number[])
   if (error) throw new Error(`seed scores failed: ${error.message}`);
 }
 
-/** A two-team cup with one stroke game, both players rostered and grouped. */
+/** A two-team cup with one stroke game, both players rostered and grouped.
+ *  A trip holds one competition (migration 195), so each cup gets its own trip. */
 async function fixture(name: string, scoringConfig: Record<string, unknown>) {
-  const competitionId = await ctx.createCompetition(tripId, `${name} Cup`, { scoringModel: "points" });
+  const { tripId, competitionId } = await ctx.createCupTrip({
+    title: "Stableford rollup Trip",
+    name: `${name} Cup`,
+    scoringModel: "points",
+    members: ["member"],
+  });
   compIds.push(competitionId);
 
   const teamA = await ctx.createTeam(competitionId, "Steady", { color: "#ff0000" });
@@ -143,7 +148,7 @@ async function fixture(name: string, scoringConfig: Record<string, unknown>) {
 
   await insertCard(g.id, owner, cardFor("steady"));
   await insertCard(g.id, member, cardFor("spiky"));
-  return { gameId: g.id, competitionId, teamA, teamB };
+  return { tripId, gameId: g.id, competitionId, teamA, teamB };
 }
 
 async function resultsOfType(gameId: string, entityType: "team" | "user") {
@@ -159,8 +164,6 @@ const userResults = (gameId: string) => resultsOfType(gameId, "user");
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Stableford rollup Trip");
-  await ctx.addTripMember(tripId, "member", "Member");
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
 });
@@ -218,11 +221,11 @@ describe("STABLEFORD — the banked result and the cup", () => {
       scoringType: "stableford",
       stableford: { preset: "bbmi_2024", ...BBMI },
     });
-    await ctx.caller().games.finish({ tripId, gameId: sf.gameId });
+    await ctx.caller().games.finish({ tripId: sf.tripId, gameId: sf.gameId });
   });
 
   it("banks position 1 for the HIGHER points total, and pays that team", async () => {
-    const { gameId, competitionId, teamA, teamB } = sf;
+    const { tripId, gameId, competitionId, teamA, teamB } = sf;
 
     // ── The banked rows ────────────────────────────────────────────────────
     const rows = await teamResults(gameId);
@@ -282,7 +285,7 @@ describe("TRADITIONAL is unchanged — the constraint the timing rests on", () =
     // the result is today's behaviour. That this is the OPPOSITE of the case
     // above is what proves the config is being read at all — if it were
     // ignored, one of the two tests would have to fail.
-    const { gameId, competitionId, teamA, teamB } = await fixture("TRAD", {});
+    const { tripId, gameId, competitionId, teamA, teamB } = await fixture("TRAD", {});
 
     await ctx.caller().games.finish({ tripId, gameId });
 
@@ -309,7 +312,7 @@ describe("TRADITIONAL is unchanged — the constraint the timing rests on", () =
     // `config` is jsonb and no type system reaches it. A short `points` array
     // would index past its end and total to NaN, which banks a result nobody
     // can read. Falling back scores the round exactly as it always did.
-    const { gameId, teamA, teamB } = await fixture("BAD", {
+    const { tripId, gameId, teamA, teamB } = await fixture("BAD", {
       scoringType: "stableford",
       stableford: { ceiling: -2, floor: 3, points: [9, 6] },
     });

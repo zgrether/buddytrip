@@ -38,25 +38,31 @@ const CARD = "gtt_generic_card";
 const YARD = "gtt_generic_yard";
 
 let ctx: TestContext;
-let tripId: string;
 let owner: string, planner: string, member: string, outsider: string;
 const gameIds: string[] = [];
 const compIds: string[] = [];
 
 interface Cup {
+  tripId: string;
   competitionId: string;
   teamA: string;
   teamB: string;
 }
 
 /** A fresh cup per case: `teamTotals` sums every game in a competition, so a
- *  shared one would make each assertion depend on what ran before it. */
+ *  shared one would make each assertion depend on what ran before it. A trip
+ *  holds one competition (migration 195), so each cup gets its own trip. */
 async function newCup(name: string, scoringModel?: "match_play" | "points"): Promise<Cup> {
-  const competitionId = await ctx.createCompetition(tripId, name, scoringModel ? { scoringModel } : {});
+  const { tripId, competitionId } = await ctx.createCupTrip({
+    title: "credited unit Trip",
+    name,
+    scoringModel,
+    members: [["planner", "Organizer"], "member", "outsider"],
+  });
   compIds.push(competitionId);
   const teamA = await ctx.createTeam(competitionId, "Manhattans");
   const teamB = await ctx.createTeam(competitionId, "Centurions");
-  return { competitionId, teamA, teamB };
+  return { tripId, competitionId, teamA, teamB };
 }
 
 interface Entrant {
@@ -75,12 +81,12 @@ const fourSplit = (cup: Cup): Entrant[] => [
 
 async function newBracket(cup: Cup, name: string, entrants: Entrant[]): Promise<string> {
   const g = (await ctx.caller().games.create({
-    tripId, gameTypeId: CARD, name, competitionId: cup.competitionId,
+    tripId: cup.tripId, gameTypeId: CARD, name, competitionId: cup.competitionId,
   })) as { id: string };
   gameIds.push(g.id);
-  const hash = (await ctx.caller().games.configHash({ tripId, gameId: g.id })).hash;
+  const hash = (await ctx.caller().games.configHash({ tripId: cup.tripId, gameId: g.id })).hash;
   await ctx.caller().games.saveConfig({
-    tripId,
+    tripId: cup.tripId,
     gameId: g.id,
     baseHash: hash,
     payload: {
@@ -107,14 +113,14 @@ async function newBracket(cup: Cup, name: string, entrants: Entrant[]): Promise<
   return g.id;
 }
 
-const pick = (gameId: string, round: number, slot: number, winnerSeed: number) =>
+const pick = (tripId: string, gameId: string, round: number, slot: number, winnerSeed: number) =>
   ctx.caller().games.pickWinner({ tripId, gameId, bracket: "main", round, slot, winnerSeed });
 
 /** `buildDraw(4)` pairs 1v4 and 2v3: seed 1 wins, 2 is runner-up, 3 and 4 tie 3rd. */
-async function playChalk4(gameId: string) {
-  await pick(gameId, 1, 1, 1);
-  await pick(gameId, 1, 2, 2);
-  await pick(gameId, 2, 1, 1);
+async function playChalk4(tripId: string, gameId: string) {
+  await pick(tripId, gameId, 1, 1, 1);
+  await pick(tripId, gameId, 1, 2, 2);
+  await pick(tripId, gameId, 2, 1, 1);
 }
 
 const entrantId = (gameId: string, seed: number) => `${gameId}:e${seed}`;
@@ -135,16 +141,12 @@ async function rowsOf(gameId: string) {
 }
 
 const totalsOf = async (cup: Cup) => {
-  const board = await ctx.caller().competitions.leaderboard({ tripId, competitionId: cup.competitionId });
+  const board = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
   return (board as { teamTotals: Record<string, number> }).teamTotals;
 };
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("credited unit Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer");
-  await ctx.addTripMember(tripId, "member", "Member");
-  await ctx.addTripMember(tripId, "outsider", "Member");
   owner = ctx.user.id;
   planner = ctx.getUser("planner").id;
   member = ctx.getUser("member").id;
@@ -167,8 +169,8 @@ describe("a bracket records WHO IT PAID, not just who competed", () => {
   it("stamps each entrant row with its entrant's cup team, and declares the rank", async () => {
     const cup = await newCup("bracket credit Cup", "points");
     const gameId = await newBracket(cup, "Chalk", fourSplit(cup));
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup.tripId, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const rows = await rowsOf(gameId);
     expect(rows).toHaveLength(4);
@@ -192,8 +194,8 @@ describe("a bracket records WHO IT PAID, not just who competed", () => {
   it("does not follow the entrant's team after the game is finished", async () => {
     const cup = await newCup("bracket stability Cup", "points");
     const gameId = await newBracket(cup, "Chalk", fourSplit(cup));
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup.tripId, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
     const before = await totalsOf(cup);
 
     /**
@@ -229,7 +231,7 @@ describe("a bracket records WHO IT PAID, not just who competed", () => {
     // side of `games.finish` the move happened on.
     const cup = await newCup("bracket control Cup", "points");
     const gameId = await newBracket(cup, "Chalk", fourSplit(cup));
-    await playChalk4(gameId);
+    await playChalk4(cup.tripId, gameId);
 
     const { error } = await ctx.admin
       .from("bracket_entrants")
@@ -237,7 +239,7 @@ describe("a bracket records WHO IT PAID, not just who competed", () => {
       .eq("id", entrantId(gameId, 1));
     expect(error).toBeNull();
 
-    await ctx.caller().games.finish({ tripId, gameId });
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
     const rows = await rowsOf(gameId);
     const creditOf = new Map(rows.map((r) => [r.entity_id, r.credited_team_id]));
     expect(creditOf.get(entrantId(gameId, 1))).toBe(cup.teamB);
@@ -266,7 +268,7 @@ describe("a team-row format is paid by the team on the row, not by today's roste
   /** A non-golf placement game, finalized by entered order. */
   async function newPlacementGame(cup: Cup, name: string): Promise<string> {
     const g = (await ctx.caller().games.create({
-      tripId, gameTypeId: YARD, name, competitionId: cup.competitionId,
+      tripId: cup.tripId, gameTypeId: YARD, name, competitionId: cup.competitionId,
     })) as { id: string };
     gameIds.push(g.id);
     return g.id;
@@ -274,12 +276,12 @@ describe("a team-row format is paid by the team on the row, not by today's roste
 
   it("keeps its standings when a player is traded after the finalize", async () => {
     const cup = await newCup("trade stability Cup");
-    await ctx.caller().teamAssignments.assign({ tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamA });
-    await ctx.caller().teamAssignments.assign({ tripId, competitionId: cup.competitionId, userId: planner, teamId: cup.teamB });
+    await ctx.caller().teamAssignments.assign({ tripId: cup.tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamA });
+    await ctx.caller().teamAssignments.assign({ tripId: cup.tripId, competitionId: cup.competitionId, userId: planner, teamId: cup.teamB });
 
     const gameId = await newPlacementGame(cup, "Cornhole");
     await ctx.caller().games.finish({
-      tripId,
+      tripId: cup.tripId,
       gameId,
       placements: [
         { entityId: cup.teamA, position: 1 },
@@ -303,7 +305,7 @@ describe("a team-row format is paid by the team on the row, not by today's roste
      * plan's case rather than a synthetic one.
      */
     await ctx.caller().teamAssignments.assign({
-      tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamB,
+      tripId: cup.tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamB,
     });
 
     expect(await totalsOf(cup)).toEqual(before);
@@ -314,8 +316,8 @@ describe("a team-row format is paid by the team on the row, not by today's roste
     // failed. This reads the roster back: the move is real, and the finished
     // game simply does not consult it.
     const cup = await newCup("trade control Cup");
-    await ctx.caller().teamAssignments.assign({ tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamA });
-    await ctx.caller().teamAssignments.assign({ tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamB });
+    await ctx.caller().teamAssignments.assign({ tripId: cup.tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamA });
+    await ctx.caller().teamAssignments.assign({ tripId: cup.tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamB });
 
     const { data } = await ctx.admin
       .from("team_assignments")

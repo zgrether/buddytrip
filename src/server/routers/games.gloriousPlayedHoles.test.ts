@@ -31,10 +31,10 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
-let tripId: string;
 const gameIds: string[] = [];
 
 interface Fixture {
+  tripId: string;
   gameId: string;
   matchId: string;
   compId: string;
@@ -53,7 +53,12 @@ interface Fixture {
 async function fixture(name: string): Promise<Fixture> {
   const owner = ctx.getUser("owner").id;
   const member = ctx.getUser("member").id;
-  const compId = await ctx.createCompetition(tripId, `${name} cup`);
+  // A trip holds one competition (migration 195), so each fixture gets its own.
+  const { tripId, competitionId: compId } = await ctx.createCupTrip({
+    title: "Glorious Played Holes Trip",
+    name: `${name} cup`,
+    members: ["member"],
+  });
   const teamA = await ctx.createTeam(compId, "Alpha", { shortName: "ALP" });
   const teamB = await ctx.createTeam(compId, "Bravo", { shortName: "BRV" });
   await ctx.admin.from("team_assignments").insert([
@@ -75,7 +80,7 @@ async function fixture(name: string): Promise<Fixture> {
     id: matchId, game_id: g.id, match_number: 1, display_order: 1,
     side_a: { type: "user", id: owner }, side_b: { type: "user", id: member },
   });
-  return { gameId: g.id, matchId, compId, teamA, teamB };
+  return { tripId, gameId: g.id, matchId, compId, teamA, teamB };
 }
 
 /** Side A wins holes 1..`aWins`, halves the rest through `thru`. */
@@ -103,9 +108,9 @@ async function setModifiers(f: Fixture, mods: Record<string, Record<string, unkn
 /** Save through the real procedure, with `modifiers` as the only thing changing. */
 async function save(f: Fixture, mods: Record<string, Record<string, unknown>>) {
   const { data: g } = await ctx.admin.from("games").select("*").eq("id", f.gameId).single();
-  const hash = (await ctx.caller().games.configHash({ tripId, gameId: f.gameId })).hash;
+  const hash = (await ctx.caller().games.configHash({ tripId: f.tripId, gameId: f.gameId })).hash;
   return ctx.caller().games.saveConfig({
-    tripId, gameId: f.gameId, baseHash: hash,
+    tripId: f.tripId, gameId: f.gameId, baseHash: hash,
     payload: {
       name: g!.name as string,
       rulesForToday: (g!.rules_for_today as string | null) ?? null,
@@ -131,8 +136,6 @@ const GFH = (n: number) => ({ glorious_holes: { holes: n } });
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Glorious Played Holes Trip");
-  await ctx.addTripMemberById(tripId, ctx.getUser("member").id, "Member");
 });
 
 afterAll(async () => {
@@ -241,18 +244,18 @@ describe("a PERMITTED change recomputes — the freeze must not swallow it", () 
   it("reopens a decided match, and the cup points follow", async () => {
     const f = await fixture("reopen");
     await play(f, 4, 15);
-    await ctx.caller().games.finish({ tripId, gameId: f.gameId });
+    await ctx.caller().games.finish({ tripId: f.tripId, gameId: f.gameId });
 
     expect(await matchRow(f)).toMatchObject({ status: "complete", result: "a_win", margin: "4&3" });
-    const decided = await ctx.caller().competitions.leaderboard({ tripId, competitionId: f.compId });
+    const decided = await ctx.caller().competitions.leaderboard({ tripId: f.tripId, competitionId: f.compId });
     expect(decided.teamTotals[f.teamA]).toBe(10);
 
     // Through 15 → maxN = 3, so N=3 is permitted rather than refused.
-    await ctx.caller().games.openCorrection({ tripId, gameId: f.gameId });
+    await ctx.caller().games.openCorrection({ tripId: f.tripId, gameId: f.gameId });
     await expect(save(f, GFH(3))).resolves.toBeDefined();
 
     expect(await matchRow(f)).toMatchObject({ status: "active", result: null, margin: null });
-    const reopened = await ctx.caller().competitions.leaderboard({ tripId, competitionId: f.compId });
+    const reopened = await ctx.caller().competitions.leaderboard({ tripId: f.tripId, competitionId: f.compId });
     expect(reopened.teamTotals[f.teamA]).toBe(0);
     expect(reopened.teamTotals[f.teamB]).toBe(0);
   });
@@ -271,11 +274,11 @@ describe("a PERMITTED change recomputes — the freeze must not swallow it", () 
     // Through 15, so no hole in the 16-18 window has been played — turning it
     // off revalues nothing and is permitted.
     await play(f, 4, 15);
-    await ctx.caller().games.finish({ tripId, gameId: f.gameId });
+    await ctx.caller().games.finish({ tripId: f.tripId, gameId: f.gameId });
     // 4 up, weighted swing 6 → NOT over while glorious is on.
     expect(await matchRow(f)).toMatchObject({ status: "active", result: null });
 
-    await ctx.caller().games.openCorrection({ tripId, gameId: f.gameId });
+    await ctx.caller().games.openCorrection({ tripId: f.tripId, gameId: f.gameId });
     await expect(save(f, {})).resolves.toBeDefined();
     // Swing back to 3 < 4 → decided.
     expect(await matchRow(f)).toMatchObject({ status: "complete", result: "a_win", margin: "4&3" });

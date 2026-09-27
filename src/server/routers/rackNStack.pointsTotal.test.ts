@@ -20,15 +20,14 @@ const RACK = "gtt_rack_n_stack";
 const PAR = [4, 5, 3, 4, 4, 3, 5, 4, 4]; // front 9
 
 let ctx: TestContext;
-let tripId: string;
 let owner: string, planner: string, member: string, outsider: string;
+/** Each game's trip — every competition sits on its own trip, since a trip holds
+ *  one (migration 195). */
+const tripOfCup = new Map<string, string>();
+const tripOfGame = new Map<string, string>();
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Rack Total Points Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer");
-  await ctx.addTripMember(tripId, "member", "Member");
-  await ctx.addTripMember(tripId, "outsider", "Member");
   owner = ctx.user.id;
   planner = ctx.getUser("planner").id;
   member = ctx.getUser("member").id;
@@ -41,9 +40,15 @@ afterAll(async () => {
 
 /** A 2v2-ROSTER competition (owner+planner=Blue, member+outsider=Red) — so
  *  deriveMatchCount(teamSizes) = 2 for every game, regardless of how many of the
- *  roster a given rack game actually invites. */
-async function makeComp(name: string): Promise<{ comp: string; blue: string; red: string }> {
-  const comp = await ctx.createCompetition(tripId, name);
+ *  roster a given rack game actually invites. On its own trip, with the same
+ *  members the shared trip had. */
+async function makeComp(name: string): Promise<{ tripId: string; comp: string; blue: string; red: string }> {
+  const { tripId, competitionId: comp } = await ctx.createCupTrip({
+    title: "Rack Total Points Trip",
+    name,
+    members: [["planner", "Organizer"], ["member", "Member"], ["outsider", "Member"]],
+  });
+  tripOfCup.set(comp, tripId);
   const blue = await ctx.createTeam(comp, "Blue", { shortName: "BLU", color: "#3b82f6" });
   const red = await ctx.createTeam(comp, "Red", { shortName: "RED", color: "#ef4444" });
   await ctx.admin.from("team_assignments").insert([
@@ -52,23 +57,27 @@ async function makeComp(name: string): Promise<{ comp: string; blue: string; red
     { competition_id: comp, user_id: member, team_id: red },
     { competition_id: comp, user_id: outsider, team_id: red },
   ]);
-  return { comp, blue, red };
+  return { tripId, comp, blue, red };
 }
 
 async function makeGame(comp: string, name: string): Promise<string> {
+  const tripId = tripOfCup.get(comp)!;
   const g = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name, competitionId: comp });
+  tripOfGame.set(g.id as string, tripId);
   return g.id as string;
 }
 
 /** Set the owner total + derive & persist the per-slot value — the two mutations
  *  the client's RackTotalPointsControl reconcile effect calls. */
 async function setTotal(gameId: string, total: number, slotCount: number) {
+  const tripId = tripOfGame.get(gameId)!;
   await ctx.caller().games.setPointsTotal({ tripId, gameId, total });
   const derived = slotCount > 0 ? total / slotCount : 0;
   await ctx.caller().games.setPointsDistribution({ tripId, gameId, distribution: { type: "per_match", value: derived } });
 }
 
 async function enter(gameId: string, userId: string, gross: number[]) {
+  const tripId = tripOfGame.get(gameId)!;
   await ctx.callerAs("planner").games.enableScoring({ tripId, gameId }); // idempotent
   for (let i = 0; i < gross.length; i++) {
     await ctx.callerAs("planner").scores.upsertEntry({ tripId, gameId, participantId: userId, unitLabel: String(i + 1), value: gross[i] });
@@ -78,7 +87,7 @@ const bogey = PAR.map((p) => p + 1);
 
 describe("rack total-points — divisor is this game's SLOT count, not the roster-derived match count", () => {
   it("total 10 over 1 GAME slot (roster mc would be 2) → derives 10/slot, not 5; leaderboard reads the owner's total", async () => {
-    const { comp, blue, red } = await makeComp("Divisor Guard");
+    const { tripId, comp, blue, red } = await makeComp("Divisor Guard");
     const gameId = await makeGame(comp, "One Slot");
     // Only ONE player per team invited to THIS rack game — game-side slot count 1,
     // even though the competition roster is a full 2v2 (deriveMatchCount = 2).
@@ -113,7 +122,7 @@ describe("rack total-points — divisor is this game's SLOT count, not the roste
 
 describe("rack total-points — per-slot value recomputes live as the field grows", () => {
   it("total stays LOCKED at 10 while per-slot recomputes 10→5 as slots grow 1→2; award reads the LATEST value", async () => {
-    const { comp, blue, red } = await makeComp("Live Recompute");
+    const { tripId, comp, blue, red } = await makeComp("Live Recompute");
     const gameId = await makeGame(comp, "Growing Field");
 
     // Phase 1: one slot, total 10 → per-slot 10 (mirrors the previous test's setup).
