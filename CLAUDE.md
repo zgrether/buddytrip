@@ -549,12 +549,38 @@ seam, never on a calendar.
   **How to apply:** read every result through the `rowOrThrow` family
   (`src/server/lib/rowOrThrow.ts`): `rowOrThrow` (a row that must exist),
   `maybeRowOrThrow` (a row that may be absent), `rowsOrThrow` (a list that may
-  be empty). A failure throws a retryable 500 and never reaches the write. The
-  surface that reported one of these is rarely the only one — sweep for what
-  else WRITES on the strength of the same read. Test with a fake that fails
-  exactly one read, beside a control proving the fake can express the write
-  (the release is an RPC, not an `.update()` — a test watching the wrong door
-  stays green against the bug).
+  be empty), `countOrThrow` (a count that may be zero). A failure throws a
+  retryable 500 and never reaches the write. The surface that reported one of
+  these is rarely the only one — sweep for what else WRITES on the strength of
+  the same read. Test with a fake that fails exactly one read, beside a control
+  proving the fake can express the write (the release is an RPC, not an
+  `.update()` — a test watching the wrong door stays green against the bug).
+
+  **Every read goes before the FIRST write, not just before the write that
+  uses it.** #1470's first draft checked golf match play's roster read and
+  still lost data: the function writes its side rows first, with
+  `scope: "all"`, which deletes the team rows too, and only then read the
+  rosters for the team write. A failed roster read left a finished game with no
+  team rows. The fake-client test allowed "one write before the failure" and
+  passed; the real database, on a re-finalize, did not. A write that replaces
+  more than it names turns every later read into a destructive one, so read
+  everything, then write.
+
+- **A TEST THAT EXERCISES A DESTRUCTIVE WRITE MUST NOT SHARE STATE WITH THE
+  NEXT ONE.** Each case establishes its own starting state — a `beforeEach`
+  that restores it, or its own freshly built game — never the state an earlier
+  case happened to leave.
+
+  The fault this prevents is invisible exactly when it would matter. On correct
+  code the destructive write is refused, nothing leaks, and every case passes
+  whatever order it runs in. The leak only happens when a guard FAILS — which
+  is the moment a failure most needs to point at its own cause. Lived in #1469:
+  the fail-open mutant let the roster-lock case remove a player, which turned a
+  later MOVE control into an ADD, so an unrelated control went red beside the
+  six real failures. On a real regression that is a misdiagnosis waiting to
+  happen, and only a mutant — the one thing that makes a guard fail on purpose
+  — could surface it. `guardsFailClosed.test.ts` resets the roster before every
+  case; `resultWritersFailClosed.test.ts` builds a fresh game per case.
 
 - **EMPTY IS NOT UNKNOWN, AND JAVASCRIPT WILL NOT HELP YOU.** Five instances in one
   feature, each a different disguise on one mistake — a value that means "resolved to
