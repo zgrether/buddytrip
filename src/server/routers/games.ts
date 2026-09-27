@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { refuseSplitSides } from "../lib/splitSides";
-import { countOrThrow, maybeRowOrThrow } from "../lib/rowOrThrow";
+import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
@@ -297,9 +297,6 @@ async function writeManualResults(
   placements: { entityId: string; position: number }[],
   entityType: "team" | "entrant"
 ): Promise<number> {
-  const { error: delErr } = await supabase.from("game_results").delete().eq("game_id", gameId);
-  if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
-  if (placements.length === 0) return 0;
 
   /**
    * ── The credited unit, snapshotted (migration 191) ───────────────────────
@@ -344,6 +341,13 @@ async function writeManualResults(
     );
     creditedTeamOf = (entityId: string) => teamById.get(entityId) ?? null;
   }
+
+  // The delete comes AFTER the read above, never before it (#1470). It used to
+  // come first, so a failed entrant read on a re-finalize left a finished
+  // bracket with its results deleted and nothing written in their place.
+  const { error: delErr } = await supabase.from("game_results").delete().eq("game_id", gameId);
+  if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
+  if (placements.length === 0) return 0;
 
   const rows = placements.map((p) => ({
     id: crypto.randomUUID(),
@@ -1330,11 +1334,16 @@ export const gamesRouter = router({
       // assigned, everywhere"), so it has nothing to warn about — the pairing
       // grid, not finalize, is where that gets resolved.
       } else if (strategy === "matches") {
-        const { data: rows } = await ctx.supabase
-          .from("game_matches")
-          .select("id, side_a, side_b, result, point_value")
-          .eq("game_id", input.gameId);
-        const gameMatches = (rows ?? []) as {
+        // Checked (#1470): unchecked, a failed read paid no match, wrote 0 for
+        // every team, and the game was then marked complete on top.
+        const rows = rowsOrThrow(
+          await ctx.supabase
+            .from("game_matches")
+            .select("id, side_a, side_b, result, point_value")
+            .eq("game_id", input.gameId),
+          "game's matches"
+        );
+        const gameMatches = rows as {
           id: string;
           side_a: { type: string; id: string } | null;
           side_b: { type: string; id: string } | null;

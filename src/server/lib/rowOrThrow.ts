@@ -75,6 +75,22 @@ export function rowOrThrow<T>(
 }
 
 /**
+ * What `failed` throws: an ordinary `INTERNAL_SERVER_ERROR` to every caller
+ * that does not look closer, and RECOGNISABLE as "a read failed" to the one
+ * that must (#1470). The result writers' setup path (`WriteFailureMode` "log")
+ * has to tell a failed read, which it skips and logs, from a real refusal
+ * raised in the same compute, which must still reach the caller. A subclass
+ * rather than a message match, because the sentence is for people.
+ */
+export class QueryFailedError extends TRPCError {
+  readonly what: string;
+  constructor(what: string, message: string) {
+    super({ code: "INTERNAL_SERVER_ERROR", message });
+    this.what = what;
+  }
+}
+
+/**
  * The shared failure path — ONE log line and ONE sentence for every shape in
  * this family. `never`: it always throws.
  */
@@ -91,10 +107,7 @@ function failed(error: unknown, what: string): never {
             : String(error),
     })
   );
-  throw new TRPCError({
-    code: "INTERNAL_SERVER_ERROR",
-    message: `Couldn't check the ${what} just now. This is temporary — try again in a moment.`,
-  });
+  throw new QueryFailedError(what, `Couldn't check the ${what} just now. This is temporary — try again in a moment.`);
 }
 
 /*

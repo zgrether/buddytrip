@@ -8,7 +8,8 @@ import {
 } from "@/lib/pickemFinalize";
 import { effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import type { ScoredPick } from "@/lib/pickemScoring";
-import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { failClosedOnRead, writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { maybeRowOrThrow, rowOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**
  * The DB half of pick'em's finalize — CLAUDE.md #8's split, applied to the fifth
@@ -85,22 +86,53 @@ export interface PickemResultsOptions {
 export async function computePickemResults(
   supabase: SupabaseClient,
   gameId: string,
+  opts: PickemResultsOptions & { onFailure: "throw" }
+): Promise<PickemFinalizeResult>;
+export async function computePickemResults(
+  supabase: SupabaseClient,
+  gameId: string,
+  opts?: PickemResultsOptions
+): Promise<PickemFinalizeResult | null>;
+export async function computePickemResults(
+  supabase: SupabaseClient,
+  gameId: string,
   opts: PickemResultsOptions = {}
-): Promise<PickemFinalizeResult> {
-  const { data: game } = await supabase
-    .from("games")
-    .select("id, competition_id, points_total, points_distribution")
-    .eq("id", gameId)
-    .maybeSingle();
-  if (!game) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-  }
+): Promise<PickemFinalizeResult | null> {
+  // #1470: a failed read never reaches the write — see `failClosedOnRead`.
+  // `null` is the setup path's skip; the finalize path throws instead.
+  return failClosedOnRead(gameId, opts.onFailure, null, () => pickemResults(supabase, gameId, opts));
+}
 
-  const { data: cfg } = await supabase
-    .from("pickem_games")
-    .select("picks_opened_at, picks_deadline, picks_locked_at, roll_up, use_confidence")
-    .eq("game_id", gameId)
-    .maybeSingle();
+async function pickemResults(
+  supabase: SupabaseClient,
+  gameId: string,
+  opts: PickemResultsOptions
+): Promise<PickemFinalizeResult> {
+  // Every read below goes through the rowOrThrow family (#1470). Unchecked, a
+  // failed slate, picks or matches read scored every sheet 0, and a failed teams
+  // read made the write empty, which under `scope: "all"` deletes every row.
+  const game = rowOrThrow(
+    await supabase
+      .from("games")
+      .select("id, competition_id, points_total, points_distribution")
+      .eq("id", gameId)
+      .maybeSingle(),
+    { code: "NOT_FOUND", message: "Game not found" },
+    "game"
+  );
+
+  // Checked separately from absence: a missing row is an unconfigured game (the
+  // gate below refuses it as never-opened), a FAILED read is not, and telling a
+  // runner "start picking first" because a request timed out sends them to a
+  // button that is already pressed.
+  const cfg = maybeRowOrThrow(
+    await supabase
+      .from("pickem_games")
+      .select("picks_opened_at, picks_deadline, picks_locked_at, roll_up, use_confidence")
+      .eq("game_id", gameId)
+      .maybeSingle(),
+    "pick'em settings"
+  );
 
   /**
    * THE GATE — a game still taking picks is not over. See the header for why
@@ -169,7 +201,11 @@ export async function computePickemResults(
    * scores from one set of values and persists another, which is the seam this
    * feature keeps finding.
    */
-  const unresolvedIds = (slateRes.data ?? [])
+  // Checked BEFORE the void below, so a failure writes nothing at all.
+  const slate = rowsOrThrow(slateRes, "slate");
+  const picks = rowsOrThrow(picksRes, "sheets");
+  const matches = rowsOrThrow(matchRes, "game's matches");
+  const unresolvedIds = slate
     .filter((g) => (g.result as string | null) == null)
     .map((g) => g.id as string);
   if (unresolvedIds.length > 0) {
@@ -193,9 +229,9 @@ export async function computePickemResults(
   const input = buildPickemFinalizeInput({
     game,
     cfg,
-    slate: slateRes.data ?? [],
-    picks: picksRes.data ?? [],
-    matches: matchRes.data ?? [],
+    slate,
+    picks,
+    matches,
     competition: compRes,
   });
 
@@ -342,14 +378,18 @@ async function readCompetition(
     supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", competitionId),
   ]);
 
+  const comp = maybeRowOrThrow(compRes, "cup");
+  const teams = rowsOrThrow(teamRes, "cup's teams");
+  const assigns = rowsOrThrow(assignRes, "cup's rosters");
+
   const memberIds = new Map<string, string[]>();
-  for (const t of teamRes.data ?? []) memberIds.set(t.id as string, []);
-  for (const a of assignRes.data ?? []) {
+  for (const t of teams) memberIds.set(t.id as string, []);
+  for (const a of assigns) {
     memberIds.get(a.team_id as string)?.push(a.user_id as string);
   }
 
   return {
-    pointsMode: (compRes.data?.scoring_model as string | null) === "points",
+    pointsMode: (comp?.scoring_model as string | null) === "points",
     teams: [...memberIds.entries()].map(([id, ids]) => ({ id, memberIds: ids })),
   };
 }

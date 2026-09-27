@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import type { ResultValueKind } from "@/lib/resultRow";
+import { QueryFailedError } from "./rowOrThrow";
 
 /**
  * The ONE write path for `game_results` (#776).
@@ -178,4 +179,45 @@ export async function writeGameResults(
     scope: input.scope.kind,
     error: error.message,
   });
+}
+
+/**
+ * Run a result writer so that a FAILED READ never reaches its write (#1470).
+ *
+ * Every engine reads rosters, participants, matches or scores and then REPLACES
+ * the game's rows — `scope: "all"` deletes before it inserts. A read that came
+ * back empty on failure used to be written as the answer: zeros for every team,
+ * or no rows at all, which is a delete. The engines now read through the
+ * `rowOrThrow` family, so a failure throws before anything is written; this
+ * decides what that throw means in each mode, and it is `WriteFailureMode`'s
+ * own rule carried one step earlier — the atomicity is unconditional, only the
+ * throw is conditional:
+ *
+ * - `"throw"` (finalize): propagates, so `games.finish` fails before it marks
+ *   the game complete. Re-tapping Finish re-runs from the same inputs.
+ * - `"log"` (setup): the rows are left exactly as they were and the failure is
+ *   logged. A setup recompute is a refresh of derived state, so skipping one is
+ *   a missed refresh, and throwing would report a failed save for a settings or
+ *   pairing change that had already committed.
+ *
+ * Only a read failure is caught. A refusal raised inside the compute (pick'em's
+ * "close picking first", stroke's "nobody completed the round") is a decision,
+ * not a failure, and reaches the caller in both modes.
+ */
+export async function failClosedOnRead<T>(
+  gameId: string,
+  onFailure: WriteFailureMode | undefined,
+  skipped: T,
+  compute: () => Promise<T>
+): Promise<T> {
+  try {
+    return await compute();
+  } catch (err) {
+    if ((onFailure ?? "log") === "throw" || !(err instanceof QueryFailedError)) throw err;
+    console.error("[writeGameResults] a read failed, results left as they were (setup path, not surfaced)", {
+      gameId,
+      what: err.what,
+    });
+    return skipped;
+  }
 }

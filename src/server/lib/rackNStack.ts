@@ -3,7 +3,8 @@ import { playerStats, computeRack, rackSides, type RackPlayer, type Team } from 
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
-import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { failClosedOnRead, writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**
  * DB-persist side of rack-n-stack. Builds the SAME read-model the live client
@@ -46,11 +47,27 @@ export async function computeRackNStackResults(
    *  behaviour; `games.finish` passes "throw". See WriteFailureMode. */
   { onFailure }: { onFailure?: WriteFailureMode } = {}
 ): Promise<RackTeamOutcome[]> {
-  const { data: game } = await supabase
-    .from("games")
-    .select("scorecard_schema, game_type_id, competition_id, points_distribution, points_total")
-    .eq("id", gameId)
-    .maybeSingle();
+  // #1470: a failed read never reaches the write — see `failClosedOnRead`.
+  return failClosedOnRead(gameId, onFailure, [], () => rackResults(supabase, gameId, onFailure));
+}
+
+async function rackResults(
+  supabase: SupabaseClient,
+  gameId: string,
+  onFailure: WriteFailureMode | undefined
+): Promise<RackTeamOutcome[]> {
+  // Every read below goes through the rowOrThrow family (#1470). Unchecked, a
+  // failed game or teams read returned early and a finalize marked the game
+  // complete on whatever rows were there; a failed participants or scores read
+  // wrote a 0–0 tally over the real one.
+  const game = maybeRowOrThrow(
+    await supabase
+      .from("games")
+      .select("scorecard_schema, game_type_id, competition_id, points_distribution, points_total")
+      .eq("id", gameId)
+      .maybeSingle(),
+    "game"
+  );
   if (!game?.competition_id) return []; // rack needs a competition (2 teams)
 
   // Per-match scoring (each slot = `value` pts) when configured so; else the
@@ -71,7 +88,7 @@ export async function computeRackNStackResults(
   // The two sides are the COMPETITION's two teams (`rackSides`, ruling 12) —
   // one answer shared with the board's projection and the rack screen, in the
   // cup's creation order. Then user_id → team_id for scoring.
-  const [{ data: cupTeams }, { data: assigns }] = await Promise.all([
+  const [cupTeamsRes, assignsRes] = await Promise.all([
     supabase
       .from("teams")
       .select("id")
@@ -82,10 +99,12 @@ export async function computeRackNStackResults(
       .select("user_id, team_id")
       .eq("competition_id", game.competition_id as string),
   ]);
-  const sides = rackSides((cupTeams ?? []).map((t) => t.id as string));
+  const cupTeams = rowsOrThrow(cupTeamsRes, "cup's teams");
+  const assigns = rowsOrThrow(assignsRes, "cup's rosters");
+  const sides = rackSides(cupTeams.map((t) => t.id as string));
   if (!sides) return []; // not a two-team cup — not a rack a person can build
   const teamOf = new Map<string, string>();
-  for (const a of assigns ?? []) teamOf.set(a.user_id as string, a.team_id as string);
+  for (const a of assigns) teamOf.set(a.user_id as string, a.team_id as string);
   // A side nobody is rostered on writes nothing, as it always has. What an empty
   // side SHOULD pay is ruling 9 (forfeit), which is PR 3's, not this one's.
   const rostered = new Set(teamOf.values());
@@ -93,12 +112,12 @@ export async function computeRackNStackResults(
   const teamIds = [sides.A, sides.B];
   const slot: Record<string, Team> = { [sides.A]: "A", [sides.B]: "B" };
 
-  const { data: parts } = await supabase
-    .from("game_participants")
-    .select("user_id, handicap_strokes")
-    .eq("game_id", gameId);
+  const parts = rowsOrThrow(
+    await supabase.from("game_participants").select("user_id, handicap_strokes").eq("game_id", gameId),
+    "game's players"
+  );
   const hcap = new Map<string, number>();
-  for (const p of parts ?? []) hcap.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
+  for (const p of parts) hcap.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
 
   // #1031: rack's live slot count — rank-paired 1v1s = min(team-A roster, team-B
   // roster), recomputed from the CURRENT `game_participants` roster, never from a
@@ -111,7 +130,7 @@ export async function computeRackNStackResults(
   // predicate here means the divisor can never disagree with who gets scored.
   let teamACount = 0;
   let teamBCount = 0;
-  for (const p of parts ?? []) {
+  for (const p of parts) {
     const teamId = teamOf.get(p.user_id as string);
     if (teamId === teamIds[0]) teamACount += 1;
     else if (teamId === teamIds[1]) teamBCount += 1;
@@ -126,13 +145,16 @@ export async function computeRackNStackResults(
       )
     : 1;
 
-  const { data: entries } = await supabase
-    .from("score_entries")
-    .select("participant_id, unit_label, value")
-    .eq("game_id", gameId)
-    .eq("participant_type", "user");
+  const entries = rowsOrThrow(
+    await supabase
+      .from("score_entries")
+      .select("participant_id, unit_label, value")
+      .eq("game_id", gameId)
+      .eq("participant_type", "user"),
+    "game's scores"
+  );
   const gross = new Map<string, Record<string, number>>();
-  for (const e of entries ?? []) {
+  for (const e of entries) {
     if (e.value == null) continue;
     const pid = e.participant_id as string;
     if (!gross.has(pid)) gross.set(pid, {});
@@ -140,7 +162,7 @@ export async function computeRackNStackResults(
   }
 
   const players: RackPlayer[] = [];
-  for (const p of parts ?? []) {
+  for (const p of parts) {
     const uid = p.user_id as string;
     const teamId = teamOf.get(uid);
     if (!teamId || !(teamId in slot)) continue; // only the two competing teams
