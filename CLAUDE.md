@@ -1528,6 +1528,30 @@ These patterns have been established through prior work. Follow them exactly —
     anyone who can name the container. Either gate it inside the body, or keep
     it out of the exposed schema.
 
+29. **A game's competition is `game.competition_id`, never the trip's cup. And
+    a game's HOME is the Games page, whatever it belongs to.** Both became rules
+    in PR 6b, when side games (`competition_id` NULL) arrived, and both break the
+    same way: code written while every game had a cup and a game's cup and its
+    trip's cup were one thing.
+
+    - **Skipped because the game has no cup.** `if (competitionId)` in front of
+      something about the GAME or the TRIP. The board refresh, the exit after
+      finalize and the delete destination (`competitionId ? leaderboard : trip
+      home`, which sent a side game to the Trip tab), the correction refresh,
+      and match play's push all did this. Correct-to-skip is only what is
+      genuinely about a cup: standings, clinch, team points, co_admin rights.
+    - **Reading the trip's cup as the game's.** `competitions.getByTrip` answered
+      "this game's competition" correctly only while every game was in the cup.
+      A side match game on a trip that has one rendered the cup's standings
+      header. A view may still use the trip lookup to FETCH its game's
+      competition row, admitted only when `id === game.competition_id`.
+
+    The mechanics: exits and deletes land on `gamesPageHref(tripId)`, which takes
+    no competition; a push links to `gamePanelHref` whenever the format panels;
+    every board refresh goes through `invalidateGameBoards`.
+    `sideGamePaths.guard.test.ts` pins these for every side-capable view, and
+    fails when a format gains `side_game` until its view is listed and checked.
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative
