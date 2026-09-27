@@ -31,13 +31,12 @@ import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 const MANUAL = "gtt_generic_card";
 
 let ctx: TestContext;
-let tripId: string;
 let owner: string;
 let member: string;
 const gameIds: string[] = [];
 const guestIds: string[] = [];
 
-async function guest(name: string): Promise<string> {
+async function guest(tripId: string, name: string): Promise<string> {
   const id = `ghost-${crypto.randomUUID()}`;
   await ctx.admin.from("users").insert({ id, name, is_guest: true });
   guestIds.push(id);
@@ -56,10 +55,8 @@ async function claimOf(competitionId: string): Promise<string | null> {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("paid-not-set trip");
   owner = ctx.getUser("owner").id;
   member = ctx.getUser("member").id;
-  await ctx.addTripMemberById(tripId, member, "Member");
 });
 
 afterAll(async () => {
@@ -77,11 +74,14 @@ afterAll(async () => {
 
 describe("non-golf Matches — the match arm", () => {
   it("a match undecided at finalize leaves the target, and the clinch is announced by that finalize", async () => {
-    const comp = await ctx.createCompetition(tripId, "Paid Not Set Cup");
+    // Every cup on its own trip — a trip holds one competition (migration 195).
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({
+      title: "paid-not-set trip", name: "Paid Not Set Cup", members: ["member"],
+    });
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
-    const ghostA = await guest("Paid Ghost A");
-    const ghostB = await guest("Paid Ghost B");
+    const ghostA = await guest(tripId, "Paid Ghost A");
+    const ghostB = await guest(tripId, "Paid Ghost B");
     await ctx.admin.from("team_assignments").insert([
       { competition_id: comp, user_id: owner, team_id: teamA },
       { competition_id: comp, user_id: ghostA, team_id: teamA },
@@ -186,9 +186,11 @@ describe("non-golf Matches — the match arm", () => {
 });
 
 describe("pick'em individual matches — the pick'em arm", () => {
-  /** A locked pick'em in its own cup; every slate game resolved. */
+  /** A locked pick'em in its own cup, on its own trip; every slate game resolved. */
   async function pickem(label: string) {
-    const competitionId = await ctx.createCompetition(tripId, `pickem ${label}`);
+    const { tripId, competitionId } = await ctx.createCupTrip({
+      title: "paid-not-set trip", name: `pickem ${label}`, members: ["member"],
+    });
     const teamA = await ctx.createTeam(competitionId, "Alpha");
     const teamB = await ctx.createTeam(competitionId, "Bravo");
     await ctx.admin.from("team_assignments").insert([
@@ -221,7 +223,7 @@ describe("pick'em individual matches — the pick'em arm", () => {
         result: "home",
       }))
     );
-    return { competitionId, gameId: g.id, teamA, teamB };
+    return { tripId, competitionId, gameId: g.id, teamA, teamB };
   }
 
   it("NO matches drawn → the whole total goes unpaid, and the target drops by all of it", async () => {
@@ -233,7 +235,7 @@ describe("pick'em individual matches — the pick'em arm", () => {
     const live = await computeCompetitionLeaderboard(ctx.admin, f.competitionId);
     expect(live.pointsAvailable).toBe(10); // control
 
-    await ctx.caller().games.finish({ tripId, gameId: f.gameId });
+    await ctx.caller().games.finish({ tripId: f.tripId, gameId: f.gameId });
     const done = await computeCompetitionLeaderboard(ctx.admin, f.competitionId);
     expect(done.teamTotals[f.teamA]).toBe(0);
     expect(done.teamTotals[f.teamB]).toBe(0);
@@ -254,7 +256,7 @@ describe("pick'em individual matches — the pick'em arm", () => {
     const live = await computeCompetitionLeaderboard(ctx.admin, f.competitionId);
     expect(live.pointsAvailable).toBe(10); // control
 
-    await ctx.caller().games.finish({ tripId, gameId: f.gameId });
+    await ctx.caller().games.finish({ tripId: f.tripId, gameId: f.gameId });
     const done = await computeCompetitionLeaderboard(ctx.admin, f.competitionId);
     expect(done.teamTotals[f.teamA]).toBe(0);
     expect(done.teamTotals[f.teamB]).toBe(0);

@@ -51,12 +51,27 @@ async function completeRound(
       submitted_at: new Date().toISOString(),
     }))
   );
-  await ctx.admin.from("score_entries").insert(rows);
+  // Checked: a dropped insert under load used to leave the round incomplete, and
+  // the case then failed on "No player has completed all 18 holes" — a refusal
+  // about the code, pointing away from the fixture that actually failed.
+  const { error } = await ctx.admin.from("score_entries").insert(rows);
+  if (error) throw new Error(`completeRound: seeding scores failed: ${error.message}`);
 }
 
 
 let ctx: TestContext;
 let tripId: string;
+
+/** A points cup on a trip of its own (a trip holds one competition, migration
+ *  195), with the same roster the shared trip carries. */
+function strokeCup(name: string) {
+  return ctx.createCupTrip({
+    title: "Stroke Team Points Trip",
+    name,
+    scoringModel: "points",
+    members: [["planner", "Organizer"], ["member", "Member"]],
+  });
+}
 
 describe("stroke play — team aggregate net reaches game_results", () => {
   beforeAll(async () => {
@@ -71,7 +86,7 @@ describe("stroke play — team aggregate net reaches game_results", () => {
   });
 
   it("writes team rows ranked lowest-total-first, alongside the per-player rows", async () => {
-    const comp = await ctx.createCompetition(tripId, "Stroke Cup", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await strokeCup("Stroke Cup");
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
 
@@ -140,7 +155,7 @@ describe("stroke play — team aggregate net reaches game_results", () => {
     // Under lowest-total-wins, a row for an absent team would carry total 0 and
     // beat everyone. The most dangerous edge in the whole rule, so it is pinned
     // against the real writer and not only against the pure function.
-    const comp = await ctx.createCompetition(tripId, "Lopsided Cup", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await strokeCup("Lopsided Cup");
     const teamA = await ctx.createTeam(comp, "Present", { shortName: "PRS" });
     const teamGhost = await ctx.createTeam(comp, "Absent", { shortName: "ABS" });
 
@@ -188,7 +203,7 @@ describe("stroke play — team aggregate net reaches game_results", () => {
     // (Points)" / Test1 had ONE player complete 18 holes and seven rostered
     // team-mates who never teed off. Finalize recorded three teams tied for
     // FIRST on totals of 0, with the only team that actually played placed 4th.
-    const comp = await ctx.createCompetition(tripId, "Ghost Cup", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await strokeCup("Ghost Cup");
     const played = await ctx.createTeam(comp, "Played", { shortName: "PLY" });
     const idle = await ctx.createTeam(comp, "Idle", { shortName: "IDL" });
 

@@ -24,12 +24,12 @@ import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
  */
 
 let ctx: TestContext;
-let tripId: string;
 let owner: string;
 let member: string;
 
 /** One cup + one pick'em game inside it, torn down per suite. */
 interface Fixture {
+  tripId: string;
   competitionId: string;
   gameId: string;
   slateIds: string[];
@@ -44,8 +44,13 @@ async function makeFixture(opts: {
   rollUp?: "team_totals" | "individual_matches";
   pointsTotal?: number | null;
 }): Promise<Fixture> {
-  const competitionId = await ctx.createCompetition(tripId, "pickem finalize cup", {
-    ...(opts.scoringModel ? { scoringModel: opts.scoringModel } : {}),
+  // A trip holds one competition (migration 195), so each fixture's cup gets
+  // its own trip.
+  const { tripId, competitionId } = await ctx.createCupTrip({
+    title: "pickem finalize trip",
+    name: "pickem finalize cup",
+    scoringModel: opts.scoringModel,
+    members: ["member"],
   });
 
   // `createTeam`, not a hand-rolled insert: `teams.color_dim` is NOT NULL and a
@@ -94,7 +99,7 @@ async function makeFixture(opts: {
     }))
   );
 
-  return { competitionId, gameId: g.id, slateIds, teamA, teamB };
+  return { tripId, competitionId, gameId: g.id, slateIds, teamA, teamB };
 }
 
 /**
@@ -140,7 +145,7 @@ async function closePicks(f: Fixture) {
 }
 
 function finish(f: Fixture) {
-  return ctx.caller().games.finish({ tripId, gameId: f.gameId });
+  return ctx.caller().games.finish({ tripId: f.tripId, gameId: f.gameId });
 }
 
 async function resultRows(f: Fixture) {
@@ -171,8 +176,6 @@ async function dropFixture(f: Fixture) {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("pickem finalize trip");
-  await ctx.addTripMember(tripId, "member", "Member");
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
 }, 60_000);
@@ -296,7 +299,7 @@ describe("what gets persisted, and what the cup then pays", () => {
     // classification this is here to test.
     const late = genId("sg");
     await ctx.caller().pickem.saveConfig({
-      tripId,
+      tripId: f.tripId,
       gameId: f.gameId,
       slate: [
         ...f.slateIds.map((id, i) => ({

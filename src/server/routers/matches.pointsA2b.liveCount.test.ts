@@ -21,16 +21,15 @@ import { evenShare, liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 const MATCH_PLAY = "gtt_match_play";
 
 let ctx: TestContext;
-let tripId: string;
+/** Every cup trip's roster beyond its owner — what the shared trip used to carry. */
+const ROSTER: Array<"member" | "outsider" | ["planner", "Organizer"]> = [["planner", "Organizer"], "member", "outsider"];
 let owner: string, planner: string, member: string, outsider: string;
 const gameIds: string[] = [];
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("A2b Live Count Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer");
-  await ctx.addTripMember(tripId, "member", "Member");
-  await ctx.addTripMember(tripId, "outsider", "Member");
+  // Each competition gets a trip of its own (`makeComp` / `createCupTrip`): a
+  // trip holds one competition (migration 195).
   owner = ctx.user.id;
   planner = ctx.getUser("planner").id;
   member = ctx.getUser("member").id;
@@ -52,8 +51,8 @@ interface MatchRow {
   side_b: Side;
 }
 
-async function makeComp(name: string): Promise<{ comp: string; blue: string; red: string }> {
-  const comp = await ctx.createCompetition(tripId, name);
+async function makeComp(name: string): Promise<{ tripId: string; comp: string; blue: string; red: string }> {
+  const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "A2b Live Count Trip", name, members: ROSTER });
   const blue = await ctx.createTeam(comp, "Blue", { color: "#2563eb" });
   const red = await ctx.createTeam(comp, "Red", { color: "#dc2626" });
   await ctx.admin.from("team_assignments").insert([
@@ -62,10 +61,10 @@ async function makeComp(name: string): Promise<{ comp: string; blue: string; red
     { competition_id: comp, user_id: member, team_id: red },
     { competition_id: comp, user_id: outsider, team_id: red },
   ]);
-  return { comp, blue, red };
+  return { tripId, comp, blue, red };
 }
 
-async function makeGame(comp: string, name: string): Promise<string> {
+async function makeGame(tripId: string, comp: string, name: string): Promise<string> {
   const g = (await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name, competitionId: comp })) as { id: string };
   gameIds.push(g.id);
   return g.id;
@@ -86,8 +85,8 @@ describe("#1031 — the divisor is the LIVE assigned-match count, recomputed on 
     // can carry at most 2 non-overlapping matches at once (a person is on one
     // side per game) — 2 → 1 → 2 already proves the divisor recomputes on every
     // read in both directions without inventing an unreachable roster shape.
-    const { comp } = await makeComp("Live Divisor");
-    const gameId = await makeGame(comp, "Two Then One Then Two");
+    const { tripId, comp } = await makeComp("Live Divisor");
+    const gameId = await makeGame(tripId, comp, "Two Then One Then Two");
     await ctx.caller().matches.setPairings({
       tripId, gameId,
       matches: [
@@ -120,8 +119,8 @@ describe("#1031 — the divisor is the LIVE assigned-match count, recomputed on 
   }, 60000);
 
   it("a seat vacate invalidates a match with NO settings Save — the surviving match's derived value updates immediately, and the award write uses it", async () => {
-    const { comp, blue, red } = await makeComp("Vacate Mid-Game");
-    const gameId = await makeGame(comp, "Vacate Recompute");
+    const { tripId, comp, blue, red } = await makeComp("Vacate Mid-Game");
+    const gameId = await makeGame(tripId, comp, "Vacate Recompute");
     const matches = (await ctx.caller().matches.setPairings({
       tripId, gameId,
       matches: [

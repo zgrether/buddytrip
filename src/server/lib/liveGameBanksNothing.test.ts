@@ -32,7 +32,6 @@ const MATCH_PLAY = "gtt_match_play";
 const MANUAL = "gtt_generic_card";
 
 let ctx: TestContext;
-let tripId: string;
 let owner: string;
 let member: string;
 
@@ -47,8 +46,6 @@ async function claimOf(competitionId: string): Promise<string | null> {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("live-banks-nothing trip");
-  await ctx.addTripMember(tripId, "member", "Member");
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
 });
@@ -59,7 +56,10 @@ afterAll(async () => {
 
 describe("match play — a decided match banked by a mid-round edit", () => {
   it("is projected, NOT banked, until the finalize — which is also what announces the clinch", async () => {
-    const comp = await ctx.createCompetition(tripId, "Live Banks Nothing Cup");
+    // Each case's cup on its own trip — a trip holds one competition (migration 195).
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({
+      title: "live-banks-nothing trip", name: "Live Banks Nothing Cup", members: ["member"],
+    });
     const blue = await ctx.createTeam(comp, "Blue");
     const red = await ctx.createTeam(comp, "Red");
     await ctx.admin.from("team_assignments").insert([
@@ -132,7 +132,9 @@ describe("match play — a decided match banked by a mid-round edit", () => {
 
 describe("points cup — a live placement game's rows", () => {
   it("render as nothing in the matrix or the standings until the game is finished", async () => {
-    const comp = await ctx.createCompetition(tripId, "Live Matrix Cup", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({
+      title: "live-banks-nothing trip", name: "Live Matrix Cup", scoringModel: "points", members: ["member"],
+    });
     const blue = await ctx.createTeam(comp, "Blue", { shortName: "BLU" });
     const red = await ctx.createTeam(comp, "Red", { shortName: "RED" });
     const g = (await ctx.caller().games.create({

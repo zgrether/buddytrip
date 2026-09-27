@@ -15,7 +15,9 @@ const HOOK_TIMEOUT_MS = 30_000;
 
 describe("delete_competition_cascade (migration 079)", () => {
   let ctx: TestContext;
-  let tripId: string;
+  // One trip per competition (a trip holds one, migration 195): tripId holds
+  // comp1, keepTripId comp2, emptyTripId comp3.
+  let tripId: string, keepTripId: string, emptyTripId: string;
   let ownerId: string;
   let memberId: string;
 
@@ -35,12 +37,9 @@ describe("delete_competition_cascade (migration 079)", () => {
     ctx = await TestContext.create();
     ownerId = ctx.user.id;
     memberId = ctx.getUser("member").id;
-    tripId = await ctx.createTrip("Delete-Cascade Trip");
-    await ctx.addTripMember(tripId, "member", "Member");
-
-    comp1 = await ctx.createCompetition(tripId, "Cascade Comp");
-    comp2 = await ctx.createCompetition(tripId, "Keep Comp");
-    comp3 = await ctx.createCompetition(tripId, "Empty Comp");
+    ({ tripId, competitionId: comp1 } = await ctx.createCupTrip({ title: "Delete-Cascade Trip", name: "Cascade Comp", members: ["member"] }));
+    ({ tripId: keepTripId, competitionId: comp2 } = await ctx.createCupTrip({ title: "Delete-Cascade Trip", name: "Keep Comp", members: ["member"] }));
+    ({ tripId: emptyTripId, competitionId: comp3 } = await ctx.createCupTrip({ title: "Delete-Cascade Trip", name: "Empty Comp", members: ["member"] }));
 
     // comp1: a team + an assignment (both CASCADE with the competition).
     teamId = await ctx.createTeam(comp1, "Reds");
@@ -54,7 +53,7 @@ describe("delete_competition_cascade (migration 079)", () => {
       { id: gStroke, trip_id: tripId, competition_id: comp1, game_type_id: "gtt_stroke_play", name: "Stroke", status: "active" },
       { id: gMatch, trip_id: tripId, competition_id: comp1, game_type_id: "gtt_match_play", name: "Match", status: "active" },
       { id: gRack, trip_id: tripId, competition_id: comp1, game_type_id: "gtt_rack_n_stack", name: "Rack", status: "active" },
-      { id: keepGame, trip_id: tripId, competition_id: comp2, game_type_id: "gtt_stroke_play", name: "Keep", status: "active" },
+      { id: keepGame, trip_id: keepTripId, competition_id: comp2, game_type_id: "gtt_stroke_play", name: "Keep", status: "active" },
     ];
     const gErr = (await ctx.admin.from("games").insert(gameRows)).error;
     if (gErr) throw new Error(`seed games: ${gErr.message}`);
@@ -93,7 +92,7 @@ describe("delete_competition_cascade (migration 079)", () => {
 
   it("keep-path (p_delete_games=false) removes the competition but DETACHES its games (dormant branch)", async () => {
     const { error } = await ctx.authedClient("owner").rpc("delete_competition_cascade", {
-      p_trip_id: tripId,
+      p_trip_id: keepTripId,
       p_competition_id: comp2,
       p_delete_games: false,
     });
@@ -105,7 +104,7 @@ describe("delete_competition_cascade (migration 079)", () => {
   }, HOOK_TIMEOUT_MS);
 
   it("N=0 — deleting a games-less competition just removes it", async () => {
-    const res = await ctx.caller().competitions.delete({ tripId, competitionId: comp3 });
+    const res = await ctx.caller().competitions.delete({ tripId: emptyTripId, competitionId: comp3 });
     expect(res.success).toBe(true);
     const c = await ctx.admin.from("competitions").select("id").eq("id", comp3);
     expect(c.data?.length).toBe(0);

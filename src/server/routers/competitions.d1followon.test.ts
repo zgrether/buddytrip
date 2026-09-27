@@ -18,12 +18,14 @@ const MANUAL = "gtt_manual";
 const MATCH_PLAY = "gtt_match_play";
 
 let ctx: TestContext;
-let tripId: string;
 const gameIds: string[] = [];
+
+/** Every case gets its own cup, and a trip holds one competition (migration
+ *  195) — so each cup comes with its own trip. */
+const cupTrip = (name: string) => ctx.createCupTrip({ title: "D1-FollowOn Trip", name });
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("D1-FollowOn Trip");
 });
 
 afterAll(async () => {
@@ -40,7 +42,7 @@ afterAll(async () => {
 
 describe("§1 — tagged shape round-trips through the DB", () => {
   it("placement distribution persists as {type:'placement', values:[...]}", async () => {
-    const comp = await ctx.createCompetition(tripId, "Shape Comp");
+    const { tripId, competitionId: comp } = await cupTrip("Shape Comp");
     await ctx.createTeam(comp, "A");
     const g = (await ctx.caller().games.create({
       tripId,
@@ -58,7 +60,7 @@ describe("§1 — tagged shape round-trips through the DB", () => {
   });
 
   it("per_match distribution persists as {type:'per_match', value:N}", async () => {
-    const comp = await ctx.createCompetition(tripId, "PerMatch Shape Comp");
+    const { tripId, competitionId: comp } = await cupTrip("PerMatch Shape Comp");
     await ctx.createTeam(comp, "A");
     const g = (await ctx.caller().games.create({
       tripId,
@@ -76,7 +78,7 @@ describe("§1 — tagged shape round-trips through the DB", () => {
   });
 
   it("setPointsDistribution accepts per_match shape", async () => {
-    const comp = await ctx.createCompetition(tripId, "SetDist Comp");
+    const { tripId, competitionId: comp } = await cupTrip("SetDist Comp");
     await ctx.createTeam(comp, "A");
     const g = (await ctx.caller().games.create({
       tripId,
@@ -104,7 +106,7 @@ describe("§1 — tagged shape round-trips through the DB", () => {
 
 describe("§5 — roll-up parity: per_match game_results feed through competitionPlacement.ts", () => {
   it("per_match available = value × matchCount (stable); teamTotals from realized points", async () => {
-    const comp = await ctx.createCompetition(tripId, "PerMatch Rollup Comp");
+    const { tripId, competitionId: comp } = await cupTrip("PerMatch Rollup Comp");
     const ta = await ctx.createTeam(comp, "Blue", { shortName: "BLU" });
     const tb = await ctx.createTeam(comp, "Red", { shortName: "RED" });
     // 2 members per team → singles matchCount = min(2,2) = 2 → available = 1×2.
@@ -156,7 +158,7 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
   });
 
   it("halved match: 0.5-point raw_score survives the numeric column", async () => {
-    const comp = await ctx.createCompetition(tripId, "Halve Comp");
+    const { tripId, competitionId: comp } = await cupTrip("Halve Comp");
     const ta = await ctx.createTeam(comp, "A", { shortName: "A" });
     const tb = await ctx.createTeam(comp, "B", { shortName: "B" });
     // 2 members per team → matchCount 2 → available = 1×2 = 2.
@@ -204,7 +206,7 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
   });
 
   it("per_match shell with no team results contributes 0 to pointsAvailable (no pairings)", async () => {
-    const comp = await ctx.createCompetition(tripId, "PerMatch Shell Comp");
+    const { tripId, competitionId: comp } = await cupTrip("PerMatch Shell Comp");
     await ctx.createTeam(comp, "X", { shortName: "X" });
     await ctx.createTeam(comp, "Y", { shortName: "Y" });
 
@@ -229,7 +231,7 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
   });
 
   it("per_match cells reflect team place and match points", async () => {
-    const comp = await ctx.createCompetition(tripId, "PerMatch Cells Comp");
+    const { tripId, competitionId: comp } = await cupTrip("PerMatch Cells Comp");
     const ta = await ctx.createTeam(comp, "A", { shortName: "A" });
     const tb = await ctx.createTeam(comp, "B", { shortName: "B" });
 
@@ -268,7 +270,7 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
 
 describe("Stage 4 — available counts owner-set totals; configuring doesn't move it", () => {
   it("an UNCONFIGURED placement game's owner-set total counts toward available", async () => {
-    const comp = await ctx.createCompetition(tripId, "Stable Placement Comp");
+    const { tripId, competitionId: comp } = await cupTrip("Stable Placement Comp");
     await ctx.createTeam(comp, "A");
     await ctx.createTeam(comp, "B");
     // Shell: total set on the Game tab, distribution NOT yet chosen.
@@ -283,7 +285,7 @@ describe("Stage 4 — available counts owner-set totals; configuring doesn't mov
   });
 
   it("configuring the distribution later does NOT move the available total", async () => {
-    const comp = await ctx.createCompetition(tripId, "Stable Config Comp");
+    const { tripId, competitionId: comp } = await cupTrip("Stable Config Comp");
     await ctx.createTeam(comp, "A");
     await ctx.createTeam(comp, "B");
     const g = (await ctx.caller().games.create({
@@ -302,7 +304,7 @@ describe("Stage 4 — available counts owner-set totals; configuring doesn't mov
   });
 
   it("per_match available = value × ASSIGNED match count; unpaired rows contribute 0", async () => {
-    const comp = await ctx.createCompetition(tripId, "Stable Match Comp");
+    const { tripId, competitionId: comp } = await cupTrip("Stable Match Comp");
     const ta = await ctx.createTeam(comp, "A");
     await ctx.createTeam(comp, "B");
     const g = (await ctx.caller().games.create({
@@ -331,7 +333,7 @@ describe("Stage 4 — available counts owner-set totals; configuring doesn't mov
 
 describe("competitions.teamAssignmentCounts", () => {
   it("returns correct member counts per team", async () => {
-    const comp = await ctx.createCompetition(tripId, "Counts Comp");
+    const { tripId, competitionId: comp } = await cupTrip("Counts Comp");
     const ta = await ctx.createTeam(comp, "Team A");
     const tb = await ctx.createTeam(comp, "Team B");
 
@@ -355,7 +357,7 @@ describe("competitions.teamAssignmentCounts", () => {
   });
 
   it("returns empty object when no assignments", async () => {
-    const comp = await ctx.createCompetition(tripId, "Empty Counts Comp");
+    const { tripId, competitionId: comp } = await cupTrip("Empty Counts Comp");
     await ctx.createTeam(comp, "A");
 
     const counts = await ctx.caller().competitions.teamAssignmentCounts({

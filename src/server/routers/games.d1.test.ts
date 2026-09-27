@@ -98,20 +98,21 @@ describe("manual adapter → universal roll-up (§5)", () => {
   });
 
   it("averaged ties flow through the stack (two teams tie 1st on [9,6] → 7.5 each)", async () => {
-    // Fresh competition so totals are isolated.
-    const comp2 = await ctx.createCompetition(tripId, "Tie Comp", { scoringModel: "points" });
+    // Fresh competition so totals are isolated — on its own trip, since a trip
+    // holds one competition (migration 195).
+    const { tripId: tieTripId, competitionId: comp2 } = await ctx.createCupTrip({ name: "Tie Comp", scoringModel: "points" });
     const tA = await ctx.createTeam(comp2, "A");
     const tB = await ctx.createTeam(comp2, "B");
     const g = (await ctx.caller().games.create({
-      tripId, gameTypeId: MANUAL, name: "Tie", competitionId: comp2,
+      tripId: tieTripId, gameTypeId: MANUAL, name: "Tie", competitionId: comp2,
       pointsDistribution: { type: "placement", values: [9, 6] },
     })) as { id: string };
     gameIds.push(g.id);
     await ctx.caller().games.finish({
-      tripId, gameId: g.id,
+      tripId: tieTripId, gameId: g.id,
       placements: [{ entityId: tA, position: 1 }, { entityId: tB, position: 1 }],
     });
-    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp2 });
+    const lb = await ctx.caller().competitions.leaderboard({ tripId: tieTripId, competitionId: comp2 });
     expect(lb.teamTotals[tA]).toBe(7.5); // (9+6)/2
     expect(lb.teamTotals[tB]).toBe(7.5);
     expect(lb.pointsAvailable).toBe(15); // invariant under the tie

@@ -36,7 +36,6 @@ import {
 const CARD = "gtt_generic_card";
 
 let ctx: TestContext;
-let tripId: string;
 let owner: string, planner: string, member: string, outsider: string;
 const gameIds: string[] = [];
 const compIds: string[] = [];
@@ -48,6 +47,7 @@ interface Entrant {
 }
 
 interface Cup {
+  tripId: string;
   competitionId: string;
   teamA: string;
   teamB: string;
@@ -58,11 +58,17 @@ interface Cup {
 async function newCup(name: string): Promise<Cup> {
   // A POINTS cup: a bracket pays by placement, and a Match Play cup refuses switching a
   // game into one (ruling 2, PR 4). Brackets are tested where they can now be set up.
-  const competitionId = await ctx.createCompetition(tripId, name, { scoringModel: "points" });
+  // A trip holds one competition (migration 195), so each cup gets its own trip.
+  const { tripId, competitionId } = await ctx.createCupTrip({
+    title: "bracket finish Trip",
+    name,
+    scoringModel: "points",
+    members: [["planner", "Organizer"], "member", "outsider"],
+  });
   compIds.push(competitionId);
   const teamA = await ctx.createTeam(competitionId, "Manhattans");
   const teamB = await ctx.createTeam(competitionId, "Centurions");
-  return { competitionId, teamA, teamB };
+  return { tripId, competitionId, teamA, teamB };
 }
 
 async function newBracket(
@@ -72,12 +78,12 @@ async function newBracket(
   opts: { distribution?: number[]; pointsTotal?: number; consolation?: boolean } = {}
 ): Promise<string> {
   const g = (await ctx.caller().games.create({
-    tripId, gameTypeId: CARD, name, competitionId: cup.competitionId,
+    tripId: cup.tripId, gameTypeId: CARD, name, competitionId: cup.competitionId,
   })) as { id: string };
   gameIds.push(g.id);
-  const hash = (await ctx.caller().games.configHash({ tripId, gameId: g.id })).hash;
+  const hash = (await ctx.caller().games.configHash({ tripId: cup.tripId, gameId: g.id })).hash;
   await ctx.caller().games.saveConfig({
-    tripId,
+    tripId: cup.tripId,
     gameId: g.id,
     baseHash: hash,
     payload: {
@@ -104,8 +110,8 @@ async function newBracket(
   return g.id;
 }
 
-const pick = (gameId: string, round: number, slot: number, winnerSeed: number | null, bracket: "main" | "consolation" = "main") =>
-  ctx.caller().games.pickWinner({ tripId, gameId, bracket, round, slot, winnerSeed });
+const pick = (cup: Cup, gameId: string, round: number, slot: number, winnerSeed: number | null, bracket: "main" | "consolation" = "main") =>
+  ctx.caller().games.pickWinner({ tripId: cup.tripId, gameId, bracket, round, slot, winnerSeed });
 
 /** `game_results` as the database holds it, ordered by finishing position. */
 async function resultsOf(gameId: string) {
@@ -120,7 +126,7 @@ async function resultsOf(gameId: string) {
 /** The deterministic entrant id (migration 115) — what `entity_id` should hold. */
 const entrantId = (gameId: string, seed: number) => `${gameId}:e${seed}`;
 
-const board = (cup: Cup) => ctx.caller().competitions.leaderboard({ tripId, competitionId: cup.competitionId });
+const board = (cup: Cup) => ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
 
 /** Four entrants, alternating teams: seeds 1+3 are A, 2+4 are B. */
 const fourSplit = (cup: Cup): Entrant[] => [
@@ -135,18 +141,14 @@ const fourSplit = (cup: Cup): Entrant[] => [
  * seed 2 is runner-up, and seeds 3 and 4 tie at 3rd — elimination round IS the
  * ranking (#916), which is what makes the tie a real result rather than a gap.
  */
-async function playChalk4(gameId: string) {
-  await pick(gameId, 1, 1, 1);
-  await pick(gameId, 1, 2, 2);
-  await pick(gameId, 2, 1, 1);
+async function playChalk4(cup: Cup, gameId: string) {
+  await pick(cup, gameId, 1, 1, 1);
+  await pick(cup, gameId, 1, 2, 2);
+  await pick(cup, gameId, 2, 1, 1);
 }
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("bracket finish Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer");
-  await ctx.addTripMember(tripId, "member", "Member");
-  await ctx.addTripMember(tripId, "outsider", "Member");
   owner = ctx.user.id;
   planner = ctx.getUser("planner").id;
   member = ctx.getUser("member").id;
@@ -173,8 +175,8 @@ describe("games.finish — the bracket arm writes ENTRANT placements", () => {
 
   it("records every entrant's place, as entity_type 'entrant'", async () => {
     const gameId = await newBracket(cup, "Chalk", fourSplit(cup), { distribution: [4, 2, 1, 1] });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const rows = await resultsOf(gameId);
     // Every entrant is placed — storage, not a mandate (migration 119).
@@ -200,8 +202,8 @@ describe("games.finish — the bracket arm writes ENTRANT placements", () => {
 
   it("locks the game the same way every other format does", async () => {
     const gameId = await newBracket(cup, "Lock", fourSplit(cup), { distribution: [4, 2, 1, 1] });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const { data: row } = await ctx.admin
       .from("games")
@@ -213,9 +215,9 @@ describe("games.finish — the bracket arm writes ENTRANT placements", () => {
 
   it("is idempotent — re-finalizing replaces rather than duplicates", async () => {
     const gameId = await newBracket(cup, "Rerun", fourSplit(cup), { distribution: [4, 2, 1, 1] });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
     expect(await resultsOf(gameId)).toHaveLength(4);
   });
 
@@ -226,12 +228,12 @@ describe("games.finish — the bracket arm writes ENTRANT placements", () => {
    */
   it("with a consolation match, 3rd and 4th are real places", async () => {
     const gameId = await newBracket(cup, "Playoff", fourSplit(cup), { distribution: [4, 2, 1, 1], consolation: true });
-    await playChalk4(gameId);
+    await playChalk4(cup, gameId);
     // The semi losers are seeds 4 (lost to 1) and 3 (lost to 2). Seed 4 wins the
     // play-off, so it takes 3rd and seed 3 takes 4th. The play-off sits in the
     // FINAL's round — it is played alongside it (`buildDraw`).
-    await pick(gameId, 2, 1, 4, "consolation");
-    await ctx.caller().games.finish({ tripId, gameId });
+    await pick(cup, gameId, 2, 1, 4, "consolation");
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const rows = await resultsOf(gameId);
     expect(rows).toHaveLength(4);
@@ -251,9 +253,9 @@ describe("games.finish — what the bracket arm REFUSES", () => {
 
   it("an undecided draw is refused, and nothing is written", async () => {
     const gameId = await newBracket(cup, "Half played", fourSplit(cup), { distribution: [4, 2, 1, 1] });
-    await pick(gameId, 1, 1, 1); // one match decided, the final still open
+    await pick(cup, gameId, 1, 1, 1); // one match decided, the final still open
 
-    await expect(ctx.caller().games.finish({ tripId, gameId })).rejects.toMatchObject({
+    await expect(ctx.caller().games.finish({ tripId: cup.tripId, gameId })).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",
     });
 
@@ -269,12 +271,12 @@ describe("games.finish — what the bracket arm REFUSES", () => {
     // Migration 117 stops such a game going live; this is the read-side
     // counterpart for one that somehow did.
     const g = (await ctx.caller().games.create({
-      tripId, gameTypeId: CARD, name: "Empty bracket", competitionId: cup.competitionId,
+      tripId: cup.tripId, gameTypeId: CARD, name: "Empty bracket", competitionId: cup.competitionId,
     })) as { id: string };
     gameIds.push(g.id);
     await ctx.admin.from("games").update({ competition_format: "bracket" }).eq("id", g.id);
 
-    await expect(ctx.caller().games.finish({ tripId, gameId: g.id })).rejects.toMatchObject({
+    await expect(ctx.caller().games.finish({ tripId: cup.tripId, gameId: g.id })).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",
     });
     expect(await resultsOf(g.id)).toHaveLength(0);
@@ -287,9 +289,9 @@ describe("games.finish — what the bracket arm REFUSES", () => {
    */
   it("IGNORES a passed placements array rather than committing it", async () => {
     const gameId = await newBracket(cup, "Ignore", fourSplit(cup), { distribution: [4, 2, 1, 1] });
-    await playChalk4(gameId);
+    await playChalk4(cup, gameId);
     await ctx.caller().games.finish({
-      tripId,
+      tripId: cup.tripId,
       gameId,
       placements: [{ entityId: "should-not-appear", position: 1 }],
     });
@@ -309,13 +311,13 @@ describe("games.finish — what the bracket arm REFUSES", () => {
    */
   it("a legacy bracket_se game still finalizes by the entered-order arm", async () => {
     const g = (await ctx.caller().games.create({
-      tripId, gameTypeId: CARD, name: "Legacy SE", competitionId: cup.competitionId,
+      tripId: cup.tripId, gameTypeId: CARD, name: "Legacy SE", competitionId: cup.competitionId,
     })) as { id: string };
     gameIds.push(g.id);
     await ctx.admin.from("games").update({ competition_format: "bracket_se" }).eq("id", g.id);
 
     await ctx.caller().games.finish({
-      tripId,
+      tripId: cup.tripId,
       gameId: g.id,
       placements: [
         { entityId: cup.teamA, position: 1 },
@@ -340,8 +342,8 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
   it("SUMS a team's entrants — 1st + a tied 3rd beats 2nd + the other tied 3rd", async () => {
     const cup = await newCup("rollup Cup");
     const gameId = await newBracket(cup, "Rollup", fourSplit(cup), { distribution: [4, 2, 1, 1], pointsTotal: 8 });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const lb = await board(cup);
     // A fielded seeds 1 (1st → 4) and 3 (tied 3rd → (1+1)/2 = 1) = 5.
@@ -355,8 +357,8 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
   it("the per-game grid cell agrees with the totals", async () => {
     const cup = await newCup("cells Cup");
     const gameId = await newBracket(cup, "Cells", fourSplit(cup), { distribution: [4, 2, 1, 1], pointsTotal: 8 });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const lb = await board(cup);
     const cells = lb.cells.filter((c) => c.gameId === gameId);
@@ -384,8 +386,8 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
       { seed: 4, teamId: cup.teamA, userIds: [outsider] },
     ];
     const gameId = await newBracket(cup, "Sweep", sweep, { distribution: [4, 2, 1, 1], pointsTotal: 8 });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const lb = await board(cup);
     // A: 1st (4) + both tied 3rds (1 + 1) = 6. B: 2nd (2).
@@ -401,8 +403,8 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
   it("a one-element distribution pays first place and nothing else", async () => {
     const cup = await newCup("wta Cup");
     const gameId = await newBracket(cup, "WTA", fourSplit(cup), { distribution: [8], pointsTotal: 8 });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     // Still four rows in the database — the record is unaffected by the payout.
     expect(await resultsOf(gameId)).toHaveLength(4);
@@ -414,7 +416,7 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
   it("awards nothing before the bracket is posted, but still counts its pool", async () => {
     const cup = await newCup("pending Cup");
     const gameId = await newBracket(cup, "Pending", fourSplit(cup), { distribution: [4, 2, 1, 1], pointsTotal: 8 });
-    await pick(gameId, 1, 1, 1);
+    await pick(cup, gameId, 1, 1, 1);
 
     const lb = await board(cup);
     expect(lb.games.find((g) => g.id === gameId)!.pointsTotal).toBe(8);
@@ -435,8 +437,8 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
     const cup = await newCup("orphan Cup");
     const gameId = await newBracket(cup, "Orphan", fourSplit(cup), { distribution: [4, 2, 1, 1], pointsTotal: 8 });
     await ctx.admin.from("bracket_entrants").update({ team_id: null }).eq("id", entrantId(gameId, 3));
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     // The RECORD still places all four — the entrant is skipped by the roll-up,
     // not dropped from the result.
@@ -466,8 +468,8 @@ describe("the finished bracket's notification summary", () => {
   it("resolves entrant names from their members, not from a name column", async () => {
     const cup = await newCup("notify Cup");
     const gameId = await newBracket(cup, "Notify", fourSplit(cup), { distribution: [4, 2, 1, 1] });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const entries = await loadSummaryEntries(ctx.admin, gameId, notifySurfaceFor("bracket"));
     // Four entrants, every one named — an empty list here IS the bug.
@@ -488,8 +490,8 @@ describe("the finished bracket's notification summary", () => {
   it("the line names the winner and the runner-up, and nobody else", async () => {
     const cup = await newCup("notify line Cup");
     const gameId = await newBracket(cup, "Notify line", fourSplit(cup), { distribution: [4, 2, 1, 1] });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const entries = await loadSummaryEntries(ctx.admin, gameId, notifySurfaceFor("bracket"));
     const line = formatBracketSummary(entries);
@@ -511,8 +513,8 @@ describe("the finished bracket's notification summary", () => {
     ];
     const gameId = await newBracket(cup, "Notify pairs", pairs, { distribution: [6, 2], pointsTotal: 8 });
     // A 2-entrant draw is one match: round 1, slot 1 IS the final.
-    await pick(gameId, 1, 1, 1);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await pick(cup, gameId, 1, 1, 1);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const entries = await loadSummaryEntries(ctx.admin, gameId, notifySurfaceFor("bracket"));
     expect(entries).toHaveLength(2);
@@ -532,8 +534,8 @@ describe("the finished bracket's notification summary", () => {
   it("a bracket has NO team rows for the summary to have found", async () => {
     const cup = await newCup("notify empty Cup");
     const gameId = await newBracket(cup, "Notify empty", fourSplit(cup), { distribution: [4, 2, 1, 1] });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const asTeams = await loadSummaryEntries(ctx.admin, gameId, notifySurfaceFor(null));
     expect(asTeams).toHaveLength(0);
@@ -558,8 +560,8 @@ describe("a bracket with NO distribution still pays out", () => {
     const cup = await newCup("no-split Cup");
     // distribution omitted → `points_distribution` is NULL.
     const gameId = await newBracket(cup, "No split", fourSplit(cup), { pointsTotal: 8 });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const lb = await board(cup);
     // Seed 1 wins and is on team A; everyone else gets nothing. Before the fix
@@ -575,8 +577,8 @@ describe("a bracket with NO distribution still pays out", () => {
     // that the fix did not disturb the record.
     const cup = await newCup("no-split places Cup");
     const gameId = await newBracket(cup, "No split places", fourSplit(cup), { pointsTotal: 8 });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const rows = await resultsOf(gameId);
     expect(rows).toHaveLength(4);
@@ -593,8 +595,8 @@ describe("a bracket with NO distribution still pays out", () => {
   it("an authored split is untouched by the flatten", async () => {
     const cup = await newCup("split still works Cup");
     const gameId = await newBracket(cup, "Split", fourSplit(cup), { distribution: [4, 2, 1, 1], pointsTotal: 8 });
-    await playChalk4(gameId);
-    await ctx.caller().games.finish({ tripId, gameId });
+    await playChalk4(cup, gameId);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const lb = await board(cup);
     expect(lb.teamTotals[cup.teamA]).toBeCloseTo(5);

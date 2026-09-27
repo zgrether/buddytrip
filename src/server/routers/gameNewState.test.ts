@@ -25,12 +25,15 @@ const NON_GOLF = "gtt_generic_card";
 
 describe("isNew — New vs Configuring", () => {
   let ctx: TestContext;
-  let tripId: string;
   // Two cups, one per scoring model (#1304): a game is created in the cup its
-  // format belongs to, so no fixture builds a state games.create refuses.
+  // format belongs to, so no fixture builds a state games.create refuses. Each
+  // cup sits on its own trip — a trip holds one competition (migration 195).
   let pointsCup: string;
   let matchCup: string;
   const cupOf = new Map<string, string>();
+  const tripOfCup = new Map<string, string>();
+  /** The trip a game was created on — its cup's own trip. */
+  const tripOf = (gameId: string) => tripOfCup.get(cupOf.get(gameId)!)!;
   const createdCourses: string[] = [];
 
   /** The board's answer for one game, read the way the board reads it. */
@@ -53,7 +56,7 @@ describe("isNew — New vs Configuring", () => {
     const type = GAME_TYPES.find((t) => t.id === gameTypeId)!;
     const competitionId = isGameTypeForScoringModel(type, "points") ? pointsCup : matchCup;
     const g = await ctx.caller().games.create({
-      tripId,
+      tripId: tripOfCup.get(competitionId)!,
       gameTypeId,
       name,
       competitionId,
@@ -66,11 +69,17 @@ describe("isNew — New vs Configuring", () => {
 
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("New-state split");
     // Sequentially, never Promise.all (CLAUDE.md local-stack conventions).
-    await ctx.addTripMember(tripId, "member");
-    pointsCup = await ctx.createCompetition(tripId, "New-state points cup", { scoringModel: "points" });
-    matchCup = await ctx.createCompetition(tripId, "New-state match cup", { scoringModel: "match_play" });
+    const points = await ctx.createCupTrip({
+      title: "New-state split", name: "New-state points cup", scoringModel: "points", members: ["member"],
+    });
+    const match = await ctx.createCupTrip({
+      title: "New-state split", name: "New-state match cup", scoringModel: "match_play", members: ["member"],
+    });
+    pointsCup = points.competitionId;
+    matchCup = match.competitionId;
+    tripOfCup.set(pointsCup, points.tripId);
+    tripOfCup.set(matchCup, match.tripId);
   });
 
   afterAll(async () => {
@@ -173,7 +182,7 @@ describe("isNew — New vs Configuring", () => {
     expect((await sectionInputs(gameId)).isNewGame).toBe(true);
     // ≥2 players — a stroke game with one participant isn't a game.
     await ctx.caller().games.addParticipants({
-      tripId,
+      tripId: tripOf(gameId),
       gameId,
       userIds: [ctx.user.id, ctx.getUser("member").id],
     });
@@ -236,10 +245,10 @@ describe("isNew — New vs Configuring", () => {
     });
     createdCourses.push(course.id as string);
 
-    await ctx.caller().games.applyCourse({ tripId, gameId, courseId: course.id as string });
+    await ctx.caller().games.applyCourse({ tripId: tripOf(gameId), gameId, courseId: course.id as string });
     expect((await sectionInputs(gameId)).isNewGame, "a course was applied").toBe(false);
 
-    await ctx.caller().games.clearCourse({ tripId, gameId });
+    await ctx.caller().games.clearCourse({ tripId: tripOf(gameId), gameId });
     const row = await rawRow(gameId);
 
     // The course columns really did go back to their creation value — so this is

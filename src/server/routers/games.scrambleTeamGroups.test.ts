@@ -28,7 +28,6 @@ const SCRAMBLE = "gtt_scramble";
 const STROKE_PLAY = "gtt_stroke_play";
 
 let ctx: TestContext;
-let tripId: string;
 
 /** The groups a game actually has, with their members — the shape under test. */
 async function groupsOf(gameId: string) {
@@ -52,24 +51,27 @@ async function groupsOf(gameId: string) {
 describe("scramble seeds one group per team", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Scramble Groups Trip");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
   }, 60_000);
 
   afterAll(async () => {
     await ctx.cleanup();
   }, 60_000);
 
+  /** A trip holds one competition (migration 195), so each cup gets its own trip. */
   async function cupWithTeams(name: string) {
-    const comp = await ctx.createCompetition(tripId, name, { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({
+      title: "Scramble Groups Trip",
+      name,
+      scoringModel: "points",
+      members: [["planner", "Organizer"], "member"],
+    });
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
-    return { comp, teamA, teamB };
+    return { tripId, comp, teamA, teamB };
   }
 
   it("creates a group per team, named for it, with that team's members", async () => {
-    const { comp, teamA, teamB } = await cupWithTeams("Seed At Create");
+    const { tripId, comp, teamA, teamB } = await cupWithTeams("Seed At Create");
     const owner = ctx.getUser("owner").id;
     const planner = ctx.getUser("planner").id;
     const member = ctx.getUser("member").id;
@@ -90,7 +92,7 @@ describe("scramble seeds one group per team", () => {
   }, 60_000);
 
   it("A TEAM WITH NOBODY ON IT GETS NO GROUP — an empty side must not be able to post a card", async () => {
-    const { comp, teamA } = await cupWithTeams("Empty Team");
+    const { tripId, comp, teamA } = await cupWithTeams("Empty Team");
     await ctx.admin.from("team_assignments").insert([
       { competition_id: comp, user_id: ctx.getUser("owner").id, team_id: teamA },
     ]);
@@ -108,7 +110,7 @@ describe("scramble seeds one group per team", () => {
      * people after — a real order, and with the group builder hidden it would
      * otherwise strand the game with no way to fix it.
      */
-    const { comp, teamA, teamB } = await cupWithTeams("Teams After");
+    const { tripId, comp, teamA, teamB } = await cupWithTeams("Teams After");
     const game = (await ctx.caller().games.create({
       tripId, gameTypeId: SCRAMBLE, name: "Empty At Birth", competitionId: comp,
     })) as { id: string };
@@ -140,7 +142,7 @@ describe("scramble seeds one group per team", () => {
      * groups with two different groups keeps the count identical, which is
      * exactly the failure a count cannot see.
      */
-    const { comp, teamA } = await cupWithTeams("Idempotent");
+    const { tripId, comp, teamA } = await cupWithTeams("Idempotent");
     await ctx.admin.from("team_assignments").insert([
       { competition_id: comp, user_id: ctx.getUser("owner").id, team_id: teamA },
     ]);
@@ -164,7 +166,7 @@ describe("scramble seeds one group per team", () => {
   it("A STROKE GAME SEEDS NOTHING — the control", async () => {
     // Every other roster format keeps its manual builder; seeding one would
     // silently make somebody else's foursomes for them.
-    const { comp, teamA } = await cupWithTeams("Stroke Control");
+    const { tripId, comp, teamA } = await cupWithTeams("Stroke Control");
     await ctx.admin.from("team_assignments").insert([
       { competition_id: comp, user_id: ctx.getUser("owner").id, team_id: teamA },
     ]);

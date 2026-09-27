@@ -267,12 +267,19 @@ describe("clinch check — a points race never fires a cup clinch", () => {
   });
 
   it("a DECIDED points cup: logs entry then not_head_to_head, claims nothing, records the row", async () => {
-    pointsComp = await ctx.createCompetition(tripId, "Points Race", { scoringModel: "points" });
+    // Its own trip: a trip holds one competition (migration 195), and the file's
+    // trip already holds the head-to-head cup.
+    const { tripId: pointsTrip, competitionId } = await ctx.createCupTrip({
+      title: "Clinch outcome logging (points)",
+      name: "Points Race",
+      scoringModel: "points",
+    });
+    pointsComp = competitionId;
     const lead = await ctx.createTeam(pointsComp, "Lead", { shortName: "LED" });
     const trail = await ctx.createTeam(pointsComp, "Trail", { shortName: "TRL", color: "#ef4444", colorDim: "#2a0a0a" });
     const id = crypto.randomUUID();
     const g = await ctx.admin.from("games").insert({
-      id, trip_id: tripId, competition_id: pointsComp, game_type_id: "gtt_generic_yard",
+      id, trip_id: pointsTrip, competition_id: pointsComp, game_type_id: "gtt_generic_yard",
       name: "only game", status: "complete", scoring_enabled: true,
       points_total: 2, points_distribution: { type: "placement", values: [2] },
     });
@@ -285,7 +292,7 @@ describe("clinch check — a points race never fires a cup clinch", () => {
     if (r.error) throw new Error(`seed results: ${r.error.message}`);
 
     await notifyCupClinchedIfDecided({
-      tripId,
+      tripId: pointsTrip,
       competitionId: pointsComp,
       actorUserId: ctx.getUser("owner").id,
       admin: ctx.admin,

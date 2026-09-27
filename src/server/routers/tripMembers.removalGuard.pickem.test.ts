@@ -58,6 +58,10 @@ interface PickemOpts {
   /** Record a result on the first slate game. */
   withResult: boolean;
   competitionId?: string;
+  /** The trip the game belongs to — the competition's own trip when it has
+   *  one (a trip holds one competition, migration 195). Defaults to the shared
+   *  trip. */
+  tripId?: string;
 }
 
 /**
@@ -73,7 +77,7 @@ async function makePickem(opts: PickemOpts): Promise<{ gameId: string; slateIds:
   const gameId = genId("pkgame");
   await seed("games", {
     id: gameId,
-    trip_id: tripId,
+    trip_id: opts.tripId ?? tripId,
     competition_id: opts.competitionId ?? null,
     game_type_id: PICKEM,
     name: opts.name,
@@ -402,7 +406,13 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
      * It is competition-scoped and takes no user id, so it needs only the
      * results half — there is no membership question here to get wrong.
      */
-    const competitionId = await ctx.createCompetition(tripId, "Roster Lock Cup");
+    // Its own trip: the shared one already holds case 4's cup, and a trip holds
+    // one competition (migration 195).
+    const { tripId: cupTripId, competitionId } = await ctx.createCupTrip({
+      title: "Pick'em Removal Guard Trip",
+      name: "Roster Lock Cup",
+      members: ["member", "outsider"],
+    });
 
     const before = await competitionHasScore(getAdminClient(), competitionId);
     expect(before, "a cup with no games has not started").toBe(false);
@@ -412,6 +422,7 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
       sheetFor: [ctx.getUser("member").id],
       withResult: false,
       competitionId,
+      tripId: cupTripId,
     });
 
     // Non-vacuity: the pick'em exists and is NOT started, so a `true` below

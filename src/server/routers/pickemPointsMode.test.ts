@@ -20,7 +20,10 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
+// The points cup lives on `tripId`, the match cup on `matchTripId`: a trip holds
+// one competition (migration 195).
 let tripId: string;
+let matchTripId: string;
 let pointsCompId: string;
 let matchCompId: string;
 let pointsGameId: string;
@@ -35,13 +38,17 @@ describe("pick'em under a points competition", () => {
     pointsCompId = await ctx.createCompetition(tripId, "Points Cup", {
       scoringModel: "points",
     });
-    matchCompId = await ctx.createCompetition(tripId, "Match Cup");
+    ({ tripId: matchTripId, competitionId: matchCompId } = await ctx.createCupTrip({
+      title: "Pick'em Points Trip",
+      name: "Match Cup",
+      members: ["member"],
+    }));
 
-    const mk = async (competitionId: string, name: string) => {
+    const mk = async (competitionId: string, name: string, gameTripId: string) => {
       const id = genId("p7game");
       const ins = await ctx.admin.from("games").insert({
         id,
-        trip_id: tripId,
+        trip_id: gameTripId,
         competition_id: competitionId,
         game_type_id: "gtt_pickem",
         name,
@@ -68,8 +75,8 @@ describe("pick'em under a points competition", () => {
       return id;
     };
 
-    pointsGameId = await mk(pointsCompId, "Points Pick'em");
-    matchGameId = await mk(matchCompId, "Match Pick'em");
+    pointsGameId = await mk(pointsCompId, "Points Pick'em", tripId);
+    matchGameId = await mk(matchCompId, "Match Pick'em", matchTripId);
   }, 60_000);
 
   afterAll(async () => {
@@ -77,7 +84,7 @@ describe("pick'em under a points competition", () => {
     await ctx.cleanup();
   }, 60_000);
 
-  const get = (gameId: string) => ctx.caller().pickem.get({ tripId, gameId });
+  const get = (gameId: string, trip: string = tripId) => ctx.caller().pickem.get({ tripId: trip, gameId });
 
   it("returns scoringModel='points' from the COMPETITION", async () => {
     const data = (await get(pointsGameId)) as { scoringModel: string | null };
@@ -87,7 +94,7 @@ describe("pick'em under a points competition", () => {
   it("returns 'match_play' for a match cup — the control", async () => {
     // Without this the case above passes against a build that hardcodes
     // "points", which is the cheapest possible wrong implementation.
-    const data = (await get(matchGameId)) as { scoringModel: string | null };
+    const data = (await get(matchGameId, matchTripId)) as { scoringModel: string | null };
     expect(data.scoringModel).toBe("match_play");
   });
 
