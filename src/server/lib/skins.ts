@@ -8,7 +8,8 @@ import {
 } from "@/lib/skins";
 import { computeStrokeTeamStandings } from "@/lib/strokePlay";
 import { unitsFromSchema } from "@/lib/strokePlayConfig";
-import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { failClosedOnRead, writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**
  * DB-persist side of skins results — the wrapper over the pure engine, run on
@@ -46,11 +47,26 @@ export async function computeSkinsResults(
   gameId: string,
   { onFailure }: { onFailure?: WriteFailureMode } = {}
 ): Promise<SkinsStanding[]> {
-  const { data: game } = await supabase
-    .from("games")
-    .select("id, competition_id, game_type_id, modifiers, scorecard_schema")
-    .eq("id", gameId)
-    .maybeSingle();
+  // #1470: a failed read never reaches the write — see `failClosedOnRead`.
+  return failClosedOnRead(gameId, onFailure, [], () => skinsResults(supabase, gameId, onFailure));
+}
+
+async function skinsResults(
+  supabase: SupabaseClient,
+  gameId: string,
+  onFailure: WriteFailureMode | undefined
+): Promise<SkinsStanding[]> {
+  // Every read below goes through the rowOrThrow family (#1470). Unchecked, a
+  // failed participants or outcomes read banked nobody, and the `scope: "all"`
+  // write below deleted every row the game had.
+  const game = maybeRowOrThrow(
+    await supabase
+      .from("games")
+      .select("id, competition_id, game_type_id, modifiers, scorecard_schema")
+      .eq("id", gameId)
+      .maybeSingle(),
+    "game"
+  );
 
   const holeCount = unitsFromSchema(game?.scorecard_schema).length || 18;
   const glorious = skinsGloriousConfig(
@@ -62,7 +78,7 @@ export async function computeSkinsResults(
   // alone, and a player's grouping is not knowable from the groupings alone.
   // CLAUDE.md #27's shape: the boundary is not a person and the person is not
   // the boundary.
-  const [{ data: parts }, { data: outcomes }] = await Promise.all([
+  const [partsRes, outcomesRes] = await Promise.all([
     supabase.from("game_participants").select("user_id, play_group_id").eq("game_id", gameId),
     supabase
       .from("skins_hole_outcomes")
@@ -73,12 +89,14 @@ export async function computeSkinsResults(
   // Only GROUPED participants are in the game — migration 185's go-live gate
   // refuses a groupless skins game precisely because an ungrouped player has no
   // contest to be in.
-  const participants = (parts ?? [])
+  const parts = rowsOrThrow(partsRes, "game's players");
+  const outcomes = rowsOrThrow(outcomesRes, "game's hole results");
+  const participants = parts
     .filter((p) => p.play_group_id != null)
     .map((p) => ({ userId: p.user_id as string, groupingId: p.play_group_id as string }));
 
   const rowsByGrouping: Record<string, SkinsOutcomeRow[]> = {};
-  for (const o of outcomes ?? []) {
+  for (const o of outcomes) {
     const gid = o.grouping_id as string;
     (rowsByGrouping[gid] ??= []).push({
       hole: o.hole_number as number,
@@ -126,11 +144,11 @@ export async function computeSkinsResults(
   // leaving the user-only shape identical to a standalone finalize.
   const teamOf: Record<string, string> = {};
   if (game?.competition_id) {
-    const { data: assigns } = await supabase
-      .from("team_assignments")
-      .select("user_id, team_id")
-      .eq("competition_id", game.competition_id as string);
-    for (const a of assigns ?? []) teamOf[a.user_id as string] = a.team_id as string;
+    const assigns = rowsOrThrow(
+      await supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", game.competition_id as string),
+      "cup's rosters"
+    );
+    for (const a of assigns) teamOf[a.user_id as string] = a.team_id as string;
   }
   const teamStandings = computeStrokeTeamStandings(
     standings.map((s) => ({ entityId: s.entityId, rawScore: s.skins, position: s.position })),

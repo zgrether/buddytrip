@@ -5,14 +5,16 @@ import type { ModifiersMap } from "@/lib/modifiers";
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch, liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 import {
+  failClosedOnRead,
   writeGameResults,
   type MatchResultUpdate,
   type WriteFailureMode,
 } from "./writeGameResults";
+import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 // The team-award half now lives in its own module so a format with no holes can
 // reuse it without importing this file — see `matchAwards.ts`'s header. Golf
 // still calls it from exactly where it always did.
-import { writeTeamMatchPoints } from "./matchAwards";
+import { prepareTeamMatchPoints } from "./matchAwards";
 
 /**
  * DB-persist side of match-play results. Reads each `game_matches` row, builds
@@ -78,7 +80,17 @@ export async function computeMatchPlayResults(
   supabase: SupabaseClient,
   gameId: string,
   /** `onFailure` (#776) — how a results-write failure surfaces. Defaults to the
-   *  setup behaviour; `games.finish` passes "throw". See WriteFailureMode. */
+   *  setup behaviour; `games.finish` passes "throw". See WriteFailureMode. A
+   *  failed READ never reaches the write in either mode (#1470,
+   *  `failClosedOnRead`): finalize throws, setup leaves the rows alone. */
+  opts?: { skipComplete?: boolean; onFailure?: WriteFailureMode }
+): Promise<MatchOutcome[]> {
+  return failClosedOnRead(gameId, opts?.onFailure, [], () => matchPlayResults(supabase, gameId, opts));
+}
+
+async function matchPlayResults(
+  supabase: SupabaseClient,
+  gameId: string,
   opts?: { skipComplete?: boolean; onFailure?: WriteFailureMode }
 ): Promise<MatchOutcome[]> {
   // Freeze boundary: incremental re-derives (setHandicap / assignPlayer) pass
@@ -86,12 +98,17 @@ export async function computeMatchPlayResults(
   // late input edit. `finish` passes nothing → processes every match.
   const skipComplete = opts?.skipComplete ?? false;
   const onFailure = opts?.onFailure;
-  const { data: matches } = await supabase
-    .from("game_matches")
-    // point_value = the A2b per-match override (null → the even share). Read here so
-    // the team-points adapter awards `point_value ?? even share` per match.
-    .select("id, side_a, side_b, status, result, point_value")
-    .eq("game_id", gameId);
+  // #1470: every read here goes through the rowOrThrow family. A failed matches
+  // read used to process no match and replace the game's rows with none.
+  const matches = rowsOrThrow(
+    await supabase
+      .from("game_matches")
+      // point_value = the A2b per-match override (null → the even share). Read here so
+      // the team-points adapter awards `point_value ?? even share` per match.
+      .select("id, side_a, side_b, status, result, point_value")
+      .eq("game_id", gameId),
+    "game's matches"
+  );
 
   // Stroke index: the game's course snapshot if one is applied, else undefined
   // → `buildDecided` uses the sequential fallback (the no-course path).
@@ -104,11 +121,10 @@ export async function computeMatchPlayResults(
   // games anyway — belt and suspenders. Same helper the live client strip uses, so
   // finish and the live board can't diverge. `entry_mode` picks the decided-hole
   // SOURCE below (Refactor B) — read in the SAME query, no extra round-trip.
-  const { data: gameCfg } = await supabase
-    .from("games")
-    .select("game_type_id, modifiers, entry_mode")
-    .eq("id", gameId)
-    .maybeSingle();
+  const gameCfg = maybeRowOrThrow(
+    await supabase.from("games").select("game_type_id, modifiers, entry_mode").eq("id", gameId).maybeSingle(),
+    "game"
+  );
   // Entry mode is passed too: glorious is valid ONLY with outcome entry, and this
   // is the guard that stops the four legacy score-mode games recomputing their
   // wrong result. `entry_mode` is already in the select above.
@@ -128,14 +144,14 @@ export async function computeMatchPlayResults(
   const outcomesByMatch = new Map<string, HoleOutcomeRow[]>();
 
   if (outcomeMode) {
-    const { data: outcomeRows } = await supabase
-      .from("match_hole_outcomes")
-      .select("match_id, hole_number, result")
-      .eq("game_id", gameId);
+    const outcomeRows = rowsOrThrow(
+      await supabase.from("match_hole_outcomes").select("match_id, hole_number, result").eq("game_id", gameId),
+      "game's hole results"
+    );
     // Nothing decided yet → nothing to derive (mirrors the score-mode early return
     // below, scoped to the outcome table instead of score_entries).
-    if ((outcomeRows ?? []).length === 0) return [];
-    for (const r of outcomeRows ?? []) {
+    if (outcomeRows.length === 0) return [];
+    for (const r of outcomeRows) {
       const mid = r.match_id as string;
       const arr = outcomesByMatch.get(mid) ?? [];
       arr.push({ hole: r.hole_number as number, result: r.result as HoleOutcomeRow["result"] });
@@ -146,33 +162,36 @@ export async function computeMatchPlayResults(
     // game_participants); a 2v2 side is a pair = a play_group (handicap on
     // play_groups). Read both so one compute serves both formats — the id spaces
     // don't collide and a game only ever looks up its own side type's ids.
-    const { data: parts } = await supabase
-      .from("game_participants")
-      .select("user_id, handicap_strokes")
-      .eq("game_id", gameId);
-    for (const p of parts ?? []) {
+    const parts = rowsOrThrow(
+      await supabase.from("game_participants").select("user_id, handicap_strokes").eq("game_id", gameId),
+      "game's handicaps"
+    );
+    for (const p of parts) {
       hcap.set(p.user_id as string, effectiveStrokes(p as { handicap_strokes: number | null }));
     }
-    const { data: pgroups } = await supabase
-      .from("play_groups")
-      .select("id, handicap_strokes")
-      .eq("game_id", gameId);
-    for (const pg of pgroups ?? []) {
+    const pgroups = rowsOrThrow(
+      await supabase.from("play_groups").select("id, handicap_strokes").eq("game_id", gameId),
+      "game's handicaps"
+    );
+    for (const pg of pgroups) {
       hcap.set(pg.id as string, effectiveStrokes(pg as { handicap_strokes: number | null }));
     }
 
     // Side gross, keyed by SIDE id → { unit_label → gross }. 1v1 records one entry
     // per user (participant_type='user'); 2v2 records one entry per side
     // (participant_type='play_group'). Read both and merge by id.
-    const { data: entries } = await supabase
-      .from("score_entries")
-      .select("participant_id, unit_label, value")
-      .eq("game_id", gameId)
-      .in("participant_type", ["user", "play_group"]);
+    const entries = rowsOrThrow(
+      await supabase
+        .from("score_entries")
+        .select("participant_id, unit_label, value")
+        .eq("game_id", gameId)
+        .in("participant_type", ["user", "play_group"]),
+      "game's scores"
+    );
     // Nothing scored yet → nothing to derive. Skips the wasted recompute that the
     // setup-time setHandicap calls would otherwise trigger (no results to write).
-    if ((entries ?? []).length === 0) return [];
-    for (const e of entries ?? []) {
+    if (entries.length === 0) return [];
+    for (const e of entries) {
       if (e.value == null) continue;
       const pid = e.participant_id as string;
       if (!gross.has(pid)) gross.set(pid, {});
@@ -185,7 +204,7 @@ export async function computeMatchPlayResults(
   const matchUpdates: MatchResultUpdate[] = [];
   const processedEntities: string[] = [];
 
-  for (const m of matches ?? []) {
+  for (const m of matches) {
     if (skipComplete && m.status === "complete") continue; // frozen — leave as-is
     const a = m.side_a as SideRef | null;
     const b = m.side_b as SideRef | null;
@@ -239,6 +258,21 @@ export async function computeMatchPlayResults(
     );
   }
 
+  // ── Every read happens before the first write (#1470) ────────────────────
+  // The side write below is `scope: "all"` on a finalize, so it deletes every
+  // row the game has, the TEAM rows with it, and only the team write puts them
+  // back. A team read that failed after that delete left a finished game with no
+  // team rows. So the competition read and the team-award reads happen here, and
+  // `writeTeams` below only writes.
+  const gameInfo = maybeRowOrThrow(
+    await supabase.from("games").select("competition_id, points_distribution, points_total").eq("id", gameId).maybeSingle(),
+    "game"
+  );
+  const writeTeams =
+    gameInfo?.competition_id && isPerMatch(gameInfo.points_distribution)
+      ? await prepareTeamMatchPoints(supabase, gameId, gameInfo.competition_id as string)
+      : null;
+
   // Replace game_results for the processed sides only — when skipComplete, a
   // frozen match's rows are left intact; otherwise the whole game is rewritten.
   //
@@ -260,12 +294,7 @@ export async function computeMatchPlayResults(
   // Competition adapter: if this game is in a per_match competition, compute
   // per-team match totals and write entity_type='team' rows to game_results.
   // Runs AFTER user rows so the full picture is current before a leaderboard read.
-  const { data: gameInfo } = await supabase
-    .from("games")
-    .select("competition_id, points_distribution, points_total")
-    .eq("id", gameId)
-    .maybeSingle();
-  if (gameInfo?.competition_id && isPerMatch(gameInfo.points_distribution)) {
+  if (writeTeams && gameInfo && isPerMatch(gameInfo.points_distribution)) {
     // #1031: the even share is recomputed LIVE from the CURRENT assigned matches
     // (`matches`, already fetched above), never read from the persisted
     // `points_distribution.value` snapshot — that only refreshes on a settings
@@ -277,7 +306,7 @@ export async function computeMatchPlayResults(
     // (`liveMatchPointsPerMatch` ignores it whenever `points_total` is set).
     const evenShareFallback = liveMatchPointsPerMatch(
       gameInfo.points_total as number | null,
-      (matches ?? []).map((m) => {
+      matches.map((m) => {
         const a = m.side_a as SideRef | null;
         const b = m.side_b as SideRef | null;
         return {
@@ -288,15 +317,7 @@ export async function computeMatchPlayResults(
       }),
       gameInfo.points_distribution.value
     );
-    await writeTeamMatchPoints(
-      supabase,
-      gameId,
-      gameInfo.competition_id as string,
-      evenShareFallback,
-      matches ?? [],
-      outcomes,
-      onFailure
-    );
+    await writeTeams(evenShareFallback, matches, outcomes, onFailure);
   }
 
   return outcomes;
@@ -312,11 +333,12 @@ async function loadStrokeIndex(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ strokeIndex?: number[]; holeCount?: number }> {
-  const { data: game } = await supabase
-    .from("games")
-    .select("scorecard_schema")
-    .eq("id", gameId)
-    .maybeSingle();
+  // Checked (#1470): a failed read here used to fall back to the sequential index
+  // and write results decided on the wrong holes.
+  const game = maybeRowOrThrow(
+    await supabase.from("games").select("scorecard_schema").eq("id", gameId).maybeSingle(),
+    "game's course"
+  );
   const schema = game?.scorecard_schema as SchemaShape | null;
   return { strokeIndex: schema?.units?.metadata?.handicap_index, holeCount: schema?.units?.count };
 }

@@ -12,7 +12,8 @@ import {
 import { strokeHoles } from "@/lib/matchPlay";
 import { scoringOf } from "@/lib/stableford";
 import { strokeIndexOf, unitsFromSchema } from "@/lib/strokePlayConfig";
-import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { failClosedOnRead, writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**
  * DB-persist side of stroke-play results (shape (b) — runs on Finish).
@@ -47,30 +48,47 @@ import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
  * gross; a handicap-less game nets to gross unchanged. The live strip does NOT
  * call this — it derives net client-side (shape (a)); only Finish persists here.
  */
+/** #776 — how a results-write failure surfaces. Defaults to the setup
+ *  behaviour; `games.finish` passes "throw". See WriteFailureMode. A failed
+ *  READ never reaches the write in either mode (#1470, `failClosedOnRead`). */
 export async function computeStrokePlayResults(
   supabase: SupabaseClient,
   gameId: string,
-  /** #776 — how a results-write failure surfaces. Defaults to the setup
-   *  behaviour; `games.finish` passes "throw". See WriteFailureMode. */
+  opts: StrokeResultsOptions = {}
+): Promise<StrokeStanding[]> {
+  return failClosedOnRead(gameId, opts.onFailure, [], () => strokeResults(supabase, gameId, opts));
+}
+
+interface StrokeResultsOptions {
+  onFailure?: WriteFailureMode;
+  /**
+   * FINALIZE only. Refuse rather than record a result when not one player
+   * completed the round. It was off for `saveConfig`'s setup-path recompute,
+   * which ran mid-round when nobody had finished and had to stay silent —
+   * #1416 removed that recompute, so the finalize is now the only caller.
+   */
+  requireQualified?: boolean;
+}
+
+async function strokeResults(
+  supabase: SupabaseClient,
+  gameId: string,
   {
     onFailure,
     requireQualified = false,
-  }: {
-    onFailure?: WriteFailureMode;
-    /**
-     * FINALIZE only. Refuse rather than record a result when not one player
-     * completed the round. It was off for `saveConfig`'s setup-path recompute,
-     * which ran mid-round when nobody had finished and had to stay silent —
-     * #1416 removed that recompute, so the finalize is now the only caller.
-     */
-    requireQualified?: boolean;
-  } = {}
+  }: StrokeResultsOptions
 ): Promise<StrokeStanding[]> {
-  const { data: game } = await supabase
-    .from("games")
-    .select("scorecard_schema, competition_id, config, game_type_id")
-    .eq("id", gameId)
-    .single();
+  // Every read below goes through the rowOrThrow family (#1470). Unchecked, a
+  // failed game read made the round zero holes long, so every player qualified;
+  // a failed roster read deleted the cup's team rows.
+  const game = maybeRowOrThrow(
+    await supabase
+      .from("games")
+      .select("scorecard_schema, competition_id, config, game_type_id")
+      .eq("id", gameId)
+      .maybeSingle(),
+    "game"
+  );
 
   /**
    * WHO THE SCORERS ARE — the one thing scramble changes about this function.
@@ -89,14 +107,20 @@ export async function computeStrokePlayResults(
    */
   const isScramble = (game?.game_type_id as string | null) === "gtt_scramble";
 
-  const { data: participants } = isScramble
-    ? await supabase.from("play_groups").select("id, handicap_strokes").eq("game_id", gameId)
-    : await supabase.from("game_participants").select("user_id, handicap_strokes").eq("game_id", gameId);
-  const { data: entries } = await supabase
-    .from("score_entries")
-    .select("participant_id, unit_label, value")
-    .eq("game_id", gameId)
-    .eq("participant_type", isScramble ? "play_group" : "user");
+  const participants = rowsOrThrow<Record<string, unknown>>(
+    isScramble
+      ? await supabase.from("play_groups").select("id, handicap_strokes").eq("game_id", gameId)
+      : await supabase.from("game_participants").select("user_id, handicap_strokes").eq("game_id", gameId),
+    "game's players"
+  );
+  const entries = rowsOrThrow(
+    await supabase
+      .from("score_entries")
+      .select("participant_id, unit_label, value")
+      .eq("game_id", gameId)
+      .eq("participant_type", isScramble ? "play_group" : "user"),
+    "game's scores"
+  );
 
   /**
    * THE SCORING TYPE, read from `games.config` (migration 179).
@@ -118,7 +142,7 @@ export async function computeStrokePlayResults(
    * is a `game_participants.user_id` — the difference belongs at the query, not
    * threaded through the four places that consume it.
    */
-  const field = ((participants ?? []) as Array<Record<string, unknown>>).map((p) => ({
+  const field = participants.map((p) => ({
     id: (isScramble ? p.id : p.user_id) as string,
     handicapStrokes: (p.handicap_strokes as number | null) ?? 0,
   }));
@@ -154,11 +178,11 @@ export async function computeStrokePlayResults(
   const scored =
     scoring === "stableford" && rubric
       ? stablefordEntries(
-          netStrokeEntriesByHole((entries ?? []) as RawStrokeEntry[], strokedByPlayer),
+          netStrokeEntriesByHole(entries as RawStrokeEntry[], strokedByPlayer),
           Object.fromEntries(units.map((u) => [u.label, u.par ?? 0])),
           rubric
         )
-      : netStrokeEntries((entries ?? []) as RawStrokeEntry[], strokedByPlayer);
+      : netStrokeEntries(entries as RawStrokeEntry[], strokedByPlayer);
 
   const standings = computeStrokePlayStandings(
     field.map((p) => p.id),
@@ -187,11 +211,11 @@ export async function computeStrokePlayResults(
   // returns [], leaving the user-only shape byte-identical to before.
   const teamOf: Record<string, string> = {};
   if (game?.competition_id) {
-    const { data: assigns } = await supabase
-      .from("team_assignments")
-      .select("user_id, team_id")
-      .eq("competition_id", game.competition_id as string);
-    const teamOfUser = new Map((assigns ?? []).map((a) => [a.user_id as string, a.team_id as string]));
+    const assigns = rowsOrThrow(
+      await supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", game.competition_id as string),
+      "cup's rosters"
+    );
+    const teamOfUser = new Map(assigns.map((a) => [a.user_id as string, a.team_id as string]));
     if (isScramble) {
       /**
        * SCRAMBLE keys its standings to a play_group, so the map this function
@@ -203,11 +227,11 @@ export async function computeStrokePlayResults(
        * Two rounds, unavoidably: a group's id is not knowable from
        * `team_assignments` alone (CLAUDE.md #27 — a side is not a person).
        */
-      const { data: members } = await supabase
-        .from("game_participants")
-        .select("user_id, play_group_id")
-        .eq("game_id", gameId);
-      for (const m of members ?? []) {
+      const members = rowsOrThrow(
+        await supabase.from("game_participants").select("user_id, play_group_id").eq("game_id", gameId),
+        "game's groups"
+      );
+      for (const m of members) {
         const groupId = m.play_group_id as string | null;
         if (!groupId || teamOf[groupId]) continue; // first member with a team decides it
         const teamId = teamOfUser.get(m.user_id as string);
