@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireTeamIdentityEdit } from "../middleware";
 import { assertRosterUnlocked, competitionHasScore } from "../lib/rosterLock";
+import { maybeRowOrThrow } from "../lib/rowOrThrow";
 
 /**
  * team_assignments — composite PK (competition_id, user_id) means a user
@@ -76,12 +77,18 @@ export const teamAssignmentsRouter = router({
       // passes. A MOVE/TRADE (already on a DIFFERENT team) removes them from that
       // team, so it's blocked once scoring has started. (Re-assigning to the same
       // team is a no-op, not a removal — passes.)
-      const { data: existing } = await ctx.supabase
-        .from("team_assignments")
-        .select("team_id")
-        .eq("competition_id", input.competitionId)
-        .eq("user_id", input.userId)
-        .maybeSingle();
+      // #1469: a failed read must not read as "not on a team yet" — isMove
+      // would be false, the roster lock skipped, and the upsert would MOVE a
+      // player on a scored cup.
+      const existing = maybeRowOrThrow(
+        await ctx.supabase
+          .from("team_assignments")
+          .select("team_id")
+          .eq("competition_id", input.competitionId)
+          .eq("user_id", input.userId)
+          .maybeSingle(),
+        "player's current team"
+      );
       const isSameTeam = !!existing && (existing.team_id as string) === input.teamId;
       const isMove = !!existing && (existing.team_id as string) !== input.teamId;
       if (isMove) await assertRosterUnlocked(ctx.supabase, input.competitionId);

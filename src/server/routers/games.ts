@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { refuseSplitSides } from "../lib/splitSides";
+import { countOrThrow, maybeRowOrThrow } from "../lib/rowOrThrow";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
@@ -978,11 +979,16 @@ export const gamesRouter = router({
 
       // Freeze boundary: once any score is in, the par/index the game is being
       // played on is fixed — re-applying a course would silently rescore it.
-      const { count } = await ctx.supabase
-        .from("score_entries")
-        .select("id", { count: "exact", head: true })
-        .eq("game_id", input.gameId);
-      if ((count ?? 0) > 0) {
+      // #1469: a failed count must not read as "no scores" — the freeze would
+      // open and change par/index under entered scores.
+      const count = countOrThrow(
+        await ctx.supabase
+          .from("score_entries")
+          .select("id", { count: "exact", head: true })
+          .eq("game_id", input.gameId),
+        "game's scores"
+      );
+      if (count > 0) {
         throw new TRPCError({
           code: "CONFLICT",
           message: "Scores are already entered — the course can't be changed now.",
@@ -1043,11 +1049,16 @@ export const gamesRouter = router({
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      const { count } = await ctx.supabase
-        .from("score_entries")
-        .select("id", { count: "exact", head: true })
-        .eq("game_id", input.gameId);
-      if ((count ?? 0) > 0) {
+      // #1469: a failed count must not read as "no scores" — the freeze would
+      // open and change par/index under entered scores.
+      const count = countOrThrow(
+        await ctx.supabase
+          .from("score_entries")
+          .select("id", { count: "exact", head: true })
+          .eq("game_id", input.gameId),
+        "game's scores"
+      );
+      if (count > 0) {
         throw new TRPCError({
           code: "CONFLICT",
           message: "Scores are already entered — the course can't be changed now.",
@@ -1567,12 +1578,17 @@ export const gamesRouter = router({
         // match_hole_outcomes rows belong to the CURRENT mode — switching
         // would silently orphan them. Setup-time only, mirroring every other
         // setup-spine field (Matches/Course/Points are all frozen the same way).
-        const { data: game } = await ctx.supabase
-          .from("games")
-          .select("scoring_enabled")
-          .eq("id", input.gameId)
-          .eq("trip_id", ctx.tripId)
-          .maybeSingle();
+        // #1469: a failed read must not read as "scoring is off" and let the
+        // switch through on a live game.
+        const game = maybeRowOrThrow(
+          await ctx.supabase
+            .from("games")
+            .select("scoring_enabled")
+            .eq("id", input.gameId)
+            .eq("trip_id", ctx.tripId)
+            .maybeSingle(),
+          "game"
+        );
         if (game?.scoring_enabled) {
           throw new TRPCError({
             code: "FORBIDDEN",

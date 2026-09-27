@@ -5,6 +5,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireCompetitionRole, requireTeamIdentityEdit } from "../middleware";
 import { assertRosterUnlocked } from "../lib/rosterLock";
 import { reconcileClinchClaim } from "../lib/gameFinishNotify";
+import { maybeRowOrThrow } from "../lib/rowOrThrow";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
 
 /**
@@ -216,11 +217,12 @@ export const teamsRouter = router({
     .mutation(async ({ ctx, input }) => {
       // Roster-removal lock: deleting a team is a MASS removal (cascades to clear
       // its assignments), so it's blocked once the competition has any score.
-      const { data: team } = await ctx.supabase
-        .from("teams")
-        .select("competition_id")
-        .eq("id", input.teamId)
-        .maybeSingle();
+      // #1469: a failed read must not read as "no such team" — `competition_id`
+      // would be undefined, BOTH guards below skipped, and the delete run.
+      const team = maybeRowOrThrow(
+        await ctx.supabase.from("teams").select("competition_id").eq("id", input.teamId).maybeSingle(),
+        "team"
+      );
       if (team?.competition_id) {
         // Structure before the roster lock: a head-to-head cup can never lose a
         // team, scored or not, so that is the truer reason to give.

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import { anyGameStarted } from "./gameStarted";
+import { rowsOrThrow } from "./rowOrThrow";
 
 /**
  * Roster-removal lock (team-identity integrity). Once the first RESULT lands in
@@ -38,11 +39,14 @@ export async function competitionHasScore(
   supabase: SupabaseClient,
   competitionId: string,
 ): Promise<boolean> {
-  const { data: games } = await supabase
-    .from("games")
-    .select("id")
-    .eq("competition_id", competitionId);
-  const ids = (games ?? []).map((g) => g.id as string);
+  // #1469: a failed read must not become "this cup has no games" — an empty id
+  // list reads as nothing started, and the lock OPENS on a scored cup.
+  // (`startedGameIds` below already refuses its own failures.)
+  const games = rowsOrThrow(
+    await supabase.from("games").select("id").eq("competition_id", competitionId),
+    "cup's games"
+  );
+  const ids = games.map((g) => g.id as string);
   return anyGameStarted(supabase, ids);
 }
 
