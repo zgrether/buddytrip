@@ -831,9 +831,10 @@ result is refused.
 "Teams" (a points race), with a team stepper whose minimum is 2. `competitions.create`
 refuses fewer than 2 and always seeds them (`competitions.ts:299, 382`). A points cup can
 still reach zero teams afterwards, since teams can be deleted before a game starts, and then
-the whole board is replaced by *No teams yet* (`CompetitionLeaderboard.tsx:280`), probably
-with no way back to settings (to be confirmed in a browser and filed; not fixed separately,
-because PR 7 makes zero teams a legitimate state).
+the whole board is replaced by *No teams yet* (`CompetitionLeaderboard.tsx:280`), with no
+way back to settings or add-game, and a message naming a tab that no longer exists.
+Confirmed in a browser and filed as **#1502**; not fixed separately, because PR 7 makes zero
+teams a legitimate state. **PR 7 closes #1502.**
 
 **The schema already allows a teamless race.** Nothing requires a competition to have teams,
 and a `user` result row is allowed. The storage speaks units (`game_results.entity_type`);
