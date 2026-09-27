@@ -13,7 +13,8 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
-let tripId: string;
+let tripId: string; // a trip with NO competition
+let cupTripId: string; // a trip with one — its own, since a trip holds one (migration 195)
 let competitionId: string;
 let blueId: string;
 let redId: string;
@@ -23,6 +24,23 @@ beforeAll(async () => {
   tripId = await ctx.createTrip("Avatar colour trip");
   await ctx.addTripMember(tripId, "member", "Member");
   await ctx.addTripMember(tripId, "planner", "Organizer");
+
+  // The cup and its teams are built HERE, not inside the case that first needs
+  // them: that case used to create the cup, so a retried run (CI retries a
+  // PostgREST 502) tried to put a second cup on the same trip, which the
+  // database now refuses — and the cases after it read the state it left.
+  const cup = await ctx.createCupTrip({
+    name: "Avatar Cup",
+    scoringModel: "points",
+    members: ["member", ["planner", "Organizer"]],
+  });
+  cupTripId = cup.tripId;
+  competitionId = cup.competitionId;
+  // Explicit, DISTINCT colours: `createTeam` defaults every team to the same
+  // blue, so a per-viewer assertion against the default would compare a colour
+  // to itself and pass or fail for the wrong reason.
+  blueId = await ctx.createTeam(competitionId, "Blue", { shortName: "BLU", color: "#3b82f6", colorDim: "#0a1a2a" });
+  redId = await ctx.createTeam(competitionId, "Red", { shortName: "RED", color: "#ef4444", colorDim: "#2a0a0a" });
 });
 
 afterAll(async () => {
@@ -37,26 +55,19 @@ describe("competitions.myTeamColor", () => {
   });
 
   it("returns null once a competition exists but nobody is on a team yet", async () => {
-    competitionId = await ctx.createCompetition(tripId, "Avatar Cup", { scoringModel: "points" });
-    // Explicit, DISTINCT colours: `createTeam` defaults every team to the same
-    // blue, so a per-viewer assertion against the default would compare a colour
-    // to itself and pass or fail for the wrong reason.
-    blueId = await ctx.createTeam(competitionId, "Blue", { shortName: "BLU", color: "#3b82f6", colorDim: "#0a1a2a" });
-    redId = await ctx.createTeam(competitionId, "Red", { shortName: "RED", color: "#ef4444", colorDim: "#2a0a0a" });
-
     // Teams exist; assignments don't. Having a competition is not the condition —
     // being ON a team is.
-    await expect(ctx.caller().competitions.myTeamColor({ tripId })).resolves.toBeNull();
+    await expect(ctx.caller().competitions.myTeamColor({ tripId: cupTripId })).resolves.toBeNull();
   });
 
   it("returns the assigned team's colour", async () => {
     const owner = ctx.getUser("owner").id;
     const { error } = await ctx.admin
       .from("team_assignments")
-      .insert([{ competition_id: competitionId, team_id: blueId, user_id: owner }]);
+      .upsert([{ competition_id: competitionId, team_id: blueId, user_id: owner }], { onConflict: "competition_id,user_id" });
     if (error) throw new Error(`seed assignment: ${error.message}`);
 
-    const res = await ctx.caller().competitions.myTeamColor({ tripId });
+    const res = await ctx.caller().competitions.myTeamColor({ tripId: cupTripId });
     expect(res).not.toBeNull();
     expect(res!.teamId).toBe(blueId);
     expect(res!.teamName).toBe("Blue");
@@ -71,11 +82,11 @@ describe("competitions.myTeamColor", () => {
     const member = ctx.getUser("member").id;
     const { error } = await ctx.admin
       .from("team_assignments")
-      .insert([{ competition_id: competitionId, team_id: redId, user_id: member }]);
+      .upsert([{ competition_id: competitionId, team_id: redId, user_id: member }], { onConflict: "competition_id,user_id" });
     if (error) throw new Error(`seed member assignment: ${error.message}`);
 
-    const asOwner = await ctx.caller().competitions.myTeamColor({ tripId });
-    const asMember = await ctx.callerAs("member").competitions.myTeamColor({ tripId });
+    const asOwner = await ctx.caller().competitions.myTeamColor({ tripId: cupTripId });
+    const asMember = await ctx.callerAs("member").competitions.myTeamColor({ tripId: cupTripId });
 
     // The whole point of the feature: the avatar is the VIEWER's identity. A
     // procedure that keyed off the trip alone would hand everyone one colour.
@@ -87,10 +98,10 @@ describe("competitions.myTeamColor", () => {
   it("returns null for a trip member who is on no team, while others are", async () => {
     // The planner is a trip member but was never assigned. Their avatar stays
     // teal even though the competition has rosters.
-    await expect(ctx.callerAs("planner").competitions.myTeamColor({ tripId })).resolves.toBeNull();
+    await expect(ctx.callerAs("planner").competitions.myTeamColor({ tripId: cupTripId })).resolves.toBeNull();
   });
 
   it("refuses a non-member — it rides requireTripMember like every trip-scoped read", async () => {
-    await expect(ctx.callerAs("outsider").competitions.myTeamColor({ tripId })).rejects.toThrow();
+    await expect(ctx.callerAs("outsider").competitions.myTeamColor({ tripId: cupTripId })).rejects.toThrow();
   });
 });

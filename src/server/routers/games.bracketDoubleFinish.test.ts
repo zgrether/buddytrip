@@ -65,7 +65,17 @@ afterAll(async () => {
 async function newDoubleBracket(name: string): Promise<string> {
   // A POINTS cup: a bracket pays by placement, and a Match Play cup refuses switching a
   // game into one (ruling 2, PR 4). Brackets are tested where they can now be set up.
-  const competitionId = await ctx.createCompetition(tripId, name, { scoringModel: "points" });
+  // A trip OF ITS OWN, made here rather than reusing the file's: this runs inside
+  // the test, and a retried test (CI retries a PostgREST 502) must not try to put
+  // a second cup on the trip its first attempt already used — a trip holds one
+  // (migration 195). Everything below reads `tripId`, so repointing it is enough.
+  const cup = await ctx.createCupTrip({
+    name,
+    scoringModel: "points",
+    members: [["planner", "Organizer"], "member", "outsider"],
+  });
+  tripId = cup.tripId;
+  const competitionId = cup.competitionId;
   compIds.push(competitionId);
   const teamA = await ctx.createTeam(competitionId, "Manhattans");
   const teamB = await ctx.createTeam(competitionId, "Centurions");
