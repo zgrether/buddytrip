@@ -26,6 +26,9 @@ const ALLOWED = new Set<string>([
   "__tests__/helpers/test-setup.ts",
   // This file: its PROBE case carries the pattern as a string, on purpose.
   "__tests__/helpers/oneCupPerTrip.guard.test.ts",
+  // The test OF the constraint (migration 195): it must insert a second row
+  // directly, because the helpers refuse to, and the database is the subject.
+  "server/routers/competitions.oneCupPerTrip.test.ts",
 ]);
 
 function testFiles(dir: string): string[] {
