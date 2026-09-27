@@ -133,13 +133,30 @@ describe("declared format properties", () => {
    * The model's own invariants, asserted over the real catalog rather than
    * restated in prose. Each is a ruling that would otherwise live only here.
    */
-  it("rack is the one format that can never be a side game (rulings 12, 27)", () => {
+  it("rack can never be a side game (rulings 12, 27)", () => {
     const rack = GAME_TYPE_LIST.find((d) => d.id === "gtt_rack_n_stack")!;
     expect(rack.allowedContainers).toEqual(["head_to_head"]);
-    // And it is the ONLY one — stated as the exact set, so a second format
-    // quietly losing `side_game` fails here rather than passing a `some` check.
-    const noSideGame = GAME_TYPE_LIST.filter((d) => !d.allowedContainers.includes("side_game"));
-    expect(noSideGame.map((d) => d.id)).toEqual(["gtt_rack_n_stack"]);
+  });
+
+  /**
+   * EXACTLY the formats that record a result with no competition — stated as the
+   * set, so a format gaining `side_game` without the engine to back it fails here
+   * rather than passing a `some` check. PR 6 is the first reader and offers
+   * *side game* from this list, so a false entry is a screen offering a game that
+   * would finish with nothing recorded.
+   *
+   * Why each other format is out (2026-09-27, PR 6's verify-first pass):
+   *  - rack — by ruling (12, 27): its two sides ARE the cup's two teams;
+   *  - scramble — groups are seeded only from a cup's teams, and the groupings
+   *    row is hidden;
+   *  - pick'em — the finalize has nobody to award without a cup, writes nothing;
+   *  - the generic types (card, yard, bar, manual) — placements rank the cup's
+   *    teams and Matches pays team points; only a bracket records a winner, and
+   *    the declaration is per type, not per competition_format. PR 7.
+   */
+  it("side games are exactly stroke play, match play and skins", () => {
+    const sideGame = GAME_TYPE_LIST.filter((d) => d.allowedContainers.includes("side_game"));
+    expect(sideGame.map((d) => d.id).sort()).toEqual(["gtt_match_play", "gtt_skins", "gtt_stroke_play"]);
   });
 
   it("pick'em is the engine format declaring both kinds (ruling: roll_up pins it)", () => {
