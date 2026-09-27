@@ -233,18 +233,21 @@ export function GameSettingsPage({
         {/* IDENTITY — name (tap-to-edit) + assigned-to, both draft slices. A live
             write here would move the config hash out from under the frozen
             baseHash the page's own Save is holding. */}
-        {competitionId && (
-          <GameIdentityHeader
-            tripId={tripId}
-            competitionId={competitionId}
-            canEdit={canEdit}
-            canDelegate={canDelegate}
-            nameValue={nameValue}
-            onNameChange={onNameChange}
-            delegateValue={delegateValue}
-            onDelegateChange={onDelegateChange}
-          />
-        )}
+        {/* Shown on EVERY game, side games included (PR 6b; Zach's look): a
+            practice round is part of the trip and may still need renaming or
+            handing to someone after it's created. It used to need a competition
+            because a game without one was a leftover standalone, not a real one.
+            `competitionId` only colours the delegate picker by team. */}
+        <GameIdentityHeader
+          tripId={tripId}
+          competitionId={competitionId}
+          canEdit={canEdit}
+          canDelegate={canDelegate}
+          nameValue={nameValue}
+          onNameChange={onNameChange}
+          delegateValue={delegateValue}
+          onDelegateChange={onDelegateChange}
+        />
 
         {/* GAME MANAGEMENT — Total Points (1st) → Golf Course (2nd) → Game State
             (3rd). Points and Course sit here rather than in SETTINGS because
@@ -285,14 +288,14 @@ export function GameSettingsPage({
 
         {/* RULES OF THE DAY — the QUIET tier (free text, can't rescore a hole),
             so it reads before the WARNED Modifiers accordion below. */}
-        {competitionId && (
-          <GameRulesNote
-            canEdit={canEdit}
-            value={rulesValue ?? ""}
-            onChange={onRulesChange}
-            starterText={rulesStarterText ?? formatExplanation(game.game_type_id) ?? undefined}
-          />
-        )}
+        {/* Every game, side games included (PR 6b) — house rules are not a
+            competition concept. */}
+        <GameRulesNote
+          canEdit={canEdit}
+          value={rulesValue ?? ""}
+          onChange={onRulesChange}
+          starterText={rulesStarterText ?? formatExplanation(game.game_type_id) ?? undefined}
+        />
 
         {modifiersRow}
 
