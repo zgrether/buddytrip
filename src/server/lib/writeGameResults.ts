@@ -213,7 +213,8 @@ export async function failClosedOnRead<T>(
   try {
     return await compute();
   } catch (err) {
-    if ((onFailure ?? "log") === "throw" || !(err instanceof QueryFailedError)) throw err;
+    if ((onFailure ?? "log") === "throw") throw err;
+    if (!(err instanceof QueryFailedError)) return skipped;
     console.error("[writeGameResults] a read failed, results left as they were (setup path, not surfaced)", {
       gameId,
       what: err.what,
