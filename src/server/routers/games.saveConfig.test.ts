@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
-import { configToDraft, configDraftToPayload, type ConfigDraft, type DraftMatchConfig, type SaveConfigPayload } from "../../lib/configDraft";
+import { configToDraft, configDraftToPayload, configToRackDraft, rackDraftToPayload, type ConfigDraft, type DraftMatchConfig, type SaveConfigPayload } from "../../lib/configDraft";
 
 /**
  * games.saveConfig — the atomic Save front door (Game Settings: Draft-Then-Save P1).
@@ -369,10 +369,40 @@ describe("saveConfig — the scoring_enabled state machine", () => {
         baseHash: await hashOf(gameId),
         payload: configDraftToPayload({ ...paired, scoringEnabled: true }, seeded),
       })
-    ).rejects.toThrow(/set a point value/i);
+    ).rejects.toMatchObject({
+      // EXACT, and it pins TWO things (PR 6b). The remap in `notReadyMessage` keys
+      // on the database's own wording, so if the RPC's text is ever reworded the
+      // remap misses, the raw text comes through, and this fails — loudly, rather
+      // than the side-game advice silently vanishing. And match play can be a side
+      // game, so it is offered that route.
+      message: "Set a point value, or delete this game and add it again as a side game.",
+    });
 
     const after = await ctx.caller().games.getById({ tripId, gameId });
     expect((after as { scoring_enabled?: boolean }).scoring_enabled).toBe(false);
+  });
+
+  // The other half of the pin: a format that CANNOT be a side game is not told to
+  // re-add it as one — the advice would name a door its format does not have. Rack
+  // is head-to-head/points-race only. Same database refusal, different advice.
+  it("the zero-points refusal on a format that cannot be a side game gives the plain advice", async () => {
+    const g = (await ctx.caller().games.create({
+      tripId,
+      gameTypeId: "gtt_rack_n_stack",
+      name: "Rack at zero points",
+      competitionId,
+    })) as { id: string };
+    gameIds.push(g.id);
+    const game = await ctx.caller().games.getById({ tripId, gameId: g.id });
+    const seeded = configToRackDraft(game as Parameters<typeof configToRackDraft>[0], [], {}, []);
+    await expect(
+      ctx.caller().games.saveConfig({
+        tripId,
+        gameId: g.id,
+        baseHash: await hashOf(g.id),
+        payload: rackDraftToPayload({ ...seeded, scoringEnabled: true }, 0, seeded),
+      })
+    ).rejects.toMatchObject({ message: "Set a point value before enabling scoring." });
   });
 
   // 093 scope: the gate fires on a FRESH enable only, never on a true→true re-affirm of

@@ -45,6 +45,7 @@ import { resolveResultStrategy } from "@/lib/resultStrategy";
 import { headToHeadResultRefusal } from "@/lib/headToHeadResult";
 import { computePickemResults } from "@/server/lib/pickemResults";
 import { computeSideBoard } from "@/server/lib/sideBoard";
+import { notReadyMessage, POINT_VALUE_NOT_READY } from "@/server/lib/notReadyMessage";
 import { writeTeamMatchPoints } from "../lib/matchAwards";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "@/server/lib/myDelegateGameIds";
@@ -2166,9 +2167,22 @@ export const gamesRouter = router({
           // pattern as HAS_SCORES below, rather than flattening every NOT_READY into
           // the generic "finish setting up" copy.
           const detail = msg.split("NOT_READY:")[1]?.trim();
+          // The point-value refusal's advice depends on the FORMAT (can it be a
+          // side game?), which the RPC's message does not carry. Read only on this
+          // path. A failed read here writes nothing, so it degrades to the plain
+          // advice rather than replacing the refusal with a 500.
+          let gameTypeId: string | null = null;
+          if (detail === POINT_VALUE_NOT_READY) {
+            const { data: typeRow } = await ctx.supabase
+              .from("games")
+              .select("game_type_id")
+              .eq("id", input.gameId)
+              .maybeSingle();
+            gameTypeId = (typeRow?.game_type_id as string | null | undefined) ?? null;
+          }
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: detail || "Finish setting up this game before switching it to scoring.",
+            message: notReadyMessage(detail, gameTypeId),
           });
         }
         // The two freeze boundaries. Each names the ACTUAL affordance — "Reset scores"
