@@ -355,12 +355,6 @@ export const competitionsRouter = router({
       // The race the read above cannot see: a concurrent create won, and the
       // constraint (migration 195) refused this one. Same answer as the read-first
       // branch, because it is the same fact.
-      if (insertErr?.code === "23505" && insertErr.message.includes("competitions_one_per_trip")) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "A competition already exists for this trip",
-        });
-      }
       if (insertErr || !inserted) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
