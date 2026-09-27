@@ -5,6 +5,7 @@ import { RotateCcw, Eraser, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { resetGameConfigHash } from "@/lib/gameConfigHash";
 import { SectionLabel, DangerRow, DangerConfirmModal } from "@/components/DangerZone";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 
 /**
  * The per-game danger zone — the escalating ladder ONE LEVEL DOWN from the
@@ -92,11 +93,7 @@ export function GameDangerZone({
     void utils.scores.listByGame.invalidate({ tripId, gameId });
     void utils.matches.listByGame.invalidate({ tripId, gameId });
     void utils.playGroups.listByGame.invalidate({ tripId, gameId });
-    void utils.games.listByTrip.invalidate({ tripId });
-    if (competitionId) {
-      void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-      void utils.competitions.faceBootstrap.invalidate({ tripId });
-    }
+    invalidateGameBoards(utils, { tripId, competitionId }); // side games included (PR 6b)
     onScoresReset?.();
     onChanged();
   }
@@ -109,11 +106,7 @@ export function GameDangerZone({
   });
   const deleteGame = trpc.games.delete.useMutation({
     onSuccess: () => {
-      void utils.games.listByTrip.invalidate({ tripId });
-      if (competitionId) {
-        void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-        void utils.competitions.faceBootstrap.invalidate({ tripId });
-      }
+      invalidateGameBoards(utils, { tripId, competitionId }); // side games included (PR 6b)
       setConfirm(null);
       onDeleted();
     },

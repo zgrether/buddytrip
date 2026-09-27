@@ -64,6 +64,7 @@ import {
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { Participant } from "@/components/games/types";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 
 const SKINS = "gtt_skins";
 
@@ -385,13 +386,9 @@ export function SkinsGameView() {
     if (!tripId || !gid) return;
     await utils.games.getById.invalidate({ tripId, gameId: gid });
     await utils.playGroups.listByGame.invalidate({ tripId, gameId: gid });
-    if (competitionId) {
-      // #10 — the child alone is silently undone by the face's re-seed, so the
-      // BOOTSTRAP is the one that actually refreshes the board.
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-      utils.games.listByTrip.invalidate({ tripId });
-    }
+    // The ONE board invalidator — side games included (PR 6b); it carries #10's
+    // bootstrap rule itself.
+    invalidateGameBoards(utils, { tripId, competitionId });
   }
 
   const { saveState, saving, saveError, setSaveError, handleSave } = useConfigDraft<

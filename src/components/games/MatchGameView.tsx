@@ -82,6 +82,7 @@ import { unconfirmedCount, type Participant, type ScoreValues, type OutcomeValue
 import { showToast } from "@/lib/toast";
 import type { OutcomeOverwrite } from "@/lib/outcomeReconcile";
 import { outcomeOverwriteNotice } from "@/components/games/outcomeOverwriteNotice";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 
 // One unified match-play type (Refactor A1). 1v1-vs-2v2 is per-match, derived from
 // each match's side type — not the game type. `MATCH_PLAY_DOUBLES` is retired.
@@ -1202,11 +1203,9 @@ export function MatchGameView() {
   // nothing), so it takes the LEAN path instead — see handleSave.
   async function refreshAfterMatchCountChange() {
     await Promise.all([gameQ.refetch(), matchesQ.refetch(), scoresQ.refetch()]);
-    if (competitionId) {
-      utils.competitions.leaderboard.invalidate({ tripId: tripId!, competitionId });
-      utils.games.listByTrip.invalidate({ tripId: tripId! });
-      utils.competitions.faceBootstrap.invalidate({ tripId: tripId! });
-    }
+    // The ONE board invalidator, keyed on the GAME's competition (a side game on a
+    // trip with a cup must not read as the cup's) — PR 6b.
+    invalidateGameBoards(utils, { tripId: tripId!, competitionId: gameCompId });
   }
 
   /** Drop every slice back to "untouched" so the composite re-mirrors the just-saved
@@ -2034,11 +2033,7 @@ export function MatchGameView() {
         const modifiersSubtitle = modifiersOn > 0 ? "Modifiers have been added" : "No modifiers added to your round yet";
         const onSetupChanged = () => {
           void gameQ.refetch();
-          if (competitionId) {
-            utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-            utils.competitions.faceBootstrap.invalidate({ tripId });
-            utils.games.listByTrip.invalidate({ tripId });
-          }
+          invalidateGameBoards(utils, { tripId, competitionId: gameCompId });
         };
         return (
           <GameSettingsPage

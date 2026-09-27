@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { trpc } from "@/lib/trpc-client";
 import { useMarkGameLocked } from "@/hooks/useGameCorrection";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 
 /**
  * Finalize a game, and do the four things that must happen afterwards.
@@ -122,13 +123,9 @@ export function useGameFinalize({
         // `corrections_open: true` and tapping back in shows the wrong CTA.
         markLocked();
         refreshSelf?.();
-        if (competitionId) {
-          utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-          utils.games.listByTrip.invalidate({ tripId });
-          // Not optional: the child invalidate alone is undone by the face's
-          // re-seed (CLAUDE.md #10).
-          utils.competitions.faceBootstrap.invalidate({ tripId });
-        }
+        // The ONE board invalidator — a finished SIDE game must reach the Games
+        // page's Completed section too (PR 6b). It carries #10's bootstrap rule.
+        invalidateGameBoards(utils, { tripId, competitionId });
         onExit();
         return true;
       } catch (e) {

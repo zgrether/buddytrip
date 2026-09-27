@@ -5,7 +5,7 @@ import { Trophy, CloudOff, RefreshCw, Plus, ArrowUpDown } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/router";
 import { trpc } from "@/lib/trpc-client";
-import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
+import { STRUCTURE_QUERY, LEADERBOARD_QUERY, SIDE_BOARD_QUERY } from "@/lib/queryConfig";
 import { useVisibleEnabled } from "@/lib/surfaceVisibility";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useFirstClinchView } from "@/hooks/useFirstClinchView";
@@ -214,7 +214,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
    */
   const { data: sideRows } = trpc.games.sideBoard.useQuery(
     { tripId },
-    { ...LEADERBOARD_QUERY, enabled: useVisibleEnabled(true) }
+    { ...SIDE_BOARD_QUERY, enabled: useVisibleEnabled(true) }
   );
   const sectionGames = useMemo(
     () => mergeByDisplayOrder(liveGames as LBGame[], (sideRows ?? []) as LBGame[]),

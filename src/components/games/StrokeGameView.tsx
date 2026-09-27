@@ -69,6 +69,7 @@ import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 
 const STROKE_PLAY = "gtt_stroke_play";
 
@@ -490,11 +491,8 @@ export function StrokeGameView() {
 
   async function refreshGame() {
     await gameQ.refetch();
-    if (gameCompetitionId) {
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-      utils.games.listByTrip.invalidate({ tripId });
-    }
+    // The ONE board invalidator — side games included (PR 6b).
+    if (tripId) invalidateGameBoards(utils, { tripId, competitionId: gameCompetitionId });
   }
   // Setup/Scoring toggle → the scoring draft slice; Save commits it (go-live readiness
   // re-asserted server-side inside the tx, so the client gate can't be bypassed).
@@ -630,11 +628,9 @@ export function StrokeGameView() {
       // Refetch play_groups too (P3 3.2) so the groupings baseline (serverGroups) reflects
       // a committed group change — else the dirty check would re-flag the just-saved edit.
       await Promise.all([gameQ.refetch(), orgQ.refetch(), groupsQ.refetch()]);
-      if (gameCompetitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-        utils.games.listByTrip.invalidate({ tripId });
-      }
+      // The ONE board invalidator. This was `if (gameCompetitionId)`, so a SIDE
+      // game's Save-with-Scoring went live and the Games page never heard (PR 6b).
+      if (tripId) invalidateGameBoards(utils, { tripId, competitionId: gameCompetitionId });
     },
   });
 

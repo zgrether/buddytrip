@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { LEADERBOARD_QUERY } from "@/lib/queryConfig";
+import { SIDE_BOARD_QUERY } from "@/lib/queryConfig";
 import { useVisibleEnabled } from "@/lib/surfaceVisibility";
 import { GamesSection, useGameRowContext, type LBGame, type LBCell } from "./CompetitionLeaderboard";
 
@@ -32,7 +32,7 @@ export function SideGamesBoard({
 }) {
   const { data: rows, isLoading, isError, refetch } = trpc.games.sideBoard.useQuery(
     { tripId },
-    { ...LEADERBOARD_QUERY, enabled: useVisibleEnabled(true) }
+    { ...SIDE_BOARD_QUERY, enabled: useVisibleEnabled(true) }
   );
   const { mineSet, viewer, delegateOfByGame, prefetchGame } = useGameRowContext({
     tripId,

@@ -40,6 +40,7 @@ export async function computeSideBoard(supabase: SupabaseClient, tripId: string)
   const inputs = await readBoardInputs(supabase, games as Parameters<typeof readBoardInputs>[1], "trip's");
   const winnersByGame = await readWinners(
     supabase,
+    tripId,
     games.filter((g) => g.status === "complete").map((g) => g.id as string)
   );
 
@@ -50,7 +51,7 @@ export async function computeSideBoard(supabase: SupabaseClient, tripId: string)
   }));
 }
 
-async function readWinners(supabase: SupabaseClient, gameIds: string[]): Promise<Map<string, string[]>> {
+async function readWinners(supabase: SupabaseClient, tripId: string, gameIds: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   if (gameIds.length === 0) return out;
 
@@ -77,13 +78,19 @@ async function readWinners(supabase: SupabaseClient, gameIds: string[]): Promise
   const userIds = [
     ...new Set([...firsts.filter((r) => r.entity_type === "user").map((r) => r.entity_id), ...members.map((m) => m.user_id)]),
   ];
-  const users = userIds.length
-    ? (rowsOrThrow(
-        await supabase.from("users").select("id, name").in("id", userIds),
-        "side game winners' names"
-      ) as { id: string; name: string | null }[])
-    : [];
-  const nameOf = new Map(users.map((u) => [u.id, u.name ?? "Someone"]));
+  // The TRIP display name — a trip nickname first, then the account name — the
+  // same resolution `tripMembers.list` gives every other name on the board.
+  const [users, members2] = userIds.length
+    ? await Promise.all([
+        supabase.from("users").select("id, name").in("id", userIds),
+        supabase.from("trip_members").select("user_id, nickname").eq("trip_id", tripId).in("user_id", userIds),
+      ]).then(([u, m]) => [
+        rowsOrThrow(u, "side game winners' names") as { id: string; name: string | null }[],
+        rowsOrThrow(m, "side game winners' names") as { user_id: string; nickname: string | null }[],
+      ] as const)
+    : ([[], []] as const);
+  const nickOf = new Map(members2.map((m) => [m.user_id, m.nickname]));
+  const nameOf = new Map(users.map((u) => [u.id, nickOf.get(u.id) ?? u.name ?? "Someone"]));
 
   for (const r of firsts) {
     const label =
