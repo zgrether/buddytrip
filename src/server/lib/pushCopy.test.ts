@@ -5,6 +5,8 @@ import {
   formatStrokeSummary,
   formatBracketSummary,
   formatClinchMargin,
+  formatWinnersSummary,
+  gameUrl,
   notifySurfaceFor,
 } from "./gameFinishNotify";
 
@@ -194,6 +196,35 @@ describe("notifySurfaceFor — every format answers all three questions", () => 
     // `null` is the manual arm — a served branch of the dispatch — so it must
     // resolve to a surface rather than falling off the registry.
     expect(notifySurfaceFor(null)).toBeDefined();
+  });
+});
+
+describe("a SIDE game's push (PR 6b)", () => {
+  it("a team-reading format reads the side rows instead: a side game has no team rows", () => {
+    expect(notifySurfaceFor("match_play", true)).toEqual({ audience: "participants", competitor: "side", summary: "winners" });
+    // The CUP answer is unchanged: team totals are the competitors there.
+    expect(notifySurfaceFor("match_play", false).competitor).toBe("team");
+  });
+
+  it("a person-reading format is left alone: stroke and skins already name people", () => {
+    expect(notifySurfaceFor("stroke_total", true)).toEqual(notifySurfaceFor("stroke_total", false));
+    expect(notifySurfaceFor("skins", true)).toEqual(notifySurfaceFor("skins", false));
+  });
+
+  it("names one winner as a sentence, several as match winners, and nothing as nothing", () => {
+    expect(formatWinnersSummary([{ name: "Zach" }])).toBe("Won by Zach");
+    // A 2v2 winner is one entry already joined with "&"; several of them must not
+    // run together, hence the dot.
+    expect(formatWinnersSummary([{ name: "Zach & Matt" }, { name: "BJ & Tom" }])).toBe("Match winners: Zach & Matt · BJ & Tom");
+    expect(formatWinnersSummary([])).toBe("");
+  });
+
+  it("links every panel format to its panel over the Games page, cup or not", () => {
+    // A side stroke game used to link to its standalone route, whose exit landed
+    // on the Trip tab.
+    expect(gameUrl("t1", "g1", "gtt_stroke_play")).toBe("/trips/t1?view=cup&game=g1");
+    expect(gameUrl("t1", "g1", "gtt_skins")).toBe("/trips/t1?view=cup&game=g1");
+    expect(gameUrl("t1", "g1", "gtt_match_play")).toBe("/trips/t1?view=cup&game=g1");
   });
 });
 

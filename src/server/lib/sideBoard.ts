@@ -38,7 +38,7 @@ export async function computeSideBoard(supabase: SupabaseClient, tripId: string)
   if (games.length === 0) return [];
 
   const inputs = await readBoardInputs(supabase, games as Parameters<typeof readBoardInputs>[1], "trip's");
-  const winnersByGame = await readWinners(
+  const winnersByGame = await readSideGameWinners(
     supabase,
     tripId,
     games.filter((g) => g.status === "complete").map((g) => g.id as string)
@@ -51,7 +51,13 @@ export async function computeSideBoard(supabase: SupabaseClient, tripId: string)
   }));
 }
 
-async function readWinners(supabase: SupabaseClient, tripId: string, gameIds: string[]): Promise<Map<string, string[]>> {
+/**
+ * The winners of finished side games, named by trip display name: the Games
+ * page's winner line, and the `game_finished` push for a side game (PR 6b), so
+ * the two cannot name a winner differently. Position-1 `user` / `play_group`
+ * rows; a 2v2 winner is named by the people in its play group.
+ */
+export async function readSideGameWinners(supabase: SupabaseClient, tripId: string, gameIds: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   if (gameIds.length === 0) return out;
 

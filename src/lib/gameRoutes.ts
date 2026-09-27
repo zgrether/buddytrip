@@ -128,6 +128,29 @@ export function isPickemFormat(gameTypeId: string | null): boolean {
   return gameTypeId === "gtt_pickem";
 }
 
+/**
+ * The trip's GAMES PAGE: where you land leaving, finishing or deleting a game.
+ *
+ * It takes no competition, and that is the point. Before PR 6b the destination
+ * was `competitionId ? leaderboard : trip home`, which was right while every game
+ * had a cup and the Games page existed only with one. Now the page exists on
+ * every trip, so a side game took the `: trip home` arm and left you on the
+ * Trip tab. There is no check left in here to get wrong.
+ *
+ * `?view=cup` rather than the `/leaderboard` alias, which only `router.replace`s
+ * to this and costs a hop.
+ */
+export function gamesPageHref(tripId: string): string {
+  return `/trips/${tripId}?view=cup`;
+}
+
+/** One game opened as a PANEL over its trip's Games page, for formats where
+ *  `opensAsPanel` holds, with or without a competition: the panel host reads every
+ *  game on the trip. */
+export function gamePanelHref(tripId: string, gameId: string): string {
+  return `${gamesPageHref(tripId)}&game=${gameId}`;
+}
+
 /** Formats that open as a layered PANEL over the persistent leaderboard (Spec 2)
  *  rather than navigating to their route: match play + rack + non-golf + stroke.
  *  As of Phase 3 that's every known format — but kept as an explicit union (not
