@@ -209,7 +209,11 @@ type ScoreEventUtils = {
     leaderboard: { invalidate: (i: { tripId: string; competitionId: string }) => unknown };
   };
   scores: { listByGame: GameScopedQuery };
-  games: { bracketDraw: GameScopedQuery };
+  games: {
+    bracketDraw: GameScopedQuery;
+    sideBoard: { invalidate: (i: { tripId: string }) => unknown };
+    listByTrip: { invalidate: (i: { tripId: string }) => unknown };
+  };
   matches: { listByGame: GameScopedQuery };
   matchOutcomes: { listByGame: GameScopedQuery };
   skinsOutcomes: { listByGame: GameScopedQuery };
@@ -220,6 +224,8 @@ type ScoreEventUtils = {
 type Reader =
   | "faceBootstrap"
   | "leaderboard"
+  | "sideBoard"
+  | "listByTrip"
   | "scores"
   | "matchOutcomes"
   | "skinsOutcomes"
@@ -281,10 +287,29 @@ export const BROADCAST_READERS: Record<BroadcastTable, readonly Reader[]> = {
  */
 const SCORE_TABLES = BROADCAST_TABLES.filter((t) => t !== "games");
 
-function readersFor(kind: ScoreEventKind | null): Set<Reader> {
+/**
+ * A SIDE game's event (the trip topic, #1498) is routed by the same kind rule,
+ * then corrected for the board it is shown on:
+ *
+ *  - no `leaderboard`: there is no cup, and its key needs a competition id;
+ *  - `sideBoard` on EVERY kind: a side row's state moves on scores as well as on
+ *    the game row. Ready → On Tap is "has a score", and the winner line is its
+ *    results. The cup board gets the same from the leaderboard, whose
+ *    `game_results` reader it has; the side board has no such second reader;
+ *  - `listByTrip` beside `faceBootstrap` on a GAME event: the face seeds it from
+ *    the bootstrap (#10), and standalone surfaces read it directly. The same set
+ *    `invalidateGameBoards` refreshes for a side game after a local mutation, so
+ *    a remote change and a local one refresh the same things.
+ */
+export function readersFor(kind: ScoreEventKind | null, sideGame = false): Set<Reader> {
   const tables = kind === "score" ? SCORE_TABLES : BROADCAST_TABLES;
   const out = new Set<Reader>();
   for (const t of tables) for (const r of BROADCAST_READERS[t]) out.add(r);
+  if (sideGame) {
+    out.delete("leaderboard");
+    out.add("sideBoard");
+    if (out.has("faceBootstrap")) out.add("listByTrip");
+  }
   return out;
 }
 
@@ -326,15 +351,27 @@ function gameScoped(
  */
 const INVALIDATE: Record<
   Reader,
-  (utils: ScoreEventUtils, tripId: string, gameId: string | null, competitionId: string) => void
+  (utils: ScoreEventUtils, tripId: string, gameId: string | null, competitionId: string | null) => void
 > = {
   faceBootstrap: (utils, tripId) =>
     coalesceInvalidation(`faceBootstrap:${tripId}`, () => {
       void utils.competitions.faceBootstrap.invalidate({ tripId });
     }),
-  leaderboard: (utils, tripId, _gameId, competitionId) =>
+  leaderboard: (utils, tripId, _gameId, competitionId) => {
+    // Never routed for a side game (`readersFor`), and guarded anyway: a
+    // leaderboard key needs a competition.
+    if (!competitionId) return;
     coalesceInvalidation(`leaderboard:${tripId}:${competitionId}`, () => {
       void utils.competitions.leaderboard.invalidate({ tripId, competitionId });
+    });
+  },
+  sideBoard: (utils, tripId) =>
+    coalesceInvalidation(`sideBoard:${tripId}`, () => {
+      void utils.games.sideBoard.invalidate({ tripId });
+    }),
+  listByTrip: (utils, tripId) =>
+    coalesceInvalidation(`listByTrip:${tripId}`, () => {
+      void utils.games.listByTrip.invalidate({ tripId });
     }),
   scores: gameScoped("scores", (u) => u.scores.listByGame, false),
   matchOutcomes: gameScoped("matchOutcomes", (u) => u.matchOutcomes.listByGame, true),
@@ -365,7 +402,8 @@ const INVALIDATE: Record<
 export function makeScoreEventHandler(
   utils: ScoreEventUtils,
   tripId: string,
-  competitionId: string,
+  /** The cup, or NULL for a side game's trip topic (#1498). */
+  competitionId: string | null,
 ): Handler {
   // COALESCED, not fired directly — see `invalidationCoalescer.ts`. Migration
   // 096's `FOR EACH ROW` triggers make one reset emit ~73 broadcasts (measured),
@@ -378,7 +416,7 @@ export function makeScoreEventHandler(
   // which is what protects the active enterer's in-flight cells. Nothing here
   // reads the event's contents beyond the game id and kind.
   return (gameId, kind) => {
-    for (const reader of readersFor(kind)) {
+    for (const reader of readersFor(kind, competitionId === null)) {
       INVALIDATE[reader](utils, tripId, gameId, competitionId);
     }
   };
@@ -396,6 +434,8 @@ type _Utils = ReturnType<typeof trpc.useUtils>;
 type _ReaderPathsExist = [
   _Utils["competitions"]["faceBootstrap"]["invalidate"],
   _Utils["competitions"]["leaderboard"]["invalidate"],
+  _Utils["games"]["sideBoard"]["invalidate"],
+  _Utils["games"]["listByTrip"]["invalidate"],
   _Utils["scores"]["listByGame"]["invalidate"],
   _Utils["games"]["bracketDraw"]["invalidate"],
   _Utils["matches"]["listByGame"]["invalidate"],
@@ -404,6 +444,20 @@ type _ReaderPathsExist = [
   _Utils["pickem"]["get"]["invalidate"],
 ];
 
+/**
+ * Subscribe a surface to its games' score and lifecycle events.
+ *
+ * `competitionId` says WHICH topic, and its three states mean three things:
+ *   - a string: a cup game or the cup's board: `competition_events:{id}`;
+ *   - `null`: a SIDE game, or the side half of a Games page: the trip's
+ *     `trip_events:{tripId}` (migration 196, #1498);
+ *   - `undefined`: NOT KNOWN YET (the game row has not loaded). No subscription.
+ *
+ * The third is not the second, and conflating them is the mistake this API
+ * exists to prevent: a view computing `game.competition_id ?? null` reads null
+ * before its row arrives, and would join a cup game's TRIP topic on its first
+ * render. Callers pass `gameEventScope(game)`, which keeps the two apart.
+ */
 export function useRealtimeScoreEvents(
   tripId: string | undefined,
   competitionId: string | null | undefined,
@@ -411,12 +465,23 @@ export function useRealtimeScoreEvents(
   const utils = trpc.useUtils();
 
   useEffect(() => {
-    if (!tripId || !competitionId) return;
+    if (!tripId || competitionId === undefined) return;
     const handler = makeScoreEventHandler(
       utils as unknown as ScoreEventUtils,
       tripId,
       competitionId,
     );
-    return acquire(scoreEventsTopic(competitionId), handler);
+    return acquire(competitionId === null ? tripEventsTopic(tripId) : scoreEventsTopic(competitionId), handler);
   }, [tripId, competitionId, utils]);
+}
+
+/**
+ * Which events a GAME view subscribes to: its cup's, or its trip's for a side
+ * game, and nothing until the game row has loaded (see `useRealtimeScoreEvents`).
+ */
+export function gameEventScope(
+  game: { competition_id?: string | null } | null | undefined,
+): string | null | undefined {
+  if (!game) return undefined;
+  return game.competition_id ?? null;
 }

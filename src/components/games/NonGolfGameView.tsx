@@ -22,7 +22,7 @@ import { useConfigSync } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
-import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
+import { gameEventScope, useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { GAME_TYPES, isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 import {
   configToNonGolfDraft,
@@ -144,7 +144,7 @@ export function NonGolfGameView() {
   // Live standings. useRealtimeGame (below) covers this game's CONFIG; this
   // covers score/lifecycle events across the whole competition, which is what
   // moves the standings shown here. LEADERBOARD_QUERY is now just the backstop.
-  useRealtimeScoreEvents(tripId, competitionId);
+  useRealtimeScoreEvents(tripId, gameEventScope(game));
 
   // STATE query — LEADERBOARD_QUERY is the shared policy for this key
   // (queryConfig.ts); this observer previously had no freshness mechanism at

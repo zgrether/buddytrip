@@ -16,7 +16,7 @@ import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
-import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
+import { gameEventScope, useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { showToast } from "@/lib/toast";
 import { CoursePicker } from "@/components/games/course/CoursePicker";
@@ -528,7 +528,7 @@ export function RackGameView() {
   // enterer-vs-observer. Keyed on the GAME's competition (the topic the trigger
   // publishes to), not the trip-level one. The hook ref-counts, so a game opened
   // as a panel over the still-mounted board shares one channel (#12).
-  useRealtimeScoreEvents(tripId, gameCompId);
+  useRealtimeScoreEvents(tripId, gameEventScope(gameQ.data as { competition_id?: string | null } | undefined));
 
   // ── Handlers ─────────────────────────────────────────────────────────
   // The current persisted groups as a builder draft (one user-id array per group,

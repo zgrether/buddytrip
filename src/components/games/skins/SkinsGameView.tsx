@@ -14,7 +14,7 @@ import { useSkinsSaver, type SkinsRows } from "@/hooks/useSkinsSaver";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
-import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
+import { gameEventScope, useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { useScorecardTeeRows } from "@/hooks/useScorecardTeeRows";
@@ -291,7 +291,7 @@ export function SkinsGameView() {
   useConfigSync(tripId, gid, !!gid, onConfigChanged);
   useRealtimeGame(tripId, gid);
   useRealtimeMembers(tripId);
-  useRealtimeScoreEvents(tripId, competitionId ?? null);
+  useRealtimeScoreEvents(tripId, gameEventScope(gameQ.data as { competition_id?: string | null } | undefined));
 
   // ── The draft ────────────────────────────────────────────────────────────
   const serverGroups = useMemo<string[][]>(

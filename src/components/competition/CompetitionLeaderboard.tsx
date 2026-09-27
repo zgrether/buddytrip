@@ -166,6 +166,9 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // interval is now only the dead-socket backstop behind it (5 min), not the
   // freshness mechanism — see queryConfig.ts.
   useRealtimeScoreEvents(tripId, competitionId);
+  // The SIDE games merged into this board broadcast on the trip, not the cup
+  // (migration 196, #1498). Both topics, ref-counted, so the whole page is live.
+  useRealtimeScoreEvents(tripId, null);
 
   /**
    * `useVisibleEnabled` — the board is HIDDEN, not unmounted, once a game panel
