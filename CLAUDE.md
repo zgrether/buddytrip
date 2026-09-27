@@ -850,6 +850,7 @@ seam, never on a calendar.
 | How does Realtime work? | Hooks in `src/hooks/useRealtime*.ts` (code is authoritative) |
 | How does pick'em work? | `PICKEM-SPEC.md` — RECONSTRUCTED FROM THE CODE, and it says so at the top. It lived outside the repo for weeks and was wrong about scoring defaults the whole time, which nobody could see because only one of the two was here. Keep it in step in the same PR that changes the code. |
 | How are the domain + email configured (and how to migrate domains)? | `DOMAIN_AND_EMAIL.md` |
+| What are the composable-competitions rulings, and what does each PR (0–9) build? | `docs/BUILD-PLAN-composable-competitions.md`: the ONE copy, revised in place in the PR that makes a ruling true or false. It lived outside the repo as two drifting copies until 2026-09-27. |
 | What patterns must CC follow? | This file (`CLAUDE.md`) |
 
 If documents conflict with each other → stop and flag, do not silently resolve.
