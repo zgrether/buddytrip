@@ -215,7 +215,11 @@ test("side game spine — create → set up → live → score → finalize → 
   await page.getByTestId("game-settings-gear").click();
   await page.getByTestId("game-delete-btn").click();
   await page.getByTestId("game-delete-confirm").click();
-  await expect(page).toHaveURL(/[?&]view=cup(&|$)/, { timeout: 20_000 });
+  // The Games page with NO game open. `view=cup` alone would match the URL the
+  // delete started FROM (the game's panel), so it could pass before navigating.
+  await expect(page).toHaveURL((u) => u.searchParams.get("view") === "cup" && !u.searchParams.has("game"), {
+    timeout: 20_000,
+  });
   await expect(page.getByTestId("start-competition-card")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("open-game-panel").filter({ hasText: title })).toHaveCount(0);
 });
