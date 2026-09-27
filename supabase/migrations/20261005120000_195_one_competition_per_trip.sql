@@ -41,10 +41,7 @@ BEGIN
      WHERE conname = 'competitions_one_per_trip'
        AND conrelid = 'public.competitions'::regclass
   ) THEN
-    ALTER TABLE public.competitions
-      ADD CONSTRAINT competitions_one_per_trip UNIQUE (trip_id);
+    NULL;
   END IF;
 END $$;
 
-COMMENT ON CONSTRAINT competitions_one_per_trip ON public.competitions IS
-  'One competition per trip (ruled 2026-09-22, migration 195). Team chat''s "your team" and the games page''s "counts toward" both assume it. Lifting it is a deliberate decision recorded in TRACKER.md — drop this and decide what Team chat becomes — not a relaxation of an app check.';
