@@ -314,10 +314,6 @@ BEGIN
   -- game_participants above handles the same case). The real account's row
   -- wins, as it does for every other collision here — without this the UPDATE
   -- raises 23505 INSIDE the signup trigger and signup fails.
-  DELETE FROM public.game_results g
-   WHERE g.entity_type = 'user' AND g.entity_id = p_ghost_id
-     AND EXISTS (SELECT 1 FROM public.game_results r
-                  WHERE r.game_id = g.game_id AND r.entity_type = 'user' AND r.entity_id = p_real_id);
   UPDATE public.game_results        SET entity_id      = p_real_id WHERE entity_id      = p_ghost_id AND entity_type      = 'user';
   UPDATE public.match_hole_outcomes SET submitted_by   = p_real_id WHERE submitted_by   = p_ghost_id;
 
