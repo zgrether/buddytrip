@@ -118,7 +118,6 @@ BEGIN
   -- inserted, both inserts survive, and a double-tapped Finish pays the cup
   -- twice. The unique constraint makes that outcome impossible; this makes the
   -- double-tap succeed rather than fail on it.
-  PERFORM pg_advisory_xact_lock(hashtext('game_results:' || p_game_id));
 
   -- ── 1 · Per-match result columns (match play only) ─────────────────────────
   IF p_match_updates IS NOT NULL AND jsonb_array_length(p_match_updates) > 0 THEN
