@@ -93,10 +93,10 @@ function StartCompetitionCard({ onStart }: { onStart: () => void }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Running a competition?
+          Turn this into a competition
         </p>
         <p className="text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-          Teams, points and a leaderboard. Your side games stay as they are.
+          Create teams and compete for points.
         </p>
       </div>
       <button
