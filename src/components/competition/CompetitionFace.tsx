@@ -102,9 +102,6 @@ export function CompetitionFace({
   const openSettings = () => setSettingsOpen(true);
   const [addingGame, setAddingGame] = useState(false);
   const [rostersOpen, setRostersOpen] = useState(false);
-  // No competition yet: "Start one" opens the existing create flow in place of
-  // the side-game board; it closes itself once the competition exists.
-  const [setupOpen, setSetupOpen] = useState(false);
   // Leaderboard team-name tap → a STANDALONE identity editor (owner / captain-of-
   // that-team), NOT the overlay; non-permitted taps fall to the read-only overlay.
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
@@ -124,6 +121,10 @@ export function CompetitionFace({
   // (faceBootstrap-seeded), so a game's format is known synchronously — no fetch
   // just to decide whether (and which view) to panel. ONE host for all formats.
   const search = useSearchParams();
+  // No competition yet: "Start one" opens the existing create flow in place of
+  // the side-game board, and closes itself once the competition exists. Starts
+  // OPEN on `?setup=1` — the trip settings' "Enable competition" entry (PR 6b).
+  const [setupOpen, setSetupOpen] = useState(() => search.get("setup") === "1");
   const router = useRouter();
   const openGameId = search.get("game");
   // The scorecard OVERLAY over the board (leaderboard caller): a golf game's
