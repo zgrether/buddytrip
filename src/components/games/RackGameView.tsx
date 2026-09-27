@@ -52,6 +52,7 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { gameLockState } from "@/lib/gameLifecycle";
+import { gamesPageHref } from "@/lib/gameRoutes";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
@@ -787,7 +788,7 @@ export function RackGameView() {
   // owner gear) instead of a second header. Standalone route (no provider) keeps
   // its own Shell/ScoreEntryView headers below.
   const inPanel = useInGamePanel();
-  const exitToBoard = useExitToBoard(tripId, gameCompId ?? competitionId ?? null);
+  const exitToBoard = useExitToBoard(tripId);
   const { finalize, isPending: finalizePending } = useGameFinalize({
     tripId,
     gameId: gid,
@@ -1054,7 +1055,7 @@ export function RackGameView() {
           canManageGame={canManageGame}
           onChanged={() => void refreshGame()}
           onScoresReset={clearScores}
-          onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+          onDeleted={() => router.push(gamesPageHref(tripId!))}
           nameValue={configDraft.name}
           onNameChange={setNameDraft}
           delegateValue={configDraft.delegates[0] ?? null}

@@ -367,11 +367,13 @@ export function TripSettingsModal({
                     </Section>
                   )}
 
-                  {/* Owner-only creation entry — shown ONLY until a competition
+                  {/* Creation entry for Owner AND Organizer (PR 6b) — the roles
+                      `competitions.create` admits, and the same rule as the Games
+                      page card, so the three entry points agree. Shown ONLY until a competition
                       exists. Once one does, this row is redundant (it's managed
                       from the leaderboard/Live face itself), so we hide the whole
                       section rather than show a low-value "open it" row. */}
-                  {isOwner && !competition && (
+                  {canEditPlan && !competition && (
                     <Section label="Competition">
                       <Row
                         testId="settings-competition-row"
@@ -386,7 +388,9 @@ export function TripSettingsModal({
                           // the modal, and (like the delete-trip row) skipping
                           // onClose avoids useModalBackButton's cleanup
                           // history.back() racing/cancelling the push.
-                          router.push(`/trips/${tripId}/leaderboard`);
+                          // `setup=1` opens the create flow directly on the Games
+                          // page (PR 6b), which otherwise lists the side games first.
+                          router.push(`/trips/${tripId}?view=cup&setup=1`);
                         }}
                       />
                     </Section>

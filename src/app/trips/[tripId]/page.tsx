@@ -139,12 +139,14 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // beside the countdown ring, visible on the trip page at both widths.
   trpc.quickInfoTiles.list.useQuery({ tripId });
 
-  // Competition: drives the showComp gate + the bottom-nav "Live" entry.
+  // Competition: kept WARM for the surfaces that read `getByTrip` (the realtime
+  // hook below invalidates it). Its result is no longer read here — the Games tab
+  // shows on every placed trip since PR 6b, so the `showComp` gate is gone.
   // The new schema (migration 062) tracks this via `competitions` rather
   // than the dropped trips.event_id column. Phase B will reintroduce the
   // sub-page prefetches (teams/events/groups/scores) once the live
   // leaderboard is rebuilt against the new model.
-  const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
+  trpc.competitions.getByTrip.useQuery({ tripId });
 
   // EAGER, readers: the home itinerary AND `tabBadges` below (schedule/lodging
   // dots on `TripTabBar`) — both visible on first paint, so these are read on
@@ -351,7 +353,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // doesn't clear it, so the old destination would bleed through to the header.
   const destLocation = trip.locked_destination_location
     ?? (trip.comparison_mode ? null : trip.location);
-  const showComp = !!competition;
   const isLocked = !!trip.locked_destination_title;
 
   // The Competition entry is now a jump to the escaped Live face, not an
@@ -558,7 +559,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
       // one without the other would be an idea in the rail and a placed trip to
       // the Cup lock. Two columns for one question is how those drift.
       tripPlaced={!isIdea}
-      tripHasCompetition={showComp}
       topBar={({ chatOpen, onToggleChat, onDismissPanels }) => (
         <TopNav
           tripId={tripId}
@@ -611,8 +611,6 @@ function TripDetailBody({ tripId }: { tripId: string }) {
                 isOwner={effectiveIsOwner}
                 roleLoading={roleLoading}
                 onTabChange={(tab) => goToTab(tab as TabId)}
-                onEnableComp={effectiveCanEdit ? () => router.push(`/trips/${tripId}/leaderboard`) : undefined}
-                compActivated={showComp}
                 onOpenDatesSheet={effectiveCanEdit ? () => setDatesSheetOpen(true) : undefined}
               />
             )}

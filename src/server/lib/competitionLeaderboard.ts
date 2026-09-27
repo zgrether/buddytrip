@@ -9,7 +9,8 @@ import { projectedTeamTotals } from "@/lib/gameProjection";
 import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
-import { isConfigured, isNew, MATCH_PLAY_TYPES, RACK_TYPE, ROSTER_TYPES } from "@/server/lib/gameReadiness";
+import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
+import { readBoardInputs, boardRow } from "@/server/lib/boardGames";
 import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
@@ -401,24 +402,14 @@ export async function computeCompetitionLeaderboard(
   const teamSizes = teamIds.map((id) => sizeByTeam.get(id) ?? 0);
 
   const gameIds = allGames.map((g) => g.id as string);
-  /**
-   * The competition's BRACKET games — resolved the same way `games.finish`
-   * resolves what to compute, so the write path and this read path cannot
-   * disagree about which games are brackets.
-   *
-   * Used to gate the `bracket_entrants` read below. A competition with no
-   * bracket (every competition until now) issues exactly the queries it always
-   * did — the roll-up costs a round trip only where there is something to roll
-   * up, which matters because this payload is on the board's poll.
-   */
-  const bracketGameIds = allGames
-    .filter((g) => isBracketGame(g.game_type_id as string | null, g.competition_format as string | null))
-    .map((g) => g.id as string);
   // game_results (awarded) + the per-game match COUNT (available) + the per-game
   // participant COUNT (the stroke/rack readiness gate) + the per-game SCORE-entry
   // presence (the On-Tap↔Ready-for-Play split) + a bracket's entrant→team map.
   // All depend on the live game ids; run them together.
-  const [resultsRes, matchRowsRes, participantRowsRes, startedRowsRes, entrantRowsRes] = await Promise.all([
+  // The board rows' four child reads (matches, participants, started, bracket
+  // entrants) live in `readBoardInputs`, shared with the games page's side-game
+  // board (PR 6b) — one derivation of a row, not two. Run alongside the results.
+  const [resultsRes, board] = await Promise.all([
     gameIds.length
       ? supabase
           .from("game_results")
@@ -437,40 +428,7 @@ export async function computeCompetitionLeaderboard(
           .in("game_id", gameIds)
           .in("entity_type", ["team", "entrant"])
       : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[], error: null }),
-    gameIds.length
-      ? supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[], error: null }),
-    gameIds.length
-      ? supabase.from("game_participants").select("game_id, play_group_id").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string; play_group_id: string | null }[], error: null }),
-    // Has it begun producing results? The §A "started" signal (R1): an `active`
-    // game that has is genuinely underway (On Tap); an `active` game that has
-    // not is enabled/pairings-up but not started (Ready for Play).
-    //
-    // ONE read of `game_started` (migration 161), replacing the two that used
-    // to be merged here — score entries and outcome-mode hole outcomes — plus
-    // the third that pick'em would have needed. The comment on the outcome
-    // query named the shape ("it needs its OWN started source or it reads
-    // Ready-for-Play forever") and pick'em made it a pattern, so the branch per
-    // format lives in the view and a new format adds an arm there rather than a
-    // fourth query here.
-    //
-    // Manual games score on post (→complete) and never produce rows, so they
-    // correctly stay out of On Tap until they finish.
-    gameIds.length
-      ? supabase.from("game_started").select("game_id").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string }[], error: null }),
-    // The bracket roll-up's ONE extra input: which cup team each entrant plays
-    // for. `bracket_entrants.team_id` is what makes a 2v2 pairing unable to span
-    // two teams (migration 112), which is precisely what makes "so its points
-    // land on one team" true rather than aspirational — so it is also the right
-    // and only thing to roll up by. Skipped entirely when the competition has no
-    // bracket.
-    bracketGameIds.length
-      // `game_id` rides along for the New/Configuring split — a seeded entrant is a
-      // configuration act, and this query is already being issued.
-      ? supabase.from("bracket_entrants").select("id, game_id, team_id").in("game_id", bracketGameIds)
-      : Promise.resolve({ data: [] as { id: string; game_id: string; team_id: string | null }[], error: null }),
+    readBoardInputs(supabase, allGames, "cup's"),
   ]);
   /**
    * A FAILED READ IS NEVER DATA TO ANYTHING THAT WRITES (#1411, #1468).
@@ -516,53 +474,9 @@ export async function computeCompetitionLeaderboard(
    * shape still matches what `bracketPool` returns and the next reader does not
    * have to widen it back.
    */
-  /** Seeded entrants per bracket game — a configuration act, so it feeds `isNew`. */
-  const entrantCountByGame = new Map<string, number>();
-  for (const e of rowsOrThrow(entrantRowsRes, "cup's bracket entrants") as { game_id: string }[]) {
-    entrantCountByGame.set(e.game_id, (entrantCountByGame.get(e.game_id) ?? 0) + 1);
-  }
-  // The entrant read THROWS on failure now (#1468). It used to log and carry on,
-  // deliberately — "one sub-read failing should not blank a whole competition's
-  // board". That reasoning predated two facts: the client keeps the LAST GOOD
-  // board through a failed refetch, so a throw no longer blanks anything; and a
-  // half-read board is what the clinch writers act on. The bracket arm's own
-  // "unknown, not zero" branch went with #1411.
-  // Games that have begun producing results — the view already unions every
-  // format's source, so there is nothing to merge here any more.
-  const startedByGame = new Set<string>(
-    (rowsOrThrow(startedRowsRes, "cup's started games") as { game_id: string }[]).map((r) => r.game_id)
-  );
-  // Participant rows per game — "field picked" (stroke). For rack we track the
-  // GROUPED count separately: rack readiness needs players assigned to a playing
-  // group (the manual builder), so a bare roster with no groups isn't Ready — the
-  // same bar the server enable guard uses, so the two can't disagree.
-  const participantCountByGame = new Map<string, number>();
-  const groupedParticipantCountByGame = new Map<string, number>();
-  for (const r of rowsOrThrow(participantRowsRes, "cup's participants") as { game_id: string; play_group_id: string | null }[]) {
-    participantCountByGame.set(r.game_id, (participantCountByGame.get(r.game_id) ?? 0) + 1);
-    if (r.play_group_id != null) {
-      groupedParticipantCountByGame.set(r.game_id, (groupedParticipantCountByGame.get(r.game_id) ?? 0) + 1);
-    }
-  }
-  // A match game's available points = value × the number of ASSIGNED matches
-  // (both sides paired). "A match = assigned, everywhere" (round-3.1 addendum):
-  // an unfilled slot is not a match — it never scores, so it contributes nothing
-  // to points-in-play and doesn't make the game Ready. Empty slots are builder
-  // scaffolding that the tee-off COLLAPSE discards; counting them here would show
-  // a created-but-unpaired game phantom points. (Supersedes the earlier Slice-D
-  // "configured rows incl. empty, ≥1 from creation" goalpost — pairing now moves
-  // the live clinch target, by design.)
-  const matchCountByGame = new Map<string, number>();
-  // Total match ROWS (paired + the seeded/unpaired) per game — already in the
-  // fetched data, no extra query. Feeds the readiness threshold: a match game is
-  // configured only when EVERY row is paired (`paired === total`), the SAME bar
-  // the setup-page Enable gate uses (`matchPlayReady`) — readiness rework P1b.
-  const totalMatchRowsByGame = new Map<string, number>();
-  for (const r of rowsOrThrow(matchRowsRes, "cup's matches") as { game_id: string; side_a: unknown; side_b: unknown }[]) {
-    totalMatchRowsByGame.set(r.game_id, (totalMatchRowsByGame.get(r.game_id) ?? 0) + 1);
-    if (r.side_a == null || r.side_b == null) continue;
-    matchCountByGame.set(r.game_id, (matchCountByGame.get(r.game_id) ?? 0) + 1);
-  }
+  // The rollups below read three of the board's counts; the maps are built in
+  // `readBoardInputs` (with its failure sentences unchanged — "cup's …").
+  const { matchCountByGame, totalMatchRowsByGame, startedByGame } = board;
 
   // For placement games: value = position (lower wins).
   // For per_match games: value = raw_score (match points, higher wins).
@@ -1137,74 +1051,8 @@ export async function computeCompetitionLeaderboard(
     // chrome (the "first to X" target line) off for points cups.
     scoringModel,
     defendingTeamId: (comp?.defending_team_id as string | null) ?? null,
-    games: allGames.map((g) => {
-      const rawDist = g.points_distribution as PointsDistribution | null;
-      const typeId = (g.game_type_id as string | null) ?? null;
-      const hasPoints = !!rawDist || g.points_total != null;
-      const gid = g.id as string;
-      return {
-        id: gid,
-        name: (g.name as string | null) ?? "Game",
-        distribution: isPlacement(rawDist) ? rawDist.values : null,
-        status: g.status as string,
-        gameTypeId: typeId,
-        // "ready to score" = points are configured (a distribution shape or an
-        // owner-set total). Kept for the games-panel/test consumers.
-        ready: hasPoints,
-        // The §A readiness gate: is the format's REQUIRED roster assigned? Drives
-        // the Setting-up↔Ready transition AND the `N PTS`/`—` outer column from
-        // ONE signal so they can't disagree (course/handicaps never gate this).
-        configured: isConfigured(
-          typeId,
-          matchCountByGame.get(gid) ?? 0,
-          totalMatchRowsByGame.get(gid) ?? 0,
-          // Stroke + rack both gate on GROUPED players (mandatory groupings, 089).
-          ((typeId && ROSTER_TYPES.has(typeId)) ? groupedParticipantCountByGame : participantCountByGame).get(gid) ?? 0,
-          hasPoints,
-          g.competition_format as string | null
-        ),
-        /**
-         * NEW — nothing configured yet, only what the add-game modal wrote.
-         *
-         * Shipped as its own signal rather than re-derived on the client, so the
-         * board reads one authoritative answer. `configured` above is UNCHANGED —
-         * this is a second, earlier question, not a new Ready threshold.
-         *
-         * The child-row count is composed from the three sets this function
-         * already fetched: participants, match rows and bracket entrants. Any row
-         * in any of them means somebody built something. `play_groups` and
-         * `bracket_matches` are not counted directly and do not need to be — a
-         * play group is only ever created by the group builder, which assigns
-         * participants in the same call, and a draw's matches are minted by the
-         * field builder, which writes `bracket_config` and the entrants alongside.
-         * Both are covered transitively; `gameNewState.test.ts` pins each.
-         */
-        isNewGame: isNew(g as Record<string, unknown>, (
-          (participantCountByGame.get(gid) ?? 0) +
-          (totalMatchRowsByGame.get(gid) ?? 0) +
-          (entrantCountByGame.get(gid) ?? 0)
-        )),
-        // Course presence (§ scorecard three-way) — surfaced so the row's
-        // scorecard chip can be a real button (course set) vs a muted status
-        // icon (no course). Course is optional and never an error.
-        hasCourse: g.course_id != null,
-        // Scoring enabled (Phase 2B.1) — the real arming signal the format-icon
-        // color reads (§A4), replacing the Phase-3 derived stub.
-        scoringEnabled: g.scoring_enabled === true,
-        // Has ≥1 score entry (R1) — splits `active` into On Tap (started) vs
-        // Ready for Play (enabled/pairings up, not started) for the board sections.
-        started: startedByGame.has(gid),
-        // Re-opened for a score correction. Only meaningful once `status` is
-        // "complete" (`gameLockState` is the shared reading of the pair) — the
-        // board uses it to mark the row provisional. Deliberately NOT role-gated:
-        // a member can correct their own scores in this mode, so it is a state
-        // they participate in rather than someone else's private edit.
-        correctionsOpen: g.corrections_open === true,
-        // Points in play (§A5 outer column). Match-play games carry it here even
-        // though `distribution` is null pre-decision.
-        pointsTotal: ptsInPlayByGame.get(gid) ?? null,
-      };
-    }),
+    // One derivation of a board row, shared with the side-game board (PR 6b).
+    games: allGames.map((g) => boardRow(g, board, ptsInPlayByGame.get(g.id as string) ?? null)),
     cells,
     // gameId → teamId → projected points (LIVE match/rack games only). The board
     // renders these as the ▲ projected-points pill in each team column.

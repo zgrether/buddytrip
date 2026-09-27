@@ -58,7 +58,6 @@ export function AppShell({
   defaultView = "trip",
   remoteTripId = null,
   tripPlaced = true,
-  tripHasCompetition = true,
 }: {
   tripId: string | null;
   home?: ReactNode;
@@ -109,8 +108,6 @@ export function AppShell({
   remoteTripId?: string | null;
   /** The trip has a locked destination. False during the IDEA phase. */
   tripPlaced?: boolean;
-  /** A competition row exists for this trip. */
-  tripHasCompetition?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -139,14 +136,14 @@ export function AppShell({
    * group when it would be degenerate", and one tab is degenerate. Extending it
    * to the idea phase is that same rule, not a deviation from it.
    *
-   * Desktop hides for a WIDER condition than mobile locks: also when the trip has
-   * no competition. A Cup tab whose only content is a create-a-competition prompt
-   * advertises a competition that does not exist. Mobile keeps Cup live in that
-   * case — with a placed trip, creating one is a real thing to do and Cup is
-   * where you do it, so it stays reachable where it has room.
+   * Desktop used to hide for a WIDER condition than mobile locks — also when the
+   * trip had no competition, because the tab then held only a create prompt. Since
+   * PR 6b the tab is the trip's GAMES page (ruling 24) and holds the trip's side
+   * games whether or not a competition exists, so both widths now ask the same
+   * one question: is the trip placed?
    */
   const cupLockedReason = tripPlaced ? null : "A destination";
-  const showDesktopTabs = scoped && tripPlaced && tripHasCompetition;
+  const showDesktopTabs = scoped && tripPlaced;
 
   /**
    * TWO different questions, each derived ONCE — because the two things that

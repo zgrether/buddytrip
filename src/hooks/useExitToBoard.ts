@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useInGamePanel } from "@/components/games/GameChrome";
+import { gamesPageHref } from "@/lib/gameRoutes";
 
 /**
  * Leave a finished game and return to where its result now lives.
@@ -53,11 +54,7 @@ import { useInGamePanel } from "@/components/games/GameChrome";
  * shape (inputs diverging under a shared output) wearing the hook's clothes.
  * A guard on the call site cannot see it; only a guard on the argument can.
  */
-export function useExitToBoard(
-  tripId: string | undefined,
-  /** The GAME's competition, or null for a standalone game. */
-  competitionId: string | null | undefined
-): () => void {
+export function useExitToBoard(tripId: string | undefined): () => void {
   const router = useRouter();
   const inPanel = useInGamePanel();
 
@@ -67,6 +64,8 @@ export function useExitToBoard(
       return;
     }
     if (!tripId) return;
-    router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`);
-  }, [inPanel, router, tripId, competitionId]);
+    // The Games page, for every game (PR 6b). This was `competitionId ?
+    // leaderboard : trip home`, which sent a finished SIDE game to the Trip tab.
+    router.push(gamesPageHref(tripId));
+  }, [inPanel, router, tripId]);
 }

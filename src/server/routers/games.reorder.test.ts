@@ -131,14 +131,40 @@ describe("games.reorder — one global order, honoured across state changes", ()
     expect(live).toEqual(["P", "Q", "R"]);
   }, 180000);
 
-  it("refuses ids that are not this competition's games", async () => {
+  it("refuses ids that are not this trip's games", async () => {
     // The ids are caller-supplied. Without the scope check a crafted list could
     // stamp display_order onto another trip's games, and an id that silently
-    // no-ops would also renumber the survivors wrongly.
+    // no-ops would also renumber the survivors wrongly. The scope is the TRIP
+    // since PR 6b (one order for the cup's games and side games).
     const mine = await makeGame("Scoped");
     await expect(
       ctx.caller().games.reorder({ tripId, competitionId, gameIds: [mine, "some-other-game"] })
-    ).rejects.toThrow(/Not games of this competition/);
+    ).rejects.toThrow(/Not games of this trip/);
+  }, 180000);
+
+  it("refuses a REAL game that lives on another trip — not just an id that exists nowhere", async () => {
+    // The case above passes against almost any scope rule, because the id exists
+    // nowhere. This one is the crafted list the check exists for: a real game
+    // the caller can name, on a trip that is not this one.
+    const mine = await makeGame("Home game");
+    const otherTrip = await ctx.createTrip("Someone else's trip");
+    const theirs = (await ctx.caller().games.create({ tripId: otherTrip, gameTypeId: "gtt_stroke_play", name: "Theirs" })) as { id: string };
+    await expect(
+      ctx.caller().games.reorder({ tripId, competitionId, gameIds: [mine, theirs.id] })
+    ).rejects.toThrow(/Not games of this trip/);
+    const { data } = await ctx.admin.from("games").select("display_order").eq("id", theirs.id).single();
+    expect((data as { display_order: number }).display_order).toBe(1); // untouched
+  }, 180000);
+
+  it("a side game and a cup game on the same trip share ONE order (PR 6b)", async () => {
+    const cupGame = await makeGame("Cup game");
+    const side = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_stroke_play", name: "Side game" })) as { id: string };
+    // Side first, then the cup game — one sequence across both containers.
+    await ctx.caller().games.reorder({ tripId, gameIds: [side.id, cupGame] });
+    const { data } = await ctx.admin.from("games").select("id, display_order").in("id", [side.id, cupGame]);
+    const order = new Map((data ?? []).map((r) => [r.id as string, r.display_order as number]));
+    expect(order.get(side.id)).toBe(1);
+    expect(order.get(cupGame)).toBe(2);
   }, 180000);
 
   it("a member cannot reorder", async () => {

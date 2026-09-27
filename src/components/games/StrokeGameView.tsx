@@ -7,7 +7,7 @@ import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
-import { isScrambleFormat } from "@/lib/gameRoutes";
+import { gamesPageHref, isScrambleFormat } from "@/lib/gameRoutes";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
@@ -69,6 +69,7 @@ import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 
 const STROKE_PLAY = "gtt_stroke_play";
 
@@ -490,11 +491,8 @@ export function StrokeGameView() {
 
   async function refreshGame() {
     await gameQ.refetch();
-    if (gameCompetitionId) {
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-      utils.games.listByTrip.invalidate({ tripId });
-    }
+    // The ONE board invalidator — side games included (PR 6b).
+    if (tripId) invalidateGameBoards(utils, { tripId, competitionId: gameCompetitionId });
   }
   // Setup/Scoring toggle → the scoring draft slice; Save commits it (go-live readiness
   // re-asserted server-side inside the tx, so the client gate can't be bypassed).
@@ -630,11 +628,9 @@ export function StrokeGameView() {
       // Refetch play_groups too (P3 3.2) so the groupings baseline (serverGroups) reflects
       // a committed group change — else the dirty check would re-flag the just-saved edit.
       await Promise.all([gameQ.refetch(), orgQ.refetch(), groupsQ.refetch()]);
-      if (gameCompetitionId) {
-        utils.competitions.leaderboard.invalidate({ tripId, competitionId: gameCompetitionId });
-        utils.competitions.faceBootstrap.invalidate({ tripId });
-        utils.games.listByTrip.invalidate({ tripId });
-      }
+      // The ONE board invalidator. This was `if (gameCompetitionId)`, so a SIDE
+      // game's Save-with-Scoring went live and the Games page never heard (PR 6b).
+      if (tripId) invalidateGameBoards(utils, { tripId, competitionId: gameCompetitionId });
     },
   });
 
@@ -1042,7 +1038,7 @@ export function StrokeGameView() {
   // a second header. Handicaps/modifiers are inline panels now (P3 3.3), so there's no
   // drill-down that covers the bar. Standalone route keeps its headers.
   const inPanel = useInGamePanel();
-  const exitToBoard = useExitToBoard(tripId, gameCompetitionId);
+  const exitToBoard = useExitToBoard(tripId);
   const { finalize, isPending: finalizePending } = useGameFinalize({
     tripId,
     gameId: gameQ.data?.id as string | undefined,
@@ -1308,7 +1304,7 @@ export function StrokeGameView() {
           canManageGame={canManageGame}
           onChanged={() => void refreshGame()}
           onScoresReset={clearScores}
-          onDeleted={() => router.push(gameCompetitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+          onDeleted={() => router.push(gamesPageHref(tripId!))}
           nameValue={configDraft.name}
           onNameChange={setNameDraft}
           delegateValue={configDraft.delegates[0] ?? null}
@@ -1348,16 +1344,19 @@ export function StrokeGameView() {
               />
             )
           }
-          // Points term of the go-live gate (competition games only) — mirrors Match's
-          // C3 gate. Standalone games (gameCompetitionId null) are unaffected. Stroke had
-          // no client readiness gate at all before this (server still enforces mandatory
-          // groupings independently; that gap is untouched — out of scope here, tracked
-          // separately) — this adds ONLY the points term, not a general readiness gate.
+          // The go-live gate, in the SAME two terms as rack and skins: at least one
+          // grouped player (the server's own bar — save_game_config refuses a stroke or
+          // scramble game with no grouped participant, 089/182), then the points term
+          // for a competition game. Stroke used to carry only the points term, so an
+          // ungrouped game — every new SIDE game, which has no points term at all —
+          // offered Scoring with no lock and failed on Save with the generic
+          // "finish setting up this game" (#706).
           management={{
             scoringEnabled: configDraft.scoringEnabled,
-            ready: !gameCompetitionId || pointsReady(configDraft.pointsTotal ?? 0),
-            blockedReason:
-              gameCompetitionId && !pointsReady(configDraft.pointsTotal ?? 0)
+            ready: draftGroupCount > 0 && (!gameCompetitionId || pointsReady(configDraft.pointsTotal ?? 0)),
+            blockedReason: draftGroupCount === 0
+              ? "Add at least one group before enabling scoring"
+              : gameCompetitionId && !pointsReady(configDraft.pointsTotal ?? 0)
                 ? "Set a point value before enabling scoring"
                 : null,
             onEnable: handleEnable,
@@ -1393,7 +1392,10 @@ export function StrokeGameView() {
            * honest state is none rather than a roster of settings that score
            * nothing. Recorded as a decision in #1335 rather than left as a gap.
            */
-          settingsRows={<>{!isScramble && groupingsRow}{pointDistributionRow}{!isScramble && handicapsRow}</>}
+          // Point Distribution only in a competition: a side game has no points
+          // to distribute (ruling 27; Zach's look on PR 6b). Same gate the page
+          // applies to Total Points and the BOARD roll-up.
+          settingsRows={<>{!isScramble && groupingsRow}{gameCompetitionId && pointDistributionRow}{!isScramble && handicapsRow}</>}
           rulesValue={configDraft.rulesForToday}
           onRulesChange={setRulesDraft}
           saveBar={

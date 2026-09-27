@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { gameHref } from "@/lib/gameRoutes";
+import { gameHref, gamePanelHref, gamesPageHref, opensAsPanel } from "@/lib/gameRoutes";
+import { readSideGameWinners } from "./sideBoard";
 import type { ResolvedResultStrategy } from "@/lib/resultStrategy";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { sendPushToUsers, type SendPushToUsersResult } from "./sendPushToUsers";
@@ -330,6 +331,24 @@ export function formatBracketSummary(entries: SummaryEntry[]): string {
  * a second copy of the longest word in the notification to say nothing new. The
  * line exists to answer "by how much", and `25½ – 20½` answers it.
  */
+/**
+ * A SIDE game's winners, from the same reader as the Games page's winner line
+ * (PR 6b). One winner reads as a sentence; several (one per match, in a
+ * several-match side game) are labelled as match winners, so three names do not
+ * read as three people sharing one prize.
+ *
+ *   one match   →  Won by Zach Grether      ·  Won by Zach & Matt (a 2v2 pair)
+ *   several     →  Match winners: Zach · Matt & BJ (a pair) · Tom
+ *
+ * The separator is " · ", not `joinNames`, because a 2v2 winner is already
+ * "A & B": joined with commas and "&" the pairs would run together.
+ */
+export function formatWinnersSummary(entries: SummaryEntry[]): string {
+  const names = entries.map((e) => e.name).filter(Boolean);
+  if (names.length === 0) return "";
+  return names.length === 1 ? `Won by ${names[0]}` : `Match winners: ${names.join(" · ")}`;
+}
+
 export function formatClinchMargin(totals: number[]): string {
   const top = [...totals].sort((a, b) => b - a).slice(0, 2);
   if (top.length < 2) return "";
@@ -362,25 +381,24 @@ const COPY = {
  * hides the very panel it opened (the bug documented in `GameRow.tsx`).
  * `useCupPanel` explicitly supports a cold `?game=` deep link.
  *
- * A standalone game (no competition — ~40% of games in production) has no board
- * to panel over, so it routes to its own page via the shared `gameHref` builder.
+ * A SIDE game (no competition) panels over the same page (PR 6b). This used to
+ * say a standalone game "has no board to panel over" and sent it to its own
+ * route, which was true before the Games page existed on every trip. Finishing a
+ * game reached that way then exited to the Trip tab. The panel host reads every
+ * game on the trip (`games.listByTrip`), so the only question left is whether
+ * the FORMAT panels, never whether the game has a cup.
  *
  * `/trips/{id}/leaderboard` is deliberately NOT used: it is a client-side alias
  * that `router.replace`s to `?view=cup`, costing an extra hop and an extra
  * fetch. The canonical form is the one that goes on someone's phone.
  */
-export function gameUrl(
-  tripId: string,
-  gameId: string,
-  gameTypeId: string | null,
-  competitionId: string | null
-): string {
-  if (competitionId) return `/trips/${tripId}?view=cup&game=${gameId}`;
-  return gameHref(tripId, gameTypeId, gameId) ?? `/trips/${tripId}?view=cup`;
+export function gameUrl(tripId: string, gameId: string, gameTypeId: string | null): string {
+  if (opensAsPanel(gameTypeId)) return gamePanelHref(tripId, gameId);
+  return gameHref(tripId, gameTypeId, gameId) ?? gamesPageHref(tripId);
 }
 
 function cupUrl(tripId: string): string {
-  return `/trips/${tripId}?view=cup`;
+  return gamesPageHref(tripId);
 }
 
 /**
@@ -434,10 +452,24 @@ interface NotifySurface {
    */
   audience: "participants" | "competition";
   /** Which `game_results` rows ARE the competitors, by `entity_type`. */
-  competitor: "user" | "team" | "entrant";
+  competitor: "user" | "team" | "entrant" | "side";
   /** Which summary shape reads the resulting entries. */
-  summary: "stroke" | "placement" | "bracket";
+  summary: "stroke" | "placement" | "bracket" | "winners";
 }
+
+/**
+ * A SIDE game's answer to "which rows are the competitors", when the format's
+ * own answer is `team` (PR 6b).
+ *
+ * A side game has no teams, so it writes no team rows: match play writes them
+ * only `if (competition_id && per-match points)`. Its registry row still said
+ * `team`, the read matched nothing, and a finished side match game's push said
+ * "Results are in." with no winner, #930's failure through a new door. The
+ * competitors of a side game are its SIDES, and the Games page already names
+ * their winners (`readSideGameWinners`); the push reads the same thing, so the
+ * two cannot disagree about who won.
+ */
+const SIDE_GAME_SURFACE = { audience: "participants", competitor: "side", summary: "winners" } as const satisfies NotifySurface;
 
 const NOTIFY_SURFACE = {
   stroke_total: { audience: "participants", competitor: "user", summary: "stroke" },
@@ -495,8 +527,15 @@ const NOTIFY_SURFACE = {
 /** The registry key for a resolved strategy. `null` is a real answer (manual,
  *  entered by hand) rather than an absence, so it gets a name rather than a
  *  fallback — see `resolveResultStrategy`. */
-export function notifySurfaceFor(strategy: ResolvedResultStrategy): NotifySurface {
-  return NOTIFY_SURFACE[strategy ?? "manual"];
+export function notifySurfaceFor(
+  strategy: ResolvedResultStrategy,
+  /** True for a game with no competition. Only a `team`-reading format changes:
+   *  a `user` format (stroke, skins) already reads per-person rows, which a side
+   *  game writes like any other. */
+  sideGame = false
+): NotifySurface {
+  const surface: NotifySurface = NOTIFY_SURFACE[strategy ?? "manual"];
+  return sideGame && surface.competitor === "team" ? SIDE_GAME_SURFACE : surface;
 }
 
 /**
@@ -601,9 +640,16 @@ async function loadEntrantNames(
 export async function loadSummaryEntries(
   admin: SupabaseClient,
   gameId: string,
-  surface: NotifySurface
+  surface: NotifySurface,
+  /** Needed only by a side game, whose winners are named by TRIP display name. */
+  tripId?: string
 ): Promise<SummaryEntry[]> {
   try {
+    if (surface.competitor === "side") {
+      if (!tripId) return [];
+      const winners = (await readSideGameWinners(admin, tripId, [gameId])).get(gameId) ?? [];
+      return winners.map((name) => ({ name, multi: false, points: null, position: 1 }));
+    }
     const { data: rows } = await admin
       .from("game_results")
       .select("entity_id, raw_score, position")
@@ -691,35 +737,8 @@ export async function notifyGameFinished(
 ): Promise<SendPushToUsersResult | null> {
   try {
     const admin = input.admin ?? createAdminClient();
-
-    // Every per-format question, asked once, of one value.
-    const surface = notifySurfaceFor(input.strategy);
-
-    const audience = await resolveAudience(
-      admin,
-      input.gameId,
-      input.competitionId,
-      surface.audience
-    );
-
-    const entries = await loadSummaryEntries(admin, input.gameId, surface);
-    // Stroke's field is the whole trip, so it gets the capped form; a bracket
-    // has one champion, so it gets the sentence; everything else is team-scoped
-    // and small enough to list in full.
-    const summary =
-      surface.summary === "stroke"
-        ? formatStrokeSummary(entries)
-        : surface.summary === "bracket"
-          ? formatBracketSummary(entries)
-          : formatResultSummary(entries);
-
-    return await sendPushToUsers(audience, "game_results", {
-      ...COPY.gameFinal(input.gameName, summary),
-      url: gameUrl(input.tripId, input.gameId, input.gameTypeId, input.competitionId),
-      // Coalesce per game: a correction → re-finish replaces the earlier notice
-      // on the device instead of stacking a second one next to it.
-      tag: `bt-game-${input.gameId}`,
-    }, {
+    const { audience, message } = await gameFinishedMessage(admin, input);
+    return await sendPushToUsers(audience, "game_results", message, {
       excludeUserId: input.actorUserId,
       context: {
         trigger: "game_finished",
@@ -733,6 +752,55 @@ export async function notifyGameFinished(
     console.error("[notifyGameFinished] failed", { gameId: input.gameId, err });
     return null;
   }
+}
+
+/**
+ * WHO a finished game's push goes to and WHAT it says, before anything is sent.
+ *
+ * Split out of `notifyGameFinished` (PR 6b) so the whole decision can be tested
+ * against a real finished game: the side-game sweep found a push that named no
+ * winner and linked to the wrong page, and neither half is visible from the
+ * sender, which only reports device counts. `actorUserId` is excluded by the
+ * sender, not here.
+ */
+export async function gameFinishedMessage(
+  admin: SupabaseClient,
+  input: NotifyGameFinishedInput
+): Promise<{ audience: string[]; message: { title: string; body: string; url: string; tag: string } }> {
+  // Every per-format question, asked once, of one value.
+  // A side game (no competition) has no team rows to name; see SIDE_GAME_SURFACE.
+  const surface = notifySurfaceFor(input.strategy, input.competitionId == null);
+
+  const audience = await resolveAudience(
+    admin,
+    input.gameId,
+    input.competitionId,
+    surface.audience
+  );
+
+  const entries = await loadSummaryEntries(admin, input.gameId, surface, input.tripId);
+  // Stroke's field is the whole trip, so it gets the capped form; a bracket
+  // has one champion, so it gets the sentence; everything else is team-scoped
+  // and small enough to list in full.
+  const summary =
+    surface.summary === "stroke"
+      ? formatStrokeSummary(entries)
+      : surface.summary === "bracket"
+        ? formatBracketSummary(entries)
+        : surface.summary === "winners"
+          ? formatWinnersSummary(entries)
+          : formatResultSummary(entries);
+
+  return {
+    audience,
+    message: {
+      ...COPY.gameFinal(input.gameName, summary),
+      url: gameUrl(input.tripId, input.gameId, input.gameTypeId),
+      // Coalesce per game: a correction → re-finish replaces the earlier notice
+      // on the device instead of stacking a second one next to it.
+      tag: `bt-game-${input.gameId}`,
+    },
+  };
 }
 
 /**

@@ -182,9 +182,13 @@ seam, never on a calendar.
 
 - Every new tRPC router gets a Vitest unit test before the task is considered done
 - Every new database query gets tested against the test DB the suite uses
-- **Critical-path E2E must stay green in CI (merge-blocking).** Three Playwright
+- **Critical-path E2E must stay green in CI (merge-blocking).** Four Playwright
   specs run merge-blocking — `e2e/critical-path.spec.ts` (auth → stroke game →
-  scores → scorecard), `e2e/match-play.spec.ts`, and `e2e/chat-action.spec.ts`
+  scores → scorecard), `e2e/match-play.spec.ts`, `e2e/side-game.spec.ts` (a game
+  with NO competition: create → set up → live → score → finalize → winner shown
+  in Completed — PR 6's definition of done, added after side games read as
+  stuck because every "tell the board" call was `if (competitionId)`), and
+  `e2e/chat-action.spec.ts`
   (chat opens as an overlay without changing the selected tab, and closing —
   including via back — returns to it, on both the desktop and mobile chrome
   variants) — guarding the assembled spine is reachable, the class of break
@@ -194,10 +198,10 @@ seam, never on a calendar.
   aspirational and unmet.) E2E auth is a `storageState` login as `test-owner`
   (`e2e/auth.setup.ts`); tests seed a unique trip and tear it down. The other
   13 `e2e/*.spec.ts` are a deferred, mock-based set no Playwright project runs
-  yet.
+  yet (the count is of those deferred files, and the side-game spec is not one).
 - Tests live next to what they test (`trips.test.ts` alongside `trips.ts`)
 - No task is considered complete until its tests pass
-- CI runs Vitest (full) + the three merge-blocking Playwright specs on every
+- CI runs Vitest (full) + the four merge-blocking Playwright specs on every
   push via GitHub Actions
 - **Local-stack test conventions (learned the hard way, ~6× this refactor).**
   CI and local dev both run the server-router suites against an EPHEMERAL LOCAL
@@ -1173,8 +1177,15 @@ These patterns have been established through prior work. Follow them exactly —
       untouched by this.
     - **A broadcast failure must never roll back a write.** Two independent layers:
       `realtime.send` already swallows its own errors (`RAISE WARNING`), and the trigger
-      body has its own `WHEN OTHERS` handler. Standalone games (~40% of prod) simply
-      early-return — the null-competition path is the COMMON case, not an edge case.
+      body has its own `WHEN OTHERS` handler. A game with no competition simply
+      early-returns — and since PR 6b that is a **side game**, the path the Games page
+      exists for (ruling 1), so it gets **no live broadcast**: its section refreshes on
+      the backstop poll and local-mutation invalidation until a trip-scoped topic exists.
+      **This line used to say "Standalone games (~40% of prod) … the COMMON case", and
+      it was false twice when measured — 0 of 40 games, then 0 of 60 (2026-09-27): no
+      game could be created without a competition through any screen.** It was the
+      claim that seeded the build plan's wrong premise about side games, which is why
+      the correction says so rather than silently changing a number.
     - **The topic string is a two-sided contract** between the SQL trigger and
       `scoreEventsTopic()`, and a mismatch fails SILENTLY — scores still save, the board
       still renders, live updates just stop. `broadcastScoreEvents.test.ts` imports the
@@ -1516,6 +1527,30 @@ These patterns have been established through prior work. Follow them exactly —
     `auth.uid()` — directly or through another helper. That function answers for
     anyone who can name the container. Either gate it inside the body, or keep
     it out of the exposed schema.
+
+29. **A game's competition is `game.competition_id`, never the trip's cup. And
+    a game's HOME is the Games page, whatever it belongs to.** Both became rules
+    in PR 6b, when side games (`competition_id` NULL) arrived, and both break the
+    same way: code written while every game had a cup and a game's cup and its
+    trip's cup were one thing.
+
+    - **Skipped because the game has no cup.** `if (competitionId)` in front of
+      something about the GAME or the TRIP. The board refresh, the exit after
+      finalize and the delete destination (`competitionId ? leaderboard : trip
+      home`, which sent a side game to the Trip tab), the correction refresh,
+      and match play's push all did this. Correct-to-skip is only what is
+      genuinely about a cup: standings, clinch, team points, co_admin rights.
+    - **Reading the trip's cup as the game's.** `competitions.getByTrip` answered
+      "this game's competition" correctly only while every game was in the cup.
+      A side match game on a trip that has one rendered the cup's standings
+      header. A view may still use the trip lookup to FETCH its game's
+      competition row, admitted only when `id === game.competition_id`.
+
+    The mechanics: exits and deletes land on `gamesPageHref(tripId)`, which takes
+    no competition; a push links to `gamePanelHref` whenever the format panels;
+    every board refresh goes through `invalidateGameBoards`.
+    `sideGamePaths.guard.test.ts` pins these for every side-capable view, and
+    fails when a format gains `side_game` until its view is listed and checked.
 
 ### Reuse targets (shared helpers — do not re-decide per site)
 

@@ -73,7 +73,7 @@ export function matchesNotDrawnPayload(o: {
   return {
     title: `${name}: draw the matches`,
     body: "Results are coming in and no matches are drawn yet. Draw them any time — they're scored from the results already in.",
-    url: gameUrl(o.tripId, o.gameId, o.gameTypeId, o.competitionId),
+    url: gameUrl(o.tripId, o.gameId, o.gameTypeId),
     // One per game: a second send (the accepted race) replaces the first.
     tag: `pickem-matches-${o.gameId}`,
   };

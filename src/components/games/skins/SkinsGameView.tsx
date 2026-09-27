@@ -64,6 +64,8 @@ import {
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { Participant } from "@/components/games/types";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
+import { gamesPageHref } from "@/lib/gameRoutes";
 
 const SKINS = "gtt_skins";
 
@@ -130,7 +132,6 @@ export function SkinsGameView() {
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid }
   );
   const crew = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
-  const competition = trpc.competitions.getByTrip.useQuery({ tripId: tripId! }, { ...STRUCTURE_QUERY, enabled: !!tripId });
   /**
    * THE GAME'S competition — read directly, never inferred from the trip.
    *
@@ -153,9 +154,9 @@ export function SkinsGameView() {
    *
    * A STANDALONE game keeps a null competition and gets no teams, which is
    * correct — it has none, and borrowing the trip's would be an inference with
-   * nothing behind it. The trip-level competition is read for exactly one thing,
-   * the board exit below, where "back to the leaderboard" is a trip-level idea
-   * rather than this game's.
+   * nothing behind it. The trip-level competition used to be read for the board
+   * exit alone; that exit is now the Games page for every game (`gamesPageHref`,
+   * PR 6b), so this view no longer reads the trip's cup at all.
    *
    * (Historical note worth keeping, because it misled me: on a shared LOCAL
    * stack this trip had two competitions, left by test fixtures, and the avatars
@@ -166,7 +167,6 @@ export function SkinsGameView() {
   const competitionId = gameQ.data
     ? (((gameQ.data as { competition_id?: string | null }).competition_id ?? undefined) || undefined)
     : undefined;
-  const tripCompetitionId = competition.data?.id as string | undefined;
   const teamsQ = trpc.teams.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
@@ -385,13 +385,9 @@ export function SkinsGameView() {
     if (!tripId || !gid) return;
     await utils.games.getById.invalidate({ tripId, gameId: gid });
     await utils.playGroups.listByGame.invalidate({ tripId, gameId: gid });
-    if (competitionId) {
-      // #10 — the child alone is silently undone by the face's re-seed, so the
-      // BOOTSTRAP is the one that actually refreshes the board.
-      utils.competitions.leaderboard.invalidate({ tripId, competitionId });
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-      utils.games.listByTrip.invalidate({ tripId });
-    }
+    // The ONE board invalidator — side games included (PR 6b); it carries #10's
+    // bootstrap rule itself.
+    invalidateGameBoards(utils, { tripId, competitionId });
   }
 
   const { saveState, saving, saveError, setSaveError, handleSave } = useConfigDraft<
@@ -574,7 +570,7 @@ export function SkinsGameView() {
   // here is exactly the divergence #24 catalogues.
   const { isLocked: locked } = gameLockState({ status: gameQ.data?.status, correctionsOpen });
   const scoringEnabled = (gameQ.data as { scoring_enabled?: boolean } | undefined)?.scoring_enabled === true;
-  const exitToBoard = useExitToBoard(tripId, competitionId ?? tripCompetitionId ?? null);
+  const exitToBoard = useExitToBoard(tripId);
   const { finalize, isPending: finalizePending } = useGameFinalize({
     tripId,
     gameId: gid,
@@ -676,7 +672,7 @@ export function SkinsGameView() {
           canManageGame={canManageGame}
           onChanged={() => void refreshGame()}
           onScoresReset={refetchHoles}
-          onDeleted={() => router.push(competitionId ? `/trips/${tripId}/leaderboard` : `/trips/${tripId}`)}
+          onDeleted={() => router.push(gamesPageHref(tripId!))}
           nameValue={configDraft.name}
           onNameChange={setNameDraft}
           delegateValue={configDraft.delegates[0] ?? null}
@@ -722,28 +718,31 @@ export function SkinsGameView() {
                   so the row reads "resolved" either way rather than nagging.
                   Capacity is the TEAM count, because the cup scores the team
                   rows this game banks. */}
-              <ChecklistRow
-                icon={Scale}
-                title="Point Distribution"
-                subtitle={
-                  distIsWta
-                    ? "Winner takes all"
-                    : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
-                }
-                state="resolved"
-                expanded={openAccordion === "distribution"}
-                onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
-                testId="row-point-distribution"
-              >
-                <FormatPointsPanel
-                  game={gameQ.data as unknown as GameRow}
-                  canEdit={canEdit}
-                  controlled={placementControlled}
-                  part="distribution"
-                  winnerTakesAll
-                  capacity={teamPlaceCapacity(teamsQ.data?.length)}
-                />
-              </ChecklistRow>
+              {/* Competition only (PR 6b, ruling 27): a side game has no points. */}
+              {competitionId && (
+                <ChecklistRow
+                  icon={Scale}
+                  title="Point Distribution"
+                  subtitle={
+                    distIsWta
+                      ? "Winner takes all"
+                      : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
+                  }
+                  state="resolved"
+                  expanded={openAccordion === "distribution"}
+                  onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
+                  testId="row-point-distribution"
+                >
+                  <FormatPointsPanel
+                    game={gameQ.data as unknown as GameRow}
+                    canEdit={canEdit}
+                    controlled={placementControlled}
+                    part="distribution"
+                    winnerTakesAll
+                    capacity={teamPlaceCapacity(teamsQ.data?.length)}
+                  />
+                </ChecklistRow>
+              )}
               <ChecklistRow
                 icon={Users}
                 title="Groupings"

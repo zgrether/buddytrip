@@ -31,7 +31,7 @@ export function HomeTab({
   roleLoading,
   onTabChange,
   onOpenDatesSheet,
-}: TabProps & { onTabChange?: (tab: string) => void; onEnableComp?: () => void; compActivated?: boolean; onOpenDatesSheet?: () => void }) {
+}: TabProps & { onTabChange?: (tab: string) => void; onOpenDatesSheet?: () => void }) {
   const status = getTripStatus(trip);
 
   // Prefetch ideas so IdeaZonePanel renders instantly in the idea phase — and

@@ -25,6 +25,9 @@ import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { AddScheduleItemSheet } from "../components/AddScheduleItemSheet";
 import { DND_GAME_KEY } from "@/components/competition/CompetitionGamesPanel";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
+import Link from "next/link";
+import { gameHref } from "@/lib/gameRoutes";
+import { useTripId } from "@/components/TripIdProvider";
 import type { TabProps } from "./types";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -148,6 +151,9 @@ function ScheduleItemRow({
    *  Rendered as the X on the title line of a scheduled row. */
   onUnschedule?: () => void;
 }) {
+  // The agenda chip links to its game (ruling 28); the trip id is read the one
+  // sanctioned way (CLAUDE.md #21).
+  const { rawParam: tripUrlId } = useTripId();
   const movable = canEdit;
   // Any agenda item is a valid target — a game links to any slot (the legacy
   // golf-only rule is retired by the Slice D1 agenda-link flip).
@@ -305,9 +311,27 @@ function ScheduleItemRow({
           >
             {/* Linked-game icon is gray (vs teal agenda-item icons). */}
             <Trophy size={12} className="flex-shrink-0" style={{ color: "var(--color-bt-text-dim)" }} />
-            <p className="min-w-0 flex-1 truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
-              {cg.name ?? "Game"}
-            </p>
+            {/* The name opens the game (ruling 28: every agenda chip links to its
+                game, competition or not). The name, not the whole chip, so the
+                unlink button beside it is not nested inside a link. */}
+            {(() => {
+              const href = gameHref(tripUrlId, cg.game_type_id ?? null, cg.id);
+              const label = cg.name ?? "Game";
+              return href ? (
+                <Link
+                  href={href}
+                  className="min-w-0 flex-1 truncate text-sm font-medium hover:underline"
+                  style={{ color: "var(--color-bt-text)" }}
+                  data-testid="agenda-game-link"
+                >
+                  {label}
+                </Link>
+              ) : (
+                <p className="min-w-0 flex-1 truncate text-sm font-medium" style={{ color: "var(--color-bt-text)" }}>
+                  {label}
+                </p>
+              );
+            })()}
             {canEdit && onUnlinkCompGame && (
               <button
                 onClick={(e) => { e.stopPropagation(); onUnlinkCompGame(cg.id); }}
@@ -526,18 +550,14 @@ export function ScheduleTab({
   const { data: scheduleItems = [] } = trpc.schedule.list.useQuery({ tripId });
   const allItems = scheduleItems as ScheduleItem[];
 
-  // Competition data — drives the On Deck competition games panel and
-  // the drag-to-link interaction onto Day-by-Day agenda items.
-  const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
-  const { data: allGames = [] } = trpc.games.listByTrip.useQuery(
-    { tripId },
-    { enabled: !!competition?.id }
-  );
-  const compGames = (allGames as GameRow[]).filter(
-    (g) => g.competition_id === competition?.id
-  );
+  // The trip's GAMES — every one, side games included (PR 6b: a game needs no
+  // competition). They used to be fetched only once a competition existed and
+  // filtered to it, so a side game could never reach the agenda. Drives the On
+  // Deck games panel and drag-to-link onto Day-by-Day agenda items.
+  const { data: allGames = [] } = trpc.games.listByTrip.useQuery({ tripId });
+  const tripGames = allGames as GameRow[];
   // On Deck shows only games not yet linked to an agenda item.
-  const unlinkedCompGames = compGames.filter((g) => !g.schedule_item_id);
+  const unlinkedGames = tripGames.filter((g) => !g.schedule_item_id);
 
   // Link / unlink a game to an agenda item via games.update({ scheduleItemId }).
   // Dual-cache optimistic: the agenda chips (schedule.list → competition_games)
@@ -1020,10 +1040,10 @@ export function ScheduleTab({
                   On Deck and Competition Events sit side-by-side as two columns
                   so the rail's vertical content doesn't stack into a tall strip.
                   At lg+ they restack inside the narrow 320px rail. The 2-col
-                  split only kicks in when there's a competition cell to show. */}
+                  split only kicks in when there's a games cell to show. */}
               <div
                 className={`grid grid-cols-1 gap-6 lg:grid-cols-1 ${
-                  !competition || unlinkedCompGames.length > 0 ? "sm:grid-cols-2" : ""
+                  (canEdit && tripGames.length === 0) || unlinkedGames.length > 0 ? "sm:grid-cols-2" : ""
                 }`}
               >
               {/* ── On Deck cell ── */}
@@ -1166,16 +1186,18 @@ export function ScheduleTab({
               {/* ── Competition cell — sits beside On Deck below lg, beneath it
                   at lg+. The grid gap handles spacing, so no top margins here. ── */}
               <div>
-              {/* Competition-off nudge — replaces the live competition-events
-                  list when there's no competition for this trip yet. Per
-                  HANDOFF-gaps-agenda-empty.md §2b. */}
-              {!competition && (
+              {/* No games yet — point at the Games tab, where every game is added
+                  (PR 6b). This used to say "turn on competition mode to define
+                  events (scrambles, side games, poker)", which PR 6 made untrue: a
+                  game needs no competition, and side games in particular never did. */}
+              {canEdit && tripGames.length === 0 && (
                 <div
                   className="rounded-xl p-3.5"
                   style={{
                     background: "var(--color-bt-card)",
                     border: "1px dashed var(--color-bt-border)",
                   }}
+                  data-testid="agenda-games-nudge"
                 >
                   <div className="flex items-center gap-2">
                     <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
@@ -1183,15 +1205,14 @@ export function ScheduleTab({
                       className="text-[11px] font-bold uppercase tracking-[0.12em]"
                       style={{ color: "var(--color-bt-text-dim)" }}
                     >
-                      Competition Events
+                      Games
                     </h4>
                   </div>
                   <p
                     className="mt-2 text-xs"
                     style={{ color: "var(--color-bt-text-dim)", lineHeight: 1.5 }}
                   >
-                    Turn on competition mode to define events (scrambles, side
-                    games, poker) and drag them onto agenda days.
+                    Add games on the Games tab, then drag them onto the day they&rsquo;re played.
                   </p>
                   {/* In-place tab switch — avoids the full-page nav
                       (loading state + scroll reset) of an <a href>. */}
@@ -1207,27 +1228,27 @@ export function ScheduleTab({
                       cursor: "pointer",
                     }}
                   >
-                    Enable competition →
+                    Go to Games →
                   </button>
                 </div>
               )}
 
-              {/* Competition Games — shown below On Deck when competition is active.
-                  Drag a competition game onto a Day-by-Day agenda item to link it.
-                  Linked games disappear from here (they belong to the agenda item). */}
-              {competition && unlinkedCompGames.length > 0 && (
+              {/* Games — the trip's unlinked games, side games included (PR 6b).
+                  Drag one onto a Day-by-Day agenda item to link it. Linked games
+                  disappear from here (they belong to the agenda item). */}
+              {unlinkedGames.length > 0 && (
                 <div>
                   <div className="mb-2 flex items-center gap-2">
                     <Trophy size={12} style={{ color: "var(--color-bt-text-dim)" }} />
                     <h4 className="text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      Competition Games
+                      Games
                     </h4>
                   </div>
                   <p className="mb-2 text-[11px] italic leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-                    {canEdit ? "Drag these onto an item" : "Competition games for this trip"}
+                    {canEdit ? "Drag these onto an item" : "Games for this trip"}
                   </p>
                   <div className="space-y-1.5">
-                    {unlinkedCompGames.map((game) => (
+                    {unlinkedGames.map((game) => (
                       <CompGameChip
                         key={game.id}
                         game={game}
@@ -1267,8 +1288,8 @@ export function ScheduleTab({
                     className="mt-1 text-[11px] italic leading-snug"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    {competition
-                      ? "Drop an item onto a day to schedule it, drop an event onto an item to give it a place and time"
+                    {tripGames.length > 0
+                      ? "Drop an item onto a day to schedule it, drop a game onto an item to give it a place and time"
                       : "Drop an item onto a day to schedule it"}
                   </p>
                 )}
@@ -1386,10 +1407,9 @@ export function ScheduleTab({
                                 handleDragDrop(group.date, group.items, idx);
                               }}
                               onCompGameDrop={(gameId) => {
-                                // Any game links to any agenda item (no golf-only rule).
-                                if (competition?.id) {
-                                  linkGameToItem.mutate({ tripId, gameId, scheduleItemId: item.id });
-                                }
+                                // Any game links to any agenda item — no golf-only
+                                // rule, and (PR 6b) no competition required.
+                                linkGameToItem.mutate({ tripId, gameId, scheduleItemId: item.id });
                               }}
                               onUnlinkCompGame={item.competition_games?.length ? (gameId) => {
                                 linkGameToItem.mutate({ tripId, gameId, scheduleItemId: null });

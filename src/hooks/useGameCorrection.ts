@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import type { inferRouterOutputs } from "@trpc/server";
 import { trpc } from "@/lib/trpc-client";
 import type { AppRouter } from "@/server/router";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 
 /** The cached `games.getById` row. Named explicitly per CLAUDE.md #2 — cache
  *  writes carry their type rather than inferring it at the call site. */
@@ -95,8 +96,10 @@ export function useOpenCorrection(
       // Server truth, un-awaited — the optimistic value is already on screen and
       // this only reconciles it.
       void utils.games.getById.invalidate(input);
-      void utils.games.listByTrip.invalidate({ tripId });
-      if (competitionId) void utils.competitions.faceBootstrap.invalidate({ tripId });
+      // The ONE board invalidator (PR 6b). This hand-wrote listByTrip and a
+      // competition-gated faceBootstrap, so a reopened SIDE game stayed in the
+      // Games page's Completed section: nothing told games.sideBoard.
+      invalidateGameBoards(utils, { tripId, competitionId });
     } catch (e) {
       // Rollback = re-pull server truth (CLAUDE.md #1), not a snapshot restore.
       void utils.games.getById.invalidate(input);

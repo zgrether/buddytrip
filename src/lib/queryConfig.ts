@@ -96,3 +96,19 @@ export const STRUCTURE_QUERY = {
 export const LEADERBOARD_QUERY = {
   refetchInterval: 5 * 60_000,
 } as const;
+
+/**
+ * `games.sideBoard` — the Games page's SIDE games (PR 6b).
+ *
+ * The leaderboard learns a score or a lifecycle change by migration 096's
+ * broadcast; a side game has no competition topic, so the trigger returns early
+ * and nothing is pushed. Until a trip-scoped topic exists, this refetches on
+ * every REVEAL of the board (`staleTime: 0` — returning from a game panel,
+ * switching back to the tab), so a side game that went live, took its first
+ * score or finished elsewhere is current the moment the board is looked at.
+ * One small query per reveal; the poll stays the same 5-minute backstop.
+ */
+export const SIDE_BOARD_QUERY = {
+  ...LEADERBOARD_QUERY,
+  staleTime: 0,
+} as const;

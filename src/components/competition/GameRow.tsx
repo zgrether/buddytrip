@@ -14,6 +14,7 @@ import { usesScoringLifecycle } from "@/lib/formatSurface";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { CannotProjectReason } from "@/lib/gameProjection";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
+import { EYEBROW } from "@/lib/typeScale";
 
 export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
 
@@ -515,7 +516,12 @@ export function GameRow({
       {/* LIVE → the ▲ projected-points pill in each team column (aligned to the
           completed grid's GRID_COLW columns via the shared width). Else the outer
           pts-or-result column, pinned right (§A5). */}
-      {showProjectionPills ? (
+      {/* A SIDE game has no points and no team columns (ruling 27): the outer
+          column says what it is instead, so the row never reads as a cup game
+          worth nothing. */}
+      {game.sideGame ? (
+        <SideGameTag />
+      ) : showProjectionPills ? (
         teams.map((t) => (
           <span
             key={t.id}
@@ -826,6 +832,8 @@ export function CompletedRow({
           is flagged provisional while the standings stay honest. */}
       {inReview ? (
         <InReviewBadge teams={teams} />
+      ) : game.sideGame ? (
+        <SideGameWinners winners={game.winners ?? []} />
       ) : scoringModel === "points" ? (
         <CompletedPodium teams={teams} cells={cells} />
       ) : (
@@ -935,6 +943,38 @@ function InReviewBadge({ teams }: { teams: LBTeam[] }) {
  * `--color-bt-base` through the surface hierarchy and deliberately avoids
  * opacity. Different mechanism, different rule, untouched.
  */
+/** The outer column of a side game's row: what it is, in the eyebrow recipe. */
+function SideGameTag() {
+  return (
+    <span
+      className="shrink-0 rounded-md px-1.5 py-0.5"
+      style={{ ...EYEBROW, border: "1px solid var(--color-bt-border)" }}
+      data-testid="side-game-tag"
+    >
+      Side game
+    </span>
+  );
+}
+
+/**
+ * A finished side game's result: WHO WON, in place of the team columns. Never a
+ * row of zeros — a side game has no team points, and zeros would read as a result
+ * (PR 6 plan). A tie names everyone who shared first. An empty list (a finish
+ * that recorded no standing) says so rather than rendering nothing.
+ */
+function SideGameWinners({ winners }: { winners: string[] }) {
+  return (
+    <span className="flex shrink-0 items-center gap-2" data-testid="side-game-winners">
+      <span style={{ ...EYEBROW, border: "1px solid var(--color-bt-border)" }} className="rounded-md px-1.5 py-0.5">
+        Side game
+      </span>
+      <span className="max-w-[45vw] truncate text-[12px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+        {winners.length === 0 ? "No result" : winners.join(" & ")}
+      </span>
+    </span>
+  );
+}
+
 function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
   const values = teams.map((t) => cells?.get(t.id)?.points ?? null);
   const numeric = values.filter((v): v is number => v != null);

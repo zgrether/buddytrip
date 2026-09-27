@@ -31,12 +31,14 @@ const MANUAL = "gtt_manual";
 
 let ctx: TestContext;
 let tripId: string;
+let competitionId: string;
 let memberId: string;
 const gameIds: string[] = [];
 
 async function newGame(pointsTotal: number | null, name = "Placement Game") {
   const g = (await ctx.caller().games.create({
     tripId,
+    competitionId,
     gameTypeId: MANUAL,
     name,
     pointsTotal,
@@ -47,9 +49,16 @@ async function newGame(pointsTotal: number | null, name = "Placement Game") {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("D Add-Game Trip");
-  await ctx.addTripMember(tripId, "member", "Member"); // delegate target (plain Member)
-  await ctx.addTripMember(tripId, "planner", "Organizer"); // co-admin — deletes now denied (Spec 1)
+  // A manual game is not a side game (`allowedContainers`), so it lives in the
+  // trip's cup — a POINTS cup, whose award model is the placement total below.
+  ({ tripId, competitionId } = await ctx.createCupTrip({
+    name: "D Add-Game Trip",
+    scoringModel: "points",
+    members: [
+      ["member", "Member"], // delegate target (plain Member)
+      ["planner", "Organizer"], // co-admin — deletes now denied (Spec 1)
+    ],
+  }));
   memberId = ctx.getUser("member").id;
 });
 

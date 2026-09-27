@@ -159,7 +159,8 @@ export function GameSettingsPage({
    *  other format, whose scoring type is not a setting. */
   scoringTypeRow?: ReactNode;
   /** GAME MANAGEMENT, 4th — stroke's BOARD roll-up (individual scores / team
-   *  totals). Directly under the scoring type because a reader choosing how a
+   *  totals). Competition only (PR 6b): a side game has no teams to total, so the
+   *  choice would have one outcome — the page drops it rather than each format. Directly under the scoring type because a reader choosing how a
    *  hole scores is one thought away from choosing who the board ranks, but a
    *  SEPARATE row because they are independent axes: either scoring type can be
    *  read either way. Omitted by every other format. */
@@ -232,18 +233,21 @@ export function GameSettingsPage({
         {/* IDENTITY — name (tap-to-edit) + assigned-to, both draft slices. A live
             write here would move the config hash out from under the frozen
             baseHash the page's own Save is holding. */}
-        {competitionId && (
-          <GameIdentityHeader
-            tripId={tripId}
-            competitionId={competitionId}
-            canEdit={canEdit}
-            canDelegate={canDelegate}
-            nameValue={nameValue}
-            onNameChange={onNameChange}
-            delegateValue={delegateValue}
-            onDelegateChange={onDelegateChange}
-          />
-        )}
+        {/* Shown on EVERY game, side games included (PR 6b; Zach's look): a
+            practice round is part of the trip and may still need renaming or
+            handing to someone after it's created. It used to need a competition
+            because a game without one was a leftover standalone, not a real one.
+            `competitionId` only colours the delegate picker by team. */}
+        <GameIdentityHeader
+          tripId={tripId}
+          competitionId={competitionId}
+          canEdit={canEdit}
+          canDelegate={canDelegate}
+          nameValue={nameValue}
+          onNameChange={onNameChange}
+          delegateValue={delegateValue}
+          onDelegateChange={onDelegateChange}
+        />
 
         {/* GAME MANAGEMENT — Total Points (1st) → Golf Course (2nd) → Game State
             (3rd). Points and Course sit here rather than in SETTINGS because
@@ -258,7 +262,7 @@ export function GameSettingsPage({
             {competitionId && totalPointsRow}
             {courseRow}
             {scoringTypeRow}
-            {boardRollUpRow}
+            {competitionId && boardRollUpRow}
             {FORMAT_SURFACE[surface].gameState && (
               <GameManagementPanel
                 mode={management.scoringEnabled ? "scoring" : "setup"}
@@ -284,14 +288,14 @@ export function GameSettingsPage({
 
         {/* RULES OF THE DAY — the QUIET tier (free text, can't rescore a hole),
             so it reads before the WARNED Modifiers accordion below. */}
-        {competitionId && (
-          <GameRulesNote
-            canEdit={canEdit}
-            value={rulesValue ?? ""}
-            onChange={onRulesChange}
-            starterText={rulesStarterText ?? formatExplanation(game.game_type_id) ?? undefined}
-          />
-        )}
+        {/* Every game, side games included (PR 6b) — house rules are not a
+            competition concept. */}
+        <GameRulesNote
+          canEdit={canEdit}
+          value={rulesValue ?? ""}
+          onChange={onRulesChange}
+          starterText={rulesStarterText ?? formatExplanation(game.game_type_id) ?? undefined}
+        />
 
         {modifiersRow}
 

@@ -17,13 +17,22 @@ const CARD = "gtt_generic_card";
 
 let ctx: TestContext;
 let tripId: string;
+let competitionId: string;
 let owner: string, member: string;
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("setResult Trip");
-  await ctx.addTripMember(tripId, "member", "Member");
-  await ctx.addTripMember(tripId, "outsider", "Member");
+  // A card game is not a side game (`allowedContainers`), so it lives in the
+  // trip's cup. A POINTS cup: it holds a Matches-shaped card game without the
+  // two-team roster a Match Play cup would require of every paired player.
+  ({ tripId, competitionId } = await ctx.createCupTrip({
+    name: "setResult Trip",
+    scoringModel: "points",
+    members: [
+      ["member", "Member"],
+      ["outsider", "Member"],
+    ],
+  }));
   owner = ctx.user.id;
   member = ctx.getUser("member").id;
 });
@@ -40,7 +49,7 @@ async function freshDecidableGame(name: string): Promise<{ gameId: string; match
   // pairing — a points total, not the pairing, is what `enableScoring` is
   // actually gated on for this game type. Set at CREATE (`games.create`
   // accepts it directly; `games.update`'s Configuration-tab zod does not).
-  const game = await ctx.caller().games.create({ tripId, gameTypeId: CARD, name, pointsTotal: 4 });
+  const game = await ctx.caller().games.create({ tripId, competitionId, gameTypeId: CARD, name, pointsTotal: 4 });
   const gameId = game.id as string;
   const matches = await ctx.caller().matches.setPairings({
     tripId,
@@ -113,7 +122,7 @@ describe("matches.setResult — declares a match's result", () => {
   });
 
   it("an unpaired match refuses — nothing to resolve (Phase 0 §3)", async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: CARD, name: "Unpaired refuses" });
+    const game = await ctx.caller().games.create({ tripId, competitionId, gameTypeId: CARD, name: "Unpaired refuses" });
     const gameId = game.id as string;
     // One empty-B-side match — an assigned slot with nothing to resolve into.
     const matches = await ctx.caller().matches.setPairings({
@@ -145,7 +154,7 @@ describe("matches.setResult — declares a match's result", () => {
   });
 
   it("scoring not enabled refuses — the same gate matchOutcomes.upsertOutcome uses", async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: CARD, name: "Not enabled refuses" });
+    const game = await ctx.caller().games.create({ tripId, competitionId, gameTypeId: CARD, name: "Not enabled refuses" });
     const gameId = game.id as string;
     const matches = await ctx.caller().matches.setPairings({
       tripId,
