@@ -103,10 +103,14 @@ describe("co-admin = owner-minus-destructive (both phases)", () => {
     // head (the default), which is exactly two teams and refuses a third or the
     // loss of one (ruling 2, PR 4). This case is about WHO may edit teams, not
     // how many a cup holds, and co-admin derives from the trip role, so it
-    // holds on any cup in the trip.
-    const pointsCup = await ctx.createCompetition(tripId, "Co-admin Points Cup", { scoringModel: "points" });
+    // holds on any cup whose trip makes the planner an Organizer. A trip holds
+    // one competition (migration 195), so the points cup gets its own trip with
+    // the planner as Organizer there too.
+    const { tripId: pointsTripId, competitionId: pointsCup } = await ctx.createCupTrip({
+      name: "Co-admin Points Cup", scoringModel: "points", members: [["planner", "Organizer"]],
+    });
     const t = await coadmin.teams.create({
-      tripId,
+      tripId: pointsTripId,
       competitionId: pointsCup,
       name: "Green",
       shortName: "GRN",
@@ -116,9 +120,9 @@ describe("co-admin = owner-minus-destructive (both phases)", () => {
     expect(t).toBeTruthy();
     // Delete team (end-to-end: co_admin gate + migration 054 RLS).
     await expect(
-      coadmin.teams.delete({ tripId, teamId: (t as { id: string }).id })
+      coadmin.teams.delete({ tripId: pointsTripId, teamId: (t as { id: string }).id })
     ).resolves.toBeTruthy();
-    const teams = await coadmin.teams.list({ tripId, competitionId: pointsCup });
+    const teams = await coadmin.teams.list({ tripId: pointsTripId, competitionId: pointsCup });
     expect((teams as { name: string }[]).some((x) => x.name === "Green")).toBe(false);
 
     // Destructive: delete the competition — owner only.

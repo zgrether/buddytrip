@@ -107,7 +107,7 @@ describe("teams router", () => {
     }
 
     it("refuses a third team, naming what to do instead", async () => {
-      const cup = await ctx.createCompetition(tripId, "H2H Two", { scoringModel: "match_play" });
+      const { tripId, competitionId: cup } = await ctx.createCupTrip({ name: "H2H Two", scoringModel: "match_play" });
       await ctx.createTeam(cup, "Blue");
       await ctx.createTeam(cup, "Red");
       await expect(
@@ -117,7 +117,7 @@ describe("teams router", () => {
     });
 
     it("refuses to delete either team, naming what to do instead", async () => {
-      const cup = await ctx.createCompetition(tripId, "H2H Keep", { scoringModel: "match_play" });
+      const { tripId, competitionId: cup } = await ctx.createCupTrip({ name: "H2H Keep", scoringModel: "match_play" });
       const blue = await ctx.createTeam(cup, "Blue");
       await ctx.createTeam(cup, "Red");
       await expect(
@@ -127,7 +127,7 @@ describe("teams router", () => {
     });
 
     it("admits a team while a head-to-head cup has fewer than two — a seed that never landed can reach two", async () => {
-      const cup = await ctx.createCompetition(tripId, "H2H One", { scoringModel: "match_play" });
+      const { tripId, competitionId: cup } = await ctx.createCupTrip({ name: "H2H One", scoringModel: "match_play" });
       await ctx.createTeam(cup, "Blue");
       const red = await ctx.caller().teams.create({ tripId, competitionId: cup, name: "Red", ...TEAM });
       expect(red.name).toBe("Red");
@@ -135,7 +135,7 @@ describe("teams router", () => {
     });
 
     it("leaves a points race alone — a third team is added, and one can be deleted", async () => {
-      const cup = await ctx.createCompetition(tripId, "Points Any", { scoringModel: "points" });
+      const { tripId, competitionId: cup } = await ctx.createCupTrip({ name: "Points Any", scoringModel: "points" });
       await ctx.createTeam(cup, "Blue");
       await ctx.createTeam(cup, "Red");
       const green = await ctx.caller().teams.create({ tripId, competitionId: cup, name: "Green", ...TEAM });

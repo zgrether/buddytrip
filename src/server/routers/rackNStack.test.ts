@@ -37,11 +37,13 @@ afterAll(async () => {
   await ctx.cleanup();
 });
 
-async function enter(gameId: string, userId: string, gross: number[]) {
-  await ctx.callerAs("planner").games.enableScoring({ tripId, gameId }); // Phase 2B.1 universal gate
+/** `trip` defaults to the shared trip; a case with a cup of its own passes that
+ *  cup's trip (a trip holds one competition, migration 195). */
+async function enter(gameId: string, userId: string, gross: number[], trip: string = tripId) {
+  await ctx.callerAs("planner").games.enableScoring({ tripId: trip, gameId }); // Phase 2B.1 universal gate
   for (let i = 0; i < gross.length; i++) {
     await ctx.callerAs("planner").scores.upsertEntry({
-      tripId,
+      tripId: trip,
       gameId,
       participantId: userId,
       unitLabel: String(i + 1),
@@ -137,7 +139,12 @@ describe("rack-n-stack — finish distills team points to game_results", () => {
 describe("rack-n-stack — per-match points (Stage 3)", () => {
   it("a per_match rack writes raw_score = slot points × value (position null) and rolls up", async () => {
     // Isolated competition so the leaderboard reflects only this game.
-    const comp = await ctx.createCompetition(tripId, "Rack PM Cup");
+    // On a trip of its own, too: a trip holds one competition (migration 195).
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({
+      title: "Rack Trip",
+      name: "Rack PM Cup",
+      members: [["planner", "Organizer"], "member", "outsider"],
+    });
     const ta = await ctx.createTeam(comp, "Blue", { shortName: "B" });
     const tb = await ctx.createTeam(comp, "Red", { shortName: "R" });
     await ctx.admin.from("team_assignments").insert([
@@ -157,10 +164,10 @@ describe("rack-n-stack — per-match points (Stage 3)", () => {
       groups: [{ name: "G1", userIds: [owner, member] }, { name: "G2", userIds: [planner, outsider] }],
     });
     // Blue (both par) wins both rank slots over Red (both bogey) → 2 slots.
-    await enter(gameId, owner, PAR);
-    await enter(gameId, planner, PAR);
-    await enter(gameId, member, PAR.map((p) => p + 1));
-    await enter(gameId, outsider, PAR.map((p) => p + 1));
+    await enter(gameId, owner, PAR, tripId);
+    await enter(gameId, planner, PAR, tripId);
+    await enter(gameId, member, PAR.map((p) => p + 1), tripId);
+    await enter(gameId, outsider, PAR.map((p) => p + 1), tripId);
     await ctx.caller().games.finish({ tripId, gameId });
 
     // game_results: per_match shape — raw_score = slotPoints × value, no position.

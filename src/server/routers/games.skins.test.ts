@@ -48,6 +48,17 @@ async function hole(
   expect(error, `fixture failed to record hole ${holeNumber}`).toBeNull();
 }
 
+/** A points cup on a trip of its own (a trip holds one competition, migration
+ *  195), with the same roster the shared trip carries. */
+function skinsCup(name: string) {
+  return ctx.createCupTrip({
+    title: "Skins Trip",
+    name,
+    scoringModel: "points",
+    members: [["planner", "Organizer"], ["member", "Member"]],
+  });
+}
+
 describe("skins — the carryover reaches the cup", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
@@ -61,7 +72,7 @@ describe("skins — the carryover reaches the cup", () => {
   }, 60_000);
 
   it("banks skins per PLAYER, ranked high-first, and rolls them up to the right teams", async () => {
-    const comp = await ctx.createCompetition(tripId, "Skins Cup", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await skinsCup("Skins Cup");
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
 
@@ -150,7 +161,7 @@ describe("skins — the carryover reaches the cup", () => {
      * the destruction survives the persist: the awarded total is short by
      * exactly what was on the table, and nothing quietly redistributed it.
      */
-    const comp = await ctx.createCompetition(tripId, "Skins Dead Pot", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await skinsCup("Skins Dead Pot");
     const teamA = await ctx.createTeam(comp, "Solo", { shortName: "SOL" });
     const owner = ctx.getUser("owner").id;
     const planner = ctx.getUser("planner").id;
@@ -195,7 +206,7 @@ describe("skins — the carryover reaches the cup", () => {
      * quietly wrote `score_entries` alongside, fails here even though every
      * number above would still be right.
      */
-    const comp = await ctx.createCompetition(tripId, "Skins No Strokes", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await skinsCup("Skins No Strokes");
     const teamA = await ctx.createTeam(comp, "Solo2", { shortName: "SO2" });
     const owner = ctx.getUser("owner").id;
     const planner = ctx.getUser("planner").id;
@@ -253,7 +264,7 @@ it("AN UNPLAYED GAME BANKS NOTHING — it must not pay the pot out evenly", asyn
      * the leaderboard total would pass against a build that wrote the rows and
      * happened to display them differently.
      */
-    const comp = await ctx.createCompetition(tripId, "Skins Unplayed", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await skinsCup("Skins Unplayed");
     const teamA = await ctx.createTeam(comp, "Alpha2", { shortName: "AL2" });
     const teamB = await ctx.createTeam(comp, "Bravo2", { shortName: "BR2" });
     const owner = ctx.getUser("owner").id;
@@ -296,7 +307,7 @@ it("AN UNPLAYED GAME BANKS NOTHING — it must not pay the pot out evenly", asyn
      * team with nobody playing yet gets NO row rather than a row totalling zero"
      * — applied to what gets BANKED rather than what gets drawn.
      */
-    const comp = await ctx.createCompetition(tripId, "Skins Partial", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await skinsCup("Skins Partial");
     const teamA = await ctx.createTeam(comp, "Alpha3", { shortName: "AL3" });
     const teamB = await ctx.createTeam(comp, "Bravo3", { shortName: "BR3" });
     const owner = ctx.getUser("owner").id;

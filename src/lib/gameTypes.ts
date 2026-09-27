@@ -184,10 +184,17 @@ export interface GameTypeDefinition {
    * head-to-head formats to points races) and **PR 6** (a side game has no
    * points row; rack is never offered as one).
    *
-   * DECLARES THE TARGET, NOT TODAY'S CODE. PR 1 is inert, so nothing reads this
-   * yet; `match_play` listing `points_race` is what PR 5 will open, and it
-   * deliberately does NOT match `compatibleScoringModels` until then. A test
-   * asserting the two agree would be asserting that PR 5 has not happened.
+   * `side_game` DECLARES WHAT WORKS TODAY, not a target (corrected 2026-09-27,
+   * before PR 6 became its first reader). PR 1 declared it on nine formats while
+   * nothing read it; PR 6's verify-first pass found six of them record NO result
+   * without a competition (scramble, pick'em, and the generic types' placements
+   * and Matches). A side game that records nothing is empty-versus-unknown with a
+   * whole game attached, so the claim is now exactly the formats whose finalize
+   * writes a per-person result with no competition: stroke play, match play and
+   * skins. Rack is excluded by ruling (12, 27); the rest by capability, until PR 7.
+   *
+   * `points_race` / `head_to_head` were declared as PR 5's target and PR 5 has
+   * landed; `match_play` listing `points_race` is what it opened.
    *
    * Ruling 2 ("head to head: match formats and rack only") is enforced on the
    * GAME's `competition_format` by PR 4, not on the type — a `gtt_generic_card`
@@ -365,7 +372,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // A TEAM format — the team plays one ball, so the roster IS the result.
     resultKinds: ["ranked"],
     teamDependent: true,
-    allowedContainers: ["side_game", "points_race"],
+    // No `side_game` (PR 6's verify-first pass, 2026-09-27): its groups are seeded from the cup's teams (seedScrambleTeamGroups returns early with no competition) and the groupings row is hidden, so a side scramble would have no groups and no way to make any. PR 7.
+    allowedContainers: ["points_race"],
     scoreTables: ["score_entries", "game_results"],
   },
   gtt_skins: {
@@ -479,7 +487,7 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: true,
     maxPlayersPerSide: null,
     compatibleScoringModels: ["match_play"],
-    // The ONLY format with no `side_game`: ruling 12 makes it a head-to-head fixture whose two sides ARE the competition's two teams, and ruling 27 says it is never offered as a side game. PR 5 keeps it head-to-head only.
+    // No `side_game` BY RULING, not capability: ruling 12 makes it a head-to-head fixture whose two sides ARE the competition's two teams, and ruling 27 says it is never offered as a side game. PR 5 keeps it head-to-head only. (Six other formats lack `side_game` for capability, 2026-09-27 — see the field's doc.)
     resultKinds: ["head_to_head"],
     teamDependent: true,
     allowedContainers: ["head_to_head"],
@@ -504,7 +512,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // A manual type is head-to-head as a `matches` game and ranked as a `placement` one — the instance pins it.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // No `side_game` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
+    allowedContainers: ["head_to_head", "points_race"],
     // By competition_format: placement → game_results; matches → game_matches.result;
     // bracket → bracket_matches. The finalize writes game_results in every case.
     scoreTables: ["game_results", "game_matches", "bracket_matches"],
@@ -528,7 +537,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // As `gtt_generic_card` — Cornhole is the worked example, and it was a `matches` game.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // No `side_game` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
+    allowedContainers: ["head_to_head", "points_race"],
     // By competition_format: placement → game_results; matches → game_matches.result;
     // bracket → bracket_matches. The finalize writes game_results in every case.
     scoreTables: ["game_results", "game_matches", "bracket_matches"],
@@ -573,7 +583,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // BOTH, genuinely: sheet-versus-sheet matches and a points total, switched by `roll_up`. The case that made `resultKinds` a set rather than a value.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // No `side_game` (PR 6's verify-first pass, 2026-09-27): with no competition the finalize has nobody to award and writes nothing, so a side pick'em would finish with no winner recorded. PR 7.
+    allowedContainers: ["head_to_head", "points_race"],
     // A runner's slate result. Sheets (pickem_picks) are inputs, hidden until the
     // reveal; pairings (game_matches) never carry a pick'em result.
     scoreTables: ["pickem_slate_games", "game_results"],
@@ -597,7 +608,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // As `gtt_generic_card`.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // No `side_game` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
+    allowedContainers: ["head_to_head", "points_race"],
     // By competition_format: placement → game_results; matches → game_matches.result;
     // bracket → bracket_matches. The finalize writes game_results in every case.
     scoreTables: ["game_results", "game_matches", "bracket_matches"],
@@ -621,7 +633,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // As `gtt_generic_card`.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    allowedContainers: ["side_game", "head_to_head", "points_race"],
+    // No `side_game` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
+    allowedContainers: ["head_to_head", "points_race"],
     // By competition_format: placement → game_results; matches → game_matches.result;
     // bracket → bracket_matches. The finalize writes game_results in every case.
     scoreTables: ["game_results", "game_matches", "bracket_matches"],

@@ -217,10 +217,16 @@ describe("RLS audit 2026-08-20 — the closed findings stay closed", () => {
       // Its own POINTS cup. The member below is on no team, and migration 193
       // refuses an unrostered participant in a Ryder cup (the Audit Cup defaults
       // to match_play). Provenance is about who signed a score, not about the
-      // cup, and F8/F9 below owns the Audit Cup's roster.
-      const provenanceCup = await ctx.createCompetition(tripId, "Provenance Cup", { scoringModel: "points" });
+      // cup, and F8/F9 below owns the Audit Cup's roster. On its own trip, with
+      // the member on it: a trip holds one competition (migration 195).
+      const provenance = await ctx.createCupTrip({
+        title: "RLS Audit Provenance Trip",
+        name: "Provenance Cup",
+        scoringModel: "points",
+        members: ["member"],
+      });
       await ctx.admin.from("games").insert({
-        id: gameId, trip_id: tripId, competition_id: provenanceCup,
+        id: gameId, trip_id: provenance.tripId, competition_id: provenance.competitionId,
         game_type_id: "gtt_manual", name: "Provenance",
         status: "active", scoring_enabled: true,
         pairings_published_at: new Date().toISOString(),
@@ -422,7 +428,15 @@ describe("RLS audit 2026-08-20 — the closed findings stay closed", () => {
     });
 
     it("a captain cannot move their team to another competition", async () => {
-      const otherCup = await ctx.createCompetition(tripId, "Rival Cup");
+      // The rival cup is on ANOTHER trip, since a trip holds one competition
+      // (migration 195) — and the captain is a member of that trip too, so the
+      // moved row would still be visible to them. That keeps this about the
+      // UPDATE policy, not about the SELECT-on-the-new-row check (CLAUDE.md #26).
+      const { competitionId: otherCup } = await ctx.createCupTrip({
+        title: "RLS Audit Rival Trip",
+        name: "Rival Cup",
+        members: ["member"],
+      });
       const { error, count } = await ctx
         .authedClient("member")
         .from("teams")
@@ -516,8 +530,20 @@ describe("RLS audit 2026-08-20 — the closed findings stay closed", () => {
       await ctx.admin.from("games").delete().eq("id", gameId);
     });
 
-    it("...but moves freely between competitions in its OWN trip", async () => {
-      const secondCup = await ctx.createCompetition(tripId, "Second Cup");
+    /**
+     * The CONTROL for the case above: the refusal there is about the TARGET being
+     * another trip's competition, not about `competition_id` being unmovable.
+     *
+     * This used to move the game to a SECOND competition on its own trip. A trip
+     * holds one competition now (ruled 2026-09-22; migration 195, UNIQUE
+     * (trip_id)) so that target cannot exist — the fact that it cannot is pinned
+     * by `competitions.oneCupPerTrip.test.ts`. The control keeps its job by the
+     * move that still exists on the same trip: out of the competition. Migration
+     * 135's composite key admits a NULL competition, so a build that refused
+     * every `competition_id` update would fail here, and the case above would
+     * stop meaning "cross-trip is refused".
+     */
+    it("...but can leave its competition — the refusal above is about the other trip", async () => {
       const gameId = genId("game");
       await ctx.admin.from("games").insert({
         id: gameId, trip_id: tripId, competition_id: competitionId,
@@ -526,7 +552,7 @@ describe("RLS audit 2026-08-20 — the closed findings stay closed", () => {
 
       const { error } = await ctx.admin
         .from("games")
-        .update({ competition_id: secondCup })
+        .update({ competition_id: null })
         .eq("id", gameId);
       expect(error).toBeNull();
 

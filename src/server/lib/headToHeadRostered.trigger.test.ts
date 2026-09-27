@@ -21,9 +21,25 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
+/** A trip with no cup, for the standalone game. Every cup gets a trip of its
+ *  own, since a trip holds one competition (migration 195). */
 let tripId: string;
+const tripOfCup = new Map<string, string>();
+const tripOfGame = new Map<string, string>();
 let owner: string, planner: string, member: string;
 let memberName: string;
+
+/** A cup on its own trip, with the same members the shared trip had. */
+async function cupTrip(name: string, scoringModel: "match_play" | "points"): Promise<string> {
+  const cup = await ctx.createCupTrip({
+    title: "H2H Rostered Trip",
+    name,
+    scoringModel,
+    members: [["planner", "Organizer"], ["member", "Member"]],
+  });
+  tripOfCup.set(cup.competitionId, cup.tripId);
+  return cup.competitionId;
+}
 
 beforeAll(async () => {
   ctx = await TestContext.create();
@@ -43,7 +59,7 @@ afterAll(async () => {
 
 /** A Ryder cup with owner on Blue and planner on Red; `member` is on NEITHER. */
 async function ryderCup(name: string): Promise<string> {
-  const comp = await ctx.createCompetition(tripId, name, { scoringModel: "match_play" });
+  const comp = await cupTrip(name, "match_play");
   const blue = await ctx.createTeam(comp, "Blue", { shortName: "BLU", color: "#3b82f6" });
   const red = await ctx.createTeam(comp, "Red", { shortName: "RED", color: "#ef4444" });
   await ctx.admin.from("team_assignments").insert([
@@ -54,12 +70,14 @@ async function ryderCup(name: string): Promise<string> {
 }
 
 async function game(competitionId: string | null, gameTypeId = "gtt_rack_n_stack"): Promise<string> {
+  const gameTripId = competitionId ? tripOfCup.get(competitionId)! : tripId;
   const g = await ctx.caller().games.create({
-    tripId,
+    tripId: gameTripId,
     gameTypeId,
     name: `g-${genId()}`,
     ...(competitionId ? { competitionId } : {}),
   });
+  tripOfGame.set(g.id as string, gameTripId);
   return g.id as string;
 }
 
@@ -89,7 +107,7 @@ describe("migration 193 — Ryder cup participants are rostered", () => {
   }, 60000);
 
   it("leaves a points cup alone — ruling 3 is head-to-head only", async () => {
-    const comp = await ctx.createCompetition(tripId, "Points", { scoringModel: "points" });
+    const comp = await cupTrip("Points", "points");
     const gameId = await game(comp, "gtt_stroke_play");
     const { error } = await participant(gameId, member);
     expect(error).toBeNull();
@@ -118,10 +136,11 @@ describe("migration 193 — Ryder cup participants are rostered", () => {
     // the sentence it carries, as a 412 — not a 500 wrapping a code. Exact
     // message, so a build that forgot the unwrap (which still CONTAINS the
     // sentence, after "Failed to add players: UNROSTERED: ") fails here.
+    const gameId = await game(await ryderCup("Real caller"));
     await expect(
       ctx.caller().playGroups.setFoursomes({
-        tripId,
-        gameId: await game(await ryderCup("Real caller")),
+        tripId: tripOfGame.get(gameId)!,
+        gameId,
         groups: [{ name: "G1", userIds: [owner, planner, member] }],
       }),
     ).rejects.toMatchObject({

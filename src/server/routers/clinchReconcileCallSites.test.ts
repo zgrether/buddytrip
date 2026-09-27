@@ -18,7 +18,9 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 const MANUAL = "gtt_generic_yard";
 
 let ctx: TestContext;
-let tripId: string;
+/** Each game's trip — every cup gets its own trip, since a trip holds one
+ *  competition (migration 195). */
+const tripOfGame = new Map<string, string>();
 
 async function stored(compId: string): Promise<string | null> {
   const { data } = await ctx.admin
@@ -33,7 +35,7 @@ async function stored(compId: string): Promise<string | null> {
  *  created but NOT finalized; the caller decides the finalize order. */
 async function seedThreeGameCup() {
   // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
-  const compId = await ctx.createCompetition(tripId, "Reconcile E2E Cup", { scoringModel: "match_play" });
+  const { tripId, competitionId: compId } = await ctx.createCupTrip({ name: "Reconcile E2E Cup", scoringModel: "match_play" });
   const winner = await ctx.createTeam(compId, "Winner", { shortName: "WIN" });
   const loser = await ctx.createTeam(compId, "Loser", { shortName: "LOS", color: "#ef4444", colorDim: "#2a0a0a" });
   const games: string[] = [];
@@ -47,13 +49,14 @@ async function seedThreeGameCup() {
       pointsTotal: 1,
     })) as { id: string };
     games.push(g.id);
+    tripOfGame.set(g.id, tripId);
   }
-  return { compId, winner, loser, games };
+  return { tripId, compId, winner, loser, games };
 }
 
 async function finish(gameId: string, first: string, second: string) {
   await ctx.caller().games.finish({
-    tripId,
+    tripId: tripOfGame.get(gameId)!,
     gameId,
     placements: [
       { entityId: first, position: 1 },
@@ -64,7 +67,6 @@ async function finish(gameId: string, first: string, second: string) {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Clinch Reconcile Call-Site Trip");
 }, 120_000);
 
 afterAll(async () => {
@@ -73,7 +75,7 @@ afterAll(async () => {
 
 describe("games.delete — clinch → delete the clinching game → same team re-clinches → push fires", () => {
   it("releases on delete, and a later finalize re-claims for the same team", async () => {
-    const { compId, winner, loser, games } = await seedThreeGameCup();
+    const { tripId, compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser); // winner 2 of 3 available — CLINCHED
     expect(await stored(compId)).toBe(winner);
@@ -90,7 +92,7 @@ describe("games.delete — clinch → delete the clinching game → same team re
   }, 60_000);
 
   it("a delete that leaves the SAME team still clinched does not release (no double-push risk)", async () => {
-    const { compId, winner, loser, games } = await seedThreeGameCup();
+    const { tripId, compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser); // clinched, available=3, winner=2
     expect(await stored(compId)).toBe(winner);
@@ -104,7 +106,7 @@ describe("games.delete — clinch → delete the clinching game → same team re
 
 describe("games.resetScoring — clinch → reset the deciding game → same team re-clinches", () => {
   it("releases on reset, and a later finalize re-claims", async () => {
-    const { compId, winner, loser, games } = await seedThreeGameCup();
+    const { tripId, compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser); // clinched, available=3, winner=2
     expect(await stored(compId)).toBe(winner);
@@ -121,7 +123,7 @@ describe("games.resetScoring — clinch → reset the deciding game → same tea
 
 describe("games.resetToSkeleton — same shape as resetScoring", () => {
   it("releases on reset-to-skeleton, and a later finalize re-claims", async () => {
-    const { compId, winner, loser, games } = await seedThreeGameCup();
+    const { tripId, compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser);
     expect(await stored(compId)).toBe(winner);
@@ -143,7 +145,7 @@ describe("games.resetToSkeleton — same shape as resetScoring", () => {
 
 describe("games.setPointsTotal — a config edit that REMOVES a clinch", () => {
   it("raising an unplayed game's total un-clinches the leader", async () => {
-    const { compId, winner, loser, games } = await seedThreeGameCup();
+    const { tripId, compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser); // clinched: available=3, winner=2
     expect(await stored(compId)).toBe(winner);
@@ -157,7 +159,7 @@ describe("games.setPointsTotal — a config edit that REMOVES a clinch", () => {
   it("is reachable on an already-complete game — no status guard", async () => {
     // Confirms the item-4 Phase 0 finding this fix depends on: without this,
     // the scenario above (raising a total post-finalize) couldn't happen at all.
-    const { winner, loser, games } = await seedThreeGameCup();
+    const { tripId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     const before = (await ctx.caller().games.getById({ tripId, gameId: games[0] })) as { status: string };
     expect(before.status, "the game is genuinely complete before the edit").toBe("complete");
@@ -178,7 +180,7 @@ describe("games.setPointsTotal — a config edit that REMOVES a clinch", () => {
 describe("games.setPointsDistribution — redistributing a FIXED total moves the leader", () => {
   it("a split change can un-clinch without a re-finish, and without changing pointsAvailable", async () => {
     // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
-    const compId = await ctx.createCompetition(tripId, "Split Cup", { scoringModel: "match_play" });
+    const { tripId, competitionId: compId } = await ctx.createCupTrip({ name: "Split Cup", scoringModel: "match_play" });
     const a = await ctx.createTeam(compId, "A", { shortName: "A" });
     const b = await ctx.createTeam(compId, "B", { shortName: "B", color: "#ef4444", colorDim: "#2a0a0a" });
     // ONE game worth 3, split [3,0] — winner-take-all.
@@ -235,7 +237,7 @@ describe("games.setPointsDistribution — redistributing a FIXED total moves the
  */
 describe("teams.delete — a decided head-to-head cup keeps both teams, and its clinch", () => {
   it("refuses to delete the clinching team, even where the roster lock would not block", async () => {
-    const { compId, winner, loser, games } = await seedThreeGameCup();
+    const { tripId, compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser);
     expect(await stored(compId)).toBe(winner);
@@ -253,7 +255,7 @@ describe("teams.delete — a decided head-to-head cup keeps both teams, and its 
 
 describe("competitions.resetScoring — the whole-competition primitive", () => {
   it("clears every game's results at once; points survive, so it can only release", async () => {
-    const { compId, winner, loser, games } = await seedThreeGameCup();
+    const { tripId, compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser);
     expect(await stored(compId)).toBe(winner);
@@ -269,7 +271,7 @@ describe("competitions.resetScoring — the whole-competition primitive", () => 
 
 describe("competitions.resetToSkeleton — the whole-competition superset", () => {
   it("also releases a stale claim", async () => {
-    const { compId, winner, loser, games } = await seedThreeGameCup();
+    const { tripId, compId, winner, loser, games } = await seedThreeGameCup();
     await finish(games[0], winner, loser);
     await finish(games[1], winner, loser);
     expect(await stored(compId)).toBe(winner);
@@ -281,7 +283,7 @@ describe("competitions.resetToSkeleton — the whole-competition superset", () =
 
 describe("no retroactive fire on deploy", () => {
   it("a competition with no held claim is untouched by reconciling — nothing to release means nothing changes", async () => {
-    const { compId } = await seedThreeGameCup();
+    const { tripId, compId } = await seedThreeGameCup();
     expect(await stored(compId)).toBeNull();
     await ctx.caller().competitions.resetScoring({ tripId, competitionId: compId });
     expect(await stored(compId)).toBeNull();

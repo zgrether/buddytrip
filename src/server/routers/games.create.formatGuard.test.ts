@@ -21,7 +21,8 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
-let tripId: string;
+/** Each cup's own trip — a trip holds one competition (migration 195). */
+const tripOf: Record<string, string> = {};
 let pointsCup: string;
 let matchCup: string;
 
@@ -38,7 +39,7 @@ async function gamesIn(competitionId: string, gameTypeId: string) {
 async function refusal(competitionId: string, gameTypeId: string): Promise<TRPCError> {
   let caught: unknown;
   try {
-    await ctx.caller().games.create({ tripId, gameTypeId, name: "Should not exist", competitionId });
+    await ctx.caller().games.create({ tripId: tripOf[competitionId], gameTypeId, name: "Should not exist", competitionId });
   } catch (e) {
     caught = e;
   }
@@ -48,9 +49,12 @@ async function refusal(competitionId: string, gameTypeId: string): Promise<TRPCE
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Format guard trip");
-  pointsCup = await ctx.createCompetition(tripId, "Points Cup", { scoringModel: "points" });
-  matchCup = await ctx.createCompetition(tripId, "Match Cup", { scoringModel: "match_play" });
+  const points = await ctx.createCupTrip({ title: "Format guard trip", name: "Points Cup", scoringModel: "points" });
+  const match = await ctx.createCupTrip({ title: "Format guard trip", name: "Match Cup", scoringModel: "match_play" });
+  pointsCup = points.competitionId;
+  matchCup = match.competitionId;
+  tripOf[pointsCup] = points.tripId;
+  tripOf[matchCup] = match.tripId;
 }, 60_000);
 
 afterAll(async () => {
@@ -86,13 +90,13 @@ describe("games.create refuses a format its cup cannot hold (#1304)", () => {
       [matchCup, "gtt_pickem"],
       [matchCup, "gtt_generic_card"],
     ] as const) {
-      await ctx.caller().games.create({ tripId, gameTypeId: type, name: `ok ${type}`, competitionId: cup });
+      await ctx.caller().games.create({ tripId: tripOf[cup], gameTypeId: type, name: `ok ${type}`, competitionId: cup });
       expect(await gamesIn(cup, type), `${type} in ${cup === pointsCup ? "points" : "match_play"}`).toBe(1);
     }
   }, 60_000);
 
   it("a standalone game is untouched — no competition, no scoring model, no question", async () => {
-    const g = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_match_play", name: "Standalone" })) as { id: string };
+    const g = (await ctx.caller().games.create({ tripId: tripOf[pointsCup], gameTypeId: "gtt_match_play", name: "Standalone" })) as { id: string };
     expect(g.id).toBeTruthy();
     await ctx.admin.from("games").delete().eq("id", g.id);
   }, 60_000);

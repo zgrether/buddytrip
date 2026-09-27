@@ -22,16 +22,15 @@ import { evenShare } from "@/lib/pointsDistribution";
 const MATCH_PLAY = "gtt_match_play";
 
 let ctx: TestContext;
-let tripId: string;
+/** Every cup trip's roster beyond its owner — what the shared trip used to carry. */
+const ROSTER: Array<"member" | "outsider" | ["planner", "Organizer"]> = [["planner", "Organizer"], "member", "outsider"];
 let owner: string, planner: string, member: string, outsider: string;
 const gameIds: string[] = [];
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("A2b Total Points Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer");
-  await ctx.addTripMember(tripId, "member", "Member");
-  await ctx.addTripMember(tripId, "outsider", "Member");
+  // Each competition gets a trip of its own (`makeComp` / `createCupTrip`): a
+  // trip holds one competition (migration 195).
   owner = ctx.user.id;
   planner = ctx.getUser("planner").id;
   member = ctx.getUser("member").id;
@@ -54,8 +53,8 @@ interface MatchRow {
 }
 
 /** A competition with Blue (owner+planner) vs Red (member+outsider). */
-async function makeComp(name: string): Promise<{ comp: string; blue: string; red: string }> {
-  const comp = await ctx.createCompetition(tripId, name);
+async function makeComp(name: string): Promise<{ tripId: string; comp: string; blue: string; red: string }> {
+  const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "A2b Total Points Trip", name, members: ROSTER });
   const blue = await ctx.createTeam(comp, "Blue", { color: "#2563eb" });
   const red = await ctx.createTeam(comp, "Red", { color: "#dc2626" });
   await ctx.admin.from("team_assignments").insert([
@@ -64,24 +63,24 @@ async function makeComp(name: string): Promise<{ comp: string; blue: string; red
     { competition_id: comp, user_id: member, team_id: red },
     { competition_id: comp, user_id: outsider, team_id: red },
   ]);
-  return { comp, blue, red };
+  return { tripId, comp, blue, red };
 }
 
-async function makeGame(comp: string, name: string): Promise<string> {
+async function makeGame(tripId: string, comp: string, name: string): Promise<string> {
   const g = (await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name, competitionId: comp })) as { id: string };
   gameIds.push(g.id);
   return g.id;
 }
 
 /** Set the owner total + derive & persist the even share (the client's setup writes). */
-async function setTotal(gameId: string, total: number, overrides: number[], matchCount: number) {
+async function setTotal(tripId: string, gameId: string, total: number, overrides: number[], matchCount: number) {
   await ctx.caller().games.setPointsTotal({ tripId, gameId, total });
   await ctx.caller().games.setPointsDistribution({ tripId, gameId, distribution: { type: "per_match", value: evenShare(total, overrides, matchCount) } });
 }
 
 /** Blue (side A) sweeps side B: A shoots 4, B shoots 5 over `holes` holes → A closes
  *  out (10&8 by hole 10). participantType per the side shape. */
-async function blueSweeps(gameId: string, aId: string, bId: string, type: "user" | "play_group", holes = 10) {
+async function blueSweeps(tripId: string, gameId: string, aId: string, bId: string, type: "user" | "play_group", holes = 10) {
   const caller = ctx.caller();
   await caller.games.enableScoring({ tripId, gameId });
   for (let h = 1; h <= holes; h++) {
@@ -92,8 +91,8 @@ async function blueSweeps(gameId: string, aId: string, bId: string, type: "user"
 
 describe("A2b — override redistributes; award reads point_value ?? even share", () => {
   it("2 singles, total 6, one overridden to 4 → other redistributes to 2; Blue sweeps → 6", async () => {
-    const { comp, blue, red } = await makeComp("A2b Redistribute");
-    const gameId = await makeGame(comp, "Two Singles");
+    const { tripId, comp, blue, red } = await makeComp("A2b Redistribute");
+    const gameId = await makeGame(tripId, comp, "Two Singles");
     const matches = (await ctx.caller().matches.setPairings({
       tripId, gameId,
       matches: [
@@ -104,7 +103,7 @@ describe("A2b — override redistributes; award reads point_value ?? even share"
     const m1 = matches[0], m2 = matches[1];
 
     // Owner total 6, even 3/3 at first.
-    await setTotal(gameId, 6, [], 2);
+    await setTotal(tripId, gameId, 6, [], 2);
     // Override match 1 to 4 → the other redistributes to (6−4)/1 = 2.
     await ctx.caller().matches.setPointValue({ tripId, gameId, matchId: m1.id, value: 4 });
     await ctx.caller().games.setPointsDistribution({ tripId, gameId, distribution: { type: "per_match", value: evenShare(6, [4], 2) } });
@@ -148,8 +147,8 @@ describe("A2b — override redistributes; award reads point_value ?? even share"
   }, 60000);
 
   it("clearing an override reverts the match to the even share (point_value → null)", async () => {
-    const { comp } = await makeComp("A2b Clear");
-    const gameId = await makeGame(comp, "Clearable");
+    const { tripId, comp } = await makeComp("A2b Clear");
+    const gameId = await makeGame(tripId, comp, "Clearable");
     const matches = (await ctx.caller().matches.setPairings({
       tripId, gameId,
       matches: [
@@ -157,7 +156,7 @@ describe("A2b — override redistributes; award reads point_value ?? even share"
         { playersPerSide: 1, sideA: { members: [planner] }, sideB: { members: [outsider] }, matchNumber: 2 },
       ],
     })) as MatchRow[];
-    await setTotal(gameId, 6, [], 2);
+    await setTotal(tripId, gameId, 6, [], 2);
     await ctx.caller().matches.setPointValue({ tripId, gameId, matchId: matches[0].id, value: 4 });
     // Clear it.
     await ctx.caller().matches.setPointValue({ tripId, gameId, matchId: matches[0].id, value: null });
@@ -168,8 +167,8 @@ describe("A2b — override redistributes; award reads point_value ?? even share"
 
 describe("A2b — existing games safe (null total → value × mc fallback)", () => {
   it("a pre-A2b game (null points_total, no override) awards on the even-share fallback", async () => {
-    const { comp, blue, red } = await makeComp("A2b Legacy");
-    const gameId = await makeGame(comp, "Legacy Match");
+    const { tripId, comp, blue, red } = await makeComp("A2b Legacy");
+    const gameId = await makeGame(tripId, comp, "Legacy Match");
     await ctx.caller().matches.setPairings({
       tripId, gameId,
       matches: [
@@ -204,8 +203,8 @@ describe("A2b — existing games safe (null total → value × mc fallback)", ()
 
 describe("A2b — a doubles override awards on the play_group side", () => {
   it("a 2v2 match overridden to 4 awards 4 to the winning pair's team", async () => {
-    const { comp, blue, red } = await makeComp("A2b Doubles Override");
-    const gameId = await makeGame(comp, "Doubles Override");
+    const { tripId, comp, blue, red } = await makeComp("A2b Doubles Override");
+    const gameId = await makeGame(tripId, comp, "Doubles Override");
     const matches = (await ctx.caller().matches.setPairings({
       tripId, gameId,
       matches: [
@@ -215,10 +214,10 @@ describe("A2b — a doubles override awards on the play_group side", () => {
     const pgA = matches[0].side_a!.id;
     const pgB = matches[0].side_b!.id;
 
-    await setTotal(gameId, 2, [], 1); // even share 2 for the lone match…
+    await setTotal(tripId, gameId, 2, [], 1); // even share 2 for the lone match…
     await ctx.caller().matches.setPointValue({ tripId, gameId, matchId: matches[0].id, value: 4 }); // …overridden to 4
 
-    await blueSweeps(gameId, pgA, pgB, "play_group");
+    await blueSweeps(tripId, gameId, pgA, pgB, "play_group");
     await ctx.caller().games.finish({ tripId, gameId });
 
     const { data: teamRows } = await ctx.admin
@@ -250,13 +249,13 @@ describe("team rows are derived from the competition's teams", () => {
     // score — `teamAssignments.remove`, which the roster lock allows until the
     // first score. That removal direction is roster changes (PR 8), and it is why
     // this defence is still worth pinning.
-    const comp = await ctx.createCompetition(tripId, "Unassigned Roster");
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "A2b Total Points Trip", name: "Unassigned Roster", members: ROSTER });
     const blue = await ctx.createTeam(comp, "Blue", { color: "#2563eb" });
     const red = await ctx.createTeam(comp, "Red", { color: "#dc2626" });
     await ctx.assignTeam(comp, blue, [owner]);
     await ctx.assignTeam(comp, red, [member]);
 
-    const gameId = await makeGame(comp, "No Assignments");
+    const gameId = await makeGame(tripId, comp, "No Assignments");
     await ctx.caller().matches.setPairings({
       tripId, gameId,
       matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
@@ -266,8 +265,8 @@ describe("team rows are derived from the competition's teams", () => {
     const { count: stillRostered } = await ctx.admin
       .from("team_assignments").select("user_id", { count: "exact", head: true }).eq("competition_id", comp);
     expect(stillRostered).toBe(0); // the premise: nobody resolves to a team
-    await setTotal(gameId, 2, [], 1);
-    await blueSweeps(gameId, owner, member, "user");
+    await setTotal(tripId, gameId, 2, [], 1);
+    await blueSweeps(tripId, gameId, owner, member, "user");
     await ctx.caller().games.finish({ tripId, gameId });
 
     const { data: teamRows } = await ctx.admin

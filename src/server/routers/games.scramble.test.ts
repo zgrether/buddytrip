@@ -53,14 +53,16 @@ async function completeRound(
 }
 
 let ctx: TestContext;
-let tripId: string;
+
+/** Each case gets its own trip with its own cup — a trip holds one (migration 195). */
+const CUP_MEMBERS: Array<["planner" | "member", "Organizer" | "Member"]> = [
+  ["planner", "Organizer"],
+  ["member", "Member"],
+];
 
 describe("scramble — the team is the scorer", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Scramble Trip");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
   }, 60_000);
 
   afterAll(async () => {
@@ -68,7 +70,9 @@ describe("scramble — the team is the scorer", () => {
   }, 60_000);
 
   it("banks a result per TEAM GROUP and NOT ONE individual row", async () => {
-    const comp = await ctx.createCompetition(tripId, "Scramble Cup", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({
+      name: "Scramble Cup", scoringModel: "points", members: CUP_MEMBERS,
+    });
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
 
@@ -143,7 +147,9 @@ describe("scramble — the team is the scorer", () => {
      * format. Same helper, same competition shape, same finalize — only the game
      * type differs, which is the one variable under test.
      */
-    const comp = await ctx.createCompetition(tripId, "Stroke Control Cup", { scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({
+      name: "Stroke Control Cup", scoringModel: "points", members: CUP_MEMBERS,
+    });
     const teamA = await ctx.createTeam(comp, "Solo", { shortName: "SOL" });
     const owner = ctx.getUser("owner").id;
     const planner = ctx.getUser("planner").id;

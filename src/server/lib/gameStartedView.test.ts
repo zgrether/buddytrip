@@ -19,11 +19,11 @@ import { GAME_TYPES, isGameTypeForScoringModel } from "@/lib/gameTypes";
  */
 
 let ctx: TestContext;
-let tripId: string;
 // One cup per scoring model (#1304): each game goes in the cup its format
-// belongs to, so no fixture builds a state games.create refuses.
-let pointsCup: string;
-let matchCup: string;
+// belongs to, so no fixture builds a state games.create refuses. And one trip
+// per cup, because a trip holds one competition (migration 195).
+let pointsCup: { tripId: string; competitionId: string };
+let matchCup: { tripId: string; competitionId: string };
 
 async function started(gameId: string): Promise<boolean> {
   const { data, error } = await ctx.admin.from("game_started").select("game_id").eq("game_id", gameId);
@@ -32,20 +32,28 @@ async function started(gameId: string): Promise<boolean> {
 }
 
 async function newGame(type: string, name: string): Promise<string> {
+  const cup = isGameTypeForScoringModel(GAME_TYPES.find((t) => t.id === type)!, "points") ? pointsCup : matchCup;
   const g = (await ctx.caller().games.create({
-    tripId,
+    tripId: cup.tripId,
     gameTypeId: type,
     name,
-    competitionId: isGameTypeForScoringModel(GAME_TYPES.find((t) => t.id === type)!, "points") ? pointsCup : matchCup,
+    competitionId: cup.competitionId,
   })) as { id: string };
   return g.id;
 }
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("game_started Trip");
-  pointsCup = await ctx.createCompetition(tripId, "game_started points Cup", { scoringModel: "points" });
-  matchCup = await ctx.createCompetition(tripId, "game_started match Cup", { scoringModel: "match_play" });
+  pointsCup = await ctx.createCupTrip({
+    title: "game_started Trip",
+    name: "game_started points Cup",
+    scoringModel: "points",
+  });
+  matchCup = await ctx.createCupTrip({
+    title: "game_started Trip",
+    name: "game_started match Cup",
+    scoringModel: "match_play",
+  });
 });
 afterAll(async () => {
   await ctx.cleanup();
