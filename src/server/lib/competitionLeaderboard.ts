@@ -1010,7 +1010,7 @@ export async function computeCompetitionLeaderboard(
 
   // Per-game grid cells (place + points per team) — same averaging as the totals,
   // so the grid and the totals can't disagree. Only live games carry cells.
-  // `teamId` is the SAME value as `unitId`, carried for ONE release so a client
+  // `teamId` is the SAME value as `unitId`, carried until #1503's date so a client
   // still running pre-PR 7 code reads the payload it knows (see the return).
   const cells: { gameId: string; unitId: string; teamId: string; place: number; points: number }[] = [];
   for (const g of liveGames) {
@@ -1169,14 +1169,17 @@ export async function computeCompetitionLeaderboard(
     hasLiveProjection: projected.hasLive,
     pointsToClinch: Object.fromEntries(roll.pointsToClinch),
     /**
-     * ── FOR ONE RELEASE: the pre-PR 7 names, same values ────────────────────
+     * ── LEGACY NAMES, same values, until #1503's date ─────────────────────────
      *
      * A phone with the app open across the deploy keeps its OLD client, whose
-     * requests reach this NEW server (skew protection is not configured). That
-     * client reads `teamTotals` / `projectedTeamTotals`. For a head-to-head or
-     * teamed cup the unit maps ARE the team maps, so it keeps working; a teamless
-     * race is new, so no old client has ever rendered one. Removed in the
-     * follow-up once the deploy has settled — nothing in this repo reads them.
+     * tRPC requests reach this NEW server: Vercel Skew Protection is on, but it
+     * does not pin custom `fetch()` calls like tRPC's (#1503). That client reads
+     * `teamTotals` / `projectedTeamTotals`. For a head-to-head or teamed cup the
+     * unit maps ARE the team maps, so it keeps working; a teamless race is new,
+     * so no old client has ever rendered one. Removed NOT BEFORE 14 days after
+     * PR 7's production deploy: an installed app can sit open for days across
+     * several deploys, so the rule is a date, not a release. Nothing in this
+     * repo reads them.
      */
     teamTotals: unitTotals,
     projectedTeamTotals: projected.totals,
