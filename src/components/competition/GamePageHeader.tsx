@@ -45,7 +45,9 @@ export function GamePageHeader({
   // the 5-minute backstop alone. Under the panel model (#12) the board is often
   // still mounted underneath, subscribed to this same topic; the hook
   // ref-counts, so that's one shared channel, not two.
-  useRealtimeScoreEvents(tripId, competitionId);
+  // The cup header only: a side game has no header, and `null` here would mean
+  // "subscribe to the trip topic" to the hook (#1498), which is not this surface's job.
+  useRealtimeScoreEvents(tripId, competitionId ?? undefined);
 
   // STATE query, not STRUCTURE — this is the same live `competitions.leaderboard`
   // key CompetitionLeaderboard reads; LEADERBOARD_QUERY is that exact policy

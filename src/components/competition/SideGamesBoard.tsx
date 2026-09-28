@@ -5,6 +5,7 @@ import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { SIDE_BOARD_QUERY } from "@/lib/queryConfig";
 import { useVisibleEnabled } from "@/lib/surfaceVisibility";
+import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { GamesSection, useGameRowContext, type LBGame, type LBCell } from "./CompetitionLeaderboard";
 
 /**
@@ -30,6 +31,9 @@ export function SideGamesBoard({
   onAddGame: () => void;
   onStartCompetition: () => void;
 }) {
+  // Live: a side game broadcasts on its TRIP (migration 196, #1498), so a score
+  // entered on another phone moves this page without a save, a reload or the poll.
+  useRealtimeScoreEvents(tripId, null);
   const { data: rows, isLoading, isError, refetch } = trpc.games.sideBoard.useQuery(
     { tripId },
     { ...SIDE_BOARD_QUERY, enabled: useVisibleEnabled(true) }

@@ -10,7 +10,7 @@ import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { gamesPageHref, isScrambleFormat } from "@/lib/gameRoutes";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
-import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
+import { gameEventScope, useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { ScoreEntryView } from "@/components/games/ScoreEntryView";
 import { StandardGrid } from "@/components/games/StandardGrid";
@@ -308,7 +308,7 @@ export function StrokeGameView() {
   // Score/lifecycle events (#20) — see the note in RackGameView. `useRealtimeGame`
   // covers CONFIG; this covers SCORES, which is what moves the standings on this
   // page. Ref-counted, so sharing the topic with a mounted board costs one channel.
-  useRealtimeScoreEvents(tripId, gameCompetitionId);
+  useRealtimeScoreEvents(tripId, gameEventScope(gameQ.data as { competition_id?: string | null } | undefined));
 
   // P3 3.2 GROUPINGS — teams + assignments (feed the picker's team sections) and the
   // persisted play_groups (the serverGroups baseline). Team-scoped, gated on the resolved
