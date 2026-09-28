@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Calendar, Check, Shield, Users, X, type LucideIcon } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
+import { resetTripGameState } from "@/lib/gameConfigHash";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar, InvitedAvatar } from "@/components/Avatar";
@@ -157,7 +158,12 @@ export function MemberEditor({
 
   // ── Mutations ──────────────────────────────────────────────────────────
   const updateGuest = trpc.ghostCrew.update.useMutation({
-    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
+    onSuccess: () => {
+      utils.tripMembers.list.invalidate({ tripId });
+      // Pasting an email onto a placeholder can LINK it to an account, which runs
+      // the guest merge and repoints their game seats (#1507).
+      resetTripGameState(utils, tripId);
+    },
   });
   // Trip-scoped nickname update — works for guest AND active members alike,
   // because the nickname now lives on trip_members rather than users.
@@ -188,6 +194,10 @@ export function MemberEditor({
   const removeMember = trpc.tripMembers.remove.useMutation({
     onSuccess: () => {
       utils.tripMembers.list.invalidate({ tripId });
+      // Removing someone vacates their seats in every game of the trip, in shared
+      // server code (#1507). Reset every game's config hash so an open settings
+      // draft cannot keep a stale baseline, and re-pull the boards.
+      resetTripGameState(utils, tripId);
       onClose();
     },
   });
@@ -242,6 +252,10 @@ export function MemberEditor({
   const removeGuest = trpc.ghostCrew.remove.useMutation({
     onSuccess: () => {
       utils.tripMembers.list.invalidate({ tripId });
+      // Removing someone vacates their seats in every game of the trip, in shared
+      // server code (#1507). Reset every game's config hash so an open settings
+      // draft cannot keep a stale baseline, and re-pull the boards.
+      resetTripGameState(utils, tripId);
       onClose();
     },
   });

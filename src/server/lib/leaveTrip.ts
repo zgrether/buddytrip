@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { QueryFailedError, rowsOrThrow } from "./rowOrThrow";
 
 /**
  * What has to be cleared when someone LEAVES a trip, beyond the membership row.
@@ -112,6 +113,15 @@ export async function clearTripTeamAssignments(
  * already watched succeed must not fail because the tidy-up did, and a failure
  * leaves the state we were already in rather than a worse one.
  *
+ * ── Every read before the first write (#1507, CLAUDE.md's failed-read rule) ──
+ * Both reads go through `rowsOrThrow` and happen before anything is written. A
+ * failed MATCHES read used to come back as "no matches" (`data ?? []`): no seat
+ * was vacated, and then the participant rows were deleted anyway — the
+ * load-bearing order below broken by a 502, leaving seats that point at someone
+ * who is no longer in the game. Now a failed read writes NOTHING and is logged:
+ * still best-effort (the removal the owner watched succeed stands), and the
+ * state left behind is the one we started in, not a worse one.
+ *
  * NOTE this runs only AFTER `findContributionBlockers` has passed, which is what
  * makes it safe. A match with a recorded result — scores, hole outcomes, a
  * decided status — refuses the removal outright, so a seat is never vacated out
@@ -123,17 +133,31 @@ export async function vacateTripGameSeats(
   tripId: string,
   userId: string
 ): Promise<void> {
-  const { data: games } = await supabase.from("games").select("id").eq("trip_id", tripId);
-  const gameIds = ((games ?? []) as { id: string }[]).map((g) => g.id);
-  if (gameIds.length === 0) return;
-
   type Side = { type?: string; id?: string } | null;
-  const { data: matches } = await supabase
-    .from("game_matches")
-    .select("id, game_id, side_a, side_b")
-    .in("game_id", gameIds);
+  type MatchRow = { id: string; game_id: string; side_a: Side; side_b: Side };
+  let gameIds: string[];
+  let matches: MatchRow[];
+  try {
+    gameIds = rowsOrThrow(
+      await supabase.from("games").select("id").eq("trip_id", tripId),
+      "trip's games"
+    ).map((g) => (g as { id: string }).id);
+    if (gameIds.length === 0) return;
+    matches = rowsOrThrow(
+      await supabase.from("game_matches").select("id, game_id, side_a, side_b").in("game_id", gameIds),
+      "trip's matches"
+    ) as MatchRow[];
+  } catch (err) {
+    if (!(err instanceof QueryFailedError)) throw err;
+    // Best-effort, and never a write on a failed read: leave everything as it was.
+    console.error("[vacateTripGameSeats] a read failed; no seats vacated, no rows deleted", {
+      tripId,
+      what: err.what,
+    });
+    return;
+  }
 
-  for (const m of (matches ?? []) as { id: string; game_id: string; side_a: Side; side_b: Side }[]) {
+  for (const m of matches) {
     const onA = m.side_a?.id === userId;
     const onB = m.side_b?.id === userId;
     if (!onA && !onB) continue;

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc-client";
+import { resetTripGameState } from "@/lib/gameConfigHash";
 import InviteShell from "./InviteShell";
 
 /**
@@ -63,8 +64,13 @@ export default function IdentityChoice({
   const [switching, setSwitching] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
+  const utils = trpc.useUtils();
   const claim = trpc.invites.claim.useMutation({
     onSuccess: (res) => {
+      // Claiming runs the guest merge, which repoints the placeholder's game
+      // seats (#1507). This device held no draft for the trip (a claim is refused
+      // to an existing member), but the refresh is cheaper than that argument.
+      resetTripGameState(utils, res.tripId);
       // Straight to the trip. `router.refresh()` first so the server components
       // re-resolve with the membership the claim just created — without it the
       // trip page can paint against a cache that predates the merge.

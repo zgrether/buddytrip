@@ -128,8 +128,60 @@ function procedures(source: string): Array<[string, string]> {
   ]);
 }
 
+/** Does this code write something the fingerprint covers (directly)? */
+function writesHashedState(body: string): boolean {
+  const writesGameRow = /\.from\("games"\)[\s\S]{0,400}?\.(update|upsert)\(/.test(body);
+  const writesHashedTable = HASHED_TABLES.some((t) =>
+    new RegExp(`\\.from\\("${t}"\\)[\\s\\S]{0,400}?\\.(insert|delete|update|upsert)\\(`).test(body)
+  );
+  // The guest merge (`merge_guest_to_real_user`) repoints game_participants,
+  // game_matches sides and game_delegates. Two RPCs reach it: an owner linking a
+  // placeholder to an account, and a holder claiming an invite (#1507).
+  const writesViaRpc = /\.rpc\("(set_pickem|save_pickem|reset_|apply_|link_guest_to_account|claim_placeholder_by_invite)/.test(body);
+  return writesGameRow || writesHashedTable || writesViaRpc;
+}
+
+/** Split a module into its top-level function chunks, `[name, body]`. */
+function libFunctions(source: string): Array<[string, string]> {
+  const heads = [...source.matchAll(/^(?:export |async |function |const |let |type |interface |class |\/\*\*)/gm)];
+  const out: Array<[string, string]> = [];
+  heads.forEach((h, i) => {
+    const chunk = source.slice(h.index!, i + 1 < heads.length ? heads[i + 1].index! : source.length);
+    const name = chunk.match(/^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_]\w*)/)?.[1]
+      ?? chunk.match(/^(?:export\s+)?const\s+([A-Za-z_]\w*)\s*=\s*(?:async\s*)?\(/)?.[1];
+    if (name) out.push([name, chunk]);
+  });
+  return out;
+}
+
+/**
+ * `src/server/lib` functions that write hashed state — directly, or by calling
+ * another one (closed to a fixpoint). #1507: `tripMembers.remove` moves the hash
+ * through `clearTripParticipation` → `vacateTripGameSeats`, two calls deep, and
+ * a scan of router bodies alone could not see it.
+ */
+function hashWritingLibFunctions(): Set<string> {
+  const lib = join(SRC, "server", "lib");
+  const fns = new Map<string, string>();
+  for (const file of readdirSync(lib).filter((f) => f.endsWith(".ts") && !f.includes(".test."))) {
+    for (const [name, body] of libFunctions(readFileSync(join(lib, file), "utf8"))) fns.set(name, body);
+  }
+  const writers = new Set([...fns].filter(([, body]) => writesHashedState(body)).map(([name]) => name));
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const [name, body] of fns) {
+      if (writers.has(name)) continue;
+      if ([...writers].some((w) => new RegExp(`\\b${w}\\s*\\(`).test(body))) {
+        writers.add(name);
+        grew = true;
+      }
+    }
+  }
+  return writers;
+}
+
 /** Procedures that write something the fingerprint covers, `save_game_config` aside. */
-function hashMovingProcedures(): Set<string> {
+function hashMovingProcedures(libWriters = hashWritingLibFunctions()): Set<string> {
   const movers = new Set<string>();
   const routers = join(SRC, "server", "routers");
   for (const file of readdirSync(routers).filter((f) => f.endsWith(".ts") && !f.includes(".test."))) {
@@ -142,12 +194,10 @@ function hashMovingProcedures(): Set<string> {
       // two writers this whole file exists for, and the guard could not see
       // them: a textual exclusion matching prose instead of a call.
       if (/\.rpc\("save_game_config"/.test(body)) continue;
-      const writesGameRow = /\.from\("games"\)[\s\S]{0,400}?\.(update|upsert)\(/.test(body);
-      const writesHashedTable = HASHED_TABLES.some((t) =>
-        new RegExp(`\\.from\\("${t}"\\)[\\s\\S]{0,400}?\\.(insert|delete|update|upsert)\\(`).test(body)
-      );
-      const writesViaRpc = /\.rpc\("(set_pickem|save_pickem|reset_|apply_)/.test(body);
-      if (writesGameRow || writesHashedTable || writesViaRpc) movers.add(`${router}.${name}`);
+      // A write in the body, OR a call into shared server code that writes
+      // (#1507). The second half is what makes a lib write visible here.
+      const callsLibWriter = [...libWriters].some((w) => new RegExp(`\\b${w}\\s*\\(`).test(body));
+      if (writesHashedState(body) || callsLibWriter) movers.add(`${router}.${name}`);
     }
   }
   return movers;
@@ -224,6 +274,13 @@ describe("every client writer of hashed state refreshes games.configHash", () =>
     expect(movers.has("games.applyCourse")).toBe(true);
     expect(movers.has("games.resetToSkeleton")).toBe(true);
     expect(movers.has("matches.setPairings")).toBe(true);
+    // #1507: writes reached through SHARED SERVER CODE or the guest merge. Each
+    // was invisible to a scan of router bodies. Removing a member vacates their
+    // seats two calls deep (clearTripParticipation -> vacateTripGameSeats).
+    expect(movers.has("tripMembers.remove")).toBe(true);
+    expect(movers.has("ghostCrew.remove")).toBe(true);
+    expect(movers.has("ghostCrew.update")).toBe(true);
+    expect(movers.has("invites.claim")).toBe(true);
     expect(movers.size).toBeGreaterThan(10);
     // And it must NOT sweep in the settings save itself, which owns the hash.
     expect(movers.has("games.saveConfig")).toBe(false);
