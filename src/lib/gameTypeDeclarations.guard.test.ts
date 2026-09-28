@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  GAME_TYPE_DEFINITIONS,
   GAME_TYPE_LIST,
+  canBeSideGame,
+  canPlayInTeamlessRace,
   type GameTypeDefinition,
   type ResultKind,
   type GameContainer,
@@ -39,7 +42,7 @@ import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
  */
 
 const RESULT_KINDS: ResultKind[] = ["head_to_head", "ranked"];
-const CONTAINERS: GameContainer[] = ["side_game", "head_to_head", "points_race"];
+const CONTAINERS: GameContainer[] = ["head_to_head", "points_race"];
 /**
  * `scoreTables` (#1432): any broadcasting table EXCEPT `games`. `tsc` already
  * refuses a table outside `BROADCAST_TABLES`; `games` is in that list (its
@@ -155,8 +158,41 @@ describe("declared format properties", () => {
    *    the declaration is per type, not per competition_format. PR 7.
    */
   it("side games are exactly stroke play, match play and skins", () => {
-    const sideGame = GAME_TYPE_LIST.filter((d) => d.allowedContainers.includes("side_game"));
+    const sideGame = GAME_TYPE_LIST.filter((d) => canBeSideGame(d.id));
     expect(sideGame.map((d) => d.id).sort()).toEqual(["gtt_match_play", "gtt_skins", "gtt_stroke_play"]);
+  });
+
+  /**
+   * PR 7 ruling 1: a TEAMLESS race admits the same three, for the same reason —
+   * each records a result per person, and a race with no teams has only people
+   * to pay. Stated as the exact set, like the side-game set above, and read
+   * through the helper the create door and the picker use.
+   */
+  it("a teamless race holds exactly stroke play, match play and skins", () => {
+    const teamless = GAME_TYPE_LIST.filter((d) => canPlayInTeamlessRace(d.id));
+    expect(teamless.map((d) => d.id).sort()).toEqual(["gtt_match_play", "gtt_skins", "gtt_stroke_play"]);
+  });
+
+  /**
+   * ONE declaration, not two lists (ruling 1). The helpers must both rest on
+   * `recordsPerPersonResults`: a format that flips it moves in or out of BOTH.
+   * Checked per format by flipping it on a copy, which a helper reading anything
+   * else (a hard-coded list, the old `side_game` container) cannot follow.
+   */
+  it("side game and teamless race both follow recordsPerPersonResults, per format", () => {
+    for (const d of GAME_TYPE_LIST) {
+      const flipped = { ...d, recordsPerPersonResults: !d.recordsPerPersonResults };
+      const orig = GAME_TYPE_DEFINITIONS[d.id];
+      try {
+        GAME_TYPE_DEFINITIONS[d.id] = flipped;
+        expect(canBeSideGame(d.id), `${d.id}: canBeSideGame ignores the declaration`).toBe(flipped.recordsPerPersonResults);
+        if (!flipped.recordsPerPersonResults) {
+          expect(canPlayInTeamlessRace(d.id), `${d.id}: teamless admits a format with no per-person writer`).toBe(false);
+        }
+      } finally {
+        GAME_TYPE_DEFINITIONS[d.id] = orig;
+      }
+    }
   });
 
   it("pick'em is the engine format declaring both kinds (ruling: roll_up pins it)", () => {

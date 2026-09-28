@@ -68,19 +68,23 @@ export type ResultStrategy = "stroke_total" | "match_play" | "rack_n_stack" | "p
 export type ResultKind = "head_to_head" | "ranked";
 
 /**
- * Where a game may live. NOT the same axis as `ScoringModel`.
+ * Which kind of competition may hold a game. NOT the same axis as `ScoringModel`.
  *
  * `compatibleScoringModels` answers "which `competitions.scoring_model` can
- * score this", has two values, and cannot express a game with no competition at
- * all. This answers "what container may hold this", and `side_game` is the
- * absence of a container rather than a kind of one.
+ * score this". This answers "what container may hold this".
+ *
+ * **`side_game` used to be a third value here and is not any more (PR 7).** A
+ * side game is the absence of a container, and whether a format can be one is
+ * the same fact as whether it can play in a TEAMLESS race: does it record a
+ * result per person? That is `recordsPerPersonResults`, and both read it, so the
+ * two lists cannot drift (PR 7 ruling 1).
  *
  * The two are deliberately NOT merged. `games.create`'s server guard began
  * reading `compatibleScoringModels` on 2026-09-22 and PR 4 adds more refusals
  * over it; changing a value set under a live guard is how a format gets
  * silently admitted or refused. Reconciling them is filed, not done.
  */
-export type GameContainer = "side_game" | "head_to_head" | "points_race";
+export type GameContainer = "head_to_head" | "points_race";
 
 /** Creation Type tier the dialog groups formats under. */
 export type GameCategory = "golf" | "card" | "yard" | "bar" | "other";
@@ -180,18 +184,27 @@ export interface GameTypeDefinition {
   teamDependent: boolean;
 
   /**
-   * Which containers may hold this format. CONSUMERS: **PR 5** (opens
-   * head-to-head formats to points races) and **PR 6** (a side game has no
-   * points row; rack is never offered as one).
+   * Does this format's finalize write a result PER PERSON, with no team to
+   * credit? CONSUMERS: **PR 6** (a side game — `canBeSideGame`) and **PR 7** (a
+   * teamless points race — `canPlayInTeamlessRace`). ONE declaration read by
+   * both, because it is one fact: a game with no competition and a game in a race
+   * with no teams both have only people to pay (PR 7 ruling 1).
    *
-   * `side_game` DECLARES WHAT WORKS TODAY, not a target (corrected 2026-09-27,
-   * before PR 6 became its first reader). PR 1 declared it on nine formats while
-   * nothing read it; PR 6's verify-first pass found six of them record NO result
-   * without a competition (scramble, pick'em, and the generic types' placements
-   * and Matches). A side game that records nothing is empty-versus-unknown with a
-   * whole game attached, so the claim is now exactly the formats whose finalize
-   * writes a per-person result with no competition: stroke play, match play and
-   * skins. Rack is excluded by ruling (12, 27); the rest by capability, until PR 7.
+   * DECLARES WHAT WORKS TODAY, not a target. PR 6's verify-first pass
+   * (2026-09-27) found six formats that record NOTHING without a cup's teams —
+   * scramble (its standing is a play group), pick'em (no finalize without a
+   * cup), and the generic types' placements and Matches (team points) — so the
+   * claim is exactly stroke play, match play and skins. Rack is excluded by
+   * ruling (12, 27): its two sides ARE a cup's two teams. A format that gains a
+   * per-person writer flips this and is then offered in both places at once.
+   */
+  recordsPerPersonResults: boolean;
+
+  /**
+   * Which containers may hold this format. CONSUMERS: **PR 5** (opens
+   * head-to-head formats to points races) and PR 4's head-to-head guards.
+   * Whether it can be a SIDE game is `recordsPerPersonResults`, above — not a
+   * container (PR 7 moved it out, so the two cannot disagree).
    *
    * `points_race` / `head_to_head` were declared as PR 5's target and PR 5 has
    * landed; `match_play` listing `points_race` is what it opened.
@@ -320,7 +333,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // Individually scored: the same strokes would have been shot whoever was on which team.
     resultKinds: ["ranked"],
     teamDependent: false,
-    allowedContainers: ["side_game", "points_race"],
+    recordsPerPersonResults: true,
+    allowedContainers: ["points_race"],
     scoreTables: ["score_entries", "game_results"],
   },
   gtt_scramble: {
@@ -372,7 +386,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // A TEAM format — the team plays one ball, so the roster IS the result.
     resultKinds: ["ranked"],
     teamDependent: true,
-    // No `side_game` (PR 6's verify-first pass, 2026-09-27): its groups are seeded from the cup's teams (seedScrambleTeamGroups returns early with no competition) and the groupings row is hidden, so a side scramble would have no groups and no way to make any. PR 7.
+    recordsPerPersonResults: false,
+    // `recordsPerPersonResults: false` (PR 6's verify-first pass, 2026-09-27): its groups are seeded from the cup's teams (seedScrambleTeamGroups returns early with no competition) and the groupings row is hidden, so a side scramble would have no groups and no way to make any. PR 7.
     allowedContainers: ["points_race"],
     scoreTables: ["score_entries", "game_results"],
   },
@@ -423,7 +438,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // Individually scored per hole; team membership changes nothing about who won a skin.
     resultKinds: ["ranked"],
     teamDependent: false,
-    allowedContainers: ["side_game", "points_race"],
+    recordsPerPersonResults: true,
+    allowedContainers: ["points_race"],
     // Its own outcome table, and no stroke scores at all (games.skins.test.ts).
     scoreTables: ["skins_hole_outcomes", "game_results"],
   },
@@ -462,7 +478,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     compatibleScoringModels: ["match_play", "points"],
     resultKinds: ["head_to_head"],
     teamDependent: true,
-    allowedContainers: ["side_game", "head_to_head", "points_race"],
+    recordsPerPersonResults: true,
+    allowedContainers: ["head_to_head", "points_race"],
     // score_entries in score mode, match_hole_outcomes in outcome mode (all four
     // BBMI 2026 rounds); a decided match's result on game_matches.
     scoreTables: ["score_entries", "match_hole_outcomes", "game_matches", "game_results"],
@@ -487,9 +504,10 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     requiresSides: true,
     maxPlayersPerSide: null,
     compatibleScoringModels: ["match_play"],
-    // No `side_game` BY RULING, not capability: ruling 12 makes it a head-to-head fixture whose two sides ARE the competition's two teams, and ruling 27 says it is never offered as a side game. PR 5 keeps it head-to-head only. (Six other formats lack `side_game` for capability, 2026-09-27 — see the field's doc.)
+    // `recordsPerPersonResults: false` BY RULING, not capability: ruling 12 makes it a head-to-head fixture whose two sides ARE the competition's two teams, and ruling 27 says it is never offered as a side game. PR 5 keeps it head-to-head only. (Six other formats lack `side_game` for capability, 2026-09-27 — see the field's doc.)
     resultKinds: ["head_to_head"],
     teamDependent: true,
+    recordsPerPersonResults: false,
     allowedContainers: ["head_to_head"],
     scoreTables: ["score_entries", "game_results"],
   },
@@ -512,7 +530,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // A manual type is head-to-head as a `matches` game and ranked as a `placement` one — the instance pins it.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    // No `side_game` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
+    recordsPerPersonResults: false,
+    // `recordsPerPersonResults: false` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
     allowedContainers: ["head_to_head", "points_race"],
     // By competition_format: placement → game_results; matches → game_matches.result;
     // bracket → bracket_matches. The finalize writes game_results in every case.
@@ -537,7 +556,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // As `gtt_generic_card` — Cornhole is the worked example, and it was a `matches` game.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    // No `side_game` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
+    recordsPerPersonResults: false,
+    // `recordsPerPersonResults: false` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
     allowedContainers: ["head_to_head", "points_race"],
     // By competition_format: placement → game_results; matches → game_matches.result;
     // bracket → bracket_matches. The finalize writes game_results in every case.
@@ -583,7 +603,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // BOTH, genuinely: sheet-versus-sheet matches and a points total, switched by `roll_up`. The case that made `resultKinds` a set rather than a value.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    // No `side_game` (PR 6's verify-first pass, 2026-09-27): with no competition the finalize has nobody to award and writes nothing, so a side pick'em would finish with no winner recorded. PR 7.
+    recordsPerPersonResults: false,
+    // `recordsPerPersonResults: false` (PR 6's verify-first pass, 2026-09-27): with no competition the finalize has nobody to award and writes nothing, so a side pick'em would finish with no winner recorded. PR 7.
     allowedContainers: ["head_to_head", "points_race"],
     // A runner's slate result. Sheets (pickem_picks) are inputs, hidden until the
     // reveal; pairings (game_matches) never carry a pick'em result.
@@ -608,7 +629,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // As `gtt_generic_card`.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    // No `side_game` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
+    recordsPerPersonResults: false,
+    // `recordsPerPersonResults: false` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
     allowedContainers: ["head_to_head", "points_race"],
     // By competition_format: placement → game_results; matches → game_matches.result;
     // bracket → bracket_matches. The finalize writes game_results in every case.
@@ -633,7 +655,8 @@ export const GAME_TYPE_DEFINITIONS: Record<string, GameTypeDefinition> = {
     // As `gtt_generic_card`.
     resultKinds: ["head_to_head", "ranked"],
     teamDependent: true,
-    // No `side_game` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
+    recordsPerPersonResults: false,
+    // `recordsPerPersonResults: false` (PR 6's verify-first pass, 2026-09-27): a generic type is placements, Matches or a bracket by its competition_format, and only a bracket records a result with no competition — placements rank the cup's teams and Matches pays team points. The declaration is per TYPE, so it cannot say 'bracket only'; bracket side games arrive with PR 7's teamless work.
     allowedContainers: ["head_to_head", "points_race"],
     // By competition_format: placement → game_results; matches → game_matches.result;
     // bracket → bracket_matches. The finalize writes game_results in every case.
@@ -718,13 +741,35 @@ export function gameTypesForScoringModel(
 }
 
 /**
- * The formats a SIDE game may be (PR 6b) — read from `allowedContainers`, the
- * declaration #1493 made truthful, so the add-game picker and `games.create`'s
- * refusal read ONE claim. PR 7 opens more formats by editing the declaration,
- * not a list here.
+ * Can this format be a SIDE game (no competition)? `recordsPerPersonResults` and
+ * nothing else — the add-game picker, `games.create`'s refusal and the go-live
+ * message all ask this, so they read ONE claim (#1493, PR 7 ruling 1).
  */
+export function canBeSideGame(gameTypeId: string | null | undefined): boolean {
+  return getGameTypeDefinition(gameTypeId)?.recordsPerPersonResults === true;
+}
+
+/**
+ * Can this format be played in a TEAMLESS points race — a points race with no
+ * teams, whose units are people (rulings 5, 22)? The SAME per-person fact a side
+ * game rests on (PR 7 ruling 1), plus the race itself admitting it: a points
+ * race, by both the container and the scoring-model axes.
+ */
+export function canPlayInTeamlessRace(gameTypeId: string | null | undefined): boolean {
+  const def = getGameTypeDefinition(gameTypeId);
+  if (!def || !def.recordsPerPersonResults) return false;
+  if (!def.allowedContainers.includes("points_race")) return false;
+  return def.compatibleScoringModels == null || def.compatibleScoringModels.includes("points");
+}
+
+/** The formats a SIDE game may be (PR 6b), for the add-game picker. */
 export function gameTypesForSideGame(catalog: GameType[] = GAME_TYPES): GameType[] {
-  return catalog.filter((t) => getGameTypeDefinition(t.id)?.allowedContainers.includes("side_game") === true);
+  return catalog.filter((t) => canBeSideGame(t.id));
+}
+
+/** The formats a TEAMLESS race may hold (PR 7), for the add-game picker. */
+export function gameTypesForTeamlessRace(catalog: GameType[] = GAME_TYPES): GameType[] {
+  return catalog.filter((t) => canPlayInTeamlessRace(t.id));
 }
 
 const SCORING_MODEL_LABEL: Record<ScoringModel, string> = {

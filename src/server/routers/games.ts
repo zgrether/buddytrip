@@ -22,7 +22,7 @@ import { type ScorecardSchema } from "@/lib/courseIndex";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { isPlacement, liveMatchPointsPerMatch, awardsPerMatch } from "@/lib/pointsDistribution";
-import { GAME_TYPES, getGameTypeDefinition, formatRefusalForScoringModel, type ScoringModel } from "@/lib/gameTypes";
+import { GAME_TYPES, canBeSideGame, canPlayInTeamlessRace, gameTypesForTeamlessRace, getGameTypeDefinition, formatRefusalForScoringModel, type ScoringModel } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
 import { seedScrambleTeamGroups } from "@/server/lib/scrambleTeamGroups";
@@ -511,16 +511,35 @@ export const gamesRouter = router({
           ? formatRefusalForScoringModel(input.gameTypeId, comp.scoring_model as ScoringModel | null)
           : null;
         if (refusal) throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
+        // PR 7 — a TEAMLESS race (a points race with no teams; a race plays as
+        // teams if and only if it has them, ruling B) holds only formats that
+        // record a result per person. Its units are people, and a format that
+        // pays teams would finish with nobody paid. The same declaration a side
+        // game reads (ruling 1). A head-to-head cup always has its two teams.
+        if (comp && (comp.scoring_model as string | null) === "points" && !canPlayInTeamlessRace(input.gameTypeId)) {
+          const teamCount = countOrThrow(
+            await ctx.supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", input.competitionId),
+            "race's teams"
+          );
+          if (teamCount === 0) {
+            const def = getGameTypeDefinition(input.gameTypeId);
+            const allowed = gameTypesForTeamlessRace().map((t) => t.name).join(", ");
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `${def?.name ?? "This format"} pays teams, and this race is played as individuals. Pick one of ${allowed}, or add teams to the race first.`,
+            });
+          }
+        }
       }
 
       // A SIDE game (no competition) only for a format that records a result
-      // without one — read from the declaration (`allowedContainers`, #1493), not a
-      // list here, so PR 7 opens more formats by editing one declaration. The
+      // without one — read from the declaration (`recordsPerPersonResults`, #1493,
+      // PR 7 ruling 1), not a list here, so a format opens by editing one declaration. The
       // picker offers only these; this is the door for a direct call, and the
       // reason matters: a side pick'em would finish with nothing recorded.
       if (!input.competitionId) {
         const def = getGameTypeDefinition(input.gameTypeId);
-        if (def && !def.allowedContainers.includes("side_game")) {
+        if (def && !canBeSideGame(input.gameTypeId)) {
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: `${def.name} records its result against a competition's teams, so it can't be a side game. Add it to the trip's competition.`,
