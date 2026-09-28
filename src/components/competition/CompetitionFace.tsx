@@ -236,10 +236,15 @@ export function CompetitionFace({
   // identity editable, roster read-only; member: all read-only). We only need
   // the team rows here to resolve the tapped id. faceBootstrap-seeded STRUCTURE
   // (cache hit).
-  const { data: teamsList = [] } = trpc.teams.list.useQuery(
+  const teamsListQ = trpc.teams.list.useQuery(
     { tripId, competitionId: competition?.id ?? "" },
     { ...STRUCTURE_QUERY, enabled: !!competition }
   );
+  const teamsList = teamsListQ.data ?? [];
+  // A TEAMLESS race (PR 7): a points race whose teams query has ANSWERED none.
+  // Not while it is loading: an unknown team list must not narrow the add-game
+  // menu (empty is not unknown).
+  const teamless = !!competition && competition.scoring_model === "points" && teamsListQ.data !== undefined && teamsListQ.data.length === 0;
 
   const handleEditTeam = (teamId: string) => {
     const team = (teamsList as Team[]).find((t) => t.id === teamId);
@@ -411,6 +416,7 @@ export function CompetitionFace({
           types={gameTypes}
           canEdit={canEdit}
           scoringModel={competition ? scoringModel : null}
+          teamless={teamless}
           onClose={() => {
             setAddingGame(false);
             utils.competitions.faceBootstrap.invalidate({ tripId });

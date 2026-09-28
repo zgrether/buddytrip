@@ -80,8 +80,8 @@ const MODEL_DISPLAY: Record<
   "match_play" | "points",
   { label: string; shape: string; icon: ReactNode }
 > = {
-  match_play: { label: "Match Play", shape: "Head-to-head", icon: <Swords size={16} /> },
-  points: { label: "Points", shape: "Teams", icon: <Users size={16} /> },
+  match_play: { label: "Match Play", shape: "Head to head", icon: <Swords size={16} /> },
+  points: { label: "Points", shape: "Points race", icon: <Users size={16} /> },
 };
 
 export function CompetitionSettingsModal({

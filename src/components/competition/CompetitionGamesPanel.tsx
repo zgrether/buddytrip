@@ -41,7 +41,7 @@ import { CATEGORY_ICONS } from "@/lib/gameCategoryIcon";
 // here, read synchronously, never fetched. Re-exported below so existing
 // consumers (CompetitionFace, GameSetupRows) keep their `from "./CompetitionGamesPanel"`
 // import path.
-import { gameTypesForScoringModel, gameTypesForSideGame, type GameType, type ScoringModel } from "@/lib/gameTypes";
+import { gameTypesForScoringModel, gameTypesForSideGame, gameTypesForTeamlessRace, type GameType, type ScoringModel } from "@/lib/gameTypes";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 
 export type { GameType };
@@ -141,10 +141,28 @@ export function formatLabel(key: string | null): string | null {
   return COMP_FORMATS.find((f) => f.key === key)?.label ?? (key ? LEGACY_FORMAT_LABELS[key] ?? null : null);
 }
 
+/**
+ * The formats the add-game sheet offers, by container. ONE function so the
+ * picker and its test cannot disagree: a side game and a TEAMLESS race read the
+ * per-person declaration (PR 7 ruling 1); a cup reads its scoring model.
+ * Each mirrors a refusal in `games.create`, so the UI never offers what the
+ * door refuses.
+ */
+export function offerableGameTypes(o: {
+  isSide: boolean;
+  teamless: boolean;
+  scoringModel: ScoringModel | null | undefined;
+  types: GameType[];
+}): GameType[] {
+  if (o.isSide) return gameTypesForSideGame(o.types);
+  if (o.teamless) return gameTypesForTeamlessRace(o.types);
+  return gameTypesForScoringModel(o.scoringModel, o.types);
+}
+
 // ── Game sheet (A1 P-D: single tab — the light add/edit skeleton) ──────────────
 
 export function GameSheet({
-  tripId, competitionId, competitionName, types, canEdit, scoringModel, onClose,
+  tripId, competitionId, competitionName, types, canEdit, scoringModel, teamless = false, onClose,
 }: {
   tripId: string;
   /** The trip's competition, or null when it has none (PR 6b: a game needs no
@@ -157,6 +175,9 @@ export function GameSheet({
   /** The competition's scoring-model (W-TYPE-01) — the create picker offers only
    *  formats compatible with it. Omit/null → offer everything. */
   scoringModel?: ScoringModel | null;
+  /** The competition is a points race with NO teams (PR 7): it holds only formats
+   *  that record a result per person, which `games.create` also refuses otherwise. */
+  teamless?: boolean;
   onClose: () => void;
 }) {
   // #509: GameSheet is Add-only (the edit-reopen path was retired in #505; #503
@@ -177,9 +198,10 @@ export function GameSheet({
 
   // What can be offered depends on the container: a cup's scoring-model filter
   // (W-TYPE-01), or — for a side game — the formats DECLARED able to be one
-  // (`allowedContainers`, read by `gameTypesForSideGame`), the same declaration
-  // `games.create`'s refusal reads.
-  const offerable = isSide ? gameTypesForSideGame(types) : gameTypesForScoringModel(scoringModel, types);
+  // (`recordsPerPersonResults`, read by `gameTypesForSideGame`), the same declaration
+  // `games.create`'s refusal reads. A TEAMLESS race (PR 7) reads the same
+  // per-person declaration (ruling 1), so it offers exactly what its door admits.
+  const offerable = offerableGameTypes({ isSide, teamless, scoringModel, types });
   const [category, setCategory] = useState<string>("golf");
   const [gameTypeId, setGameTypeId] = useState<string>(
     offerable.find((t) => t.category === "golf")?.id ?? offerable[0]?.id ?? ""

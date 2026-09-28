@@ -145,6 +145,7 @@ describe("games router — result_strategy dispatch guard", () => {
     ({ tripId, competitionId } = await ctx.createCupTrip({
       name: "Dispatch Guard Trip",
       scoringModel: "points",
+      teams: ["Team A", "Team B"],
     }));
   });
 

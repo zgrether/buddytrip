@@ -1,4 +1,4 @@
-import { getGameTypeDefinition } from "@/lib/gameTypes";
+import { canBeSideGame } from "@/lib/gameTypes";
 
 /**
  * The go-live refusal `save_game_config` raises for a competition game worth 0
@@ -20,16 +20,16 @@ export const POINT_VALUE_NOT_READY = "set a point value before enabling scoring"
  * give: a game that was meant as a practice round and was added to the cup by
  * mistake can be re-added as a side game, where no point value is asked for.
  * That half is offered only when the FORMAT can be a side game, read from its
- * `allowedContainers` declaration rather than a list of names, so a format that
- * gains `side_game` (PR 7) gets the advice by editing the declaration alone.
+ * `recordsPerPersonResults` declaration (`canBeSideGame`) rather than a list of
+ * names, so a format that gains a per-person writer gets the advice by editing
+ * the declaration alone.
  *
  * Every other refusal passes through as before (093): the RPC's text is
  * specific when it has something specific to say.
  */
 export function notReadyMessage(detail: string | undefined, gameTypeId: string | null): string {
   if (detail === POINT_VALUE_NOT_READY) {
-    const canBeSideGame = getGameTypeDefinition(gameTypeId)?.allowedContainers.includes("side_game") === true;
-    return canBeSideGame
+    return canBeSideGame(gameTypeId)
       ? "Set a point value, or delete this game and add it again as a side game."
       : "Set a point value before enabling scoring.";
   }

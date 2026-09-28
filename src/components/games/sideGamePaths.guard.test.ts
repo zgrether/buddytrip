@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { GAME_TYPE_DEFINITIONS } from "@/lib/gameTypes";
+import { GAME_TYPE_DEFINITIONS, canBeSideGame } from "@/lib/gameTypes";
 
 /**
  * SOURCE GUARD: the paths a SIDE game travels (PR 6b).
@@ -44,7 +44,7 @@ const SHARED = [
 describe("side-game paths", () => {
   it("every format that can be a side game has its view checked here", () => {
     const sideCapable = Object.keys(GAME_TYPE_DEFINITIONS)
-      .filter((id) => GAME_TYPE_DEFINITIONS[id].allowedContainers.includes("side_game"))
+      .filter((id) => canBeSideGame(id))
       .sort();
     expect(sideCapable, "a format gained side_game: add its view to SIDE_GAME_VIEWS and check it").toEqual(
       Object.keys(SIDE_GAME_VIEWS).sort()

@@ -87,7 +87,7 @@ export function GamePageHeader({
     >
       <CollapsedHero
         teams={d.teams}
-        teamTotals={d.teamTotals}
+        teamTotals={d.unitTotals}
         winNumber={d.winNumber}
         pointsAvailable={d.pointsAvailable}
         clincher={clincher}

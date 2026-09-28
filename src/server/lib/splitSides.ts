@@ -33,6 +33,24 @@ export async function refuseSplitSides(
   const lookup = (id: string) => teamOf.get(id);
   if (pairs.every((s) => sideUnit(s, lookup) !== null)) return;
 
+  // A TEAMLESS race (PR 7 ruling 3): every person is their own unit, so a
+  // two-person side always spans two, and "pair teammates" names an action that
+  // does not exist in a race with no teams. Say what is true there instead.
+  const { count: teamCount, error: teamsErr } = await supabase
+    .from("teams")
+    .select("id", { count: "exact", head: true })
+    .eq("competition_id", competitionId);
+  if (teamsErr) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the teams: ${teamsErr.message}` });
+  }
+  if ((teamCount ?? 0) === 0) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "This race is played as individuals, so each side of a match is one player until split payouts are supported. Pair them as singles.",
+    });
+  }
+
   // Only on a refusal: the names, so the sentence says who, not "a pair".
   const ids = [...new Set(pairs.flat())];
   const { data: people } = await supabase.from("users").select("id, name").in("id", ids);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { notReadyMessage, POINT_VALUE_NOT_READY } from "./notReadyMessage";
-import { GAME_TYPE_DEFINITIONS } from "@/lib/gameTypes";
+import { GAME_TYPE_DEFINITIONS, canBeSideGame } from "@/lib/gameTypes";
 
 /**
  * The Save banner's NOT_READY copy. The contract with the DATABASE's wording is
@@ -16,7 +16,7 @@ describe("notReadyMessage", () => {
     // first list here without this file changing — and a mutant that names
     // formats instead of reading the declaration fails whichever it forgot.
     const ids = Object.keys(GAME_TYPE_DEFINITIONS);
-    const side = ids.filter((id) => GAME_TYPE_DEFINITIONS[id].allowedContainers.includes("side_game"));
+    const side = ids.filter((id) => canBeSideGame(id));
     const notSide = ids.filter((id) => !side.includes(id));
     // Both halves non-empty, or the loops below prove nothing.
     expect(side.length).toBeGreaterThan(0);

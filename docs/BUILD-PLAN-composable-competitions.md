@@ -874,7 +874,78 @@ check is exactly ruling 23's "first result".
    teamless race's game carries per-person results exactly as a side game does. One reader.
 
 **Also:** file `competition_points_earned` as dead (never written, never read). Fix the
-stale `teams.ts:255` roster-lock comment in this PR.
+stale `teams.ts:255` roster-lock comment in this PR. *(Already recorded as dead on #826;
+re-measured there rather than filed twice.)*
+
+### The board: the proposal, and its rulings (2026-09-28)
+
+**The model.** A **unit** is a team or a person. A head-to-head cup's units are its two
+teams. A points race's units are its teams plus every person who has played one of its
+games and is on no team (ruling 22); a person with no result yet reads *no points yet*.
+**One reader rule: a result row credits a unit only if its entity IS a unit.**
+
+| Row | Credits |
+|---|---|
+| team row | that team |
+| person row | that person, only if they are on no team |
+| bracket entrant row | its stored `credited_team_id`, unchanged |
+| 2-person group row | nothing (2v2 is refused in a teamless race; a teamed 2v2 already has team rows) |
+
+In a teamed race no person is a unit, so every person row is ignored exactly as today:
+**teamed and head-to-head cups are byte-identical before and after**, and a control test
+pins it. The machinery below the read (`rollUp`, `placementPoints`, `gamePayout`,
+`settledPool`, `bankedOnlyWhenFinished`) is already unit-agnostic; what changes is the
+results read, the competitor list, "places paid" (`numTeams` → number of units), and the
+payload's team-keyed fields. Measured 2026-09-27: 30 cup games in production, zero unteamed
+participants in any of them.
+
+**Match play's writer**, because migration 194 allows one row per person per game and the
+board refuses a row that declares points while carrying a position: in a teamless race each
+player's row becomes a points row, from `awardMatches` (a win pays the per-match value, a
+halve splits it), with no position. Side games and teamed cups keep today's rows. The
+shared winner reader (ruling 5) learns to read points rows: a winner has points above 0,
+which matches how a halve already reads as a shared first.
+
+**Rulings:**
+
+- **A — mixed ranked games are deferred.** A stroke or skins game in a race that mixes
+  teams and individuals stays out of PR 7. Production has none, and PR 7's own case never
+  mixes. **Two facts to start from when it is decided:**
+  - **Ruling 6, read literally, points toward per-person payout credited to the unit** — a
+    participant's points go to their team if they have one, otherwise to them. Each person
+    earns a place and the team collects it, which is how the bracket already works.
+  - **Today's teamed stroke rule is flawed on its own terms.** A team's value is the SUM of
+    its members' totals (`src/lib/strokePlay.ts:436`), which compares teams unequally when
+    they have different numbers of finishers. So the choice is not "preserve today's rule or
+    adopt a new one": it is choosing one rule that works for mixed races **and** for unequal
+    teams. Per-person-then-credit and a team average fix different halves of that.
+- **B — "individuals or teams" is derived: a race plays as teams if and only if it has
+  teams.** A stored flag would be a second source of truth that can disagree with the team
+  count — the pattern this plan keeps removing. No migration; `rosterLock` already freezes
+  it at the first result (ruling 23); and it resolves #1502.
+- **C — PR 7's board for a teamless race:** completed games show their winners line (the
+  side-game row, same data), and the standings are a ranked list of units with *no points
+  yet* rather than 0. Ruling 30's direction minus the bars; the bars and projection stay in
+  PR 9.
+- **D — rename to units in PR 7** (`units`, `unitTotals`, `cells[].unitId`,
+  `projectedUnitTotals`). The meaning changes in this PR, so it is the cheapest moment; the
+  compiler finds every site.
+
+**The deploy check that comes with D, answered.** The query cache is **in memory only**:
+no React Query persister is installed, the service worker never answers a request
+(`public/sw.js`), and the only persisted cache is chat's own. So there is nothing to
+version-bump. **The live risk is version skew instead:** a phone with the app open during
+the deploy keeps the OLD client, whose requests reach the NEW server. Skew protection is
+not configured in the repo (no `deploymentId`) and the project API does not report it, so
+it is treated as off. **For one release the payload also carries the old `team*` names**
+(for head-to-head and teamed cups their values are identical, because units are teams; a
+teamless race is new, so no old client has rendered one), and a follow-up PR removes them
+once the deploy has settled.
+
+**Mutants (3b scale):** the reader drops person rows; **a teamed person is also credited as
+a unit** (the double count the byte-identical control exists to prevent); "places paid"
+still counts teams; the match writer keeps a position on points rows; the unit list is built
+from teams only.
 
 ---
 

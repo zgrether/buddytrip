@@ -420,7 +420,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     const liveInput: LiveGame[] = [{
       id: g.id,
       distribution: [9, 6],
-      numTeams: 2,
+      numUnits: 2,
       standings: [
         { entityId: t1, value: 1 },
         { entityId: t2, value: 2 },
@@ -429,8 +429,8 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     }];
     const roll = rollUp(liveInput, [t1, t2]);
 
-    expect(lb.teamTotals[t1]).toBe(roll.teamTotals.get(t1));
-    expect(lb.teamTotals[t2]).toBe(roll.teamTotals.get(t2));
+    expect(lb.teamTotals[t1]).toBe(roll.unitTotals.get(t1));
+    expect(lb.teamTotals[t2]).toBe(roll.unitTotals.get(t2));
     expect(lb.winNumber).toBe(roll.winNumber);
     expect(lb.pointsAvailable).toBe(roll.pointsAvailable);
   });
@@ -438,7 +438,7 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
 
 describe("D2 R1 — `started` (On Tap ↔ Ready for Play split)", () => {
   it("started is false with no score entries, true once one exists", async () => {
-    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Started Comp", scoringModel: "points" });
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Started Comp", scoringModel: "points", teams: ["Team A", "Team B"] });
     const g = await ctx.caller().games.create({
       tripId, gameTypeId: MANUAL, name: "Startable", competitionId: comp,
       pointsDistribution: { type: "placement", values: [9, 6] },

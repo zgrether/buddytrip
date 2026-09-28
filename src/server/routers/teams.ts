@@ -3,9 +3,10 @@ import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireCompetitionRole, requireTeamIdentityEdit } from "../middleware";
-import { assertRosterUnlocked } from "../lib/rosterLock";
+import { assertRosterUnlocked, competitionHasScore } from "../lib/rosterLock";
 import { reconcileClinchClaim } from "../lib/gameFinishNotify";
-import { maybeRowOrThrow } from "../lib/rowOrThrow";
+import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
+import { canPlayInTeamlessRace } from "@/lib/gameTypes";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
 
 /**
@@ -46,6 +47,19 @@ export const HEAD_TO_HEAD_NO_THIRD_TEAM =
   "A Match Play cup is exactly two teams, so it can't take another. Rename or recolour one of the two in Rosters instead.";
 export const HEAD_TO_HEAD_KEEPS_BOTH_TEAMS =
   "A Match Play cup is exactly two teams, so neither can be deleted. Rename it in Rosters instead, or delete the whole cup in its settings.";
+/** PR 7, ruling 23: individuals-or-teams locks at the first result. The way out
+ *  that exists is clearing the results, which the competition's settings offer. */
+export const INDIVIDUALS_LOCKED_AT_FIRST_RESULT =
+  "This race is played as individuals and already has results, so it can't switch to teams: that would null everyone's points. Reset the race's scores in its settings first.";
+
+/** How many teams a competition has, any kind (PR 7: a points race with none is
+ *  played as individuals, ruling B). A failed read throws, never reads as 0. */
+async function teamCount(supabase: SupabaseClient, competitionId: string): Promise<number> {
+  return countOrThrow(
+    await supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", competitionId),
+    "competition's teams"
+  );
+}
 
 /**
  * How many teams a head-to-head cup holds, or null when the competition is not
@@ -108,6 +122,15 @@ export const teamsRouter = router({
       const h2hTeams = await headToHeadTeamCount(ctx.supabase, input.competitionId);
       if (h2hTeams !== null && h2hTeams >= 2) {
         throw new TRPCError({ code: "BAD_REQUEST", message: HEAD_TO_HEAD_NO_THIRD_TEAM });
+      }
+      // PR 7, ruling 23: a race's FIRST team switches it from individuals to teams
+      // (a race plays as teams iff it has them, ruling B), and that is locked at
+      // the first result — converting would make every participant a teamless
+      // player joining a team, and ruling 17 would null the whole race.
+      if (h2hTeams === null && (await teamCount(ctx.supabase, input.competitionId)) === 0) {
+        if (await competitionHasScore(ctx.supabase, input.competitionId)) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: INDIVIDUALS_LOCKED_AT_FIRST_RESULT });
+        }
       }
 
       const { data: inserted, error: insertErr } = await ctx.supabase
@@ -231,6 +254,23 @@ export const teamsRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: HEAD_TO_HEAD_KEEPS_BOTH_TEAMS });
         }
         await assertRosterUnlocked(ctx.supabase, team.competition_id as string);
+        // PR 7: deleting a points race's LAST team makes it a teamless race (ruling
+        // B), which holds only formats that record a result per person. A game
+        // that pays teams would then finish paying nobody, so it is named here.
+        if (h2hTeams === null && (await teamCount(ctx.supabase, team.competition_id as string)) === 1) {
+          const games = rowsOrThrow(
+            await ctx.supabase.from("games").select("name, game_type_id").eq("competition_id", team.competition_id as string),
+            "race's games"
+          );
+          const blocking = games.filter((g) => !canPlayInTeamlessRace(g.game_type_id as string | null));
+          if (blocking.length > 0) {
+            const names = blocking.map((g) => (g.name as string | null)?.trim() || "an unnamed game").join(", ");
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Without teams this race is played as individuals, and ${names} pays teams. Remove ${blocking.length === 1 ? "that game" : "those games"} first, or keep a team.`,
+            });
+          }
+        }
       }
 
       // #781 — count deliberately NOT asserted. Zero rows here means the
@@ -252,14 +292,12 @@ export const teamsRouter = router({
         });
       }
 
-      // The roster lock above blocks this once ANY score_entries row exists —
-      // but it checks score_entries specifically, not game_results, so a
-      // competition scored entirely through manual (non-golf) games — which
-      // write straight to game_results and never touch score_entries — stays
-      // UNLOCKED for team deletion even after it's fully decided. And for a
-      // per_match rack competition, pointsAvailable is team-size-derived, so
-      // losing a team's assignments can shift it in either direction. Both are
-      // real, if narrow, un-clinch paths this lock doesn't close.
+      // The roster lock above blocks this once ANY game in the competition has
+      // started — `game_started`, every format's own answer (#1018), not only
+      // `score_entries` as this comment used to say (corrected in PR 7). What it
+      // does not close: a per_match rack competition's pointsAvailable is
+      // team-size-derived, so an unstarted cup losing a team's assignments can
+      // shift the clinch target, which is why the claim is reconciled here.
       if (team?.competition_id) {
         await reconcileClinchClaim(team.competition_id as string);
       }

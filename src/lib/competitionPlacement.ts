@@ -23,13 +23,13 @@ export interface Standing {
 export type Direction = "low_wins" | "high_wins";
 
 /** One game's contribution to the roll-up. A Phase-1 shell has standings: [] and
- *  still contributes points-available (sum of distribution[0..numTeams-1]). */
+ *  still contributes points-available (sum of distribution[0..numUnits-1]). */
 export interface LiveGame {
   id: string;
   /** Ordered points by place, e.g. [9,6,4,2]. Null/empty → contributes nothing. */
   distribution: number[] | null;
-  /** Teams in the competition that this game ranks (numTeams for points-available). */
-  numTeams: number;
+  /** Teams in the competition that this game ranks (numUnits for points-available). */
+  numUnits: number;
   /** Per-team standings once results exist; empty before any are entered/computed. */
   standings: Standing[];
   direction: Direction;
@@ -39,7 +39,7 @@ export interface LiveGame {
    * and the win number INDEPENDENTLY of whether the distribution/pairings are
    * set — so the clinch number stays stable as games get configured across the
    * week (§8). When omitted/null, falls back to awardedForGame(distribution,
-   * numTeams) — the pre-Slice-D behavior. A value of 0 means "in play but
+   * numUnits) — the pre-Slice-D behavior. A value of 0 means "in play but
    * nothing yet" (e.g. match game whose teams aren't sized) and does NOT fall
    * back.
    */
@@ -117,13 +117,13 @@ export function placementDetail(
   return out;
 }
 
-/** Sum awarded by one game = sum(distribution[0 .. numTeams-1]). Invariant under
+/** Sum awarded by one game = sum(distribution[0 .. numUnits-1]). Invariant under
  *  ties (5b averaging preserves it). A shell with a distribution but no results
  *  still contributes this to points-available. */
-export function awardedForGame(distribution: number[] | null, numTeams: number): number {
-  if (!distribution || distribution.length === 0 || numTeams <= 0) return 0;
+export function awardedForGame(distribution: number[] | null, numUnits: number): number {
+  if (!distribution || distribution.length === 0 || numUnits <= 0) return 0;
   let sum = 0;
-  for (let i = 0; i < numTeams; i++) sum += dist(distribution, i);
+  for (let i = 0; i < numUnits; i++) sum += dist(distribution, i);
   return sum;
 }
 
@@ -131,7 +131,7 @@ export interface RollUp {
   /** Σ over live games of awardedForGame. */
   pointsAvailable: number;
   /** entityId → Σ distribution points across live games. */
-  teamTotals: Map<string, number>;
+  unitTotals: Map<string, number>;
   /** The number a team must REACH to clinch (see winThreshold). */
   winNumber: number;
   /** entityId → winNumber − currentPoints (≤0 means clinched). */
@@ -161,7 +161,7 @@ export function winThreshold(pointsAvailable: number, defending: boolean): numbe
 
 /**
  * What a game PAID, per team — the one definition. `rollUp` banks exactly this
- * into `teamTotals`, and `settledPool` sums exactly this for a finished game's
+ * into `unitTotals`, and `settledPool` sums exactly this for a finished game's
  * share of points-available, so "what the teams banked" and "what the game
  * counted as available" cannot be two expressions that drift (#1420).
  */
@@ -256,24 +256,24 @@ export function bankedOnlyWhenFinished(g: LiveGame, status: string | null): Live
  * — dropping/restoring a game changes the set, which is exactly why the win
  * number recomputes (§4): it is derived here, never stored.
  *
- * `teamIds` is the full competition roster so a team with zero points still
+ * `unitIds` is the full competition roster so a team with zero points still
  * appears (and so points-to-clinch is defined for everyone).
  */
 export function rollUp(
   liveGames: LiveGame[],
-  teamIds: string[],
+  unitIds: string[],
   opts?: { defendingTeamId?: string | null }
 ): RollUp {
-  const teamTotals = new Map<string, number>(teamIds.map((id) => [id, 0]));
+  const unitTotals = new Map<string, number>(unitIds.map((id) => [id, 0]));
   let pointsAvailable = 0;
 
   for (const g of liveGames) {
     // Available = the explicit per-game total when provided (Slice D stable
     // clinch), else the pre-Slice-D awardable sum. `?? ` keeps an explicit 0
     // (match game, teams not sized) from falling back.
-    pointsAvailable += g.pointsTotal ?? awardedForGame(g.distribution, g.numTeams);
+    pointsAvailable += g.pointsTotal ?? awardedForGame(g.distribution, g.numUnits);
     for (const [entityId, p] of gamePayout(g)) {
-      teamTotals.set(entityId, (teamTotals.get(entityId) ?? 0) + p);
+      unitTotals.set(entityId, (unitTotals.get(entityId) ?? 0) + p);
     }
   }
 
@@ -282,12 +282,12 @@ export function rollUp(
   const defenderWin = winThreshold(pointsAvailable, true);
 
   const pointsToClinch = new Map<string, number>();
-  for (const id of teamIds) {
+  for (const id of unitIds) {
     const need = id === defenderId ? defenderWin : generalWin;
-    pointsToClinch.set(id, need - (teamTotals.get(id) ?? 0));
+    pointsToClinch.set(id, need - (unitTotals.get(id) ?? 0));
   }
 
   // The headline win number is the general (>half) one; the defender's lower bar
   // is reflected only in its own pointsToClinch.
-  return { pointsAvailable, teamTotals, winNumber: generalWin, pointsToClinch };
+  return { pointsAvailable, unitTotals, winNumber: generalWin, pointsToClinch };
 }

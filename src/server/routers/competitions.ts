@@ -295,8 +295,15 @@ export const competitionsRouter = router({
         tagline: z.string().max(500).optional(),
         scoringModel: z.enum(["match_play", "points"]).default("match_play"),
         // How many default teams to seed (points shape; the create picker, §1). Match-play
-        // is locked at 2. Clamped 2..MAX so a bad client can't over-seed.
-        teamCount: z.number().int().min(2).max(MAX_SEED_TEAMS).default(2),
+        // is locked at 2. A points race takes 0 — played as INDIVIDUALS, no roster
+        // (PR 7, rulings 21, 22) — or 2..MAX; one team is not a race.
+        teamCount: z
+          .number()
+          .int()
+          .min(0)
+          .max(MAX_SEED_TEAMS)
+          .refine((n) => n === 0 || n >= 2, "A points race is played as individuals (no teams) or by two or more teams.")
+          .default(2),
       })
     )
     .use(requireTripRole("Organizer"))
@@ -380,7 +387,9 @@ export const competitionsRouter = router({
       // it fails, the competition is removed and the create fails, rather than leaving
       // a head-to-head cup with fewer than two teams.
       const teamCount = input.scoringModel === "match_play" ? 2 : input.teamCount;
-      const { error: seedErr } = await ctx.supabase.from("teams").insert(
+      // An INDIVIDUALS race (PR 7) seeds nothing: it plays as teams only if it has
+      // them (ruling B), and its standings are whoever plays its games (ruling 22).
+      const { error: seedErr } = teamCount === 0 ? { error: null } : await ctx.supabase.from("teams").insert(
         Array.from({ length: teamCount }, (_, i) => {
           const { name, shortName } = seedTeamName(i);
           const swatch = SEED_TEAM_COLORS[i] ?? SEED_TEAM_COLORS[SEED_TEAM_COLORS.length - 1];

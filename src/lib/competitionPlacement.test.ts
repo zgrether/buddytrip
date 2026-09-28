@@ -72,7 +72,7 @@ describe("placementDetail — place + points for the grid cell", () => {
 });
 
 describe("awardedForGame (§6)", () => {
-  it("sums distribution over the first numTeams places", () => {
+  it("sums distribution over the first numUnits places", () => {
     expect(awardedForGame([9, 6, 4, 2], 4)).toBe(21);
     expect(awardedForGame([9, 6, 4, 2], 2)).toBe(15);
     expect(awardedForGame([9, 6, 4, 2], 6)).toBe(21); // beyond length → +0
@@ -97,7 +97,7 @@ describe("rollUp — points-available, totals, win number (§6)", () => {
   const game = (id: string, distribution: number[], values: number[]): LiveGame => ({
     id,
     distribution,
-    numTeams: 4,
+    numUnits: 4,
     standings: standings(values),
     direction: "low_wins",
   });
@@ -107,8 +107,8 @@ describe("rollUp — points-available, totals, win number (§6)", () => {
     const games = [game("g1", [9, 6, 4, 2], [1, 2, 3, 4]), game("g2", [9, 6, 4, 2], [4, 3, 2, 1])];
     const r = rollUp(games, teams);
     expect(r.pointsAvailable).toBe(42); // 21 + 21
-    expect(r.teamTotals.get("t0")).toBe(9 + 2); // 1st in g1, 4th in g2
-    expect(r.teamTotals.get("t3")).toBe(2 + 9);
+    expect(r.unitTotals.get("t0")).toBe(9 + 2); // 1st in g1, 4th in g2
+    expect(r.unitTotals.get("t3")).toBe(2 + 9);
     expect(r.winNumber).toBe(21.5); // > half of 42
   });
 
@@ -123,10 +123,10 @@ describe("rollUp — points-available, totals, win number (§6)", () => {
   });
 
   it("Phase-1 shell (no standings) still contributes points-available", () => {
-    const shell: LiveGame = { id: "shell", distribution: [9, 6, 4, 2], numTeams: 4, standings: [], direction: "low_wins" };
+    const shell: LiveGame = { id: "shell", distribution: [9, 6, 4, 2], numUnits: 4, standings: [], direction: "low_wins" };
     const r = rollUp([shell], teams);
     expect(r.pointsAvailable).toBe(21); // contributes before anything is played
-    expect(r.teamTotals.get("t0")).toBe(0); // …but awards nothing yet
+    expect(r.unitTotals.get("t0")).toBe(0); // …but awards nothing yet
     expect(r.winNumber).toBe(11);
   });
 
@@ -138,7 +138,7 @@ describe("rollUp — points-available, totals, win number (§6)", () => {
     const even = [game("g1", [9, 6, 4, 2], [1, 2, 3, 4]), game("g2", [9, 6, 4, 2], [1, 2, 3, 4])]; // 42
     const r2 = rollUp(even, teams, { defendingTeamId: "t3" });
     expect(r2.winNumber).toBe(21.5); // headline (non-defender) bar
-    expect(r2.pointsToClinch.get("t3")).toBe(21 - (r2.teamTotals.get("t3") ?? 0)); // defender: exactly half (21)
-    expect(r2.pointsToClinch.get("t0")).toBe(21.5 - (r2.teamTotals.get("t0") ?? 0)); // non-defender: > half
+    expect(r2.pointsToClinch.get("t3")).toBe(21 - (r2.unitTotals.get("t3") ?? 0)); // defender: exactly half (21)
+    expect(r2.pointsToClinch.get("t0")).toBe(21.5 - (r2.unitTotals.get("t0") ?? 0)); // non-defender: > half
   });
 });

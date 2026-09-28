@@ -24,7 +24,7 @@ const pointsGame = (id: string, paid: Record<string, number>, ownerTotal: number
   return {
     id,
     distribution: standings.length ? standings.map((s) => s.value) : null,
-    numTeams: 2,
+    numUnits: 2,
     standings,
     direction: "high_wins",
     pointsTotal: ownerTotal,
@@ -67,7 +67,7 @@ describe("settledPool — what a game contributes to points-available", () => {
     const placement: LiveGame = {
       id: "p",
       distribution: [5, 3],
-      numTeams: 2,
+      numUnits: 2,
       standings: [
         { entityId: "blue", value: 1 },
         { entityId: "red", value: 2 },
@@ -96,7 +96,7 @@ describe("settledPool — what a game contributes to points-available", () => {
     const g = pointsGame("g", { blue: 4.5, red: 1.5 }, 8);
     const banked = [...gamePayout(g).values()].reduce((a, b) => a + b, 0);
     const roll = rollUp([{ ...g, pointsTotal: settledPool(g, COMPLETE) }], ["blue", "red"]);
-    const bankedByRoll = [...roll.teamTotals.values()].reduce((a, b) => a + b, 0);
+    const bankedByRoll = [...roll.unitTotals.values()].reduce((a, b) => a + b, 0);
     expect(settledPool(g, COMPLETE)).toBe(banked);
     expect(roll.pointsAvailable).toBe(bankedByRoll);
   });
