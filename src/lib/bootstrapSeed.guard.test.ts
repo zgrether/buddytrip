@@ -128,6 +128,47 @@ describe("no snapshot restore on the roster, schedule and trip-member writers (#
     ).toBeNull();
   });
 
+  /**
+   * THE RATCHET (#1514). The idiom survives in 13 other files, deliberately left
+   * until after PR 9: no wrong number reaches production (the server holds the
+   * truth and the screen corrects on the next refetch) and nothing is lost.
+   *
+   * This is NOT an exemption list. An exemption is permanent; this has to reach
+   * zero. The assertion is EQUALITY with the list, so it fails both ways:
+   *  - a 14th file adopts the idiom → it is in the scan and not in the list;
+   *  - a listed file is converted → it is in the list and not in the scan, and
+   *    the fix is to delete its line. The list can only shrink.
+   */
+  const RESTORE_DEBT = [
+    "app/trips/[tripId]/components/DatesSheet.tsx",
+    "app/trips/[tripId]/components/IdeaZonePanel.tsx",
+    "app/trips/[tripId]/components/LodgingPanel.tsx",
+    "app/trips/[tripId]/components/setup-guide/SetDatesFlipCard.tsx",
+    "app/trips/[tripId]/tabs/AddExpenseModal.tsx",
+    "app/trips/[tripId]/tabs/EditExpenseModal.tsx",
+    "app/trips/[tripId]/tabs/ExpensesSection.tsx",
+    "app/trips/[tripId]/tabs/components/DatePollCard.tsx",
+    "components/InfoTileModal.tsx",
+    "components/competition/CompetitionSettingsModal.tsx",
+    "components/competition/CompetitionSetupPanel.tsx",
+    "components/profile/PreferencesPanel.tsx",
+    "lib/useNotificationPreference.ts",
+  ];
+
+  it("RATCHET: the restore idiom appears in exactly the known-debt files, and that list only shrinks (#1514)", () => {
+    const restoring = FILES.filter((f) => RESTORE.test(readFileSync(f, "utf8"))).map(rel).sort();
+    expect(
+      restoring,
+      "The set of files restoring a snapshot on error changed. If a file was ADDED, re-fetch on " +
+        "error instead (CLAUDE.md #1). If one was CONVERTED, delete its line from RESTORE_DEBT: " +
+        "the list only shrinks, and #1514 is done when it is empty."
+    ).toEqual([...RESTORE_DEBT].sort());
+  });
+
+  it("the ruled scope never re-enters the debt list", () => {
+    for (const f of SCOPE) expect(RESTORE_DEBT).not.toContain(f);
+  });
+
   it("the restore pattern matches the idiom it exists to catch (the instrument can go red)", () => {
     // Every real shape the codebase used, so a regex that matches nothing cannot pass.
     expect(RESTORE.test("utils.tripMembers.list.setData({ tripId }, ctx.prev);")).toBe(true);
