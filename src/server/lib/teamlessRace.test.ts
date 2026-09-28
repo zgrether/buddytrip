@@ -171,6 +171,33 @@ describe("a teamless race", () => {
   }, 60_000);
 });
 
+describe("creating a race played as individuals (rulings 21, 22)", () => {
+  it("a points race created with no teams seeds none and is teamless; one team is refused", async () => {
+    const tripId = await ctx.createTrip("Individuals race");
+    const created = (await ctx.caller().competitions.create({
+      tripId, name: "Buddy Open", scoringModel: "points", teamCount: 0,
+    })) as { id: string };
+    const { count } = await ctx.admin.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", created.id);
+    expect(count).toBe(0);
+    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: created.id });
+    expect(lb.teamless).toBe(true);
+    expect(lb.units).toEqual([]);
+
+    // One team is not a race, and not "individuals" either.
+    const other = await ctx.createTrip("One-team race");
+    await expect(
+      ctx.caller().competitions.create({ tripId: other, name: "Lonely Open", scoringModel: "points", teamCount: 1 })
+    ).rejects.toThrow(/individuals \(no teams\) or by two or more teams/);
+    // CONTROL: head to head still seeds its two, whatever count is asked for.
+    const h2hTrip = await ctx.createTrip("H2H race");
+    const h2h = (await ctx.caller().competitions.create({
+      tripId: h2hTrip, name: "Ryder", scoringModel: "match_play", teamCount: 0,
+    })) as { id: string };
+    const { count: h2hTeams } = await ctx.admin.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", h2h.id);
+    expect(h2hTeams).toBe(2);
+  }, 60_000);
+});
+
 describe("switching between teams and individuals (rulings B, 23)", () => {
   it("deleting the LAST team is refused while a team-paying game is in the race, naming it", async () => {
     const { tripId, competitionId, teamIds } = await ctx.createCupTrip({

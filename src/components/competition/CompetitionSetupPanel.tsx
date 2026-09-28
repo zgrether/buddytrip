@@ -43,14 +43,14 @@ const SHAPE_OPTIONS: ShapeOption[] = [
   {
     model: "match_play",
     icon: <Swords size={18} />,
-    title: "Head-to-head",
-    blurb: "Two teams, match play — win, halve, or lose each game.",
+    title: "Head to head",
+    blurb: "Two teams play matches against each other. Ryder Cup style — knows when a side has clinched.",
   },
   {
     model: "points",
     icon: <Users size={18} />,
-    title: "Teams",
-    blurb: "Two or more teams race for points each game — most points wins.",
+    title: "Points race",
+    blurb: "Everyone earns points across the games you add. Play as individuals, or split into teams.",
   },
 ];
 
@@ -71,6 +71,9 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
 
   const [scoringModel, setScoringModel] = useState<ScoringModel>("match_play");
   const [teamCount, setTeamCount] = useState(2);
+  // A points race is played as INDIVIDUALS by default (PR 7, ruling 21):
+  // structure is something you add, not something you are made to build.
+  const [playAs, setPlayAs] = useState<"individuals" | "teams">("individuals");
   const [name, setName] = useState(competition?.name ?? "");
   const [tagline, setTagline] = useState(competition?.tagline ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -152,8 +155,9 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       name: trimmedName,
       tagline: tagline.trim() || undefined,
       scoringModel,
-      // Match-play is locked at 2 teams; the picker only applies to the Teams shape.
-      teamCount: scoringModel === "points" ? teamCount : 2,
+      // Match-play is locked at 2 teams. A points race played as individuals seeds
+      // none: it has no roster, and its standings are whoever plays (ruling 22).
+      teamCount: scoringModel === "points" ? (playAs === "individuals" ? 0 : teamCount) : 2,
     });
     onSuccess?.();
   }
@@ -192,7 +196,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       <div className="space-y-4">
         {/* Shape chooser — create only (the shape is frozen after creation). */}
         {!isEdit && (
-          <FieldShell label="Competition Shape" required>
+          <FieldShell label="How are you competing?" required>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="shape-chooser">
               {SHAPE_OPTIONS.map((opt) => (
                 <ShapeCard
@@ -206,9 +210,35 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
           </FieldShell>
         )}
 
-        {/* Team count — Teams (points) shape only; head-to-head is locked at 2. The picker
-            seeds N default-named teams (Team A…N), renameable later in the team editor. */}
+        {/* Play as — a points race only (ruling 21). Individuals is the default and
+            has NO roster step: whoever plays the race's games is in the standings. */}
         {!isEdit && scoringModel === "points" && (
+          <FieldShell label="Play as" required>
+            <div className="grid grid-cols-2 gap-2" data-testid="play-as">
+              {(["individuals", "teams"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setPlayAs(v)}
+                  aria-pressed={playAs === v}
+                  data-testid={`play-as-${v}`}
+                  className="rounded-lg px-3 py-2 text-sm font-semibold"
+                  style={{
+                    background: playAs === v ? "var(--color-bt-accent-faint)" : "var(--color-bt-card-raised)",
+                    border: `1px solid ${playAs === v ? "var(--color-bt-accent)" : "var(--color-bt-border)"}`,
+                    color: playAs === v ? "var(--color-bt-accent)" : "var(--color-bt-text)",
+                  }}
+                >
+                  {v === "individuals" ? "Individuals" : "Teams"}
+                </button>
+              ))}
+            </div>
+          </FieldShell>
+        )}
+
+        {/* Team count — a points race played as TEAMS only; head-to-head is locked at
+            2. The picker seeds N default-named teams (Team A…N), renameable later. */}
+        {!isEdit && scoringModel === "points" && playAs === "teams" && (
           <FieldShell label="Teams" required>
             <div
               className="flex items-center justify-between rounded-lg px-3 py-2"

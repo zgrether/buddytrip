@@ -85,7 +85,8 @@ export interface LBGame {
 
 export interface LBCell {
   gameId: string;
-  teamId: string;
+  /** The team, or (teamless race) the person, this cell is for (PR 7). */
+  unitId: string;
   place: number;
   points: number;
 }
@@ -107,8 +108,23 @@ export interface LBViewer {
  *  shape the router already owns. */
 type LeaderboardQueryData = inferRouterOutputs<AppRouter>["competitions"]["leaderboard"];
 
+/** A competitor on the board: a team, or in a teamless race a person (PR 7). */
+export interface LBUnit {
+  id: string;
+  kind: "team" | "person";
+  name: string;
+  short_name: string | null;
+  color: string | null;
+  /** False = NO POINTS YET, which a 0 in `unitTotals` cannot say (ruling 30). */
+  hasResult: boolean;
+}
+
 interface LeaderboardData {
   teams: LBTeam[];
+  /** The competitors, in board order — the teams, or a teamless race's people. */
+  units: LBUnit[];
+  /** A points race with no teams: its units are people (PR 7, ruling B). */
+  teamless: boolean;
   games: LBGame[];
   cells: LBCell[];
   /** gameId → teamId → projected points, for LIVE match/rack games only (the
@@ -117,10 +133,11 @@ interface LeaderboardData {
   /** gameId → why a live game whose format projects can't right now (3c).
    *  Disjoint from `projections`. */
   cannotProject: Record<string, CannotProjectReason>;
-  teamTotals: Record<string, number>;
-  /** Per-team projected total ("if today holds") = banked + Σ live-game projections
-   *  (server-summed). The hero's projected tier reads it; delta = this − teamTotals. */
-  projectedTeamTotals: Record<string, number>;
+  /** unitId → banked points (PR 7: keyed by unit; for a teamed cup, the teams). */
+  unitTotals: Record<string, number>;
+  /** Per-unit projected total ("if today holds") = banked + Σ live-game projections
+   *  (server-summed). The hero's projected tier reads it; delta = this − unitTotals. */
+  projectedUnitTotals: Record<string, number>;
   /** ≥1 game live → show the hero's projected tier at all (independent of any delta). */
   hasLiveProjection: boolean;
   pointsAvailable: number;
@@ -225,7 +242,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     const m = new Map<string, Map<string, LBCell>>();
     for (const c of data?.cells ?? []) {
       if (!m.has(c.gameId)) m.set(c.gameId, new Map());
-      m.get(c.gameId)!.set(c.teamId, c);
+      m.get(c.gameId)!.set(c.unitId, c);
     }
     return m;
   }, [data?.cells]);
@@ -275,9 +292,14 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // `defendingTeamId` went with the clinch ribbon — it was that banner's only
   // reader, used to say "retains" rather than "wins". The hero's clinch line
   // does not make that distinction, so nothing consumes it here now.
-  const { teams, teamTotals, pointsAvailable, winNumber, pointsToClinch } = data;
+  const { teams, unitTotals, pointsAvailable, winNumber, pointsToClinch } = data;
+  // Hero, matrix and team list are TEAM constructs; for a teamed cup the units
+  // are the teams, so their totals are the team totals.
+  const teamTotals = unitTotals;
 
-  if (teams.length === 0) {
+  // A head-to-head cup always has its two teams (created with them, and neither
+  // can be deleted). Defensive only, and it names the one place teams are set.
+  if (teams.length === 0 && !data.teamless) {
     return <NoTeamsState />;
   }
 
@@ -352,7 +374,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         tagline={tagline}
         teams={teams}
         teamTotals={teamTotals}
-        projectedTeamTotals={data.projectedTeamTotals}
+        projectedTeamTotals={data.projectedUnitTotals}
         hasLiveProjection={data.hasLiveProjection}
         pointsAvailable={pointsAvailable}
         winNumber={winNumber}
@@ -377,7 +399,13 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
       {/* POINTS body (board-body branching, left untouched): the standings glance
           + the collapsible games×teams matrix, below the identity hero. match_play
           needs neither — the hero's two-score head-to-head is the whole story. */}
-      {scoringModel === "points" && (
+      {/* A TEAMLESS race (PR 7, ruling C): its people, ranked, with NO POINTS YET
+          rather than 0 for anyone yet to finish a game. No bars and no games ×
+          units matrix — a column per person does not scale; the completed rows
+          name each game's winners instead. The bars are PR 9's. */}
+      {data.teamless && <PeopleRankedList units={data.units} unitTotals={unitTotals} />}
+
+      {scoringModel === "points" && !data.teamless && (
         <>
           <div
             className="overflow-hidden rounded-xl"
@@ -772,6 +800,64 @@ export function GamesSection({
 // total desc, the leader emphasized (larger total), trailing teams present but
 // quieter. Reached only by points cups now — match_play renders the Ryder hero.
 
+/**
+ * A TEAMLESS race's standings (PR 7, ruling C): its people in order, points on
+ * the right. Someone with no finished result reads **no points yet** and sorts
+ * below everyone who has one — never "0", which would say they played and scored
+ * nothing (ruling 30). Ties share a rank.
+ */
+function PeopleRankedList({ units, unitTotals }: { units: LBUnit[]; unitTotals: Record<string, number> }) {
+  const scored = units
+    .filter((u) => u.hasResult)
+    .sort((a, b) => (unitTotals[b.id] ?? 0) - (unitTotals[a.id] ?? 0) || a.name.localeCompare(b.name));
+  const waiting = units.filter((u) => !u.hasResult).sort((a, b) => a.name.localeCompare(b.name));
+  // Standard competition ranking (1, 2, 2, 4).
+  const rankOf = new Map<string, number>();
+  scored.forEach((u, i) => {
+    const prev = scored[i - 1];
+    rankOf.set(u.id, prev && (unitTotals[prev.id] ?? 0) === (unitTotals[u.id] ?? 0) ? rankOf.get(prev.id)! : i + 1);
+  });
+  return (
+    <div
+      className="overflow-hidden rounded-xl"
+      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
+      data-testid="people-standings"
+    >
+      <div className="px-4 pt-3 pb-1">
+        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
+          {units.length === 0 ? "Standings" : `${units.length} ${units.length === 1 ? "player" : "players"}`}
+        </p>
+      </div>
+      <div className="space-y-2 px-4 pb-4 pt-1">
+        {units.length === 0 && (
+          <p className="text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
+            Add a game to start the standings.
+          </p>
+        )}
+        {[...scored, ...waiting].map((u) => (
+          <div key={u.id} className="flex items-center gap-3" data-testid={`people-standings-row-${u.id}`}>
+            <span className="w-5 shrink-0 text-[12px] font-semibold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
+              {u.hasResult ? rankOf.get(u.id) : "–"}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+              {u.name}
+            </span>
+            {u.hasResult ? (
+              <span className="shrink-0 text-sm font-semibold tabular-nums" style={{ color: "var(--color-bt-text)" }} data-testid={`people-standings-points-${u.id}`}>
+                {fmtPts(unitTotals[u.id] ?? 0)}
+              </span>
+            ) : (
+              <span className="shrink-0 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid={`people-standings-waiting-${u.id}`}>
+                No points yet
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function NTeamRankedList({
   teams,
   teamTotals,
@@ -1065,7 +1151,7 @@ function NoTeamsState() {
         className="max-w-xs text-[12px] leading-relaxed"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Add teams and games in the Competition tab to see standings here.
+        Set up its two teams in the cup&rsquo;s settings to see standings here.
       </p>
     </div>
   );

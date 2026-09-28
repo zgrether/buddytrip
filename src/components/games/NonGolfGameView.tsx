@@ -195,7 +195,7 @@ export function NonGolfGameView() {
   useRealtimeMembers(tripId);
   const teams = useMemo(() => ((lbQ.data?.teams ?? []) as LBTeamLite[]), [lbQ.data]);
   const gameCells = useMemo(
-    () => ((lbQ.data?.cells ?? []) as { gameId: string; teamId: string; place: number; points: number }[])
+    () => ((lbQ.data?.cells ?? []) as { gameId: string; unitId: string; place: number; points: number }[])
       .filter((c) => c.gameId === urlGameId)
       .sort((a, b) => a.place - b.place),
     [lbQ.data, urlGameId]
@@ -205,18 +205,18 @@ export function NonGolfGameView() {
   // what moves before a save.
   const postedPerTeam = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const c of gameCells) out[c.teamId] = (out[c.teamId] ?? 0) + c.points;
+    for (const c of gameCells) out[c.unitId] = (out[c.unitId] ?? 0) + c.points;
     return out;
   }, [gameCells]);
   const serverOrder = useMemo(
-    () => (gameCells.length ? gameCells.map((c) => c.teamId) : teams.map((t) => t.id)),
+    () => (gameCells.length ? gameCells.map((c) => c.unitId) : teams.map((t) => t.id)),
     [gameCells, teams]
   );
   // Seed the match control's declared outcome from the posted cells — a draw is
   // both sides at place 1 (the win/lose/tie post writes both → position 1).
   const serverResult = useMemo(() => {
     if (gameCells.length === 2 && gameCells.every((c) => c.place === 1)) return "tie";
-    return gameCells[0]?.teamId;
+    return gameCells[0]?.unitId;
   }, [gameCells]);
 
   // ── Result entry, lifted (the projection fix) ───────────────────────────────

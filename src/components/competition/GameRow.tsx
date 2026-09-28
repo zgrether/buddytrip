@@ -834,6 +834,10 @@ export function CompletedRow({
         <InReviewBadge teams={teams} />
       ) : game.sideGame ? (
         <SideGameWinners winners={game.winners ?? []} />
+      ) : game.winners !== undefined ? (
+        // A TEAMLESS race's game (PR 7, ruling C): its results name PEOPLE, so
+        // it shows who won, as a side game does, and never a row of team cells.
+        <WinnersLine winners={game.winners} testId="game-winners" />
       ) : scoringModel === "points" ? (
         <CompletedPodium teams={teams} cells={cells} />
       ) : (
@@ -968,9 +972,27 @@ function SideGameWinners({ winners }: { winners: string[] }) {
       <span style={{ ...EYEBROW, border: "1px solid var(--color-bt-border)" }} className="rounded-md px-1.5 py-0.5">
         Side game
       </span>
-      <span className="max-w-[45vw] truncate text-[12px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-        {winners.length === 0 ? "No result" : winners.join(" & ")}
-      </span>
+      <WinnersText winners={winners} />
+    </span>
+  );
+}
+
+/** A finished game's winners where its results name people: a teamless race's
+ *  game (PR 7). The side-game row above adds its tag to the same text. */
+function WinnersLine({ winners, testId }: { winners: string[]; testId: string }) {
+  return (
+    <span className="flex shrink-0 items-center" data-testid={testId}>
+      <WinnersText winners={winners} />
+    </span>
+  );
+}
+
+/** ONE rendering of "who won", so a side game and a teamless race cannot word it
+ *  differently. */
+function WinnersText({ winners }: { winners: string[] }) {
+  return (
+    <span className="max-w-[45vw] truncate text-[12px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
+      {winners.length === 0 ? "No result" : winners.join(" & ")}
     </span>
   );
 }
