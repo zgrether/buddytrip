@@ -171,6 +171,47 @@ describe("a teamless race", () => {
   }, 60_000);
 });
 
+describe("switching between teams and individuals (rulings B, 23)", () => {
+  it("deleting the LAST team is refused while a team-paying game is in the race, naming it", async () => {
+    const { tripId, competitionId, teamIds } = await ctx.createCupTrip({
+      name: "Last team", scoringModel: "points", teams: ["Solo"],
+    });
+    await ctx.caller().games.create({ tripId, gameTypeId: "gtt_pickem", name: "Sunday slate", competitionId });
+    await expect(ctx.caller().teams.delete({ tripId, teamId: teamIds[0] })).rejects.toMatchObject({
+      message: "Without teams this race is played as individuals, and Sunday slate pays teams. Remove that game first, or keep a team.",
+    });
+    // CONTROL: the same delete with only a per-person game in the race goes
+    // through, and leaves a teamless race.
+    const other = await ctx.createCupTrip({ name: "Last team, stroke only", scoringModel: "points", teams: ["Solo"] });
+    await ctx.caller().games.create({ tripId: other.tripId, gameTypeId: "gtt_stroke_play", name: "Round", competitionId: other.competitionId });
+    await expect(ctx.caller().teams.delete({ tripId: other.tripId, teamId: other.teamIds[0] })).resolves.toMatchObject({ success: true });
+    const lb = await ctx.caller().competitions.leaderboard({ tripId: other.tripId, competitionId: other.competitionId });
+    expect(lb.teamless).toBe(true);
+  }, 60_000);
+
+  it("adding the FIRST team is refused once the race has a result, and admitted before", async () => {
+    const { tripId, competitionId } = await ctx.createCupTrip({
+      name: "First team", scoringModel: "points", members: ["member"],
+    });
+    // CONTROL first: before any result, a teamless race may become a teamed one.
+    const early = await ctx.createCupTrip({ name: "First team, early", scoringModel: "points" });
+    await expect(
+      ctx.caller().teams.create({ tripId: early.tripId, competitionId: early.competitionId, name: "Blue", shortName: "BLU", color: "blue", colorDim: "blue-dim" })
+    ).resolves.toBeTruthy();
+
+    const stroke = (await ctx.caller().games.create({
+      tripId, gameTypeId: "gtt_stroke_play", name: "Round 1", competitionId,
+      pointsDistribution: { type: "placement", values: [6, 3] },
+    })) as { id: string };
+    await finishStroke(tripId, stroke.id, [[owner, 4], [member, 5]]);
+    await expect(
+      ctx.caller().teams.create({ tripId, competitionId, name: "Blue", shortName: "BLU", color: "blue", colorDim: "blue-dim" })
+    ).rejects.toMatchObject({
+      message: "This race is played as individuals and already has results, so it can't switch to teams: that would null everyone's points. Reset the race's scores in its settings first.",
+    });
+  }, 120_000);
+});
+
 describe("a TEAMED race is unchanged (the control)", () => {
   /**
    * Stroke writes a person row for every player AND a team row per team. In a
