@@ -12,8 +12,9 @@ import { writeGameResults } from "./writeGameResults";
  *     constraint turns the race into a refusal (23505) for all but one caller,
  *     and before the constraint existed the race stored duplicates, which paid
  *     the cup twice on a double-tapped Finish.
- *  2. A DIRECT duplicate insert — the path `writeManualResults` takes, outside
- *     the RPC and its lock — is REFUSED. That is the constraint's job. Control:
+ *  2. A DIRECT duplicate insert — outside the RPC and its lock, the path
+ *     `writeManualResults` took until #1398 — is REFUSED. That is the
+ *     constraint's job, and it still binds any writer that bypasses the RPC. Control:
  *     the same unit in a different game is admitted, so the rule is per game.
  *  3. The guest MERGE survives a collision: a placeholder and the real account
  *     both holding a result in one game used to be two rows, and after 194 the

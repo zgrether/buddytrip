@@ -105,7 +105,7 @@ describe("resolveConvention — the declaration wins, and disagreement ranks not
     const msg = String(s.warn.mock.calls[0][0]);
     expect(msg).toContain("g2");
     expect(msg).toContain("value_kind");
-    expect(msg).toContain("writeManualResults");
+    expect(msg).toContain("write_game_results");
   });
 
   it("refuses to rank a row that contradicts itself", () => {

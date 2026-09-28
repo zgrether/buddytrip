@@ -30,7 +30,9 @@ import { QueryFailedError } from "./rowOrThrow";
 export interface GameResultRow {
   id: string;
   entity_id: string;
-  entity_type: "user" | "team" | "play_group";
+  /** `entrant` is a bracket competitor (migration 119), written by the
+   *  placement arm of `games.finish`; its credit is the cup team it plays for. */
+  entity_type: "user" | "team" | "play_group" | "entrant";
   /** NUMERIC in the DB (migration 048 widened it) — halved matches award .5. */
   raw_score?: number | null;
   position?: number | null;
@@ -44,8 +46,8 @@ export interface GameResultRow {
    * Deliberately not optional and deliberately not derived from whether
    * `position` is set. Both would reproduce the inference the column exists to
    * replace, and an optional field is exactly how a new writer skips it — which
-   * this table has a history of, since `writeManualResults` is a SECOND writer
-   * that does not use this type at all.
+   * this table has a history of: `writeManualResults` was a SECOND writer that
+   * did not use this type at all, until #1398 routed it through here.
    */
   value_kind: ResultValueKind;
   /**
@@ -88,9 +90,10 @@ export type ResultScope =
  * - `"throw"` — the FINALIZE path (`games.finish`). A game marked complete with
  *   an empty results table is worse than a game that didn't finish, and the
  *   failure is recoverable: status stays non-complete, the computes are
- *   idempotent, so re-tapping Finish re-runs and recovers. This also ends a
+ *   idempotent, so re-tapping Finish re-runs and recovers. This also ended a
  *   divergence rather than introducing a behaviour — `writeManualResults` (the
- *   fourth format) has always checked and thrown on this same table.
+ *   placement arms) had always checked and thrown on this same table, and
+ *   since #1398 it commits through this function in this mode.
  *
  * - `"log"` — the SETUP paths (`matches.*`, `playGroups.*`, `saveConfig`'s
  *   post-save recompute). Deliberate, and NOT laziness:

@@ -27,9 +27,9 @@ import { resolve } from "path";
 const GAMES_ROUTER = resolve(__dirname, "../routers/games.ts");
 const src = readFileSync(GAMES_ROUTER, "utf8");
 
-/** The engine computes that `games.finish` dispatches to. The manual arm
- *  (`writeManualResults`) is excluded — it has always checked and thrown
- *  inline, which is the divergence #776 ends rather than a site to convert. */
+/** The engine computes that `games.finish` dispatches to. The placement arms
+ *  (`writeManualResults`) are held to the same property separately below: they
+ *  are not engine computes, so the count here cannot see them. */
 const FINALIZE_ENGINES = [
   "computeMatchPlayResults",
   "computeRackNStackResults",
@@ -76,25 +76,52 @@ describe("games.finish — results writes must fail loudly (#776)", () => {
   /**
    * The placement arms are the OTHER half of the same property.
    *
-   * `writeManualResults` is excluded from the engine assertions above because it
-   * throws inline and always has — but "throws inline" is a fact about that
-   * function, not about the arms. Two of `finish`'s four branches commit through
-   * it (the entered order, and the bracket's derived one), and a future arm that
-   * swapped it for a bare insert, or for `writeGameResults` without the flag,
-   * would reintroduce exactly the swallowed-failure bug on the placement path
-   * while the engine assertions above stayed green.
+   * Two of `finish`'s branches commit through `writeManualResults` (the entered
+   * order, and the bracket's derived one). A future arm that swapped it for a
+   * bare insert would reintroduce the swallowed-failure bug on the placement
+   * path while the engine assertions above stayed green.
    *
    * Named rather than counted, unlike the engine case: there is no shared prefix
    * to match on, so a count would only ever assert against itself.
    */
-  it("both placement arms commit through writeManualResults (the throwing writer)", () => {
+  it("both placement arms commit through writeManualResults", () => {
     const calls = body.match(/writeManualResults\s*\(/g) ?? [];
     expect(
       calls.length,
       `games.finish makes ${calls.length} writeManualResults call(s); expected 2 — the ` +
         `entered-order (manual) arm and the derived (bracket) arm. A placement arm that ` +
-        `writes any other way must throw on failure, or a game locks complete with no results.`
+        `writes any other way must be atomic and throw on failure.`
     ).toBe(2);
+  });
+
+  /**
+   * …and `writeManualResults` itself commits ATOMICALLY, in finalize mode (#1398).
+   *
+   * The assertion above is only as good as the function it names. That function
+   * used to be a bare `.delete()` then a bare `.insert()` on `game_results`, so a
+   * failure between them erased a finished game's results — and the call-count
+   * assertion was green the whole time. So the body is checked too: it must go
+   * through `writeGameResults` with `onFailure: "throw"`, and it must not touch
+   * the table directly. `games.placementsAtomic.test.ts` is the behavioural half.
+   */
+  it("writeManualResults writes through writeGameResults, loudly, and never touches the table itself", () => {
+    const start = src.indexOf("async function writeManualResults(");
+    expect(start, "writeManualResults not found — did it get renamed?").toBeGreaterThan(-1);
+    // Its body ends at the first top-level closing brace after the declaration.
+    const end = src.indexOf("\n}\n", start);
+    expect(end).toBeGreaterThan(start);
+    const fn = src.slice(start, end);
+
+    expect(
+      /writeGameResults\s*\([^)]*onFailure:\s*"throw"/.test(fn),
+      'writeManualResults must commit through writeGameResults with onFailure: "throw" — ' +
+        "one transaction, and a failure that stops the game being marked complete."
+    ).toBe(true);
+    expect(
+      /\.from\(\s*"game_results"\s*\)/.test(fn),
+      "writeManualResults reads or writes game_results directly. A direct delete and insert " +
+        "are two requests with nothing spanning them — the #1398 bug."
+    ).toBe(false);
   });
 
   /**
