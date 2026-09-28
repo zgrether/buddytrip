@@ -24,8 +24,7 @@ export interface MatchSides {
  * The "×" action on the setup draft (Matches panel): REMOVE the match at `index`.
  * 0 matches is now a VALID empty state — the table hides and only "Add match"
  * shows — so the last match is deletable (no floor-clamp). The server allows an
- * empty match list (`setPairings`/`setDoublesPairings` `.min(0)`, `removeMatch`
- * with no ≥1 throw). Pure — returns a new draft, never mutates.
+ * empty match list (`setPairings`/`setDoublesPairings` `.min(0)`). Pure — returns a new draft, never mutates.
  */
 export function removeMatchRow<M extends MatchSides>(draft: M[], index: number): M[] {
   return draft.filter((_, j) => j !== index);

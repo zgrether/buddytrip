@@ -248,7 +248,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 | Appoint / clear a team captain | ✓ | — | — | `teamAssignments.setCaptain` *(Owner)* |
 | **Edit / configure a game** (status — pending/active/complete only, points distribution, course, participants) | ✓ | ✓ | **delegate of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
 | **Set what a game is worth** (`points_total`) | ✓ | ✓ | **delegate of *that* game** | `games.saveConfig` / `setPointsTotal` *(delegate tier since migration 158 — see the flag below)* |
-| **Enter a game's results** (manual placement; finish/compute — every format) | ✓ | ✓ | **delegate of *that* game** | `games.setManualResults` / `finish` *(`finish` absorbed `games.post`; see the flag below)* |
+| **Enter a game's results** (manual placement; finish/compute — every format) | ✓ | ✓ | **delegate of *that* game** | `finish` *(`finish` absorbed `games.post`; see the flag below. `games.setManualResults` had no client caller and was deleted, #1429)* |
 | **RUN: open score correction** | ✓ | see flag | **delegate of *that* game** | `games.openCorrection` |
 | Enter a per-hole score (until posted) | ✓ (any unit) | ✓ (any unit) | ✓ (any unit in *their* game) | `scores.upsertEntry` / `deleteEntry` — **scoped** (see below); **blocked** once the game is posted & not in correction |
 | ↳ a plain **Member** | their own **unit** only | — | — | member scores only the match/group they play in; a non-participant scores nothing |
@@ -431,7 +431,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 > `deleteEntry`, mig 072): a member enters scores for the match/group they play
 > in; owner/organizer/delegate score more broadly. See the scoped-model note under
 > the competition table above. (Non-golf placement scoring — `games.finish`'s
-> manual arm / `setManualResults` — stays owner/organizer/delegate.)
+> manual arm — stays owner/organizer/delegate.)
 
 ### News / trip board — `news`
 

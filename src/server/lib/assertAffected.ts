@@ -18,10 +18,10 @@ import { TRPCError } from "@trpc/server";
  * make anything more atomic than it already was.
  *
  * **This helper does NOT make a multi-write sequence transactional, and must not
- * be read as doing so.** `expenses.updateSplits` (delete-then-insert),
- * `matches.setPairings` (three deletes) and `matches.removeMatch` (five) remain
- * non-transactional after this: a throw partway leaves the earlier writes
- * applied. That limitation is pre-existing, is recorded in the audit's §1 for
+ * be read as doing so.** `expenses.updateSplits` (delete-then-insert)
+ * and `matches.setPairings` (three deletes) remain non-transactional after this
+ * (`matches.removeMatch`, five deletes, had no caller and was deleted, #1429):
+ * a throw partway leaves the earlier writes applied. That limitation is pre-existing, is recorded in the audit's §1 for
  * `assignPlayer`, and making the failures LOUD does not change it — it only
  * means you now find out. Atomicity for those clusters is an RPC per cluster and
  * its own piece of work.

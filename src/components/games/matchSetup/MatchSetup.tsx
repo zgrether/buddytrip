@@ -330,8 +330,9 @@ export function MatchSetup({
       <button
         type="button"
         // Removing a match deletes its entered scores server-side; frozen means the
-        // game has scores, so this is not offered. `matches.removeMatch` exists and
-        // is per-match, but it is deliberately NOT wired here — see the PR note.
+        // game has scores, so this is not offered. The row is removed from the DRAFT
+        // and the whole list saves with the page; the per-match server
+        // delete that once existed was never wired and was deleted (#1429).
         onClick={frozen ? undefined : () => setDraft((prev) => removeMatchRow(prev, i))}
         disabled={frozen}
         title="Remove match"

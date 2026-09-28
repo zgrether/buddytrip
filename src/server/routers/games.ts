@@ -268,8 +268,9 @@ async function refuseRankedFormatInHeadToHead(
 /**
  * Shared placement write (Slice D §5a / Run-Post §2): replace a game's finishing
  * order in `game_results`. The ONE write path for placements — the entered-order
- * arm (`setManualResults` and `finish`'s `null` arm) and the DERIVED bracket arm
- * all commit through it, so there is no parallel commit. Placement POINTS stay
+ * arm (`finish`'s `null` arm) and the DERIVED bracket arm both commit through it,
+ * so there is no parallel commit. (`setManualResults`, its third caller, had no
+ * client and was deleted, #1429.) Placement POINTS stay
  * derived (placementPoints); we store only the standing (position; raw_score
  * mirrors it for low_wins).
  *
@@ -1220,9 +1221,9 @@ export const gamesRouter = router({
   // The two also ran behind guards that looked different and were not:
   // `requireGameEdit` and `requireGameRunAction` are the same function with a
   // different error string (identical parsing, identical `canEditGame`, identical
-  // `next()`), so collapsing onto `requireGameEdit` — what `setManualResults`,
-  // the other `writeManualResults` caller, already uses — changes nobody's
-  // access. Only the FORBIDDEN message on the non-golf path moved.
+  // `next()`), so collapsing onto `requireGameEdit` — what the since-deleted
+  // `setManualResults` used (#1429) — changes nobody's access. Only the
+  // FORBIDDEN message on the non-golf path moved.
   //
   // Worth naming because it is the mechanism: `post`'s own doc comment claimed it
   // was "NOT 'finalize': re-runnable" while its write was byte-identical to the
@@ -1296,7 +1297,7 @@ export const gamesRouter = router({
       // Data-driven branch on the format's result_strategy (CLAUDE.md #8) — new
       // strategies slot in here without touching the rest of finish.
       // null (manual): the caller supplies the entered finishing order; committed
-      // through the SAME shared write path `setManualResults` uses, so there is
+      // through the SAME shared write path the bracket arm uses, so there is
       // no parallel commit. The roll-up never distinguishes computed from entered.
       let matches: MatchOutcome[] = [];
       let teams: RackTeamOutcome[] = [];
@@ -2541,38 +2542,6 @@ export const gamesRouter = router({
         await reconcileClinchClaim(game.competition_id as string);
       }
       return { success: true };
-    }),
-
-  // setManualResults — the manual adapter (§5a), game-edit gate. A non-engine
-  // ("manual") game's per-team finishing order, ENTERED by an organizer into the
-  // SAME `game_results` table engine games compute into. The roll-up never
-  // distinguishes computed from entered. Replace-all so clearing a team drops it.
-  // Placement POINTS stay derived (placementPoints) — we store only the standing.
-  setManualResults: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        gameId: z.string(),
-        placements: z
-          .array(z.object({ entityId: z.string().min(1), position: z.number().int().min(1).max(99) }))
-          .max(64),
-      })
-    )
-    .use(requireGameEdit())
-    .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-
-      // Teams: this is the ENTERED per-team finishing order. A bracket never
-      // reaches here — it derives its placements inside `finish` (entrants), and
-      // this procedure has no way to express one.
-      const count = await writeManualResults(ctx.supabase, input.gameId, input.placements, "team");
-      return { success: true, count };
     }),
 
   // reorder — set the board order for a competition's games (migration 108).

@@ -7,7 +7,8 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * Result rows reach a LIVE game by design, from more places than anyone listed:
  * `saveConfig`'s recompute (stroke / skins / rack / match), and five match-play
  * setup mutations (`assignPlayer`, `setHandicap`, `setPointValue`,
- * `removeMatch`, `setParticipantStrokes`) that bank every match decided so far.
+ * `setParticipantStrokes`, and the since-deleted `removeMatch`) that bank every
+ * match decided so far.
  * And `games.finish` writes results BEFORE it flips `status`, in two updates, so
  * a failure between them leaves finished rows on a live game through no
  * ordinary path at all. Enumerating writers is how the ninth gets missed; the
@@ -147,16 +148,27 @@ describe("points cup — a live placement game's rows", () => {
     })) as { id: string };
 
     // Rows on an UNFINISHED game — the shape a mid-round stroke/skins settings
-    // save produced (#1416 as filed). Written through the one procedure that
-    // still does it for a manual game with no status check.
-    await ctx.caller().games.setManualResults({
-      tripId,
-      gameId: g.id,
-      placements: [
-        { entityId: blue, position: 1 },
-        { entityId: red, position: 2 },
-      ],
-    });
+    // save produced (#1416 as filed). Inserted directly: the one procedure that
+    // could still write them for a manual game with no status check,
+    // `setManualResults`, had no client caller and was deleted (#1429). The rows
+    // are the EXACT shape the placement writer produces (position mirrored into
+    // raw_score, declared a rank, a team row credited to itself), so the board
+    // reads what a real write would have left.
+    const rows = [
+      { entityId: blue, position: 1 },
+      { entityId: red, position: 2 },
+    ].map((p) => ({
+      id: crypto.randomUUID(),
+      game_id: g.id,
+      entity_id: p.entityId,
+      entity_type: "team",
+      position: p.position,
+      raw_score: p.position,
+      value_kind: "rank",
+      credited_team_id: p.entityId,
+    }));
+    const ins = await ctx.admin.from("game_results").insert(rows);
+    if (ins.error) throw new Error(`seed live rows: ${ins.error.message}`);
     const { data: st } = await ctx.admin.from("games").select("status").eq("id", g.id).single();
     expect(st!.status).not.toBe("complete");
 
