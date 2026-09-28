@@ -65,7 +65,7 @@ vi.mock("@/lib/supabase", () => ({
 
 vi.mock("@/lib/trpc-client", () => ({ trpc: { useUtils: () => ({}) } }));
 
-const { acquire, scoreEventsTopic, SCORE_EVENT, makeScoreEventHandler, parseScoreEventKind, BROADCAST_READERS } = await import(
+const { acquire, scoreEventsTopic, tripEventsTopic, gameEventScope, SCORE_EVENT, makeScoreEventHandler, parseScoreEventKind, BROADCAST_READERS } = await import(
   "./useRealtimeScoreEvents"
 );
 
@@ -610,5 +610,94 @@ describe("useRealtimeScoreEvents — shared channel registry", () => {
     expect(a).toHaveBeenNthCalledWith(1, null, null);
     expect(a).toHaveBeenNthCalledWith(2, null, null);
     rel();
+  });
+});
+
+/**
+ * #1498 — a SIDE game broadcasts on its TRIP (migration 196). The handler for
+ * that topic is built with a NULL competition, and routes the same kind rule to
+ * the board a side game is shown on: the Games page's side board.
+ */
+describe("a SIDE game's events (the trip topic, #1498)", () => {
+  function sideUtils() {
+    const calls: string[] = [];
+    const spy = (name: string) => ({
+      invalidate: (i?: unknown) => calls.push(`${name}.invalidate(${JSON.stringify(i) ?? ""})`),
+      setData: () => calls.push(`${name}.setData`),
+    });
+    return {
+      calls,
+      utils: {
+        competitions: { faceBootstrap: spy("faceBootstrap"), leaderboard: spy("leaderboard") },
+        scores: { listByGame: spy("scores") },
+        games: { bracketDraw: spy("bracketDraw"), sideBoard: spy("sideBoard"), listByTrip: spy("listByTrip") },
+        matches: { listByGame: spy("matches") },
+        matchOutcomes: { listByGame: spy("matchOutcomes") },
+        skinsOutcomes: { listByGame: spy("skinsOutcomes") },
+        pickem: { get: spy("pickem") },
+      },
+    };
+  }
+
+  it("subscribes to trip_events:{tripId}, a prefix of its own", () => {
+    expect(tripEventsTopic("trip-1")).toBe("trip_events:trip-1");
+    expect(tripEventsTopic("trip-1").startsWith("competition")).toBe(false);
+  });
+
+  it("a SCORE event refreshes the side board and the game's scores, never a leaderboard", () => {
+    const { calls, utils } = sideUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", null)("g-1", "score");
+    vi.advanceTimersByTime(COALESCE_WINDOW_MS);
+
+    // Ready → On Tap is "has a score", so the side board moves on a score.
+    expect(calls).toContain('sideBoard.invalidate({"tripId":"trip-1"})');
+    expect(calls).toContain('scores.invalidate({"tripId":"trip-1","gameId":"g-1"})');
+    expect(calls.some((c) => c.startsWith("leaderboard."))).toBe(false);
+    // #1284 still holds: a score cannot have moved the games rows the bootstrap holds.
+    expect(calls.some((c) => c.startsWith("faceBootstrap."))).toBe(false);
+  });
+
+  it.each([
+    ["a GAME event", "game" as const, "g-1"],
+    ["a reconnect backfill", null, null],
+  ])("%s refreshes what invalidateGameBoards does for a side game", (_label, kind, gameId) => {
+    const { calls, utils } = sideUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", null)(gameId, kind);
+    vi.advanceTimersByTime(COALESCE_WINDOW_MS);
+
+    // The same three keys a LOCAL side-game mutation refreshes, so a change made
+    // on another phone and one made here refresh the same things.
+    for (const key of ["faceBootstrap", "listByTrip", "sideBoard"]) {
+      expect(calls).toContain(`${key}.invalidate({"tripId":"trip-1"})`);
+    }
+    expect(calls.some((c) => c.startsWith("leaderboard."))).toBe(false);
+  });
+
+  it("a CUP event is unchanged: no side board, no listByTrip", () => {
+    const { calls, utils } = sideUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", "comp-1")("g-1", "game");
+    vi.advanceTimersByTime(COALESCE_WINDOW_MS);
+    expect(calls).toContain('leaderboard.invalidate({"tripId":"trip-1","competitionId":"comp-1"})');
+    expect(calls.some((c) => c.startsWith("sideBoard.") || c.startsWith("listByTrip."))).toBe(false);
+  });
+
+  it("never writes the cache: invalidate only (#15)", () => {
+    const { calls, utils } = sideUtils();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    makeScoreEventHandler(utils as any, "trip-1", null)(null, null);
+    vi.advanceTimersByTime(COALESCE_WINDOW_MS);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.some((c) => c.includes(".setData"))).toBe(false);
+  });
+});
+
+describe("gameEventScope: not loaded is not a side game", () => {
+  it("undefined until the game row loads, so a cup game never joins its trip's topic first", () => {
+    expect(gameEventScope(undefined)).toBeUndefined();
+    expect(gameEventScope({ competition_id: null })).toBeNull();
+    expect(gameEventScope({ competition_id: "comp-1" })).toBe("comp-1");
   });
 });

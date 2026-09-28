@@ -11,7 +11,7 @@ import { useOutcomeSaver } from "@/hooks/useOutcomeSaver";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
-import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
+import { gameEventScope, useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useRealtimeMembers } from "@/hooks/useRealtimeMembers";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -527,7 +527,7 @@ export function MatchGameView() {
   // covers CONFIG; this covers SCORES, which is what moves the match state and the
   // standings on this page. Ref-counted, so sharing the topic with a mounted board
   // costs one channel.
-  useRealtimeScoreEvents(tripId, gameCompId);
+  useRealtimeScoreEvents(tripId, gameEventScope(gameQ.data));
   const rosterIds = useMemo(
     () => [...new Set((assignQ.data ?? []).map((a) => a.user_id as string))],
     [assignQ.data]

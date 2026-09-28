@@ -172,17 +172,23 @@ test("side game spine — create → set up → live → score → finalize → 
   const { error: seErr } = await admin.from("score_entries").insert(rows);
   if (seErr) throw new Error(`seed scores failed: ${seErr.message}`);
 
-  // 10. Finalize from the game.
-  await page.getByTestId("open-game-panel").filter({ hasText: title }).click();
-  const finalize = page.getByTestId("game-finalize").getByRole("button");
+  // 10. A SECOND DEVICE finalizes (#1498). The first page stays where step 8 left
+  //     it, on the Games board, and is not reloaded, navigated or saved from again.
+  const other = await page.context().newPage();
+  await other.goto(`/trips/${tripId}?view=cup&game=${gameId}`);
+  const finalize = other.getByTestId("game-finalize").getByRole("button");
   await expect(finalize).toBeEnabled({ timeout: 30_000 });
   await finalize.click();
 
-  // 11. Completed, with the WINNER — never team zeros (a side game has no teams).
-  await page.goto(`/trips/${tripId}?view=cup`);
+  // 11. The FIRST page shows it Completed, with the WINNER (never team zeros: a
+  //     side game has no teams). Nothing on this page asked for it. A side game
+  //     broadcasts on its TRIP (migration 196), and that is the only thing that can
+  //     move this row: the backstop poll is five minutes, and there has been no
+  //     save, reveal or reload here since step 8.
   const completed = page.getByTestId("games-section-completed");
   await expect(completed).toContainText(title, { timeout: 20_000 });
   await expect(completed.getByTestId("side-game-winners")).toContainText("E2E Owner");
+  await other.close();
 
   // 12. The push's deep link, opened COLD: `game_finished` for a side game now
   //     links to its panel over the Games page (it used to link to the game's
