@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { Stepper } from "@/components/games/Stepper";
 import { MAX_SEED_TEAMS } from "@/lib/teamColors";
@@ -103,7 +104,13 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
 
   const updateComp = trpc.competitions.update.useMutation({
     onMutate: async (vars) => {
-      await utils.competitions.getByTrip.cancel({ tripId });
+      // getByTrip is faceBootstrap-seeded: cancel the bootstrap too, or an
+      // in-flight one lands after the rename and puts the old name back
+      // (#1405 C, src/lib/bootstrapSeed.ts).
+      await Promise.all([
+        utils.competitions.getByTrip.cancel({ tripId }),
+        cancelBootstrapSeed(utils, tripId),
+      ]);
       const previous = utils.competitions.getByTrip.getData({ tripId });
       if (previous) {
         utils.competitions.getByTrip.setData({ tripId }, {

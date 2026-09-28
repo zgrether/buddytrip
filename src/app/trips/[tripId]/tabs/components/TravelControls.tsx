@@ -477,12 +477,11 @@ export function TravelEditor({
     onSaved();
   };
   // Optimistically patch the edited member's row so the collapsed view reflects
-  // the save instantly; roll back on error; invalidate on success to reconcile.
+  // the save instantly; on error or success, re-pull the roster to reconcile.
   const rowId = targetUserId ?? memberUserId ?? null;
   const optimistic = {
     async onMutate(vars: TravelVars) {
       await utils.tripMembers.list.cancel({ tripId });
-      const prev = utils.tripMembers.list.getData({ tripId });
       if (rowId) {
         utils.tripMembers.list.setData({ tripId }, (old) =>
           (old ?? []).map((r) =>
@@ -490,10 +489,12 @@ export function TravelEditor({
           ),
         );
       }
-      return { prev };
     },
-    onError(_e: unknown, _v: unknown, ctx: { prev?: ReturnType<typeof utils.tripMembers.list.getData> } | undefined) {
-      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
+    // No snapshot restore (#1405): the roster is one cache written by the
+    // member editor too, and a snapshot would discard a concurrent committed
+    // edit. Re-pull server truth; onSaved stays success-only.
+    onError() {
+      utils.tripMembers.list.invalidate({ tripId });
     },
     onSuccess: invalidate,
   };

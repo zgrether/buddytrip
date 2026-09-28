@@ -170,7 +170,6 @@ export function MemberEditor({
   const updateMemberTravel = trpc.tripMembers.updateMemberTravel.useMutation({
     async onMutate(vars) {
       await utils.tripMembers.list.cancel({ tripId });
-      const prev = utils.tripMembers.list.getData({ tripId });
       utils.tripMembers.list.setData({ tripId }, (old) =>
         (old ?? []).map((r) =>
           r.user_id === vars.targetUserId
@@ -178,12 +177,12 @@ export function MemberEditor({
             : r,
         ),
       );
-      return { prev };
     },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
-    },
-    onSuccess: () => utils.tripMembers.list.invalidate({ tripId }),
+    // No snapshot restore on error (#1405): with concurrent edits a snapshot
+    // predates a sibling's committed write and would discard it. The settle's
+    // invalidate re-pulls server truth instead (CLAUDE.md #1).
+    // onSettled, not onSuccess: the re-pull is also the error path now.
+    onSettled: () => utils.tripMembers.list.invalidate({ tripId }),
   });
   const removeMember = trpc.tripMembers.remove.useMutation({
     onSuccess: () => {
@@ -248,17 +247,15 @@ export function MemberEditor({
   const updateRole = trpc.tripMembers.updateRole.useMutation({
     async onMutate(vars) {
       await utils.tripMembers.list.cancel({ tripId });
-      const prev = utils.tripMembers.list.getData({ tripId });
       utils.tripMembers.list.setData({ tripId }, (old) =>
         (old ?? []).map((row) =>
           row.user_id === vars.userId ? { ...row, role: vars.role } : row
         )
       );
-      return { prev };
     },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev) utils.tripMembers.list.setData({ tripId }, ctx.prev);
-    },
+    // No snapshot restore on error (#1405): with concurrent edits a snapshot
+    // predates a sibling's committed write and would discard it. The settle's
+    // invalidate re-pulls server truth instead (CLAUDE.md #1).
     onSettled: () => utils.tripMembers.list.invalidate({ tripId }),
   });
 
