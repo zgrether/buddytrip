@@ -4,7 +4,9 @@
 no way to reach it. This revision adds the two entry points — **creating a competition,
 and side games on a trip** — so capability and access land together.
 
-**Built on `PHASE0-composable-primitives.md` and the rulings settled with Zach.**
+**Built on [`PHASE0-composable-primitives.md`](PHASE0-composable-primitives.md) (the brief)
+and its findings, [`PHASE0-composable-primitives-REPORT.md`](PHASE0-composable-primitives-REPORT.md)
+(a snapshot as of `32b52300`, not current behaviour), and the rulings settled with Zach.**
 
 > **One version, in the repo, from 2026-09-27.** Until then this plan lived as two copies
 > outside the repo: Zach's, and CC's with the rulings it recorded as PRs landed. They
@@ -466,11 +468,10 @@ that struck direction from PR 1. `resultKinds` could not supply it anyway — **
 winner-takes-all game declares `head_to_head` while its rows carry ranks.** Direction comes
 from the row, and only from the row.
 
-**Do not close `#1032` with this PR.** The overlap review found the seed list wrong about
-it: it is not an empty-side forfeit but a stale `baseHash` — the settings panel froze its
-baseline before a vacate changed the game server-side. **Same family as `#703`, `#1017` and
-`#1405`: a snapshot going stale beneath an open panel.** It is labelled pre-launch and sits
-on the path sixteen people take.
+**`#1032` is not this PR's.** The overlap review found the seed list wrong about it (it is
+not an empty-side forfeit) and replaced that with a second wrong reading, a stale
+`baseHash`. **Corrected 2026-09-28:** the refusal was a foreign-key failure from a match
+side pointing at a hard-deleted user, fixed at source and closed; see PR 8's prerequisite 2.
 
 **Verify first:** does every placement format produce a live game projection today? Report
 which don't, and build them here.
@@ -953,27 +954,96 @@ from teams only.
 
 **Model: Opus.** Rulings 16, 17, 18, 19, 20.
 
-### Prerequisites, from the overlap review
+### Prerequisites — verified 2026-09-28, then ruled
 
-- **`#1398` — the atomic results write.** Confirmed: `writeManualResults` is delete-then-
-  insert over PostgREST with nothing spanning them, and a correction that fails between
-  leaves `status='complete'` with no results while `pointsAvailable` still counts the game.
-  **Land it first, or PR 8 must not use that path.**
-- **`#448` — the permissions pass.** It carries the rule PR 8 needs (owners and captains add
-  to their own team; delegates cannot) and says *do not fix piecemeal*, which is exactly what
-  PR 8 would otherwise do. **Its first bullet is already fixed** — both `assign` and `remove`
-  are Organizer on main.
-- **The stale-snapshot class — `#1032`, `#703`, `#1017`, `#1405`.** PR 8 builds previews and
-  corrections on panels that hold a baseline while the world moves underneath them.
-  **Treat the class as one piece of work and land it before the previews**, rather than
-  discovering it through a preview that shows the wrong before-state.
+The overlap review's list was verified before any code, and **two of its three entries were
+wrong as written.** What follows is the verified version and Zach's rulings on it; the
+original list is in this file's history.
+
+**1 · Dead writers first (`#1429`), then the atomic write (`#1398`).**
+- `#1398` is confirmed: `writeManualResults` is delete-then-insert over PostgREST with
+  nothing spanning them, and a correction that fails between leaves `status='complete'`
+  with no results while `pointsAvailable` still counts the game. **PR 8 must not correct
+  through it.**
+- It had three callers: `finish`'s manual and bracket arms, and `games.setManualResults`.
+  A second writer of the same kind, `matches.removeMatch`, deleted rows outside the atomic
+  writer too. **Neither `setManualResults` nor `removeMatch` had a caller in the app.**
+- **Ruled: delete both rather than convert them** — "fixing a writer nothing calls is
+  maintaining dead code". They go in `#1429`, which lands first, so `#1398` converts only
+  the two live callers. *(`#1429`: PR `#1508`.)*
+
+**2 · The stale-snapshot "class" was not one class.** Of the four items named, one was a
+live bug and it was not the one the plan described:
+- **`#1032` — the plan's diagnosis was wrong, twice.** It is not an empty-side forfeit
+  (the seed list) and not a stale `baseHash` (the PR 3 section): a match side still pointed
+  at a hard-deleted `users` row and failed a foreign key on the clean-replace save. A stale
+  base throws its own readable `CONFLICT`. Fixed at source (migrations 130 and 142), the
+  production row repaired, a re-sweep found zero dangling refs. **Closed; its two leftovers
+  are `#1506` (the constraint failure reads "reload and try again") and `#1507` (removing
+  a member vacates seats without refreshing open settings, and the hash-mover guard cannot
+  see writes in `server/lib`).**
+- **`#703` is closed**, and it was a missing baseline, not a stale one.
+- **`#1017` is a merged PR, not an issue** — it is the seat vacate itself.
+- **`#1405` is open and real**, but it is a client cache race: roster mutations snapshot the
+  list and restore it on error, so one failed tap wipes a sibling tap that succeeded.
+  `ScheduleTab` and `MemberEditor` use the same idiom, which `CLAUDE.md` #1 prescribes
+  against.
+
+**Ruled — C and A as the core, plus B; D goes with `#1032`'s leftovers (`#1506`):**
+- **C** (`#1405`) — roster and schedule mutations re-fetch on error instead of restoring a
+  snapshot, and every writer of the bootstrap-seeded caches is cancelled.
+- **A** — `useConfigDraft` says the server moved under an open draft *before* Save, rather
+  than as a conflict after it.
+- **B** (`#1507`) — the guard learns to see writes in shared server code, and removing a
+  member refreshes the games it touched.
+
+**3 · The real prerequisite, which the list did not name: rosters have no concurrency
+check.** Assignments are in no version or fingerprint, and assign/remove take no base, so
+a before-and-after preview could be confirmed against a roster another organizer has since
+changed. **Ruled: a roster fingerprint checked at confirm** — the config hash's pattern, so
+one mechanism rather than two, **but separate from the config hash**, or every roster change
+would conflict with every open settings draft. A preview carries the fingerprint it was
+built on; confirm refuses with *the roster changed — review again* if it moved. **A preview
+confirmed against a roster that has since changed is worse than no preview.**
+
+**4 · The permissions pass.** The rule PR 8 needs was credited here to `#448`. **It is
+ruling 29, and it is Zach's** — `#448` never mentions captains or delegates, and its tiers
+say "structure = owner", the opposite direction. What the verification found: `#448`'s first
+bullet is fixed (`assign` and `remove` are Organizer on the server); team create/delete are
+Organizer on the server and Owner-only in the UI; an Organizer gets a drag in the rosters
+overlay that drops nowhere; `PERMISSIONS.md` contradicts the code in four places; and every
+roster mismatch runs the same way — **the server allows what the UI hides.**
+
+**Ruled (recommendations Zach can overrule):**
+- **Organizers keep add, remove and move, and the UI matches the server.** Make the
+  Organizer drag work.
+- **Team create and delete are Organizer**, as the server allows. Whoever can delete a
+  team can rename it.
+- **Captains: before the race has results, add unassigned players and remove their own.
+  After results, nothing** — every change then carries scoring consequences and a preview
+  (rulings 17 and 20), which belongs to owners and organizers. So a captain cannot add a
+  teamless player after results, and **pulling someone off another team is a trade**: it
+  touches two teams, it is Organizer-level, and **the upsert must refuse it.**
+- **`co_admin`:** if it is the same concept as Organizer, collapse it to one name.
+- **Delegation grants no roster rights** — explicitly (Zach's ruling).
+
+**5 · Account linking (`#1481`), because PR 7's per-person rows and PR 8's placeholder
+results both make it easier to reach.** Both linking paths refuse only a same-HOLE scoring
+collision; the merge silently resolves every other one by deleting the placeholder's rows,
+and two identities on opposite sides of one match would put one person on both.
+**Ruled: refuse whenever both identities are participants in the same game at all, and
+tighten the scoring check to the same game.** A placeholder and a real account in one game
+is a duplicate person; the organizer removes the duplicate before linking.
 
 ### The roster editor — answered, not outstanding
 
 **Root-caused and fixed as `#1406`.** PR A is exonerated: the cause was an uncancelled
 `faceBootstrap` re-seeding the roster cache behind an optimistic write. **Nothing was ever
 lost to the database, only to the cache, and the cache no longer loses it.** The residual
-findings are `#1404` and `#1405`, both in the prerequisites above.
+findings are `#1404` and `#1405`. `#1405` is prerequisite 2's **C**. **`#1404` (concurrent
+adds can tie on `team_assignments.sort_order`) was not part of the 2026-09-28 rulings** — it
+is a roster race of the same neighbourhood as prerequisite 3, and whether it rides with the
+fingerprint work is open.
 
 **Every change after points exist opens a before-and-after preview**, offering only valid
 options.
@@ -989,9 +1059,18 @@ options.
 audit trail today — why nobody could date Cornhole's `[8]`. **Propose where the record
 lives before building; likely a migration.**
 
-**Permissions:** owners and captains add players to their own team; delegates cannot.
-**The UI never offers what the backend refuses** — Phase 0 F2 is that exact bug in the
-bracket, and needs a run to confirm first.
+**Permissions:** as ruled in prerequisite 4 above (from ruling 29). **The UI never offers
+what the backend refuses.** Phase 0's F2 (`PHASE0-composable-primitives-REPORT.md`, §2) is
+that exact bug in the bracket:
+
+> Bracket pick permission: the guard allows owner, co-admin or delegate (`games.ts:643`);
+> RLS allows trip Owner/Organizer only (`112:147`); checked with `assertNoError` only.
+> ⚠ A delegate or co-admin who is only a trip Member may get a silent 0-row update.
+> Needs a RUN.
+
+**It runs opposite to every roster finding** — there the server allows what the UI hides;
+here the code offers what the database quietly refuses. **It needs a run before anything is
+built on it.** (Line numbers are as of `32b52300`.)
 
 **Tests that must fail:** a trade after finalize leaves standings unchanged; a correction on
 a head-to-head game is refused; a correction on a stroke round re-attributes and records; a
