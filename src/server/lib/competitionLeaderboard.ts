@@ -12,6 +12,8 @@ import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
 import { readBoardInputs, boardRow } from "@/server/lib/boardGames";
 import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
+import { tripDisplayNames } from "./tripDisplayNames";
+import { readSideGameWinners } from "./sideBoard";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
 /** Head-to-head sizing for the team-size-derived per_match formats (rack-n-stack,
@@ -207,7 +209,7 @@ export function reconcileConvention(
   const armDirection = arm.expects === "points" ? ("high_wins" as const) : ("low_wins" as const);
   // Named, not spread: a spread would carry `expects`/`schedule` into the
   // LiveGame and on into everything downstream of the roll-up.
-  const base = { id: arm.id, numTeams: arm.numTeams, standings: arm.standings, pointsTotal: arm.pointsTotal };
+  const base = { id: arm.id, numUnits: arm.numUnits, standings: arm.standings, pointsTotal: arm.pointsTotal };
   // A schedule that PAYS NOTHING is no schedule (#1410). Collapsed HERE, at the
   // seam every positions arm passes through, rather than in the arm that was
   // caught doing it: pick'em's `[]` for a game worth nothing, placement's
@@ -332,7 +334,7 @@ export async function computeCompetitionLeaderboard(
       .order("created_at", { ascending: true }),
     supabase
       .from("competitions")
-      .select("defending_team_id, scoring_model")
+      .select("defending_team_id, scoring_model, trip_id")
       .eq("id", competitionId)
       .maybeSingle(),
     // Games of this competition — all feed the roll-up.
@@ -389,6 +391,18 @@ export async function computeCompetitionLeaderboard(
   // Scoring-model axis (independent of team count; default match_play). Branches
   // ONLY the non-golf result award below — the hero stays on teams.length.
   const scoringModel = ((comp?.scoring_model as string | null) ?? "match_play") as ScoringModel;
+  /**
+   * ── A TEAMLESS race: its units are PEOPLE (PR 7) ─────────────────────────
+   *
+   * A points race plays as teams if and only if it has teams (ruling B) — derived,
+   * never stored, so it cannot disagree with the team count. With none, a race's
+   * units are the people who have played its games (ruling 22), and their per-
+   * person rows are the results.
+   *
+   * A race that MIXES teams and people is deferred (ruling A): in a teamed race
+   * no person is a unit, so the board reads exactly what it read before PR 7.
+   */
+  const teamless = scoringModel === "points" && teamIds.length === 0;
   // A NON-GOLF MANUAL game (result_strategy NULL) vs a golf game — sourced from
   // the format definitions in code (W-PERF-01), no longer a DB template fetch.
   // Only manual games get the match-play winner-take-all award; golf untouched.
@@ -409,7 +423,7 @@ export async function computeCompetitionLeaderboard(
   // The board rows' four child reads (matches, participants, started, bracket
   // entrants) live in `readBoardInputs`, shared with the games page's side-game
   // board (PR 6b) — one derivation of a row, not two. Run alongside the results.
-  const [resultsRes, board] = await Promise.all([
+  const [resultsRes, board, playersRes] = await Promise.all([
     gameIds.length
       ? supabase
           .from("game_results")
@@ -426,9 +440,18 @@ export async function computeCompetitionLeaderboard(
           // `bracket_entrants.team_id` as it stands NOW.
           .select("game_id, entity_id, entity_type, position, raw_score, value_kind, credited_team_id")
           .in("game_id", gameIds)
-          .in("entity_type", ["team", "entrant"])
+          // PERSON rows only when people are the units (PR 7). In a teamed race a
+          // person row is never a unit's, so it is not even read: that is what
+          // keeps a teamed board byte-identical, and a player on a team from
+          // being credited twice (as themselves AND through their team).
+          .in("entity_type", teamless ? ["team", "entrant", "user"] : ["team", "entrant"])
       : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[], error: null }),
     readBoardInputs(supabase, allGames, "cup's"),
+    // The race's PLAYERS (teamless only): a person is a unit from the first game
+    // they are IN, before they have a result — "no points yet" (ruling 22).
+    teamless && gameIds.length
+      ? supabase.from("game_participants").select("user_id").in("game_id", gameIds).not("user_id", "is", null)
+      : Promise.resolve({ data: [] as { user_id: string }[], error: null }),
   ]);
   /**
    * A FAILED READ IS NEVER DATA TO ANYTHING THAT WRITES (#1411, #1468).
@@ -457,6 +480,32 @@ export async function computeCompetitionLeaderboard(
    * clinch check records `threw`; `reconcileClinchClaim` leaves the claim alone.
    */
   const results = rowsOrThrow(resultsRes, "cup's results");
+  /**
+   * ── THE UNITS ──────────────────────────────────────────────────────────────
+   *
+   * A team, or (teamless race) a person. ONE READER RULE: a result row credits a
+   * unit only if its entity IS a unit — a team row its team, a person row that
+   * person only when people are the units, an entrant row its stored credited
+   * team. `personUnitIds` is empty in every race that has teams, so no person row
+   * can reach the standings there.
+   */
+  const personUnitIds: string[] = [];
+  if (teamless) {
+    const players = new Set<string>(
+      (rowsOrThrow(playersRes, "race's players") as { user_id: string }[]).map((p) => p.user_id)
+    );
+    for (const r of results ?? []) if ((r.entity_type as string) === "user") players.add(r.entity_id as string);
+    personUnitIds.push(...players);
+  }
+  const personNames = teamless
+    ? await tripDisplayNames(supabase, (comp?.trip_id as string | null) ?? "", personUnitIds)
+    : new Map<string, string>();
+  // People in name order; ties by id, so the order never churns between polls.
+  personUnitIds.sort((a, b) =>
+    (personNames.get(a) ?? "").localeCompare(personNames.get(b) ?? "") || a.localeCompare(b)
+  );
+  const personUnits = new Set(personUnitIds);
+  const unitIds = teamless ? personUnitIds : teamIds;
   /**
    * ── `teamByEntrant` USED TO BE BUILT HERE, AND IS GONE ───────────────────
    *
@@ -519,6 +568,9 @@ export async function computeCompetitionLeaderboard(
       entrantStandingsByGame.set(gid, arr);
       continue;
     }
+    // A person row credits only a person who IS a unit (PR 7's reader rule). None
+    // are read outside a teamless race; this says the rule where it applies.
+    if ((r.entity_type as string) === "user" && !personUnits.has(r.entity_id as string)) continue;
     const arr = teamRowsByGame.get(gid) ?? [];
     arr.push({
       entityId: r.entity_id as string,
@@ -627,7 +679,7 @@ export async function computeCompetitionLeaderboard(
         // its pool and awards nothing, the same pre-decision state every other
         // format has.
         distribution: sorted.length > 0 ? sorted.map((s) => s.value) : null,
-        numTeams: teamIds.length,
+        numUnits: unitIds.length,
         standings: sorted,
         direction: "high_wins" as const,
         pointsTotal: (g.points_total as number | null) ?? undefined,
@@ -676,7 +728,7 @@ export async function computeCompetitionLeaderboard(
           // lot is what every other format does with a null distribution.
           expects: "positions" as const,
           schedule: effectiveDistribution(rawDist, g.points_total as number | null),
-          numTeams: teamIds.length,
+          numUnits: unitIds.length,
           standings,
           pointsTotal,
         };
@@ -687,7 +739,7 @@ export async function computeCompetitionLeaderboard(
         return {
           id: g.id as string,
           expects: "points" as const,
-          numTeams: teamIds.length,
+          numUnits: unitIds.length,
           standings: [],
           pointsTotal,
         };
@@ -696,7 +748,7 @@ export async function computeCompetitionLeaderboard(
       return {
         id: g.id as string,
         expects: "points" as const,
-        numTeams: teamIds.length,
+        numUnits: unitIds.length,
         standings: sorted,
         pointsTotal,
       };
@@ -771,7 +823,7 @@ export async function computeCompetitionLeaderboard(
         // [total, 0], NOT effectiveDistribution's [total]: nobody has measured
         // that the two pay a tie the same, so 3b does not unify them.
         schedule: total > 0 ? [total, 0] : null,
-        numTeams: teamIds.length,
+        numUnits: unitIds.length,
         standings,
         pointsTotal: (g.points_total as number | null) ?? undefined,
       };
@@ -861,13 +913,13 @@ export async function computeCompetitionLeaderboard(
         : legacyPool;
       if (standings.length === 0) {
         // No decided matches yet — contributes its available pool, no awards.
-        return { id: g.id as string, expects: "points" as const, numTeams: teamIds.length, standings: [], pointsTotal };
+        return { id: g.id as string, expects: "points" as const, numUnits: unitIds.length, standings: [], pointsTotal };
       }
       const sorted = [...standings].sort((a, b) => b.value - a.value);
       return {
         id: g.id as string,
         expects: "points" as const,
-        numTeams: teamIds.length,
+        numUnits: unitIds.length,
         standings: sorted,
         pointsTotal,
       };
@@ -885,7 +937,7 @@ export async function computeCompetitionLeaderboard(
         id: g.id as string,
         expects: "positions" as const,
         schedule: rawDist.values,
-        numTeams: teamIds.length,
+        numUnits: unitIds.length,
         standings,
         pointsTotal: (g.points_total as number | null) ?? undefined,
       };
@@ -898,7 +950,7 @@ export async function computeCompetitionLeaderboard(
       id: g.id as string,
       expects: "positions" as const,
       schedule: null,
-      numTeams: teamIds.length,
+      numUnits: unitIds.length,
       standings: [],
       pointsTotal: (g.points_total as number | null) ?? undefined,
     };
@@ -943,7 +995,7 @@ export async function computeCompetitionLeaderboard(
     );
   });
 
-  const roll = rollUp(liveGames, teamIds, { defendingTeamId: comp?.defending_team_id ?? null });
+  const roll = rollUp(liveGames, unitIds, { defendingTeamId: comp?.defending_team_id ?? null });
 
   // Per-game points in play, keyed by id — the SAME per-game expression rollUp
   // sums into points-available (owner-set total, else the distribution sum). The
@@ -953,17 +1005,19 @@ export async function computeCompetitionLeaderboard(
   // a bare `—`. Built from the computed liveGames so the row can't diverge from
   // the standings.
   const ptsInPlayByGame = new Map<string, number>(
-    liveGames.map((g) => [g.id, g.pointsTotal ?? awardedForGame(g.distribution, g.numTeams)])
+    liveGames.map((g) => [g.id, g.pointsTotal ?? awardedForGame(g.distribution, g.numUnits)])
   );
 
   // Per-game grid cells (place + points per team) — same averaging as the totals,
   // so the grid and the totals can't disagree. Only live games carry cells.
-  const cells: { gameId: string; teamId: string; place: number; points: number }[] = [];
+  // `teamId` is the SAME value as `unitId`, carried for ONE release so a client
+  // still running pre-PR 7 code reads the payload it knows (see the return).
+  const cells: { gameId: string; unitId: string; teamId: string; place: number; points: number }[] = [];
   for (const g of liveGames) {
     if (!g.distribution || g.standings.length === 0) continue;
     const detail = placementDetail(g.distribution, g.standings, g.direction);
-    for (const [teamId, d] of detail) {
-      cells.push({ gameId: g.id, teamId, place: d.place, points: d.points });
+    for (const [unitId, d] of detail) {
+      cells.push({ gameId: g.id, unitId, teamId: unitId, place: d.place, points: d.points });
     }
   }
 
@@ -1031,7 +1085,7 @@ export async function computeCompetitionLeaderboard(
   // this is where that is known, so this is where it is said.
   const projections: typeof live.projections = {};
   for (const [gameId, byTeam] of Object.entries(live.projections)) {
-    projections[gameId] = Object.fromEntries(teamIds.map((id) => [id, byTeam[id] ?? 0]));
+    projections[gameId] = Object.fromEntries(unitIds.map((id) => [id, byTeam[id] ?? 0]));
   }
 
   // Competition-total projection ("if today holds"): banked (teamTotals) + Σ of each
@@ -1040,19 +1094,65 @@ export async function computeCompetitionLeaderboard(
   // the same 30s poll + faceBootstrap seed as the per-game pills. `hasLive` gates the
   // hero's whole projected tier (≥1 game live), independent of any team's delta.
   const projected = projectedTeamTotals(
-    Object.fromEntries(roll.teamTotals),
+    Object.fromEntries(roll.unitTotals),
     projections,
-    teamIds,
+    unitIds,
   );
+
+  // A teamless race's finished games name their WINNERS (ruling C), through the
+  // one reader a side game and the push use (ruling 5).
+  const winnersByGame = teamless
+    ? await readSideGameWinners(
+        supabase,
+        (comp?.trip_id as string | null) ?? "",
+        allGames.filter((g) => g.status === "complete").map((g) => g.id as string)
+      )
+    : null;
+  const unitTotals = Object.fromEntries(roll.unitTotals);
+  /**
+   * EMPTY IS NOT UNKNOWN. A unit on 0 after a finished game played and scored
+   * nothing; a unit with no finished result has NO POINTS YET, and ruling 30 says
+   * those must never read the same. `unitTotals` cannot tell them apart (both are
+   * 0), so the board is told which units have a banked result at all: every
+   * entity a FINISHED game's standings name (a live game banks nothing, #1416).
+   */
+  const unitsWithResult = new Set<string>();
+  for (const g of liveGames) for (const st of g.standings) unitsWithResult.add(st.entityId);
 
   return {
     teams: teams ?? [],
+    /**
+     * The competitors, in board order: the cup's teams, or (teamless race) its
+     * people. Every per-competitor map below is keyed by these ids (PR 7).
+     */
+    units: teamless
+      ? personUnitIds.map((id) => ({
+          id,
+          kind: "person" as const,
+          name: personNames.get(id) ?? "Someone",
+          short_name: null,
+          color: null,
+          hasResult: unitsWithResult.has(id),
+        }))
+      : (teams ?? []).map((t) => ({
+          id: t.id as string,
+          kind: "team" as const,
+          name: t.name as string,
+          short_name: (t.short_name as string | null) ?? null,
+          color: (t.color as string | null) ?? null,
+          hasResult: unitsWithResult.has(t.id as string),
+        })),
+    /** True for a points race with no teams: its units are people (PR 7, ruling B). */
+    teamless,
     // The cup's scoring model — lets header/hero consumers type-gate match-play
     // chrome (the "first to X" target line) off for points cups.
     scoringModel,
     defendingTeamId: (comp?.defending_team_id as string | null) ?? null,
     // One derivation of a board row, shared with the side-game board (PR 6b).
-    games: allGames.map((g) => boardRow(g, board, ptsInPlayByGame.get(g.id as string) ?? null)),
+    games: allGames.map((g) => {
+      const row = boardRow(g, board, ptsInPlayByGame.get(g.id as string) ?? null);
+      return winnersByGame && g.status === "complete" ? { ...row, winners: winnersByGame.get(g.id as string) ?? [] } : row;
+    }),
     cells,
     // gameId → teamId → projected points (LIVE match/rack games only). The board
     // renders these as the ▲ projected-points pill in each team column.
@@ -1062,11 +1162,23 @@ export async function computeCompetitionLeaderboard(
     cannotProject,
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,
-    teamTotals: Object.fromEntries(roll.teamTotals),
+    unitTotals,
     // Hero "if today holds" tier: per-team projected total (banked + Σ live projections)
     // + whether any game is live (the tier-visibility gate). Server-summed (Path A).
-    projectedTeamTotals: projected.totals,
+    projectedUnitTotals: projected.totals,
     hasLiveProjection: projected.hasLive,
     pointsToClinch: Object.fromEntries(roll.pointsToClinch),
+    /**
+     * ── FOR ONE RELEASE: the pre-PR 7 names, same values ────────────────────
+     *
+     * A phone with the app open across the deploy keeps its OLD client, whose
+     * requests reach this NEW server (skew protection is not configured). That
+     * client reads `teamTotals` / `projectedTeamTotals`. For a head-to-head or
+     * teamed cup the unit maps ARE the team maps, so it keeps working; a teamless
+     * race is new, so no old client has ever rendered one. Removed in the
+     * follow-up once the deploy has settled — nothing in this repo reads them.
+     */
+    teamTotals: unitTotals,
+    projectedTeamTotals: projected.totals,
   };
 }

@@ -53,6 +53,7 @@ beforeAll(async () => {
   ({ tripId, competitionId } = await ctx.createCupTrip({
     name: "Pick'em Score Entry Trip",
     scoringModel: "points",
+    teams: ["Team A", "Team B"],
     members: [["member", "Member"]],
   }));
 

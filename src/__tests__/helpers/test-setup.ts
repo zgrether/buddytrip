@@ -228,15 +228,28 @@ export class TestContext {
       name?: string;
       scoringModel?: "match_play" | "points";
       members?: Array<UserRole | [UserRole, "Owner" | "Organizer" | "Member"]>;
+      /**
+       * Team names to create, in order (sequentially: seeding in parallel races).
+       *
+       * Say so when the case means a TEAMED race. Since PR 7 a points race with
+       * no teams is a legitimate state of its own — a TEAMLESS race, played as
+       * individuals, which admits only formats that record a result per person
+       * (`canPlayInTeamlessRace`). Before PR 7 this helper's zero-team points cup
+       * was a state `competitions.create` could never produce (it seeds at least
+       * two), and twelve files built team-paying games in it unnoticed.
+       */
+      teams?: string[];
     } = {}
-  ): Promise<{ tripId: string; competitionId: string }> {
+  ): Promise<{ tripId: string; competitionId: string; teamIds: string[] }> {
     const tripId = await this.createTrip(opts.title ?? opts.name ?? "Cup Trip");
     for (const m of opts.members ?? []) {
       const [role, tripRole] = Array.isArray(m) ? m : [m, "Member" as const];
       await this.addTripMember(tripId, role, tripRole);
     }
     const competitionId = await this.createCompetition(tripId, opts.name, { scoringModel: opts.scoringModel });
-    return { tripId, competitionId };
+    const teamIds: string[] = [];
+    for (const name of opts.teams ?? []) teamIds.push(await this.createTeam(competitionId, name));
+    return { tripId, competitionId, teamIds };
   }
 
   /**

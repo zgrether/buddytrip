@@ -71,7 +71,7 @@ describe("isNew — New vs Configuring", () => {
     ctx = await TestContext.create();
     // Sequentially, never Promise.all (CLAUDE.md local-stack conventions).
     const points = await ctx.createCupTrip({
-      title: "New-state split", name: "New-state points cup", scoringModel: "points", members: ["member"],
+      title: "New-state split", name: "New-state points cup", scoringModel: "points", members: ["member"], teams: ["Team A", "Team B"],
     });
     const match = await ctx.createCupTrip({
       title: "New-state split", name: "New-state match cup", scoringModel: "match_play", members: ["member"],

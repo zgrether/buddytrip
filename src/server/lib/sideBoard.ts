@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rowsOrThrow } from "@/server/lib/rowOrThrow";
 import { readBoardInputs, boardRow, type BoardGameRow } from "@/server/lib/boardGames";
+import { tripDisplayNames } from "@/server/lib/tripDisplayNames";
 
 /**
  * A trip's SIDE games — games that count toward no competition — as board rows
@@ -52,10 +53,12 @@ export async function computeSideBoard(supabase: SupabaseClient, tripId: string)
 }
 
 /**
- * The winners of finished side games, named by trip display name: the Games
- * page's winner line, and the `game_finished` push for a side game (PR 6b), so
- * the two cannot name a winner differently. Position-1 `user` / `play_group`
- * rows; a 2v2 winner is named by the people in its play group.
+ * The winners of finished games whose results name PEOPLE, by trip display
+ * name: a side game (PR 6b), and since PR 7 a game in a teamless race too — the
+ * Games page's winner line and the `game_finished` push both read this, so they
+ * cannot name a winner differently (PR 7 ruling 5: one reader, not two).
+ * Position-1 `user` / `play_group` rows, or points rows that paid; a 2v2 winner
+ * is named by the people in its play group.
  */
 export async function readSideGameWinners(supabase: SupabaseClient, tripId: string, gameIds: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
@@ -66,7 +69,11 @@ export async function readSideGameWinners(supabase: SupabaseClient, tripId: stri
       .from("game_results")
       .select("game_id, entity_id, entity_type")
       .in("game_id", gameIds)
-      .eq("position", 1)
+      // A winner is a RANK row at 1st, or (PR 7) a POINTS row that paid them
+      // something. A teamless race's match rows carry points with no position
+      // (the board refuses a points row that also carries one), and "above 0" is
+      // the same reading a rank row gives a halve: both sides shared first.
+      .or("position.eq.1,and(value_kind.eq.points,raw_score.gt.0)")
       .in("entity_type", ["user", "play_group"]),
     "side games' results"
   ) as { game_id: string; entity_id: string; entity_type: string }[];
@@ -84,19 +91,9 @@ export async function readSideGameWinners(supabase: SupabaseClient, tripId: stri
   const userIds = [
     ...new Set([...firsts.filter((r) => r.entity_type === "user").map((r) => r.entity_id), ...members.map((m) => m.user_id)]),
   ];
-  // The TRIP display name — a trip nickname first, then the account name — the
-  // same resolution `tripMembers.list` gives every other name on the board.
-  const [users, members2] = userIds.length
-    ? await Promise.all([
-        supabase.from("users").select("id, name").in("id", userIds),
-        supabase.from("trip_members").select("user_id, nickname").eq("trip_id", tripId).in("user_id", userIds),
-      ]).then(([u, m]) => [
-        rowsOrThrow(u, "side game winners' names") as { id: string; name: string | null }[],
-        rowsOrThrow(m, "side game winners' names") as { user_id: string; nickname: string | null }[],
-      ] as const)
-    : ([[], []] as const);
-  const nickOf = new Map(members2.map((m) => [m.user_id, m.nickname]));
-  const nameOf = new Map(users.map((u) => [u.id, nickOf.get(u.id) ?? u.name ?? "Someone"]));
+  // The TRIP display name, from the one resolution the leaderboard's person
+  // units use too (`tripDisplayNames`), so a winner and a standings row agree.
+  const nameOf = await tripDisplayNames(supabase, tripId, userIds);
 
   for (const r of firsts) {
     const label =

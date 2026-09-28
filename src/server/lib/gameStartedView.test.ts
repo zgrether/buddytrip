@@ -48,6 +48,7 @@ beforeAll(async () => {
     title: "game_started Trip",
     name: "game_started points Cup",
     scoringModel: "points",
+    teams: ["Team A", "Team B"],
   });
   matchCup = await ctx.createCupTrip({
     title: "game_started Trip",

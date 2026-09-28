@@ -54,6 +54,9 @@ beforeAll(async () => {
   ({ tripId, competitionId } = await ctx.createCupTrip({
     name: "D Add-Game Trip",
     scoringModel: "points",
+    // FOUR: this file configures up to 4-place splits, and the placement-capacity
+    // check refuses more places than teams (it never ran while the cup had none).
+    teams: ["Team A", "Team B", "Team C", "Team D"],
     members: [
       ["member", "Member"], // delegate target (plain Member)
       ["planner", "Organizer"], // co-admin — deletes now denied (Spec 1)

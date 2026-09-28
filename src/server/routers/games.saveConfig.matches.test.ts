@@ -110,6 +110,7 @@ beforeAll(async () => {
   ({ tripId, competitionId } = await ctx.createCupTrip({
     name: "saveConfig Matches Trip",
     scoringModel: "points",
+    teams: ["Team A", "Team B"],
     members: [["member", "Member"]],
   }));
   owner = ctx.user.id;

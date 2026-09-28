@@ -49,7 +49,7 @@ async function refusal(competitionId: string, gameTypeId: string): Promise<TRPCE
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  const points = await ctx.createCupTrip({ title: "Format guard trip", name: "Points Cup", scoringModel: "points" });
+  const points = await ctx.createCupTrip({ title: "Format guard trip", name: "Points Cup", scoringModel: "points", teams: ["Team A", "Team B"] });
   const match = await ctx.createCupTrip({ title: "Format guard trip", name: "Match Cup", scoringModel: "match_play" });
   pointsCup = points.competitionId;
   matchCup = match.competitionId;

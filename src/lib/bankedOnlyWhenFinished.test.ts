@@ -12,7 +12,7 @@ import { bankedOnlyWhenFinished, rollUp, type LiveGame } from "./competitionPlac
 const withRows: LiveGame = {
   id: "g",
   distribution: [3, 0],
-  numTeams: 2,
+  numUnits: 2,
   standings: [
     { entityId: "blue", value: 3 },
     { entityId: "red", value: 0 },
@@ -27,13 +27,13 @@ describe("bankedOnlyWhenFinished", () => {
     for (const status of ["active", "pending", null]) {
       const g = bankedOnlyWhenFinished(withRows, status);
       expect(g.standings, String(status)).toEqual([]);
-      expect(rollUp([g], teams).teamTotals.get("blue"), String(status)).toBe(0);
+      expect(rollUp([g], teams).unitTotals.get("blue"), String(status)).toBe(0);
     }
   });
 
   it("a FINISHED game banks what it paid — the control", () => {
     const g = bankedOnlyWhenFinished(withRows, "complete");
-    expect(rollUp([g], teams).teamTotals.get("blue")).toBe(3);
+    expect(rollUp([g], teams).unitTotals.get("blue")).toBe(3);
   });
 
   it("keyed on STATUS: a game re-opened for a correction keeps its banked result", () => {

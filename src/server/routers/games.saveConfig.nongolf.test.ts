@@ -54,6 +54,10 @@ beforeAll(async () => {
   // A POINTS cup: a bracket pays by placement, and a Match Play cup refuses switching a
   // game into one (ruling 2, PR 4). Brackets are tested where they can now be set up.
   competitionId = await ctx.createCompetition(tripId, "saveConfig non-golf Cup", { scoringModel: "points" });
+  // A TEAMED race (PR 7): with no teams it would be a teamless one, which holds
+  // only per-person formats and refuses this file's non-golf games.
+  await ctx.createTeam(competitionId, "Team A");
+  await ctx.createTeam(competitionId, "Team B");
 });
 afterAll(async () => { await ctx.cleanup(); });
 

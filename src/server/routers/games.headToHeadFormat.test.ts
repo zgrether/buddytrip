@@ -52,7 +52,7 @@ beforeAll(async () => {
   ctx = await TestContext.create();
   // One trip per cup: a trip holds one competition (migration 195).
   ryderCup = await ctx.createCupTrip({ name: "Ryder", scoringModel: "match_play" });
-  pointsCup = await ctx.createCupTrip({ name: "Points", scoringModel: "points" });
+  pointsCup = await ctx.createCupTrip({ name: "Points", scoringModel: "points", teams: ["Team A", "Team B"] });
 }, 60_000);
 
 afterAll(async () => {

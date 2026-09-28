@@ -120,6 +120,20 @@ export async function prepareTeamMatchPoints(
   ]);
   const compTeamIds = rowsOrThrow(teamsRes, "cup's teams").map((t) => t.id as string);
   const isMatchPlayCup = maybeRowOrThrow(compRes, "cup")?.scoring_model === "match_play";
+  /**
+   * ── A TEAMLESS race pays PEOPLE (PR 7) ─────────────────────────────────────
+   *
+   * A points race with no teams (a race plays as teams if and only if it has
+   * them, ruling B). Its units are people, so a side pays the person on it —
+   * ruling 6's "otherwise the participant", and PR 5's deferred own-unit-or-
+   * forfeit question answered: there is no team to forfeit to. A win pays the
+   * match's value, a halve splits it (ruling 7), through the SAME `awardMatches`
+   * every other caller uses; only the side → unit resolution differs.
+   *
+   * 2v2 cannot reach here: a two-person side spans two units and is refused
+   * before it is saved (`refuseSplitSides`, PR 7 ruling 3).
+   */
+  const teamless = !isMatchPlayCup && compTeamIds.length === 0;
 
   return async (evenShareFallback, allMatches, freshOutcomes, onFailure) => {
     // Fresh outcomes override stale results for the matches we just processed.
@@ -141,6 +155,50 @@ export async function prepareTeamMatchPoints(
       ...m,
       result: resultByMatch.get(m.id as string) ?? null,
     }));
+
+    if (teamless) {
+      const personOf = (s: SideRef): string | undefined => (s.type === "user" ? s.id : undefined);
+      const personPoints = new Map(Object.entries(tallyMatchAwards(withFreshResults, personOf, evenShareFallback)));
+      // Everyone on a PAIRED side, whether or not their match is decided: a 0 is
+      // played and lost (or not yet decided), exactly as a team row's 0 is.
+      const people = new Set<string>();
+      for (const m of allMatches) {
+        const a = m.side_a as SideRef | null;
+        const b = m.side_b as SideRef | null;
+        if (!a?.id || !b?.id) continue;
+        for (const side of [a, b]) {
+          const id = personOf(side);
+          if (id) people.add(id);
+        }
+      }
+      // The same destructive-empty-write rule as the team arm below.
+      if (people.size === 0) return;
+      /**
+       * These REPLACE golf match play's per-side rank rows (`scope: user`), and
+       * must: migration 194 allows one row per person per game, and a row that
+       * declares points while carrying a position ranks NOTHING on the board
+       * (`resolveConvention`: conflicted). So a person's row here is POINTS with a
+       * null position, the same shape the team rows below have and for the same
+       * reason: the tally is the result of the contest, with the margin intact.
+       */
+      const rows = [...people].map((userId) => ({
+        id: crypto.randomUUID(),
+        entity_id: userId,
+        entity_type: "user" as const,
+        raw_score: personPoints.get(userId) ?? 0,
+        position: null as number | null,
+        value_kind: "points" as const,
+        competition_points_earned: null as null,
+      }));
+      await writeGameResults(supabase, {
+        gameId,
+        scope: { kind: "entity_type", entityType: "user" },
+        rows,
+        onFailure,
+      });
+      return;
+    }
+
     const teamPoints = new Map(
       Object.entries(tallyMatchAwards(withFreshResults, sideTeam, evenShareFallback))
     );

@@ -98,7 +98,7 @@ describe("only formats that record a result without a cup can be side games", ()
   }, 60_000);
 
   it("CONTROL: the same format is admitted INTO a cup", async () => {
-    const { tripId, competitionId } = await ctx.createCupTrip({ name: "Pick'em cup", scoringModel: "points", members: ["member"] });
+    const { tripId, competitionId } = await ctx.createCupTrip({ name: "Pick'em cup", scoringModel: "points", members: ["member"], teams: ["Team A", "Team B"] });
     await expect(
       ctx.caller().games.create({ tripId, gameTypeId: "gtt_pickem", name: "Sunday slate", competitionId })
     ).resolves.toBeTruthy();

@@ -529,13 +529,14 @@ const NOTIFY_SURFACE = {
  *  fallback — see `resolveResultStrategy`. */
 export function notifySurfaceFor(
   strategy: ResolvedResultStrategy,
-  /** True for a game with no competition. Only a `team`-reading format changes:
-   *  a `user` format (stroke, skins) already reads per-person rows, which a side
-   *  game writes like any other. */
-  sideGame = false
+  /** True when this game's results name PEOPLE, not teams: a side game (no
+   *  competition), or since PR 7 a game in a TEAMLESS race. Only a
+   *  `team`-reading format changes: a `user` format (stroke, skins) already
+   *  reads per-person rows. */
+  peopleOnly = false
 ): NotifySurface {
   const surface: NotifySurface = NOTIFY_SURFACE[strategy ?? "manual"];
-  return sideGame && surface.competitor === "team" ? SIDE_GAME_SURFACE : surface;
+  return peopleOnly && surface.competitor === "team" ? SIDE_GAME_SURFACE : surface;
 }
 
 /**
@@ -755,6 +756,22 @@ export async function notifyGameFinished(
 }
 
 /**
+ * Do this game's results name PEOPLE rather than teams? A side game's do; so do a
+ * TEAMLESS race's (a points race with no teams — a race plays as teams if and only
+ * if it has them, PR 7 ruling B). A failed read answers "teams", today's answer,
+ * so the worst case is a push with no winner line, never a wrong one.
+ */
+async function resultsNamePeople(admin: SupabaseClient, competitionId: string | null): Promise<boolean> {
+  if (competitionId == null) return true;
+  const { count, error } = await admin
+    .from("teams")
+    .select("id", { count: "exact", head: true })
+    .eq("competition_id", competitionId);
+  if (error || count == null) return false;
+  return count === 0;
+}
+
+/**
  * WHO a finished game's push goes to and WHAT it says, before anything is sent.
  *
  * Split out of `notifyGameFinished` (PR 6b) so the whole decision can be tested
@@ -768,8 +785,10 @@ export async function gameFinishedMessage(
   input: NotifyGameFinishedInput
 ): Promise<{ audience: string[]; message: { title: string; body: string; url: string; tag: string } }> {
   // Every per-format question, asked once, of one value.
-  // A side game (no competition) has no team rows to name; see SIDE_GAME_SURFACE.
-  const surface = notifySurfaceFor(input.strategy, input.competitionId == null);
+  // A game whose results name PEOPLE has no team rows to name; see
+  // SIDE_GAME_SURFACE. That is a side game, and (PR 7 ruling 5) a game in a
+  // teamless race, whose match rows are per-person points. One reader either way.
+  const surface = notifySurfaceFor(input.strategy, await resultsNamePeople(admin, input.competitionId));
 
   const audience = await resolveAudience(
     admin,
