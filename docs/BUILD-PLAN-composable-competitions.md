@@ -4,7 +4,9 @@
 no way to reach it. This revision adds the two entry points — **creating a competition,
 and side games on a trip** — so capability and access land together.
 
-**Built on `PHASE0-composable-primitives.md` and the rulings settled with Zach.**
+**Built on [`PHASE0-composable-primitives.md`](PHASE0-composable-primitives.md) (the brief)
+and its findings, [`PHASE0-composable-primitives-REPORT.md`](PHASE0-composable-primitives-REPORT.md)
+(a snapshot as of `32b52300`, not current behaviour), and the rulings settled with Zach.**
 
 > **One version, in the repo, from 2026-09-27.** Until then this plan lived as two copies
 > outside the repo: Zach's, and CC's with the rulings it recorded as PRs landed. They
