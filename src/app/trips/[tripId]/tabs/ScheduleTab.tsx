@@ -20,6 +20,7 @@ import {
 import { TabHeader } from "@/components/TabHeader";
 import { TabFab } from "@/components/TabFab";
 import { trpc } from "@/lib/trpc-client";
+import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { parseLocalDate, fmtTime12 } from "@/lib/dates";
 import { AddScheduleItemSheet } from "../components/AddScheduleItemSheet";
@@ -565,14 +566,19 @@ export function ScheduleTab({
   // change immediately; both invalidate on settle to reconcile with the server.
   const linkGameToItem = trpc.games.update.useMutation({
     async onMutate(vars) {
-      await utils.schedule.list.cancel({ tripId });
-      await utils.games.listByTrip.cancel({ tripId });
-      const prevSchedule = utils.schedule.list.getData({ tripId });
-      const prevGames = utils.games.listByTrip.getData({ tripId });
+      // games.listByTrip is faceBootstrap-seeded, so the bootstrap is a third
+      // writer of it to cancel, or an in-flight one lands after this write and
+      // puts the stale link back (#1405 C, src/lib/bootstrapSeed.ts).
+      await Promise.all([
+        utils.schedule.list.cancel({ tripId }),
+        utils.games.listByTrip.cancel({ tripId }),
+        cancelBootstrapSeed(utils, tripId),
+      ]);
+      const currentGames = utils.games.listByTrip.getData({ tripId });
 
       // Look up the real game so the optimistic chip has its actual name
       // (otherwise the chip shows the fallback until the server returns).
-      const sourceGame = (prevGames as GameRow[] | undefined)?.find((g) => g.id === vars.gameId);
+      const sourceGame = (currentGames as GameRow[] | undefined)?.find((g) => g.id === vars.gameId);
 
       // Optimistically update schedule items: add to the target item's array,
       // remove from any item that previously held this game (re-link / unlink).
@@ -609,13 +615,10 @@ export function ScheduleTab({
           g.id === vars.gameId ? { ...g, schedule_item_id: vars.scheduleItemId ?? null } : g
         ) as never
       );
-
-      return { prevSchedule, prevGames };
     },
-    onError(_e, _v, ctx) {
-      if (ctx?.prevSchedule) utils.schedule.list.setData({ tripId }, ctx.prevSchedule);
-      if (ctx?.prevGames) utils.games.listByTrip.setData({ tripId }, ctx.prevGames);
-    },
+    // No snapshot restore on error (#1405): with concurrent edits a snapshot
+    // predates a sibling's committed write and would discard it. The settle's
+    // invalidate re-pulls server truth instead (CLAUDE.md #1).
     onSettled() {
       utils.schedule.list.invalidate({ tripId });
       utils.games.listByTrip.invalidate({ tripId });
@@ -725,7 +728,6 @@ export function ScheduleTab({
   const reorder = trpc.schedule.reorder.useMutation({
     async onMutate(vars) {
       await utils.schedule.list.cancel({ tripId });
-      const prev = utils.schedule.list.getData({ tripId });
       // Assign sort_order based on position in the new itemIds array
       const orderMap = new Map(vars.itemIds.map((id, i) => [id, i]));
       utils.schedule.list.setData({ tripId }, (old) =>
@@ -736,18 +738,16 @@ export function ScheduleTab({
           })
           .sort((a, b) => a.sort_order - b.sort_order)
       );
-      return { prev };
     },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
-    },
+    // No snapshot restore on error (#1405): with concurrent edits a snapshot
+    // predates a sibling's committed write and would discard it. The settle's
+    // invalidate re-pulls server truth instead (CLAUDE.md #1).
     onSettled: () => utils.schedule.list.invalidate({ tripId }),
   });
 
   const updateItem = trpc.schedule.update.useMutation({
     async onMutate(vars) {
       await utils.schedule.list.cancel({ tripId });
-      const prev = utils.schedule.list.getData({ tripId });
       utils.schedule.list.setData({ tripId }, (old) =>
         old?.map((item) =>
           item.id === vars.itemId
@@ -770,11 +770,10 @@ export function ScheduleTab({
             : item
         )
       );
-      return { prev };
     },
-    onError(_e, _v, ctx) {
-      if (ctx?.prev) utils.schedule.list.setData({ tripId }, ctx.prev);
-    },
+    // No snapshot restore on error (#1405): with concurrent edits a snapshot
+    // predates a sibling's committed write and would discard it. The settle's
+    // invalidate re-pulls server truth instead (CLAUDE.md #1).
     onSettled: () => utils.schedule.list.invalidate({ tripId }),
   });
 
