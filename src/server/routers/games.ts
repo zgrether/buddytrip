@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { refuseSplitSides } from "../lib/splitSides";
 import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
+import { writeGameResults, type GameResultRow } from "../lib/writeGameResults";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
@@ -345,16 +346,18 @@ async function writeManualResults(
     creditedTeamOf = (entityId: string) => teamById.get(entityId) ?? null;
   }
 
-  // The delete comes AFTER the read above, never before it (#1470). It used to
-  // come first, so a failed entrant read on a re-finalize left a finished
-  // bracket with its results deleted and nothing written in their place.
-  const { error: delErr } = await supabase.from("game_results").delete().eq("game_id", gameId);
-  if (delErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to clear results: ${delErr.message}` });
-  if (placements.length === 0) return 0;
-
-  const rows = placements.map((p) => ({
+  // Every read above happens before the write below (#1470), and the write is
+  // ONE transaction (#1398). It used to be a bare DELETE and a bare INSERT, so
+  // an insert that failed after the delete committed left a finished game with
+  // no results — and a correction, which re-finalizes a game that already has
+  // results, is exactly where that lost something. `write_game_results`
+  // replaces them atomically and serializes concurrent finalizes (194).
+  //
+  // `scope: "all"` is the REPLACE-ALL described above: a game whose format
+  // changed must not keep the previous shape's rows. An empty `placements`
+  // clears the game's rows and writes none, as the delete alone used to.
+  const rows: GameResultRow[] = placements.map((p) => ({
     id: crypto.randomUUID(),
-    game_id: gameId,
     entity_id: p.entityId,
     entity_type: entityType,
     position: p.position,
@@ -363,11 +366,12 @@ async function writeManualResults(
     // mirror into `raw_score` directly above is exactly why the row has to say
     // so: every one of these rows carries both columns, so a reader testing
     // `raw_score != null` reads a placement as points.
-    value_kind: "rank" as const,
+    value_kind: "rank",
     credited_team_id: creditedTeamOf(p.entityId),
   }));
-  const { error: insErr } = await supabase.from("game_results").insert(rows);
-  if (insErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to save results: ${insErr.message}` });
+  // Finalize mode: a failure throws (the game is not marked complete), exactly
+  // as this writer always did — `writeGameResults.guard.test.ts` pins it.
+  await writeGameResults(supabase, { gameId, rows, scope: { kind: "all" }, onFailure: "throw" });
   return rows.length;
 }
 
@@ -1346,9 +1350,10 @@ export const gamesRouter = router({
       // points question.
       //
       // Same writer as the manual arm, one parameter apart, which is what the
-      // spec's "do not write placements by a different path" asks for. It throws
-      // on failure inline (it always has), which is why it is excluded from the
-      // `onFailure: "throw"` guard the engine computes below are held to.
+      // spec's "do not write placements by a different path" asks for. It commits
+      // through `writeGameResults` in finalize mode (#1398) — atomic, and it
+      // throws — which the guard test checks on the writer itself, since it is
+      // not an engine compute the count below can see.
       } else if (strategy === "bracket") {
         const derived = await deriveBracketPlacements(ctx.supabase, input.gameId);
         await writeManualResults(ctx.supabase, input.gameId, derived, "entrant");
@@ -1356,10 +1361,11 @@ export const gamesRouter = router({
       // complete with an empty results table is worse than a game that didn't
       // finish, and the failure is recoverable (status stays non-complete, the
       // computes are idempotent, so re-tapping Finish re-runs and recovers).
-      // This ends a divergence rather than adding a behaviour: the manual arm
-      // (writeManualResults, above) has always checked and thrown on this same
-      // table. The SETUP callers deliberately keep the default ("log") — see
-      // WriteFailureMode. `writeGameResults.guard.test.ts` pins these three.
+      // This ends a divergence rather than adding a behaviour: the placement
+      // arms (writeManualResults, above) had always checked and thrown on this
+      // same table, and now commit through the same writer in the same mode.
+      // The SETUP callers deliberately keep the default ("log") — see
+      // WriteFailureMode. `writeGameResults.guard.test.ts` pins all five.
       } else if (strategy === "match_play") {
         matches = await computeMatchPlayResults(ctx.supabase, input.gameId, { onFailure: "throw" });
       // NON-GOLF MATCHES (170) — the sixth engine, and the one whose "compute"

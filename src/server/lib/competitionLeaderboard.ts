@@ -144,7 +144,7 @@ export function resolveConvention(
       `[leaderboard] result rows carry no value_kind: game ${gameId} has team results written ` +
         `without the declaration migration 191 makes NOT NULL. Falling back to reading the columns ` +
         `(${contained}). This should be unreachable — check for a writer that bypasses ` +
-        `write_game_results / writeManualResults.`
+        `write_game_results (writeGameResults), the one path every finalize commits through.`
     );
     return contained;
   }
