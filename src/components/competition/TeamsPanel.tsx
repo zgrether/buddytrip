@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import {
   ArrowRight,
   GripVertical,
@@ -41,6 +41,7 @@ import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
 import { cancelRosterWriters } from "@/lib/rosterCacheSync";
+import { createRosterMutations, newRosterBurst } from "@/lib/rosterMutations";
 import {
   identityDiffers,
   orderDiffers,
@@ -168,161 +169,57 @@ const DND_USER_KEY = "application/x-buddytrip-user-id";
 
 // ── Optimistic mutation hook ────────────────────────────────────────────────
 // Both the drag-drop drop handler and the mobile crew roster talk to the
-// same teamAssignments cache; this hook centralizes the onMutate cache
-// patch + rollback so the avatar chip moves the instant the user drops or
-// picks a team, not after the network roundtrip.
+// same teamAssignments cache; this hook wires the four roster mutations to
+// ONE shared cache policy (`createRosterMutations`), so the avatar chip moves
+// the instant the user drops or picks a team, not after the network roundtrip.
+//
+// The policy lives in `src/lib/rosterMutations.ts`, where a test drives it:
+// the optimistic patches, the trailing-edge settle that re-pulls server truth
+// once a burst drains, and NO snapshot restore on error (#1405 — a restored
+// snapshot discarded a sibling tap the server had already committed).
 
 function useTeamAssignmentMutations(tripId: string, competitionId: string) {
   const utils = trpc.useUtils();
   const queryKey = { tripId, competitionId };
+  // The burst counter is the only state that must outlive a render: it holds
+  // the refetch until the last tap of a burst settles, across all four
+  // mutations. The options around it are rebuilt each render, on the current key.
+  const [burst] = useState(newRosterBurst);
+  const policy = createRosterMutations(
+    {
+      cancelWriters: () => cancelRosterWriters(utils, queryKey),
+      patch: (fn) =>
+        utils.teamAssignments.list.setData(queryKey, (old) =>
+          fn((old as Assignment[] | undefined) ?? []) as never
+        ),
+      refetch: ({ leaderboard }) => {
+        const u = utils;
+        u.teamAssignments.list.invalidate(queryKey);
+        // Only when a team's SIZE moved (assign / remove): a reorder-only burst
+        // doesn't force an extra leaderboard refetch.
+        if (leaderboard) u.competitions.leaderboard.invalidate(queryKey);
+        // faceBootstrap ALSO seeds teamAssignments.list (#10): the consolidated
+        // TeamSheet opens OUTSIDE the LiveFace re-seed path, so re-resolve the
+        // bootstrap or the board reads stale until the 30s poll.
+        u.competitions.faceBootstrap.invalidate({ tripId: queryKey.tripId });
+        // Moving someone between teams (or off one) changes THEIR avatar colour,
+        // which the app bar reads on every tab — cached with staleTime: Infinity,
+        // so it only refreshes if invalidated here.
+        u.competitions.myTeamColor.invalidate({ tripId: queryKey.tripId });
+      },
+    },
+    burst
+  );
 
-  // Rapid-fire calls (e.g. quickly assigning several players in a row) race their
-  // independent onSettled → invalidate() calls: an EARLIER mutation's refetch can
-  // resolve AFTER a LATER mutation's optimistic write lands, overwriting the cache
-  // with server data that hasn't caught up to the later write yet — silently
-  // dropping it (the "assign too fast, a player reappears unassigned" bug). Defer
-  // the invalidate to the TRAILING EDGE of a burst: track in-flight mutations
-  // across all four calls sharing this hook instance and only invalidate once the
-  // count drops back to 0, so a fast burst gets exactly one, fully-settled refetch
-  // instead of N racing ones. `needsLeaderboard` preserves each mutation type's own
-  // invalidation set (reorder/setCaptain never touched leaderboard — team SIZE is
-  // unchanged — so a reorder-only burst doesn't force an extra leaderboard refetch).
-  const pendingRef = useRef(0);
-  const needsLeaderboardRef = useRef(false);
-  const beginMutation = (needsLeaderboard: boolean) => {
-    pendingRef.current += 1;
-    if (needsLeaderboard) needsLeaderboardRef.current = true;
-  };
-  const settleMutation = () => {
-    pendingRef.current = Math.max(0, pendingRef.current - 1);
-    if (pendingRef.current > 0) return; // more of this burst still in flight
-    utils.teamAssignments.list.invalidate(queryKey);
-    if (needsLeaderboardRef.current) {
-      utils.competitions.leaderboard.invalidate(queryKey);
-      needsLeaderboardRef.current = false;
-    }
-    // faceBootstrap ALSO seeds teamAssignments.list (#10): the consolidated
-    // TeamSheet opens OUTSIDE the LiveFace re-seed path, so re-resolve the
-    // bootstrap or the board reads stale until the 30s poll.
-    utils.competitions.faceBootstrap.invalidate({ tripId });
-    // Moving someone between teams (or off one) changes THEIR avatar colour,
-    // which the app bar reads on every tab — cached with staleTime: Infinity, so
-    // it only refreshes if invalidated here.
-    utils.competitions.myTeamColor.invalidate({ tripId });
-  };
-
-  const assign = trpc.teamAssignments.assign.useMutation({
-    onMutate: async (vars) => {
-      beginMutation(true); // team-size change → leaderboard points move
-      await cancelRosterWriters(utils, queryKey);
-      const previous = utils.teamAssignments.list.getData(queryKey);
-      utils.teamAssignments.list.setData(queryKey, (old) => {
-        const list = (old as Assignment[] | undefined) ?? [];
-        // Composite PK is (competition_id, user_id) — drop any existing
-        // row for this user before inserting the new pairing.
-        const filtered = list.filter((a) => a.user_id !== vars.userId);
-        // sort_order MIRRORS the server: `assign` writes max + 1, i.e. the end of
-        // the target team's order. Omitting it here was not neutral — every reader
-        // sorts on `sort_order ?? 0`, so the newcomer optimistically tied with the
-        // FIRST row and rendered near the top, then jumped to the bottom when the
-        // refetch landed. Same value, same place, no jump.
-        const nextSortOrder =
-          filtered
-            .filter((a) => a.team_id === vars.teamId)
-            .reduce((max, a) => Math.max(max, a.sort_order ?? 0), -1) + 1;
-        return [
-          ...filtered,
-          {
-            competition_id: vars.competitionId,
-            user_id: vars.userId,
-            team_id: vars.teamId,
-            sort_order: nextSortOrder,
-          },
-        ] as never;
-      });
-      return { previous };
-    },
-    onError: (_err, _vars, ctxRollback) => {
-      if (ctxRollback?.previous) {
-        utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
-      }
-    },
-    onSettled: settleMutation,
-  });
-
-  const remove = trpc.teamAssignments.remove.useMutation({
-    onMutate: async (vars) => {
-      beginMutation(true); // team-size change → leaderboard points move
-      await cancelRosterWriters(utils, queryKey);
-      const previous = utils.teamAssignments.list.getData(queryKey);
-      utils.teamAssignments.list.setData(queryKey, (old) => {
-        const list = (old as Assignment[] | undefined) ?? [];
-        return list.filter((a) => a.user_id !== vars.userId) as never;
-      });
-      return { previous };
-    },
-    onError: (_err, _vars, ctxRollback) => {
-      if (ctxRollback?.previous) {
-        utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
-      }
-    },
-    onSettled: settleMutation,
-  });
-
-  // reorder (Part 3) — optimistic: rewrite sort_order for this team per the new
-  // order; other teams untouched. The roster lists derive display order from
-  // sort_order, so the rows resequence instantly. faceBootstrap seeds the list,
-  // so re-resolve it (#10) — the order survives an overlay/modal close + reopen.
-  const reorder = trpc.teamAssignments.reorder.useMutation({
-    onMutate: async (vars) => {
-      beginMutation(false); // sort_order only — team size/points unaffected
-      await cancelRosterWriters(utils, queryKey);
-      const previous = utils.teamAssignments.list.getData(queryKey);
-      const orderIndex = new Map(vars.orderedUserIds.map((id, i) => [id, i]));
-      utils.teamAssignments.list.setData(queryKey, (old) => {
-        const list = (old as Assignment[] | undefined) ?? [];
-        return list.map((a) =>
-          a.team_id === vars.teamId && orderIndex.has(a.user_id)
-            ? { ...a, sort_order: orderIndex.get(a.user_id)! }
-            : a
-        ) as never;
-      });
-      return { previous };
-    },
-    onError: (_err, _vars, ctxRollback) => {
-      if (ctxRollback?.previous) {
-        utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
-      }
-    },
-    onSettled: settleMutation,
-  });
-
-  // setCaptain (PR b) — optimistic: the target gets the flag; any other captain
-  // on the SAME team is cleared (one-per-team). faceBootstrap also seeds
-  // teamAssignments.list, so re-resolve it (#10) — the captain survives an
-  // overlay close/reopen, not just the live optimistic state.
-  const setCaptain = trpc.teamAssignments.setCaptain.useMutation({
-    onMutate: async (vars) => {
-      beginMutation(false); // captain flag only — team size/points unaffected
-      await cancelRosterWriters(utils, queryKey);
-      const previous = utils.teamAssignments.list.getData(queryKey);
-      utils.teamAssignments.list.setData(queryKey, (old) => {
-        const list = (old as Assignment[] | undefined) ?? [];
-        return list.map((a) => {
-          if (a.team_id !== vars.teamId) return a;
-          if (a.user_id === vars.userId) return { ...a, is_captain: vars.isCaptain };
-          return a.is_captain ? { ...a, is_captain: false } : a;
-        }) as never;
-      });
-      return { previous };
-    },
-    onError: (_err, _vars, ctxRollback) => {
-      if (ctxRollback?.previous) {
-        utils.teamAssignments.list.setData(queryKey, ctxRollback.previous);
-      }
-    },
-    onSettled: settleMutation,
-  });
+  const assign = trpc.teamAssignments.assign.useMutation(policy.assign);
+  const remove = trpc.teamAssignments.remove.useMutation(policy.remove);
+  // reorder (Part 3): the roster lists derive display order from sort_order, so
+  // the rows resequence instantly; the order survives an overlay close + reopen
+  // because the settle re-resolves faceBootstrap (#10).
+  const reorder = trpc.teamAssignments.reorder.useMutation(policy.reorder);
+  // setCaptain (PR b): one captain per team; survives an overlay close/reopen
+  // for the same reason.
+  const setCaptain = trpc.teamAssignments.setCaptain.useMutation(policy.setCaptain);
 
   return { assign, remove, setCaptain, reorder };
 }
