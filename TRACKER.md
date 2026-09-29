@@ -98,6 +98,15 @@ R1's shape has changed under it — see §2. What remains:
   Display-string tier throughout. `competitions.scoring_model`'s DB values
   (`match_play` / `points`) are a separate, DB-value-tier question the rename must declare.
 
+- **`assert_competition_owner`'s refusal names ONE of its callers. Fix it the next time the
+  function is redefined.** It says *"Only the trip owner can reset a competition"*, but it
+  guards `delete_competition_cascade` and both competition resets (`set_team_captain` left it in
+  migration 200), so a refused **delete** is told it tried to reset. A shared check's message
+  should be generic: **"Only the trip owner can do this."** Deliberately NOT an issue (Zach,
+  2026-09-29): only a direct database call can reach the text, because tRPC's
+  `requireCompetitionRole('owner')` refuses first with its own message. Found by migration 200's
+  production containment check.
+
 - **Split payouts — a side's winnings divided among the units it contains.** Since PR 5 a
   match side must resolve to ONE unit, and the server refuses one that doesn't
   (`splitSideRefusal`, `src/lib/sideUnit.ts`). That refusal is **temporary by design**, and says
