@@ -21,6 +21,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import type { AuthData, SharedUser } from "./global-setup";
 import { withSeedRetry } from "./seedRetry";
+import { deleteTestTrips } from "./deleteTestTrips";
 
 // ---------------------------------------------------------------------------
 // Env
@@ -437,41 +438,24 @@ export class TestContext {
     for (const competitionId of this._competitionIds) {
       await this.admin.from("teams").delete().eq("competition_id", competitionId);
     }
-    // Scoreboard shares (competition-scoped per migration 062)
-    for (const competitionId of this._competitionIds) {
-      await this.admin
-        .from("scoreboard_shares")
-        .delete()
-        .eq("competition_id", competitionId);
-    }
     // Competitions
     for (const competitionId of this._competitionIds) {
       await this.admin.from("competitions").delete().eq("id", competitionId);
     }
-    // Trip-level tables
-    for (const tripId of this._tripIds) {
-      await this.admin.from("messages").delete().eq("trip_id", tripId);
-      await this.admin.from("idea_comments").delete().eq("trip_id", tripId);
-      await this.admin.from("idea_votes").delete().eq("trip_id", tripId);
-      await this.admin.from("ideas").delete().eq("trip_id", tripId);
-      const { data: windows } = await this.admin
-        .from("date_windows").select("id").eq("trip_id", tripId);
-      for (const win of windows ?? []) {
-        await this.admin.from("date_poll_votes").delete().eq("window_id", win.id);
-      }
-      await this.admin.from("date_windows").delete().eq("trip_id", tripId);
-      const { data: expenses } = await this.admin
-        .from("expenses").select("id").eq("trip_id", tripId);
-      const expenseIds = expenses?.map((e: { id: string }) => e.id) ?? [];
-      if (expenseIds.length > 0) {
-        await this.admin.from("expense_splits").delete().in("expense_id", expenseIds);
-      }
-      await this.admin.from("expenses").delete().eq("trip_id", tripId);
-      await this.admin.from("reservations").delete().eq("trip_id", tripId);
-      await this.admin.from("quick_info_tiles").delete().eq("trip_id", tripId);
-      await this.admin.from("trip_members").delete().eq("trip_id", tripId);
-      await this.admin.from("trips").delete().eq("id", tripId);
+    // Trip-level tables — the ONE trip-removal path, shared with the run's
+    // leak sweep (`global-setup.ts` teardown), so the two cannot drift.
+    const failures = await deleteTestTrips(this.admin, this._tripIds);
+    if (failures.length > 0) {
+      // Loud, not thrown: a cleanup failure must not turn a passing file red,
+      // but it is exactly how a trip survives — the sweep reports what remains.
+      console.warn(`[TestContext.cleanup] ${failures.length} trip deletion(s) failed:\n  ${failures.join("\n  ")}`);
     }
+    // Emptied, so a second cleanup() on the same context (or a helper reused
+    // after one) never re-deletes, and anything created afterwards is tracked.
+    this._tripIds = [];
+    this._competitionIds = [];
+    this._teamIds = [];
+    this._groupIds = [];
   }
 }
 

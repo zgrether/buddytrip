@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 
 /**
@@ -140,7 +140,9 @@ beforeEach(async () => {
   await seedGhostCompetition();
 });
 
-afterAll(async () => {
+// afterEach, not afterAll (#1516): beforeEach makes a NEW context per test, and
+// cleaning only the last one leaked every earlier test's trip on every run.
+afterEach(async () => {
   await ctx?.cleanup();
 });
 

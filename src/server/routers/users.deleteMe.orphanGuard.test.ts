@@ -28,13 +28,19 @@ import { findOrphanBlockers, orphanRefusalMessage } from "../lib/ownerGuard";
 
 let ctx: TestContext;
 
+// ONE context for the whole file (#1516). Each describe used to rely on the
+// first describe's context, and that describe's own afterAll cleaned it up
+// BEFORE the next describe created its trip on it — so that trip was never
+// deleted and leaked into the local database on every run.
+beforeAll(async () => {
+  ctx = await TestContext.create();
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
 describe("#957 orphan guard — findOrphanBlockers", () => {
-  beforeAll(async () => {
-    ctx = await TestContext.create();
-  });
-  afterAll(async () => {
-    await ctx.cleanup();
-  });
 
   it("BLOCKS: sole Owner of a trip with other members", async () => {
     const tripId = await ctx.createTrip("Sole Owner Trip");
