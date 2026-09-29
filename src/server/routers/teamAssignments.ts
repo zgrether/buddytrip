@@ -262,9 +262,10 @@ export const teamAssignmentsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // setCaptain — mark/unmark a player as their team's captain (Owner only).
-  // Appointing a captain is a STRUCTURE act (the owner appoints; the captain
-  // doesn't pass it on). Delegates to the atomic plpgsql swap (migration 064):
+  // setCaptain — mark/unmark a player as their team's captain (Owner or
+  // Organizer, migration 200: you can hand out powers you already hold, and an
+  // Organizer holds every roster right a captain gets). The captain still
+  // doesn't pass it on. Delegates to the atomic plpgsql swap (migration 064):
   // isCaptain=true clears the team's prior captain then sets this one (one per
   // team, declaratively enforced); isCaptain=false unmarks just this user.
   // Throws if the target isn't assigned to the team.
@@ -279,7 +280,7 @@ export const teamAssignmentsRouter = router({
         isCaptain: z.boolean(),
       })
     )
-    .use(requireTripRole("Owner"))
+    .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const { error } = await ctx.supabase.rpc("set_team_captain", {
         p_trip_id: input.tripId,

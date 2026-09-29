@@ -212,6 +212,43 @@ describe("#786 — Organizer parity at the tRPC guard layer", () => {
     });
   });
 
+  // Moved out of "held back" by migration 200. It was blocked by the SHARED
+  // assert_competition_owner, which also guards competition delete (exception
+  // 4, still pinned Owner-only below); set_team_captain now has its own gate, so
+  // the shared assert did not widen. Ruled 2026-09-29: you can hand out powers
+  // you already hold, and an Organizer holds every roster right a captain gets.
+  describe("teamAssignments.setCaptain — moved (migration 200)", () => {
+    async function seedAssignment() {
+      await ctx.admin.from("team_assignments").upsert({
+        competition_id: competitionId,
+        user_id: memberId,
+        team_id: teamId,
+      });
+    }
+    const input = () => ({ tripId, competitionId, teamId, userId: memberId, isCaptain: true });
+
+    it("admits an Organizer — and the captaincy LANDS", async () => {
+      // Not just "not FORBIDDEN": forbidden() is false for ANY other error,
+      // so a refusal from the function's own gate (surfaced as a 500) would pass
+      // a guard-only check. Asserting the row is what separates them.
+      await seedAssignment();
+      await ctx.callerAs("planner").teamAssignments.setCaptain(input());
+      const { data } = await ctx.admin
+        .from("team_assignments")
+        .select("is_captain")
+        .eq("competition_id", competitionId)
+        .eq("user_id", memberId)
+        .single();
+      expect(data?.is_captain).toBe(true);
+    });
+    it("refuses a Member", async () => {
+      await seedAssignment();
+      expect(
+        await forbidden(() => ctx.callerAs("member").teamAssignments.setCaptain(input()))
+      ).toBe(true);
+    });
+  });
+
   describe("games.delete / .resetScoring / .resetToSkeleton", () => {
     async function seedGame() {
       const gameId = genId("guard-game");
@@ -550,26 +587,6 @@ describe("#786 — Organizer parity at the tRPC guard layer", () => {
           ctx
             .callerAs("planner")
             .ghostCrew.update({ tripId, guestUserId: memberId, name: "Nope" })
-        )
-      ).toBe(true);
-    });
-
-    // Blocked by: set_team_captain calls the SHARED assert_competition_owner,
-    // which also guards delete_competition_cascade — i.e. exception 4. Widening
-    // the shared assert would widen competitions.delete, so this one needs the
-    // assert split before it can move. It is also arguably an exception rather
-    // than a deviation: a captain holds real RLS grants (migrations 065 / 094),
-    // so appointing one may be "changing who is trusted" one level down.
-    it("teamAssignments.setCaptain (blocked by a shared assert; may be an exception)", async () => {
-      expect(
-        await forbidden(() =>
-          ctx.callerAs("planner").teamAssignments.setCaptain({
-            tripId,
-            competitionId,
-            teamId,
-            userId: memberId,
-            isCaptain: true,
-          })
         )
       ).toBe(true);
     });
