@@ -395,7 +395,37 @@ describe("invites.claim — token-authorized placeholder claim", () => {
     // cannot produce this wording.
     await expect(
       ctx.callerAs("outsider").invites.claim({ token: seed.token })
-    ).rejects.toThrow(/scores in the same game/i);
+    ).rejects.toThrow(/are both in Collision Game/);
+
+    const ghost = await ctx.admin.from("users").select("id").eq("id", seed.ghostId).maybeSingle();
+    expect(ghost.data?.id).toBe(seed.ghostId);
+
+    await dropGame(otherGameId);
+    await dropGame(seed.gameId);
+  }, HOOK_TIMEOUT_MS);
+
+  it("REFUSES when both identities are merely in the same game — no scores at all (#1481)", async () => {
+    // Migration 197 widened the check from "a score for the same hole" to "in
+    // the same game at all". Two game_participants rows and nothing else: the
+    // old score-only pre-check let this straight through to the merge.
+    const seed = await seedInvitedPlaceholder("Same Game No Scores");
+    const otherTripId = await ctx.createTrip("Shared Roster Trip");
+    await ctx.caller().ghostCrew.create({ tripId: otherTripId, name: "Brad Placeholder", role: "Member", email: seed.email });
+    await ctx.addTripMemberById(otherTripId, outsiderId, "Member");
+
+    const otherGameId = genId("game");
+    const { error: gErr } = await ctx.admin.from("games").insert({
+      id: otherGameId, trip_id: otherTripId, game_type_id: "gtt_match_play", name: "Roster Game", status: "active",
+    });
+    if (gErr) throw new Error(`seed game: ${gErr.message}`);
+    for (const userId of [seed.ghostId, outsiderId]) {
+      const { error } = await ctx.admin.from("game_participants").insert({ id: genId("gp"), game_id: otherGameId, user_id: userId });
+      if (error) throw new Error(`seed participant: ${error.message}`);
+    }
+
+    await expect(
+      ctx.callerAs("outsider").invites.claim({ token: seed.token })
+    ).rejects.toThrow(/are both in Roster Game.*Ask the trip owner/);
 
     const ghost = await ctx.admin.from("users").select("id").eq("id", seed.ghostId).maybeSingle();
     expect(ghost.data?.id).toBe(seed.ghostId);
