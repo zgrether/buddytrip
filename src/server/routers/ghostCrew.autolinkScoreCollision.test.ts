@@ -52,8 +52,11 @@ async function scoresFor(participantId: string) {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  realId = ctx.getUser("outsider").id;
-  realEmail = ctx.getUser("outsider").email;
+  // A throwaway account this file owns (#1481 follow-up): linking MERGES into
+  // it and deletes rows, so it must not be the shared `outsider` other files use.
+  const account = await ctx.createAccount("score-collision");
+  realId = account.id;
+  realEmail = account.email;
 
   tripId = await ctx.createTrip("Collision link trip");
   const ghost = (await ctx.caller().ghostCrew.create({ tripId, name: "Brad", role: "Member" })) as { id: string };
