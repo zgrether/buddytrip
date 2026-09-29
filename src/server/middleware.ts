@@ -232,9 +232,11 @@ export function requireTeamIdentityEdit() {
       throw new TRPCError({ code: "NOT_FOUND", message: "Team not found in this trip" });
     }
 
-    // Owner of the trip → allowed (resolveTripRole also confirms membership).
+    // Owner or Organizer → allowed (resolveTripRole also confirms membership).
+    // Organizer since migration 199: whoever can delete a team can rename and
+    // reorder it (PR 8 permissions pass).
     const role = await resolveTripRole(ctx, tripId);
-    if (role === "Owner") {
+    if (role === "Owner" || role === "Organizer") {
       return next({ ctx: { ...ctx, tripId } });
     }
 
@@ -252,7 +254,7 @@ export function requireTeamIdentityEdit() {
 
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "Only the owner or this team's captain can edit its identity.",
+      message: "Only an organizer or this team's captain can edit its identity.",
     });
   });
 }

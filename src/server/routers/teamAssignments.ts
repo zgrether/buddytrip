@@ -42,6 +42,39 @@ export async function listTeamAssignments(
   return data ?? [];
 }
 
+
+/**
+ * A captain's roster write (PR 8 permissions pass, migration 199). Captains are
+ * not Organizers, so the table's RLS refuses their direct writes; the definer
+ * function checks captaincy, the roster lock, trip membership and the trade
+ * rule itself. Its sentences are written for a person and surface verbatim;
+ * the SQLSTATE picks the tRPC code.
+ */
+async function captainRosterWrite(
+  supabase: SupabaseClient,
+  fn: "captain_add_player" | "captain_remove_player",
+  args: { competitionId: string; teamId: string; userId: string }
+): Promise<void> {
+  const { error } = await supabase.rpc(fn, {
+    p_competition_id: args.competitionId,
+    p_team_id: args.teamId,
+    p_user_id: args.userId,
+  });
+  if (!error) return;
+  const code =
+    error.code === "42501"
+      ? "FORBIDDEN"
+      : error.code === "23514"
+        ? "PRECONDITION_FAILED"
+        : error.code === "22023"
+          ? "BAD_REQUEST"
+          : "INTERNAL_SERVER_ERROR";
+  throw new TRPCError({ code, message: error.message });
+}
+
+/** Trip roles that edit rosters directly (ruled: Organizers add, remove, move). */
+const ROSTER_EDITORS = new Set(["Owner", "Organizer"]);
+
 export const teamAssignmentsRouter = router({
   // -----------------------------------------------------------------------
   // list — all assignments for a competition
@@ -83,8 +116,15 @@ export const teamAssignmentsRouter = router({
         teamId: z.string(),
       })
     )
-    .use(requireTripRole("Organizer"))
+    // Organizers add, remove and move (ruled). A CAPTAIN may add an UNASSIGNED
+    // player to their own team until the roster locks, through the definer
+    // function, which refuses a trade. Anyone else is refused there too.
+    .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
+      if (!ROSTER_EDITORS.has(ctx.tripRole)) {
+        await captainRosterWrite(ctx.supabase, "captain_add_player", input);
+        return { competition_id: input.competitionId, user_id: input.userId, team_id: input.teamId };
+      }
       // Roster-removal lock — asymmetric: a pure ADD (no prior assignment) always
       // passes. A MOVE/TRADE (already on a DIFFERENT team) removes them from that
       // team, so it's blocked once scoring has started. (Re-assigning to the same
@@ -171,6 +211,9 @@ export const teamAssignmentsRouter = router({
         tripId: z.string(),
         competitionId: z.string(),
         userId: z.string(),
+        // Required for a CAPTAIN (the removal is scoped to their team); ignored
+        // for an Organizer, who may remove from any team.
+        teamId: z.string().optional(),
       })
     )
     // #786 — Organizer parity, and it closes a split INSIDE this one table:
@@ -178,8 +221,19 @@ export const teamAssignmentsRouter = router({
     // INSERT/UPDATE were already Owner+Organizer, so an Organizer could put a
     // player on a team but not take them off. DELETE was the outlier; migration
     // 101 moved `team_assignments_delete` to match.
-    .use(requireTripRole("Organizer"))
+    .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
+      // A CAPTAIN removes only from their own team, until the roster locks
+      // (migration 199). The team is required on that path.
+      if (!ROSTER_EDITORS.has(ctx.tripRole)) {
+        if (!input.teamId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only an organizer or that team's captain can remove players." });
+        }
+        await captainRosterWrite(ctx.supabase, "captain_remove_player", {
+          competitionId: input.competitionId, teamId: input.teamId, userId: input.userId,
+        });
+        return { success: true };
+      }
       // Roster-removal lock: a removal is blocked once any game in the competition
       // has a score (it could orphan the player in a configured match).
       await assertRosterUnlocked(ctx.supabase, input.competitionId);

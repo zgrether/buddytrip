@@ -64,10 +64,9 @@ describe("teams.update — identity gated owner || captain-of-team", () => {
     expect(await teamName(teamB)).toBe("Bravo Prime"); // unchanged
   });
 
-  it("a co-admin (Organizer, non-captain) CANNOT edit identity — re-gated off co_admin", async () => {
-    await expect(
-      ctx.callerAs("planner").teams.update({ tripId, teamId: teamA, name: "Nope" })
-    ).rejects.toThrow();
-    expect(await teamName(teamA)).toBe("Alpha Prime"); // unchanged
+  it("an Organizer (non-captain) CAN edit identity — whoever can delete a team can rename it (migration 199)", async () => {
+    // Asserted a refusal until the PR 8 permissions pass reversed it.
+    await ctx.callerAs("planner").teams.update({ tripId, teamId: teamA, name: "Alpha Organized" });
+    expect(await teamName(teamA)).toBe("Alpha Organized");
   });
 });

@@ -56,10 +56,10 @@ describe("teams router", () => {
     expect(teams.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("update — the owner can rename a team's identity; a co-admin (Organizer) cannot (PR b2)", async () => {
-    // Identity (name/short/color) is the captain tier now: owner OR the team's
-    // captain. A co-admin (Organizer) who is NOT the captain is re-gated out —
-    // captain-specific cases live in teams.identity.test.ts.
+  it("update — the owner and an Organizer can rename a team's identity; a Member cannot", async () => {
+    // Identity (name/short/color): Owner, Organizer (migration 199 — whoever can
+    // delete a team can rename it; PR b2 had gated Organizer out), or the team's
+    // captain. Captain-specific cases live in teams.identity.test.ts.
     const teams = await ctx.caller().teams.list({ tripId, competitionId });
     const target = teams[0];
     const updated = await ctx.caller().teams.update({
@@ -69,9 +69,16 @@ describe("teams router", () => {
     });
     expect(updated.name).toBe("Team Hammer 2.0");
 
+    const byOrganizer = await ctx.callerAs("planner").teams.update({
+      tripId,
+      teamId: target.id,
+      name: "Team Hammer 3.0",
+    });
+    expect(byOrganizer.name).toBe("Team Hammer 3.0");
+
     await expect(
-      ctx.callerAs("planner").teams.update({ tripId, teamId: target.id, name: "Nope" })
-    ).rejects.toThrow();
+      ctx.callerAs("member").teams.update({ tripId, teamId: target.id, name: "Nope" })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("delete — a co-admin (trip Organizer) can delete a team; a member cannot", async () => {
