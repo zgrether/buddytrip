@@ -72,3 +72,50 @@ export function resetGameConfigHash(
 ): void {
   utils.games.configHash.reset({ tripId: input.tripId, gameId: input.gameId });
 }
+
+export type TripGameStateUtils = {
+  games: {
+    configHash: { reset: () => unknown };
+    getById: { invalidate: () => unknown };
+    listByTrip: { invalidate: (input: { tripId: string }) => unknown };
+  };
+  matches: { listByGame: { invalidate: () => unknown } };
+  playGroups: { listByGame: { invalidate: () => unknown } };
+  teamAssignments: { list: { invalidate: () => unknown } };
+  competitions: {
+    faceBootstrap: { invalidate: (input: { tripId: string }) => unknown };
+    leaderboard: { invalidate: () => unknown };
+  };
+};
+
+/**
+ * The refresh owed by a write that moves the hash of games it CANNOT NAME (#1507).
+ *
+ * Removing a trip member (or a placeholder) vacates their seats in every game of
+ * the trip — `clearTripParticipation` → `vacateTripGameSeats`, in shared server
+ * code — and the guest merge (linking a placeholder to an account, or claiming
+ * an invite) repoints `game_participants`, match sides and delegates. Each of
+ * those moves `readGameConfigHash` for some set of games the client does not
+ * know, so it resets the fingerprint for ALL of them (the prefix, no input) and
+ * re-pulls what renders the changed rows:
+ *
+ *  - `games.configHash` — RESET, not invalidated, for the reason
+ *    `resetGameConfigHash` gives: an open draft must not re-freeze its baseline
+ *    on the stale value.
+ *  - the game reads that show seats and handicaps, and the roster (the removal
+ *    also clears the person's team assignments).
+ *  - `faceBootstrap` AND the leaderboard, never only the child (CLAUDE.md #10).
+ *
+ * Resetting a query nobody observes just drops a value that would be refetched
+ * anyway, so the prefix costs nothing on a device with no game open.
+ */
+export function resetTripGameState(utils: TripGameStateUtils, tripId: string): void {
+  utils.games.configHash.reset();
+  utils.games.getById.invalidate();
+  utils.games.listByTrip.invalidate({ tripId });
+  utils.matches.listByGame.invalidate();
+  utils.playGroups.listByGame.invalidate();
+  utils.teamAssignments.list.invalidate();
+  utils.competitions.faceBootstrap.invalidate({ tripId });
+  utils.competitions.leaderboard.invalidate();
+}
