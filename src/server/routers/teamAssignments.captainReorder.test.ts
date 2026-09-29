@@ -7,6 +7,9 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * `teamAssignments.reorder` moved from requireTripRole("Owner") to
  * requireTeamIdentityEdit() — owner OR the captain of THAT team — while
  * assign / remove / setCaptain stayed owner-only. RLS was widened to match.
+ * Migration 199 (PR 8 permissions pass) added Organizer to that gate and gave
+ * captains a pre-results add/remove of their own; this file's cases 3 and 6
+ * were rewritten for it.
  *
  * Server enforcement is the whole point: these call the procedures DIRECTLY,
  * bypassing the client, and the RLS case goes below tRPC entirely to a
@@ -19,7 +22,7 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * Organizer, and the policy independently grants Organizer write access (kept
  * on purpose — teamAssignments.assign is Organizer-gated and upserts). Only a
  * plain Member isolates the captain branch. `planner` now sits on team B and
- * doubles as proof that Organizer is NOT admitted by the tRPC gate.
+ * is the Organizer case, which the tRPC gate admits since migration 199.
  */
 
 let ctx: TestContext;
@@ -124,19 +127,18 @@ describe("reorder — the boundary (direct procedure calls, no client involved)"
     ).rejects.toThrow();
   });
 
-  it("3. a non-captain (Organizer, on another team) reorders team A → REFUSED", async () => {
-    // Stronger than a plain member: proves the gate admits Owner and THIS team's
-    // captain only. Organizer is trip staff and passes plenty of other gates
-    // (assign, for one) — it does not pass this one.
-    const order = await teamAOrder();
-    await expect(
-      ctx.callerAs("planner").teamAssignments.reorder({
-        tripId,
-        competitionId,
-        teamId: teamA,
-        orderedUserIds: [...order].reverse(),
-      })
-    ).rejects.toThrow();
+  it("3. an Organizer (non-captain, on another team) reorders team A → ADMITTED (migration 199)", async () => {
+    // This case asserted REFUSED until the PR 8 permissions pass ruled that
+    // whoever can delete a team can rename and reorder it. It stays as the
+    // Organizer case, checked against the DB rather than the return value.
+    const reversed = [...(await teamAOrder())].reverse();
+    await ctx.callerAs("planner").teamAssignments.reorder({
+      tripId,
+      competitionId,
+      teamId: teamA,
+      orderedUserIds: reversed,
+    });
+    expect(await teamAOrder()).toEqual(reversed);
   });
 
   it("a non-member of the trip reorders → REFUSED", async () => {
@@ -152,8 +154,12 @@ describe("reorder — the boundary (direct procedure calls, no client involved)"
   });
 });
 
-describe("6. the gate did NOT widen past reorder — captain still refused", () => {
-  it("assign → REFUSED for the captain", async () => {
+// Until migration 199 a captain had NO membership rights and these asserted a
+// blanket refusal. A captain may now add unassigned players and remove their own
+// before results (full coverage in rosterPermissions.test.ts), so each case
+// names the specific line it still cannot cross, and pins the code that says so.
+describe("6. the captain's roster grant stops where migration 199 draws it", () => {
+  it("assign of a player on ANOTHER team → REFUSED as a trade", async () => {
     await expect(
       ctx.callerAs("member").teamAssignments.assign({
         tripId,
@@ -161,17 +167,17 @@ describe("6. the gate did NOT widen past reorder — captain still refused", () 
         userId: teamBMember,
         teamId: teamA,
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
 
-  it("remove → REFUSED for the captain", async () => {
+  it("remove without naming their team → REFUSED (the captain path is team-scoped)", async () => {
     await expect(
       ctx.callerAs("member").teamAssignments.remove({
         tripId,
         competitionId,
         userId: teamAOther,
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("setCaptain → REFUSED for the captain (no sub-appointing)", async () => {
