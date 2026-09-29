@@ -53,6 +53,7 @@ describe("SettingsSaveBar shows the progress bar only while saving", () => {
     onSave: async () => true,
     onDiscard: noop,
     onLeave: noop,
+    onLoadLatest: noop,
   };
 
   it("renders NO progress bar on an idle, dirty page", () => {

@@ -950,7 +950,7 @@ export function NonGolfGameView() {
   // serverConfigDraft / configDraft / anyTouched, the pure equal/payload fns, the bundle,
   // the overlay refs) are passed in.
   const {
-    saveState, saveError, saving, handleSave: handleSaveConfig,
+    saveState, handleLoadLatest, loadingLatest, saveError, saving, handleSave: handleSaveConfig,
   } = useConfigDraft<NonGolfConfigDraft, typeof draftBundle>({
     tripId, gameId: urlGameId, view: "nongolf", canEdit,
     showConfig, dirtyRef, discardRef,
@@ -1279,6 +1279,8 @@ export function NonGolfGameView() {
         saveBar={
           <SettingsSaveBar
             saveState={saveState}
+              onLoadLatest={handleLoadLatest}
+              loadingLatest={loadingLatest}
             saving={saving}
             error={saveError}
             onSave={handleSaveConfig}

@@ -749,7 +749,7 @@ export function RackGameView() {
   // The shared draft-then-save lifecycle (#626) — baseline + hash + dirty + outbox +
   // confirm-on-leave sync + the atomic Save. Format-specific pieces are passed in.
   const {
-    saveState, saveError, setSaveError, saving, handleSave: handleSaveConfig,
+    saveState, handleLoadLatest, loadingLatest, saveError, setSaveError, saving, handleSave: handleSaveConfig,
   } = useConfigDraft<RackConfigDraft, typeof draftBundle>({
     tripId, gameId: gid, view: "rack", canEdit,
     showConfig, dirtyRef, discardRef,
@@ -1098,6 +1098,8 @@ export function RackGameView() {
           saveBar={
             <SettingsSaveBar
               saveState={saveState}
+              onLoadLatest={handleLoadLatest}
+              loadingLatest={loadingLatest}
               saving={saving}
               error={saveError}
               onSave={handleSaveConfig}

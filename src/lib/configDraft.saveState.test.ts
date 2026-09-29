@@ -45,10 +45,13 @@ describe("deriveSaveState — the server moved under the draft", () => {
 });
 
 describe("the save bar's sentence for a stale draft", () => {
-  it("is a warning that names the action — Cancel loads the latest", () => {
+  it("is a short warning whose action is Load latest — not Cancel, not \"somewhere else\"", () => {
     const hint = saveHintFor("stale", null, false);
     expect(hint).toEqual({ text: STALE_HINT, tone: "warning" });
-    expect(STALE_HINT).toMatch(/Cancel to load the latest/);
+    expect(STALE_HINT).toBe("This game changed while you were editing. Load the latest, then make your change again.");
+    // Zach: Cancel means abandon where the action is a refresh, and "somewhere
+    // else" is vague — the reader may not know which device it was and needn't.
+    expect(STALE_HINT).not.toMatch(/Cancel|somewhere else/);
   });
 
   it("shows immediately — no grace period, unlike not-ready", () => {

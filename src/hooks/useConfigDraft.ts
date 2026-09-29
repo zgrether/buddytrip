@@ -268,6 +268,29 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
     }
     return true;
   }
+  // LOAD LATEST (PR 8 prerequisite A, Zach's call): the way out of a stale draft
+  // that KEEPS the panel open. Cancel would have meant close, reopen and redo, and
+  // it names abandoning where the action is a refresh.
+  //
+  // Refresh the server mirror (the view's own game queries) AND the hash FIRST,
+  // then drop the local slices — the same ordering `handleSave` needs (T4): reset
+  // first and every field falls back to a mirror that is still stale, and the
+  // baseline re-freezes as { fresh draft, stale hash }. After this the page is the
+  // latest version, untouched, with a baseline that matches it.
+  const [loadingLatest, setLoadingLatest] = useState(false);
+  async function handleLoadLatest() {
+    if (loadingLatest) return;
+    setLoadingLatest(true);
+    setSaveError(null);
+    clearDraftOutbox();
+    try {
+      await Promise.all([onSaved?.(), hashQ.refetch().catch(() => undefined)]);
+    } finally {
+      reset(false);
+      setJustSaved(false);
+      setLoadingLatest(false);
+    }
+  }
   function handleCancel() {
     reset(false);
     setSaveError(null);
@@ -318,5 +341,8 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
     saving: saveConfigM.isPending || committing,
     handleSave,
     handleCancel,
+    /** Stale draft → refresh to the latest server version, staying in the panel. */
+    handleLoadLatest,
+    loadingLatest,
   };
 }

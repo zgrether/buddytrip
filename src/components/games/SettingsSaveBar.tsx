@@ -68,10 +68,9 @@ export const NOT_READY_HINT =
 export const UNKNOWN_STATE_HINT = "Save isn't available right now.";
 
 /** The game changed on the server while this draft was open (PR 8 prerequisite A).
- *  Says what happened, why Save is off, and the ONE action that gets the person to a
- *  savable state — Cancel loads the latest (CLAUDE.md: a refusal names an action). */
-export const STALE_HINT =
-  "This game was changed somewhere else while you were editing, so these changes can't be saved over it. Cancel to load the latest, then make your change again.";
+ *  One line a phone can take in, and the action is the button beside it (Zach: not
+ *  "somewhere else", which the reader may not be able to place and doesn't need). */
+export const STALE_HINT = "This game changed while you were editing. Load the latest, then make your change again.";
 
 export type SaveHint = { text: string; tone: "warning" | "quiet" } | null;
 
@@ -151,6 +150,8 @@ export function SettingsSaveBar({
   onSave,
   onDiscard,
   onLeave,
+  onLoadLatest,
+  loadingLatest = false,
   saveDisabledReason,
 }: {
   /** Why Save is (or isn't) available — the draft lifecycle, from `useConfigDraft`. */
@@ -163,6 +164,12 @@ export function SettingsSaveBar({
   onDiscard: () => void;
   /** Close the panel after a successful Save (the draft is already clean). */
   onLeave: () => void;
+  /** A stale draft's way out: refresh to the latest version and stay in the panel.
+   *  REQUIRED, so the compiler lists any view that renders this bar without it —
+   *  a stale note with no button would name an action the reader can't take. */
+  onLoadLatest: () => void;
+  /** True while Load latest is refreshing (the button reads "Loading…"). */
+  loadingLatest?: boolean;
   /** When set, Save is BLOCKED (disabled) and this reason shows as an amber hint —
    *  e.g. a points distribution that no longer sums to the total (C1). Distinct from
    *  `error`, which is a RED post-save failure. Cancel stays enabled (you can leave). */
@@ -257,6 +264,18 @@ export function SettingsSaveBar({
           data-testid={hint.tone === "warning" ? "settings-save-blocked" : "settings-save-pending"}
         >
           {hint.text}
+          {saveState === "stale" && !saveDisabledReason && (
+            <button
+              type="button"
+              onClick={onLoadLatest}
+              disabled={loadingLatest}
+              className="ml-2 font-semibold underline underline-offset-2 disabled:opacity-40"
+              style={{ color: "inherit", background: "transparent", border: "none", padding: 0 }}
+              data-testid="settings-load-latest"
+            >
+              {loadingLatest ? "Loading…" : "Load latest"}
+            </button>
+          )}
         </p>
       )}
       {error && (

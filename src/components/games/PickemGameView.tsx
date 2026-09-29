@@ -1101,7 +1101,7 @@ export function PickemGameView() {
   });
 
   const {
-    saveState,
+    saveState, handleLoadLatest, loadingLatest,
     saveError: configSaveError,
     saving: configSaving,
     handleSave: handleSaveConfig,
@@ -2069,6 +2069,8 @@ export function PickemGameView() {
           saveBar={
             <SettingsSaveBar
               saveState={saveState}
+              onLoadLatest={handleLoadLatest}
+              loadingLatest={loadingLatest}
               saving={configSaving}
               error={configSaveError}
               onSave={handleSaveConfig}
