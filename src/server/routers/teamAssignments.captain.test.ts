@@ -3,7 +3,8 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 
 /**
  * Captain (Rosters PR b) — teamAssignments.setCaptain + the atomic plpgsql swap
- * (migration 064). Owner-gated, one-captain-per-team, target-must-be-on-team.
+ * (migration 064). Owner-or-Organizer-gated (migration 200; Owner-only before),
+ * one-captain-per-team, target-must-be-on-team.
  */
 
 let ctx: TestContext;
@@ -70,14 +71,52 @@ describe("teamAssignments.setCaptain", () => {
     expect(await captainsOf(teamA)).toEqual([]); // unchanged
   });
 
-  it("owner-only: a co-admin (Organizer) and a plain member cannot set captain", async () => {
-    await expect(
-      ctx.callerAs("planner").teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: memberId, isCaptain: true })
-    ).rejects.toThrow();
+  it("a plain member cannot set captain — through tRPC, or by calling the function directly", async () => {
     await expect(
       ctx.callerAs("member").teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: memberId, isCaptain: true })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    // Below tRPC: the function's own gate. Without this, a database gate
+    // widened to anyone would hide behind the still-closed tRPC one.
+    const { error } = await ctx.authedClient("member").rpc("set_team_captain", {
+      p_trip_id: tripId, p_competition_id: competitionId, p_team_id: teamA, p_user_id: memberId, p_is_captain: true,
+    });
+    expect(error?.code).toBe("42501");
     expect(await captainsOf(teamA)).toEqual([]); // neither write landed
+  });
+
+  it("an Organizer (co_admin, not owner) CAN set a captain — migration 200", async () => {
+    // Asserted a refusal until the PR 8 permissions pass: you can hand out
+    // powers you already hold, and an Organizer holds every roster right a
+    // captain gets. The one-per-team swap is the same function, so it holds too.
+    await ctx.callerAs("planner").teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: memberId, isCaptain: true });
+    expect(await captainsOf(teamA)).toEqual([memberId]);
+    await ctx.callerAs("planner").teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: ownerId, isCaptain: true });
+    expect(await captainsOf(teamA)).toEqual([ownerId]);
+    // Leave team A captainless, as the next case expects to set it from scratch.
+    await ctx.callerAs("planner").teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: ownerId, isCaptain: false });
+    expect(await captainsOf(teamA)).toEqual([]);
+  });
+
+  it("an Organizer of THIS trip cannot appoint in another trip's cup by naming this trip", async () => {
+    // Migration 200 carried assert_competition_owner's second half — the
+    // competition belongs to the trip — into set_team_captain's own gate. The
+    // role check is on p_trip_id, so without it an Organizer here could name
+    // this trip and another trip's competition. Called directly: the tRPC gate
+    // reads the same tripId and would admit it too.
+    const otherTrip = await ctx.createTrip("Captain other trip");
+    await ctx.addTripMember(otherTrip, "member", "Member");
+    const otherComp = await ctx.createCompetition(otherTrip, "Other Cup");
+    const otherTeam = await ctx.createTeam(otherComp, "Other", { shortName: "OTH" });
+    const seed = await ctx.admin.from("team_assignments").insert({
+      competition_id: otherComp, user_id: memberId, team_id: otherTeam,
+    });
+    if (seed.error) throw new Error(`seed: ${seed.error.message}`);
+
+    const { error } = await ctx.authedClient("planner").rpc("set_team_captain", {
+      p_trip_id: tripId, p_competition_id: otherComp, p_team_id: otherTeam, p_user_id: memberId, p_is_captain: true,
+    });
+    expect(error?.code).toBe("P0002");
+    expect(await captainsOf(otherTeam)).toEqual([]);
   });
 
   it("captains are independent per team (N-team)", async () => {
