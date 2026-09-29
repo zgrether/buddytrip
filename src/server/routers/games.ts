@@ -926,11 +926,17 @@ export const gamesRouter = router({
        * the path we had just finished making instant.
        */
       const [writeRes, clearRes] = await Promise.all([
+        // `.select("id")` returns the row the UPDATE actually changed. Under RLS a
+        // refused update is NOT an error — it matches zero rows and succeeds — so
+        // `assertNoError` alone let a delegate's pick report success while writing
+        // nothing (Phase 0 F2, migration 198). The row-count check below makes the
+        // next code-versus-database mismatch loud instead of silent.
         ctx.supabase
           .from("bracket_matches")
           .update({ winner_entrant_id: input.winnerSeed === null ? null : idOfSeed(input.winnerSeed) })
           .eq("id", row.id)
-          .eq("game_id", input.gameId),
+          .eq("game_id", input.gameId)
+          .select("id"),
         orphanIds.length > 0
           ? ctx.supabase
               .from("bracket_matches")
@@ -940,6 +946,12 @@ export const gamesRouter = router({
           : Promise.resolve({ error: null }),
       ]);
       assertNoError(writeRes, "record the result");
+      if (!writeRes.data || writeRes.data.length === 0) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "That result couldn't be recorded — you may not have permission to run this bracket.",
+        });
+      }
       assertNoError(clearRes as { error: { message: string } | null }, "clear the downstream results");
 
       return { ok: true as const };
