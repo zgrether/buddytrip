@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
+import { withSeedRetry } from "../../__tests__/helpers/seedRetry";
 import { STABLEFORD_PRESETS } from "@/lib/stableford";
 import { STROKE_PLAY_UNITS } from "@/lib/strokePlayConfig";
 
@@ -104,11 +105,20 @@ async function fixture(name: string, scoringConfig: Record<string, unknown>) {
   // finalize writes NO team rows — which surfaces as "the assertion found
   // nothing" three screens away rather than as "the seed failed".
   // No `id` column — the PK is (competition_id, user_id).
-  const { error: taErr } = await ctx.admin.from("team_assignments").insert([
-    { competition_id: competitionId, team_id: teamA, user_id: owner },
-    { competition_id: competitionId, team_id: teamB, user_id: member },
-  ]);
-  if (taErr) throw new Error(`team_assignments seed failed: ${taErr.message}`);
+  //
+  // Retried on the gateway 502 (#664), and still error-checked: `withSeedRetry`
+  // throws on anything else. This runs in a beforeAll, where CI's `retry: 2`
+  // does not reach, so one 502 failed the whole file with 0 tests failed
+  // (#1517's first CI run). Retry-safe: the PK makes a landed-original retry a
+  // 23505, which the helper treats as success.
+  await withSeedRetry(
+    () =>
+      ctx.admin.from("team_assignments").insert([
+        { competition_id: competitionId, team_id: teamA, user_id: owner },
+        { competition_id: competitionId, team_id: teamB, user_id: member },
+      ]),
+    "team_assignments seed failed"
+  );
 
   const g = (await ctx.caller().games.create({
     tripId,

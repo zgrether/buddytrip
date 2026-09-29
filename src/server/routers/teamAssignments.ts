@@ -5,6 +5,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireTeamIdentityEdit } from "../middleware";
 import { assertRosterUnlocked, competitionHasScore } from "../lib/rosterLock";
 import { maybeRowOrThrow } from "../lib/rowOrThrow";
+import { readRosterFingerprint } from "../lib/rosterFingerprint";
 
 /**
  * team_assignments — composite PK (competition_id, user_id) means a user
@@ -49,6 +50,17 @@ export const teamAssignmentsRouter = router({
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireTripMember)
     .query(({ ctx, input }) => listTeamAssignments(ctx, input.competitionId)),
+
+  // rosterFingerprint — the roster's version, for PR 8's before-and-after
+  // previews: a preview carries the fingerprint it was built on and its confirm
+  // refuses if it moved (`assertRosterUnchanged`). Separate from games.configHash
+  // on purpose — see `rosterFingerprint.ts`.
+  rosterFingerprint: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx, input }) => ({
+      fingerprint: await readRosterFingerprint(ctx.supabase, ctx.tripId, input.competitionId),
+    })),
 
   // rosterLocked — has scoring started (any score entered)? Drives the Rosters
   // sheet's disabled remove/delete controls (C1 is the enforcement; this is so the
