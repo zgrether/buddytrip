@@ -6,6 +6,10 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
  * #1024 — the owner auto-link REFUSES, readably, when the placeholder and the
  * account both hold a score for the same hole of the same game.
  *
+ * Since migration 197 (#1481) this is one instance of a wider rule — refuse
+ * whenever both are in the same game AT ALL — so the sentence names the game
+ * rather than the hole. `ghostCrew.linkSameGame.test.ts` covers the rest.
+ *
  * `merge_guest_to_real_user` moves score rows with a plain UPDATE, and
  * `score_entries` is UNIQUE (game_id, participant_id, unit_label). Two
  * identities with a score on one hole therefore raise a raw duplicate-key error
@@ -113,9 +117,9 @@ describe("owner auto-link with a score collision (#1024)", () => {
     // resolve, not a fault. Today's raw duplicate-key error arrives as a 500.
     expect(err.code).toBe("CONFLICT");
     // Asserted on OUR sentence. A Postgres constraint message cannot produce
-    // "a score for the same hole", so this separates "the pre-check fired" from
+    // "are both in <game name>", so this separates "the pre-check fired" from
     // "the unique index did".
-    expect(err.message).toMatch(/both have a score for the same hole/);
+    expect(err.message).toContain("are both in Collision Game");
     // …and it names a next step, not only the fault.
     expect(err.message).toMatch(/separate crew members/);
     // No wrapper prefix and no raw constraint text leaking through.
@@ -142,7 +146,7 @@ describe("owner auto-link with a score collision (#1024)", () => {
     });
     expect(res.error).not.toBeNull();
     expect(res.error!.code).toBe("23505");
-    expect(res.error!.message).toMatch(/both have a score for the same hole/);
+    expect(res.error!.message).toContain("are both in Collision Game");
   }, 60_000);
 
   it("is not a blanket refusal: without the collision, the same link goes through", async () => {
