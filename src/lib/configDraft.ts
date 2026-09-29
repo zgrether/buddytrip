@@ -224,7 +224,38 @@ export function toBracketConfig(raw: unknown): BracketConfig | null {
  * `blocked` is deliberately NOT a member: that is the view's `saveDisabledReason`, about
  * the draft's CONTENT rather than its lifecycle, and the bar layers it over these.
  */
-export type SaveState = "clean" | "not-ready" | "ready";
+/**
+ * Where the settings draft stands, for the save bar.
+ *  - `clean`     — nothing to save.
+ *  - `not-ready` — edited, but the concurrency base hasn't loaded yet.
+ *  - `ready`     — edited, and Save will write against the base it froze.
+ *  - `stale`     — edited, and the game CHANGED ON THE SERVER since the draft froze
+ *                  its base (PR 8 prerequisite A). Save would be refused as a
+ *                  CONFLICT, so it is disabled and the bar says so BEFORE the tap
+ *                  rather than after it.
+ */
+export type SaveState = "clean" | "not-ready" | "ready" | "stale";
+
+/**
+ * The ONE derivation of `SaveState`, pure so the rule is testable without a hook.
+ * `serverHash` is the live (polled) hash; `baselineHash` the one the draft froze on.
+ * `committing` covers our own write, which moves the server hash a moment before the
+ * baseline re-freezes on it — that must never read as "changed somewhere else".
+ */
+export function deriveSaveState(s: {
+  anyTouched: boolean;
+  dirty: boolean;
+  baselineHash: string | null;
+  serverHash: string | null | undefined;
+  committing: boolean;
+}): SaveState {
+  const serverMoved =
+    s.anyTouched && !!s.baselineHash && !!s.serverHash && s.serverHash !== s.baselineHash && !s.committing;
+  if (serverMoved) return "stale";
+  if (s.dirty) return "ready";
+  if (s.anyTouched && !s.baselineHash) return "not-ready";
+  return "clean";
+}
 
 export interface BaseConfigDraft {
   /** The game's format id — READ-ONLY context, never edited (so it's excluded from

@@ -67,6 +67,12 @@ export const NOT_READY_HINT =
  *  nothing. Belt and braces, deliberately. */
 export const UNKNOWN_STATE_HINT = "Save isn't available right now.";
 
+/** The game changed on the server while this draft was open (PR 8 prerequisite A).
+ *  Says what happened, why Save is off, and the ONE action that gets the person to a
+ *  savable state — Cancel loads the latest (CLAUDE.md: a refusal names an action). */
+export const STALE_HINT =
+  "This game was changed somewhere else while you were editing, so these changes can't be saved over it. Cancel to load the latest, then make your change again.";
+
 export type SaveHint = { text: string; tone: "warning" | "quiet" } | null;
 
 /**
@@ -96,6 +102,9 @@ export function saveHintFor(
     case "not-ready":
       // "Not known yet", never "you can't" — and only after the grace period.
       return notReadyElapsed ? { text: NOT_READY_HINT, tone: "quiet" } : null;
+    case "stale":
+      // A real refusal-in-waiting, so warning chrome and no grace period.
+      return { text: STALE_HINT, tone: "warning" };
     default: {
       // Exhaustiveness: a new `SaveState` member fails the build HERE rather than
       // falling through to silence, which is the defect #1255 is about.

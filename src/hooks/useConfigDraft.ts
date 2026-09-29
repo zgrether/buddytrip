@@ -5,7 +5,7 @@ import { trpc } from "@/lib/trpc-client";
 import { GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useDraftOutbox } from "@/hooks/useDraftOutbox";
 import type { DraftView } from "@/lib/draftOutbox";
-import type { SaveConfigPayload, BaseConfigDraft, SaveState } from "@/lib/configDraft";
+import { deriveSaveState, type SaveConfigPayload, type BaseConfigDraft, type SaveState } from "@/lib/configDraft";
 
 /**
  * useConfigDraft — the ONE draft-then-save lifecycle for the game-settings page, shared by
@@ -118,6 +118,14 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anyTouched, serverConfigDraft, serverHash, ready]);
 
+  // Spans the WHOLE commit — the mutation AND the `onSaved` refetch after it — where
+  // `saveConfigM.isPending` covers only the mutation. Needed because T4 moved `reset`
+  // to AFTER that refetch: the draft now stays touched (so `dirty` stays true) while
+  // the refetch is in flight, which without this would re-enable Save mid-commit and
+  // let a second click write against the now-stale `baseline.hash`.
+  const [committing, setCommitting] = useState(false);
+  const saveConfigM = trpc.games.saveConfig.useMutation();
+
   // SAVE gate — requires a real baseline: no baseline means no optimistic-concurrency
   // base, so there is nothing safe to write against. Unchanged.
   const dirty = anyTouched && !!baseline && !draftsEqual(configDraft, baseline.draft);
@@ -143,11 +151,23 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
   // `blocked` is NOT here on purpose — it is the VIEW's `saveDisabledReason`
   // (a points split that won't apply), computed from the draft rather than from the
   // draft's lifecycle, and the bar layers it over this. One concept per owner.
-  const saveState: SaveState = dirty
-    ? "ready"
-    : anyTouched && !baseline
-      ? "not-ready"
-      : "clean";
+  // THE SERVER MOVED UNDER THE DRAFT (PR 8 prerequisite A). The poll keeps reading
+  // the live hash while the baseline stays frozen at the one the edit started from,
+  // so a difference between them means someone changed this game since — and Save,
+  // which sends the frozen hash, would be refused as a CONFLICT. Say so while the
+  // person is still editing, not after they tap.
+  //
+  // Never during our OWN commit: the write moves the server hash a moment before
+  // the baseline re-freezes on it, and reading that as "someone else changed it"
+  // would flash a warning at the person who just saved.
+  const saveState: SaveState = deriveSaveState({
+    anyTouched,
+    dirty,
+    baselineHash: baseline?.hash ?? null,
+    serverHash,
+    committing: committing || saveConfigM.isPending,
+  });
+  const serverMoved = saveState === "stale";
 
   // LEAVE gate — deliberately NOT the same predicate, because the two failures are not
   // symmetric. A prompt shown unnecessarily costs one tap; a prompt suppressed destroys
@@ -162,13 +182,6 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
   const [justSaved, setJustSaved] = useState(false);
   useEffect(() => { if (anyTouched) setJustSaved(false); }, [anyTouched]);
   const [saveError, setSaveError] = useState<string | null>(null);
-  // Spans the WHOLE commit — the mutation AND the `onSaved` refetch after it — where
-  // `saveConfigM.isPending` covers only the mutation. Needed because T4 moved `reset`
-  // to AFTER that refetch: the draft now stays touched (so `dirty` stays true) while
-  // the refetch is in flight, which without this would re-enable Save mid-commit and
-  // let a second click write against the now-stale `baseline.hash`.
-  const [committing, setCommitting] = useState(false);
-  const saveConfigM = trpc.games.saveConfig.useMutation();
 
   // Hard-teardown durability (localStorage). Base = the frozen baseline's hash — literally the
   // SAME value Save sends as `baseHash`, so restore-vs-discard and the conflict check cannot
@@ -200,7 +213,7 @@ export function useConfigDraft<D extends BaseConfigDraft, B>(params: {
    *  bar) closes the panel on success and leaves it open (with the inline error) on
    *  failure. A no-op call (not dirty / already saving) returns `false`: nothing landed. */
   async function handleSave(): Promise<boolean> {
-    if (!tripId || !gameId || !baseline || !dirty || saveConfigM.isPending || committing) return false;
+    if (!tripId || !gameId || !baseline || !dirty || serverMoved || saveConfigM.isPending || committing) return false;
     setSaveError(null);
     setCommitting(true);
     try {
