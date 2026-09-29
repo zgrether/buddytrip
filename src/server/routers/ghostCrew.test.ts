@@ -96,7 +96,9 @@ describe("ghostCrew router", () => {
     // Use a fresh trip so outsider isn't already a member from an earlier test.
     const freshTripId = await ctx.createTrip("Ghost Auto-Link Trip");
     const caller = ctx.caller();
-    const outsider = ctx.getUser("outsider");
+    // A throwaway REAL account (not the shared `outsider`): creating a guest with
+    // its email auto-links, which merges into it.
+    const outsider = await ctx.createAccount("create-autolink");
 
     const result = await caller.ghostCrew.create({
       tripId: freshTripId,
@@ -207,7 +209,9 @@ describe("ghostCrew router", () => {
     guestUserIds.push(ghost.id);
 
     // 'outsider' has a real BT account but isn't a member of this trip
-    const outsider = ctx.getUser("outsider");
+    // A throwaway REAL account (not the shared `outsider`): creating a guest with
+    // its email auto-links, which merges into it.
+    const outsider = await ctx.createAccount("create-autolink");
 
     const result = await owner.ghostCrew.update({
       tripId,

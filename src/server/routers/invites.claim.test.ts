@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { TestContext, genId } from "../../__tests__/helpers/test-setup";
+import { TestContext, genId, type TestAccount } from "../../__tests__/helpers/test-setup";
 import { resolveInviteLink } from "../lib/inviteLink";
 
 /**
@@ -35,6 +35,7 @@ const HOOK_TIMEOUT_MS = 60_000;
 let ctx: TestContext;
 let outsiderId: string;
 let outsiderEmail: string;
+let claimAccount: TestAccount;
 
 type Seed = {
   tripId: string;
@@ -142,9 +143,13 @@ async function dropGame(gameId: string) {
 describe("invites.claim — token-authorized placeholder claim", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    const outsider = ctx.getUser("outsider");
-    outsiderId = outsider.id;
-    outsiderEmail = outsider.email;
+    // A throwaway account this file owns: every claim MERGES into it and deletes
+    // a placeholder, so it must not be the shared `outsider` other files link
+    // into. (The variable names keep "outsider" for the role it plays here: an
+    // account that is not on the trip.)
+    claimAccount = await ctx.createAccount("invite-claim");
+    outsiderId = claimAccount.id;
+    outsiderEmail = claimAccount.email;
   }, HOOK_TIMEOUT_MS);
 
   afterAll(async () => {
@@ -154,7 +159,7 @@ describe("invites.claim — token-authorized placeholder claim", () => {
   it("attaches the placeholder — and its whole history — to the signed-in account", async () => {
     const seed = await seedInvitedPlaceholder("Bradley");
 
-    const result = await ctx.callerAs("outsider").invites.claim({ token: seed.token });
+    const result = await claimAccount.caller().invites.claim({ token: seed.token });
 
     expect(result.tripId).toBe(seed.tripId);
     expect(result.claimedName).toBe("Bradley");
@@ -269,7 +274,7 @@ describe("invites.claim — token-authorized placeholder claim", () => {
     await ctx.addTripMemberById(seed.tripId, outsiderId, "Member");
 
     await expect(
-      ctx.callerAs("outsider").invites.claim({ token: seed.token })
+      claimAccount.caller().invites.claim({ token: seed.token })
     ).rejects.toThrow(/already on this trip/i);
 
     // The refusal has to happen BEFORE anything moves. The merge would resolve
@@ -301,7 +306,7 @@ describe("invites.claim — token-authorized placeholder claim", () => {
   it("REFUSES a second claim on the same token — and says so for the right reason", async () => {
     const seed = await seedInvitedPlaceholder("Once Only");
 
-    await ctx.callerAs("outsider").invites.claim({ token: seed.token });
+    await claimAccount.caller().invites.claim({ token: seed.token });
 
     // Asserted on the SENTENCE, not just the throw. After the first claim the
     // claimant IS a member of the trip, so an "already on this trip" refusal
@@ -309,7 +314,7 @@ describe("invites.claim — token-authorized placeholder claim", () => {
     // The token is spent because the placeholder is GONE, which is a fact
     // rather than a flag.
     await expect(
-      ctx.callerAs("outsider").invites.claim({ token: seed.token })
+      claimAccount.caller().invites.claim({ token: seed.token })
     ).rejects.toThrow(/already been used/i);
 
     await dropGame(seed.gameId);
@@ -320,7 +325,7 @@ describe("invites.claim — token-authorized placeholder claim", () => {
     const forged = "f".repeat(64);
 
     await expect(
-      ctx.callerAs("outsider").invites.claim({ token: forged })
+      claimAccount.caller().invites.claim({ token: forged })
     ).rejects.toThrow(/isn't valid/i);
 
     // A forged token must not reach some OTHER trip's placeholder.
@@ -338,7 +343,7 @@ describe("invites.claim — token-authorized placeholder claim", () => {
       .eq("id", seed.ghostId);
 
     await expect(
-      ctx.callerAs("outsider").invites.claim({ token: seed.token })
+      claimAccount.caller().invites.claim({ token: seed.token })
     ).rejects.toThrow(/deleted their account/i);
 
     const ghost = await ctx.admin.from("users").select("id").eq("id", seed.ghostId).maybeSingle();
@@ -394,7 +399,7 @@ describe("invites.claim — token-authorized placeholder claim", () => {
     // guard fired" from "the constraint did", and a Postgres constraint message
     // cannot produce this wording.
     await expect(
-      ctx.callerAs("outsider").invites.claim({ token: seed.token })
+      claimAccount.caller().invites.claim({ token: seed.token })
     ).rejects.toThrow(/are both in Collision Game/);
 
     const ghost = await ctx.admin.from("users").select("id").eq("id", seed.ghostId).maybeSingle();
@@ -424,7 +429,7 @@ describe("invites.claim — token-authorized placeholder claim", () => {
     }
 
     await expect(
-      ctx.callerAs("outsider").invites.claim({ token: seed.token })
+      claimAccount.caller().invites.claim({ token: seed.token })
     ).rejects.toThrow(/are both in Roster Game.*Ask the trip owner/);
 
     const ghost = await ctx.admin.from("users").select("id").eq("id", seed.ghostId).maybeSingle();

@@ -95,6 +95,14 @@ export function createAnonCaller() {
 // TestContext — manages trips + cleanup for shared users
 // ---------------------------------------------------------------------------
 
+/** A throwaway account made by `TestContext.createAccount`. */
+export interface TestAccount {
+  id: string;
+  email: string;
+  caller: () => ReturnType<typeof createCallerForUser>;
+  client: () => SupabaseClient;
+}
+
 export interface TestUser {
   id: string;
   email: string;
@@ -115,6 +123,7 @@ export class TestContext {
   private _competitionIds: string[] = [];
   private _groupIds: string[] = [];
   private _teamIds: string[] = [];
+  private _accountIds: string[] = [];
 
   private constructor(admin: SupabaseClient, primaryUser: TestUser) {
     this.admin = admin;
@@ -138,6 +147,46 @@ export class TestContext {
     const user: TestUser = { id: shared.id, email: shared.email, role };
     this._users.set(role, user);
     return user;
+  }
+
+  /**
+   * A THROWAWAY real account, owned by this context and deleted by `cleanup()`.
+   *
+   * For any test that makes an account the TARGET of a destructive write — a
+   * guest link or an invite claim, both of which run the merge, move rows onto
+   * the account and delete the placeholder. Six files used the shared
+   * `outsider` for this and wrote into each other's state when run in parallel
+   * (a different one failed each run). A shared account is fine to READ as; it
+   * is not fine to merge INTO. See CLAUDE.md's destructive-write rule.
+   *
+   * Created like a real signup (the `handle_new_user` trigger makes its
+   * `users` row) and signed in, so it can also act as the claimant.
+   */
+  async createAccount(label: string): Promise<TestAccount> {
+    const email = `acct-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@example.test`.toLowerCase();
+    const password = `Acct-${Math.random().toString(36).slice(2)}-${Date.now()}!`;
+    const { data, error } = await this.admin.auth.admin.createUser({
+      email, password, email_confirm: true, user_metadata: { name: `Account ${label}` },
+    });
+    if (error || !data.user) throw new Error(`createAccount(${label}): ${error?.message ?? "no user"}`);
+    this._accountIds.push(data.user.id);
+
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: ANON_KEY },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) throw new Error(`createAccount(${label}) sign-in: ${res.status} ${await res.text()}`);
+    const session = await res.json();
+    const shared: SharedUser = {
+      id: data.user.id, email, access_token: session.access_token, refresh_token: session.refresh_token,
+    };
+    return {
+      id: shared.id,
+      email,
+      caller: () => createCallerForUser(shared),
+      client: () => createAuthenticatedClient(shared),
+    };
   }
 
   /** Get an authenticated tRPC caller for the primary user (owner). */
@@ -452,6 +501,13 @@ export class TestContext {
     }
     // Emptied, so a second cleanup() on the same context (or a helper reused
     // after one) never re-deletes, and anything created afterwards is tracked.
+    // Throwaway accounts LAST: their rows may sit in the trips deleted above.
+    // `handle_user_delete` removes the public.users row, and FKs cascade.
+    for (const id of this._accountIds) {
+      const { error } = await this.admin.auth.admin.deleteUser(id);
+      if (error) console.warn(`[TestContext.cleanup] could not delete account ${id}: ${error.message}`);
+    }
+    this._accountIds = [];
     this._tripIds = [];
     this._competitionIds = [];
     this._teamIds = [];

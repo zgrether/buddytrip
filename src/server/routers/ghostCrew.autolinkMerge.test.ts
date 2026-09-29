@@ -135,8 +135,11 @@ async function ghostRefs() {
 
 beforeEach(async () => {
   ctx = await TestContext.create();
-  realId = ctx.getUser("outsider").id;
-  realEmail = ctx.getUser("outsider").email;
+  // A throwaway account this file owns (#1481 follow-up): linking MERGES into
+  // it and deletes rows, so it must not be the shared `outsider` other files use.
+  const account = await ctx.createAccount("autolink-merge");
+  realId = account.id;
+  realEmail = account.email;
   await seedGhostCompetition();
 });
 

@@ -118,7 +118,9 @@ describe("migration 132 — a deleted account cannot be resurrected by its addre
 
   it("link_guest_to_account REFUSES a deleted placeholder, and still allows an ordinary one", async () => {
     const owner = ctx.getUser("owner").id;
-    const target = ctx.getUser("outsider").id;
+    // A throwaway account, not the shared `outsider`: the ordinary link below
+    // merges into it.
+    const target = (await ctx.createAccount("no-relink")).id;
 
     const dead = genId("dead-ghost");
     const live = genId("live-ghost");
