@@ -248,6 +248,28 @@ describe("pickWinner — what it refuses", () => {
       ctx.callerAs("member").games.pickWinner({ tripId, gameId, bracket: "main", round: 1, slot: 1, winnerSeed: 1 })
     ).rejects.toThrow();
   });
+
+  /**
+   * Phase 0 F2: the guard admits a DELEGATE (`games.ts`), while `bracket_matches`
+   * RLS admitted trip Owner/Organizer only. A delegate who is only a trip Member
+   * passed the guard and wrote nothing. The pick must be RECORDED, read back from
+   * the table rather than inferred from the call returning, because the failure
+   * this pins is a call that returns while the row stays empty.
+   */
+  it("F2: a DELEGATE who is only a trip Member records the pick", async () => {
+    const gameId = await newBracket("Delegate pick", four());
+    const { error } = await ctx.admin.from("game_delegates").insert({ game_id: gameId, user_id: member, granted_by: owner });
+    if (error) throw new Error(`seed delegate: ${error.message}`);
+
+    await ctx.callerAs("member").games.pickWinner({ tripId, gameId, bracket: "main", round: 1, slot: 1, winnerSeed: 1 });
+
+    const { data: row } = await ctx.admin
+      .from("bracket_matches")
+      .select("winner_entrant_id")
+      .eq("game_id", gameId).eq("bracket", "main").eq("round", 1).eq("slot", 1)
+      .single();
+    expect(row?.winner_entrant_id, "the delegate's pick was not recorded").toBe(`${gameId}:e1`);
+  });
 });
 
 describe("pickWinner — clearing does not cascade, and that is deliberate", () => {
