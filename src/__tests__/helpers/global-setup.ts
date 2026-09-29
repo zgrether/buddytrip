@@ -14,6 +14,7 @@ import { writeFileSync } from "fs";
 import { resolve } from "path";
 import { assertLocalTestDatabase } from "./assertLocalTestDatabase";
 import { loadTestEnv, resolvedSupabaseUrl } from "./testEnv";
+import { sweepRunLeftovers } from "./runLeakSweep";
 
 // The SAME loader `vitest.config.mts` uses — `.env.test` (local stack) ahead of
 // `.env.local` (the app's own environment, which points at prod). Two callers
@@ -48,12 +49,16 @@ const USERS = [
 
 const PASSWORD = "BuddyTripTest2026!";
 
+/** When this run began: the teardown sweep only touches rows created after it. */
+let RUN_STARTED_AT: string | null = null;
+
 export async function setup() {
   // BEFORE any client is built, and before the first write. This is the single
   // chokepoint every run passes through, which is why the guard lives here
   // rather than in `test-setup.ts` (per-file) or in a convention nobody can
   // enforce. See `assertLocalTestDatabase` for what it caught.
   assertLocalTestDatabase(SUPABASE_URL);
+  RUN_STARTED_AT = new Date().toISOString();
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
   const result: Record<string, SharedUser> = {};
@@ -114,5 +119,30 @@ export async function setup() {
 }
 
 export async function teardown() {
-  // Users persist across runs — nothing to tear down.
+  // The shared users persist across runs. What a run CREATED does not (#1516):
+  // find it, say what it was, and remove it. See `sweepRunLeftovers`.
+  if (!RUN_STARTED_AT) return;
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+  const report = await sweepRunLeftovers(admin, RUN_STARTED_AT);
+
+  if (report.guestsRemoved || report.sendLogRemoved) {
+    console.log(
+      `[global-teardown] removed this run's ${report.guestsRemoved} orphaned guest(s) and ` +
+        `${report.sendLogRemoved} push_send_log row(s)`
+    );
+  }
+  if (report.failures.length > 0) {
+    console.warn(`[global-teardown] ${report.failures.length} cleanup step(s) failed:\n  ${report.failures.join("\n  ")}`);
+  }
+  if (report.leakedTrips.length > 0) {
+    const list = report.leakedTrips.map((t) => `${t.id}  "${t.title}"`).join("\n  ");
+    const message =
+      `[global-teardown] ${report.leakedTrips.length} trip(s) survived their file's cleanup ` +
+      `(removed now). The title names the file; its TestContext did not clean what it made:\n  ${list}`;
+    // In CI a leak FAILS the run, so a new one is loud rather than silently swept
+    // (Zach, #1516: "a new leak fails loudly instead of growing silently").
+    // Locally it is swept and reported, because a local run may be interrupted.
+    if (process.env.CI) throw new Error(message);
+    console.warn(message);
+  }
 }

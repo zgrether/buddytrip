@@ -20,18 +20,25 @@ let competitionId: string;
 let teamA: string;
 let teamB: string;
 
+// ONE context for the whole file (#1516). Each describe used to rely on the
+// first describe's context, and that describe's own afterAll cleaned it up
+// BEFORE the next describe created its trip on it — so that trip was never
+// deleted and leaked into the local database on every run.
+beforeAll(async () => {
+  ctx = await TestContext.create();
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
 describe("claimClinchNotification — exactly-once, and the un-clinch rule", () => {
   beforeAll(async () => {
-    ctx = await TestContext.create();
     tripId = await ctx.createTrip("Clinch Claim Trip");
     // Sequential, never Promise.all — these can race and flake (CLAUDE.md).
     competitionId = await ctx.createCompetition(tripId, "Claim Cup");
     teamA = await ctx.createTeam(competitionId, "Alpha");
     teamB = await ctx.createTeam(competitionId, "Bravo");
-  });
-
-  afterAll(async () => {
-    await ctx.cleanup();
   });
 
   async function storedTeam(): Promise<string | null> {
