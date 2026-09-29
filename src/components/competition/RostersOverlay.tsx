@@ -12,17 +12,18 @@ import { TeamsPanel } from "./TeamsPanel";
  * ONE surface, role-gated:
  *  - any trip member opens it and SEES the rosters (reads are member-accessible);
  *  - edit affordances (add/remove/move players, add/delete team, tap-to-edit a
- *    team) are OWNER-only — `canEdit={isOwner}` flows into TeamsPanel, which
- *    already renders view-only when canEdit is false.
+ *    team) are Owner OR Organizer (migrations 199 / 200 — they were Owner-only
+ *    here while the server admitted Organizers);
+ *  - a team's CAPTAIN edits their own team: identity and order, and until
+ *    results, adding unassigned players and removing their own (`rosterRights`).
  *
  * It hosts the relocated TeamsPanel in `embedded` mode (this overlay owns the
  * card chrome + the "Rosters" title) and carries the one-way "Save rosters"
- * commit (owner, during the roster-build phase) that used to live in Settings.
+ * commit (staff, during the roster-build phase) that used to live in Settings.
  */
 export function RostersOverlay({
   tripId,
   competitionId,
-  isOwner,
   canManageRoster,
   structureLocked,
   rosterBuilding,
@@ -31,22 +32,17 @@ export function RostersOverlay({
 }: {
   tripId: string;
   competitionId: string;
-  /** Owner gates TEAM structure (create / delete) and captaincy; everyone else
-   *  gets a read-only view of those. IDENTITY editing (name/short/color)
-   *  additionally opens to a team's captain, resolved inside TeamsPanel (the
-   *  per-card pencil). */
-  isOwner: boolean;
-  /** Owner OR Organizer — ROSTER MEMBERSHIP (assign / remove). Split from
-   *  `isOwner` in #789: `teamAssignments.assign` has always been Organizer-gated
-   *  server-side and `remove` moved there in #788, so an Organizer already held
-   *  this and was shown a read-only roster. Team create/delete are NOT this flag
-   *  (still Owner-only at the server), which is why it is a second prop rather
-   *  than a loosened `isOwner`. */
+  /** Owner OR Organizer — everything a staff member does here: team create /
+   *  delete, identity, membership, drag, and "Save rosters". Was split from an
+   *  Owner-only `isOwner` in #789; migrations 199 / 200 made the server's answer
+   *  one predicate, so the split is gone. A captain's rights are resolved per
+   *  team inside TeamsPanel. */
   canManageRoster: boolean;
   /** Head-to-head: team COUNT is fixed at 2 (no add/delete team) — rename + swap
    *  stay. False for points (2–N). */
   structureLocked: boolean;
-  /** Roster-build phase: show the one-way "Save rosters" commit (owner only). */
+  /** Roster-build phase: show the one-way "Save rosters" commit (Owner or
+   *  Organizer — it is `competitions.update`, which admits both). */
   rosterBuilding: boolean;
   /** Commit the roster build (advances roster_setup → saved) + closes. */
   onSaveRosters: () => void;
@@ -55,12 +51,12 @@ export function RostersOverlay({
   return (
     <Sheet
       title="Rosters"
-      subtitle={isOwner ? "Tap a team to edit · drag a player onto a team to assign" : "Who’s on which team"}
+      subtitle={canManageRoster ? "Tap a team to edit · drag a player onto a team to assign" : "Who’s on which team"}
       onClose={onClose}
       testId="rosters-overlay"
       maxWidthClass="max-w-3xl"
       footer={
-        isOwner && rosterBuilding ? (
+        canManageRoster && rosterBuilding ? (
           <button
             type="button"
             onClick={onSaveRosters}
@@ -73,11 +69,11 @@ export function RostersOverlay({
         ) : undefined
       }
     >
-      {/* The relocated team-builder (read-only for non-owners). */}
+      {/* The relocated team-builder (read-only for everyone but staff and, on
+          their own team, its captain). */}
       <TeamsPanel
         tripId={tripId}
         competitionId={competitionId}
-        canEdit={isOwner}
         canManageRoster={canManageRoster}
         structureLocked={structureLocked}
         embedded

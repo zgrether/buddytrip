@@ -42,6 +42,7 @@ import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
 import { cancelRosterWriters } from "@/lib/rosterCacheSync";
 import { createRosterMutations, newRosterBurst } from "@/lib/rosterMutations";
+import { CAPTAIN_LOCKED_NOTE, rosterRights, type RemoveControl, type RosterRights } from "@/lib/rosterRights";
 import {
   identityDiffers,
   orderDiffers,
@@ -52,10 +53,12 @@ import {
 interface Props {
   competitionId: string;
   tripId: string;
-  canEdit: boolean;
-  /** Owner OR Organizer — roster MEMBERSHIP (assign / remove) only. `canEdit`
-   *  above still gates team create / delete / captaincy, which stay Owner-only
-   *  at the server. See #789. */
+  /** Owner OR Organizer — everything on this panel that role can do: team
+   *  create / delete, identity, membership (add / remove / move) and the drag.
+   *  One flag since migrations 199 / 200 made those one predicate at the server
+   *  (it was two, `canEdit` = Owner and this, and the gap between them is what
+   *  let an Organizer pick a player up with nowhere to drop them). A captain's
+   *  narrower rights are per team: `rosterRights`. */
   canManageRoster: boolean;
   /** When provided, the parent (CompTab) drives create state via the
    *  CompetitionHeader's +Team button. Local state is used as a
@@ -229,7 +232,6 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
 export function TeamsPanel({
   competitionId,
   tripId,
-  canEdit,
   canManageRoster,
   creating: creatingProp,
   onCreatingChange,
@@ -277,7 +279,7 @@ export function TeamsPanel({
   // routes (via useGameEditAccess/useCanEditTeam).
   const { data: members = [] } = trpc.tripMembers.list.useQuery({ tripId });
   // The viewer — to resolve "is the captain of THIS team" for identity editing
-  // (PR b2). canEdit is the owner (structure); identity opens to owner OR captain.
+  // (PR b2), and for each team's roster rights (rosterRights).
   const { data: me } = trpc.users.getMe.useQuery();
 
   const teamsTyped = teams as Team[];
@@ -286,15 +288,14 @@ export function TeamsPanel({
   const assignedCount = assignments.length;
   const teamsExist = teamsTyped.length > 0;
 
-  // Identity edit (name/short/color) inside the overlay = owner OR the captain of
-  // THAT team — gates the per-card pencil/header (PR b2). The leaderboard
-  // team-name tap opens a STANDALONE editor instead (CompetitionFace), so the
-  // overlay only edits via its own pencil.
-  // Identity edit = owner (canEdit prop) OR the captain of THAT team. Routes
+  // Identity edit (name/short/color) inside the overlay = Owner or Organizer, OR
+  // the captain of THAT team — gates the per-card pencil/header (PR b2; Organizer
+  // since mig 199). The leaderboard team-name tap opens a STANDALONE editor
+  // instead (CompetitionFace), so the overlay only edits via its own pencil. Routes
   // through the shared isTeamCaptain so the captain rule lives in one place
   // (Part 1 dedup) — TeamsPanel maps over teams, so it uses the predicate (not
   // the useCanEditTeam hook, which React forbids calling per row).
-  const canEditIdentity = (teamId: string) => canEdit || isTeamCaptain(assignmentsTyped, me?.id, teamId);
+  const canEditIdentity = (teamId: string) => canManageRoster || isTeamCaptain(assignmentsTyped, me?.id, teamId);
 
   const statusText = !teamsExist
     ? "Not set up"
@@ -354,7 +355,7 @@ export function TeamsPanel({
             </div>
           </div>
         )}
-        {canEdit && !structureLocked && (
+        {canManageRoster && !structureLocked && (
           <button
             type="button"
             onClick={() => setCreating(true)}
@@ -369,7 +370,7 @@ export function TeamsPanel({
             Team
           </button>
         )}
-        {canEdit && structureLocked && (
+        {canManageRoster && structureLocked && (
           // Head-to-head is exactly two teams, so the team count is fixed (no
           // add / delete). Say so quietly — rename + swap still work, so this
           // explains the missing +Team rather than nagging.
@@ -384,7 +385,7 @@ export function TeamsPanel({
         className={`space-y-4 px-4 pb-4 ${embedded ? "" : "pt-3"}`}
         style={embedded ? undefined : { borderTop: "1px solid var(--color-bt-border)" }}
       >
-        {canEdit && removalsLocked && (
+        {canManageRoster && removalsLocked && (
           // Quiet explanation, not an alarm — the controls below are disabled, this
           // says why. Adds stay live.
           <p
@@ -397,7 +398,7 @@ export function TeamsPanel({
         )}
         {!teamsExist && (
           <NoTeamsEmptyState
-            canEdit={canEdit && !structureLocked}
+            canEdit={canManageRoster && !structureLocked}
             onAddTeam={() => setCreating(true)}
           />
         )}
@@ -412,7 +413,7 @@ export function TeamsPanel({
               members={members as Member[]}
               teams={teamsTyped}
               assignments={assignments as Assignment[]}
-              canEdit={canEdit}
+              canEdit={canManageRoster}
               order="lg-first"
             />
 
@@ -430,7 +431,7 @@ export function TeamsPanel({
                     Teams
                   </h4>
                 </div>
-                {canEdit && (
+                {canManageRoster && (
                   // Hint refers to drag-drop, which only runs at lg+
                   // (mouse-capable widths) — hide on tablet/mobile where
                   // assignment happens via the dropdown.
@@ -449,9 +450,14 @@ export function TeamsPanel({
                   team={team}
                   members={members as Member[]}
                   assignments={assignments as Assignment[]}
-                  canEdit={canEdit}
                   canManageRoster={canManageRoster}
                   canEditIdentity={canEditIdentity(team.id)}
+                  rights={rosterRights({
+                    staff: canManageRoster,
+                    captainOfTeam: isTeamCaptain(assignmentsTyped, me?.id, team.id),
+                    locked: removalsLocked,
+                    viewerId: me?.id,
+                  })}
                   structureLocked={structureLocked}
                   removalsLocked={removalsLocked}
                   onEdit={() => setEditingTeam(team)}
@@ -560,9 +566,9 @@ function TeamCard({
   team,
   members,
   assignments,
-  canEdit,
   canManageRoster,
   canEditIdentity,
+  rights,
   structureLocked,
   removalsLocked,
   onEdit,
@@ -573,14 +579,16 @@ function TeamCard({
   team: Team;
   members: Member[];
   assignments: Assignment[];
-  /** Owner only — delete team, and the captain ★. Roster membership is NOT this
-   *  flag any more; see `canManageRoster` (#789). */
-  canEdit: boolean;
-  /** Owner OR Organizer — roster MEMBERSHIP: drag-to-trade and the per-row
-   *  remove ×. `teamAssignments.assign` has always been Organizer-gated and
-   *  `remove` moved there in #788. */
+  /** Owner OR Organizer — delete team, and the card as a DROP target (assign /
+   *  trade by drag). The drop used to read an Owner-only flag while the drag
+   *  source read this one, so an Organizer could lift a player and not land it. */
   canManageRoster: boolean;
-  /** IDENTITY (owner OR this team's captain): tap the header to edit name/short/
+  /** What this viewer may do to THIS team's roster (`rosterRights`): the per-row
+   *  × and the move-drag. The overlay opens only from the staff settings gear, so
+   *  in practice this is the staff branch; a captain manages their team from the
+   *  Edit Team modal (TeamSheetRoster), which reads the same rules. */
+  rights: RosterRights;
+  /** IDENTITY (Owner, Organizer, or this team's captain): tap the header to edit name/short/
    *  color (PR b2). A captain edits ONLY their own team's identity. */
   canEditIdentity: boolean;
   structureLocked: boolean;
@@ -606,7 +614,7 @@ function TeamCard({
 
   // Optimistic — the dropped player needs to land in the target team
   // instantly, not after the server round-trip. `remove` powers the
-  // per-row × button; `setCaptain` powers the ★ (owner only).
+  // per-row × button (staff, or this team's captain — `rosterRights`).
   // No `setCaptain` here: the star is read-only on this card, because the card
   // has no Save to draft into. Changing it lives in the Edit Team modal.
   const { assign, remove } = useTeamAssignmentMutations(tripId, competitionId);
@@ -637,7 +645,7 @@ function TeamCard({
         }`,
       }}
       onDragOver={
-        canEdit
+        canManageRoster
           ? (e) => {
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
@@ -645,11 +653,11 @@ function TeamCard({
             }
           : undefined
       }
-      onDragLeave={canEdit ? () => setDragOver(false) : undefined}
-      onDrop={canEdit ? handleDrop : undefined}
+      onDragLeave={canManageRoster ? () => setDragOver(false) : undefined}
+      onDrop={canManageRoster ? handleDrop : undefined}
       data-testid={`team-card-${team.id}`}
     >
-      {/* Header — the team identity is tap-to-edit for the owner (W-TEAMTAP-01):
+      {/* Header — the team identity is tap-to-edit for staff and this team's captain (W-TEAMTAP-01):
           the whole name area is a button with a pencil cue, not a buried icon.
           Delete is a sibling list-level affordance (W-TEAMDEL-01), not inside the
           edit modal. */}
@@ -691,7 +699,7 @@ function TeamCard({
         <span className="flex-shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
           {teamMembers.length}
         </span>
-        {canEdit && !structureLocked && !removalsLocked && (
+        {canManageRoster && !structureLocked && !removalsLocked && (
           // Delete-team lives at the list level (W-TEAMDEL-01). Hidden once live OR
           // once scoring starts — deleting a team is a mass removal (the locked note
           // above explains it).
@@ -709,12 +717,12 @@ function TeamCard({
       </div>
 
       {/* Members — full-width player rows (W-TEAMBUILD-01), via the Avatar
-          team-color disc. A row is the drag source (owner, desktop); its × is
-          the per-player remove. The captain ★ slot lands here in PR (b). */}
+          team-color disc. A row is the drag source (staff, desktop); its × is
+          the per-player remove (staff, or this team's captain before results). */}
       <div className="space-y-1.5 px-3 pb-3 pt-1" style={{ minHeight: 40 }}>
         {teamMembers.length === 0 && (
           <p className="px-1 py-1.5 text-[11px] italic" style={{ color: "var(--color-bt-text-dim)" }}>
-            {canEdit ? (
+            {canManageRoster ? (
               <>
                 <span className="hidden lg:inline">Drop a crew member here</span>
                 <span className="lg:hidden">No members yet</span>
@@ -733,19 +741,26 @@ function TeamCard({
               name={m.displayName}
               avatarIcon={m.user?.avatar_icon ?? null}
               teamColor={team.color}
-              // Dragging an assigned player = a MOVE/trade → disabled once removals lock.
-              draggable={canManageRoster && !removalsLocked}
+              // Dragging an assigned player = a MOVE/trade → staff only, and
+              // disabled once removals lock (`rights.trade`).
+              draggable={rights.trade}
               isCaptain={isCaptain}
               onDragStart={
-                canManageRoster && !removalsLocked
+                rights.trade
                   ? (e) => {
                       e.dataTransfer.setData(DND_USER_KEY, id);
                       e.dataTransfer.effectAllowed = "move";
                     }
                   : undefined
               }
-              onRemove={canManageRoster ? () => remove.mutate({ tripId, competitionId, userId: id }) : undefined}
-              removeLocked={removalsLocked}
+              // The team is named so a CAPTAIN's removal can be scoped to it
+              // (`captain_remove_player`); staff removals ignore it.
+              onRemove={
+                rights.remove(id) === "hidden"
+                  ? undefined
+                  : () => remove.mutate({ tripId, competitionId, userId: id, teamId: team.id })
+              }
+              removeLocked={rights.remove(id) === "locked"}
               removeAriaLabel={`Remove ${m.displayName} from ${team.name}`}
               // READ-ONLY here, for everyone including the Owner.
               //
@@ -769,7 +784,7 @@ function TeamCard({
 
 // ── PlayerRow ───────────────────────────────────────────────────────────────
 // Full-width player card (W-TEAMBUILD-01): the team-color Avatar disc (R3) + name
-// + captain ★ + (owner) remove. Draggable for the desktop assign-by-drag flow.
+// + captain ★ + remove (per `rosterRights`). Draggable for the desktop assign-by-drag flow.
 
 function PlayerRow({
   name,
@@ -815,8 +830,8 @@ function PlayerRow({
         {name}
       </span>
 
-      {/* Captain ★ — owner taps to mark/unmark (filled = captain, outline = not);
-          a member sees only the filled ★ on the captain, read-only. One per team
+      {/* Captain ★ — a tappable star when a caller passes onToggleCaptain (none do
+          on this card now); otherwise the filled ★ on the captain, read-only. One per team
           (the server clears the prior). */}
       {onToggleCaptain ? (
         <button
@@ -1212,7 +1227,7 @@ function CrewRoster({
 
 // ── TeamSheet (create + edit) ───────────────────────────────────────────────
 // Exported so the leaderboard team-name tap can open it STANDALONE (PR b2
-// follow-up) — owner / captain-of-that-team edit a team's identity without the
+// follow-up) — staff / captain-of-that-team edit a team's identity without the
 // full Rosters overlay. The update mutation is captain-gated server-side.
 
 export function TeamSheet({
@@ -1245,10 +1260,12 @@ export function TeamSheet({
   const isEdit = !!team;
   const utils = trpc.useUtils();
 
-  // Three-tier gating (mirrors the server). IDENTITY (name/short/colour) AND
-  // roster ORDER = owner OR this team's captain (mig 094); MEMBERSHIP
-  // (add/remove/captain ★) = owner only. Create mode has no team yet — only the
-  // owner can reach it (the opener gates), so identity is editable there.
+  // Gating mirrors the server (migrations 199 / 200). IDENTITY (name/short/
+  // colour) AND roster ORDER = Owner or Organizer, or this team's captain;
+  // MEMBERSHIP = Owner or Organizer, plus a captain's pre-results add/remove of
+  // their own (per row, `rosterRights`); the captain ★ = Owner or Organizer.
+  // Create mode has no team yet — only staff can reach it (the opener gates), so
+  // identity is editable there.
   //
   // #18 CARVE-OUT — this MUST keep reading SERVER state, never a draft.
   // `useCanEditTeam` resolves captaincy from `teamAssignments.list`, and its
@@ -1258,7 +1275,7 @@ export function TeamSheet({
   // Keeping ★ immediate (see `orderDraft`) is precisely what lets this stay a
   // plain server read with no special-casing. Mirrors the Danger Zone's
   // deliberate server-read in the match settings page.
-  const { canEdit: canEditIdentity, isOwner, canManageRoster } = useCanEditTeam(
+  const { canEdit: canEditIdentity, canAppointCaptain, canManageRoster, amCaptain, viewerId } = useCanEditTeam(
     tripId,
     competitionId,
     team?.id ?? null
@@ -1355,10 +1372,10 @@ export function TeamSheet({
   // THE CAPTAIN ★ NOW DRAFTS TOO, and the objection that kept it immediate does
   // not survive reading the code it names. It ran: the star feeds
   // `identityEditable`, so a staged change could revoke the editor's own rights
-  // mid-edit. But `useCanEditTeam` returns `canEdit: isOwner || amCaptain`, and
-  // `canAppointCaptain` is `isOwner` — so the only person who can stage a captain
-  // change is the Owner, whose rights come from `isOwner` and not from captain
-  // state at all. The hazard is real for a world where captains appoint
+  // mid-edit. But `canAppointCaptain` is Owner-or-Organizer (mig 200), and
+  // `useCanEditTeam` returns `canEdit: tripCanEdit || amCaptain` — so the only
+  // people who can stage a captain change hold their rights from their TRIP
+  // role, not from captain state at all. The hazard is real for a world where captains appoint
   // captains. That is not this world, and `canAppointCaptain` is what forecloses
   // it.
   //
@@ -1791,7 +1808,7 @@ export function TeamSheet({
             </div>
           </div>
 
-          {/* Color — a PICKER only when identity is editable (owner / captain).
+          {/* Color — a PICKER only when identity is editable (staff / captain).
               A read-only viewer (plain member) sees the team's color as a static
               swatch, never a picker (spec: member = no color picker). */}
           {identityEditable ? (
@@ -1844,21 +1861,18 @@ export function TeamSheet({
               competitionId={competitionId}
               team={team}
               teamColor={selectedColor}
-              // MEMBERSHIP (add / remove) — Owner OR Organizer (#789). `assign`
-              // has always been requireTripRole("Organizer") server-side and
-              // `remove` moved there in #788, so this was hiding a permission an
-              // Organizer already held. Captaincy is NOT this flag — see
-              // `canAppointCaptain`, which stays Owner-only.
-              canManage={canManageRoster}
-              // Appointing the captain stays with the Owner: a captain holds real
-              // RLS grants (065 / 094), so naming one is "changing who is trusted"
-              // one level down — and `setCaptain` is still Owner-gated server-side.
-              canAppointCaptain={isOwner}
-              // Reorder is the ONE roster capability a captain has (mig 094 +
-              // teamAssignments.reorder's requireTeamIdentityEdit gate).
-              // `canEditIdentity` is already owner-OR-this-team's-captain, which
-              // is exactly the server gate — so the affordance can't drift from
-              // the permission.
+              // MEMBERSHIP — the roster decides per row from these three
+              // (`rosterRights`): staff add / remove / move; this team's captain
+              // adds unassigned players and removes their own until results.
+              staff={canManageRoster}
+              captainOfTeam={amCaptain}
+              viewerId={viewerId}
+              // The captain ★ — Owner or Organizer (mig 200: you can hand out
+              // powers you already hold).
+              canAppointCaptain={canAppointCaptain}
+              // ORDER — `canEditIdentity` is Owner-or-Organizer-or-this-team's-
+              // captain, exactly the server gate, so the affordance can't drift
+              // from the permission.
               canReorder={canEditIdentity}
               members={rosterMembers as Member[]}
               assignments={rosterAssignments as Assignment[]}
@@ -1976,7 +1990,9 @@ function TeamSheetRoster({
   competitionId,
   team,
   teamColor,
-  canManage,
+  staff,
+  captainOfTeam,
+  viewerId,
   canAppointCaptain,
   canReorder,
   members,
@@ -1992,14 +2008,16 @@ function TeamSheetRoster({
   /** The PREVIEW color (the live color-picker selection) — drives the row avatars
    *  so a color pick shows immediately; persists only on Save. */
   teamColor: string;
-  /** Owner or Organizer — MEMBERSHIP mutations: add / remove. Matches the server
-   *  (`assign` is Organizer-gated; `remove` moved there in #788). */
-  canManage: boolean;
-  /** Owner ONLY — appointing/unappointing the team captain (`setCaptain`, still
-   *  Owner-gated). Split from `canManage` in #789. */
+  /** Owner or Organizer. With `captainOfTeam` and `viewerId`, decides the
+   *  membership controls per row through `rosterRights`. */
+  staff: boolean;
+  /** The viewer captains THIS team. */
+  captainOfTeam: boolean;
+  viewerId: string | null;
+  /** Owner or Organizer — the captain ★ (`setCaptain`, mig 200). */
   canAppointCaptain: boolean;
-  /** Owner OR this team's captain — roster ORDER only (mig 094). Split from
-   *  `canManage` deliberately: display order is not membership. */
+  /** Owner, Organizer, or this team's captain — roster ORDER. Not membership:
+   *  display order moves nobody. */
   canReorder: boolean;
   members: Member[];
   assignments: Assignment[];
@@ -2029,6 +2047,7 @@ function TeamSheetRoster({
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
+  const rights = rosterRights({ staff, captainOfTeam, locked: removalsLocked, viewerId });
 
   const memberById = useMemo(() => {
     const map = new Map<string, Member>();
@@ -2127,7 +2146,7 @@ function TeamSheetRoster({
             border: "1px solid var(--color-bt-border)",
           }}
         >
-          No players yet.{canManage ? " Add from the crew below." : ""}
+          No players yet.{rights.add ? " Add from the crew below." : ""}
         </p>
       ) : (
         <DndContext
@@ -2154,15 +2173,15 @@ function TeamSheetRoster({
                     // (#18's staged-state lie, which is what this whole draft
                     // model exists to prevent).
                     isCaptain={captainId === a.user_id}
-                    canManage={canManage}
+                    remove={rights.remove(a.user_id)}
                     canAppointCaptain={canAppointCaptain}
                     canReorder={canReorder}
                     index={i}
-                    removeLocked={removalsLocked}
                     // IMMEDIATE, deliberately — not drafted, and Cancel will not
                     // undo it. Removing someone is a MEMBERSHIP act; only team
                     // FIELDS (name / short / colour / order) wait for Save.
-                    onRemove={() => remove.mutate({ tripId, competitionId, userId: a.user_id })}
+                    // The team is named so a CAPTAIN's removal is scoped to it.
+                    onRemove={() => remove.mutate({ tripId, competitionId, userId: a.user_id, teamId: team.id })}
                     // DRAFTED. Tapping the star of the current captain
                     // un-stars them (`null`); tapping anyone else moves it.
                     // Cancel discards either, and Save commits it with the rest
@@ -2184,7 +2203,7 @@ function TeamSheetRoster({
                 avatarIcon={activeMember?.user?.avatar_icon ?? null}
                 teamColor={teamColor}
                 isCaptain={!!activeAssignment.is_captain}
-                canManage={canManage}
+                remove={rights.remove(activeAssignment.user_id)}
                 canAppointCaptain={canAppointCaptain}
                 canReorder={canReorder}
                 index={activeIndex}
@@ -2194,10 +2213,11 @@ function TeamSheetRoster({
         </DndContext>
       )}
 
-      {/* Add player (owner) — a full-width button (like "add match") that opens a
-          sheet listing the UNASSIGNED pool, mirroring the match-play player
-          selector. Unassigned-pool ONLY (no cross-team reassignment). */}
-      {canManage && unassigned.length > 0 && (
+      {/* Add player (staff, or this team's captain before results) — a
+          full-width button (like "add match") that opens a sheet listing the
+          UNASSIGNED pool, mirroring the match-play player selector.
+          Unassigned-pool ONLY (no cross-team reassignment). */}
+      {rights.add && unassigned.length > 0 && (
         <button
           type="button"
           onClick={() => setAddSheetOpen(true)}
@@ -2229,13 +2249,22 @@ function TeamSheetRoster({
 
       {/* Removal lock is KEPT (owner decision) — say why, so the disabled × reads
           as intentional, not broken. Adds stay enabled. */}
-      {canManage && removalsLocked && (
+      {staff && removalsLocked && (
         <p
           className="mt-3 text-[11px]"
           style={{ color: "var(--color-bt-text-dim)" }}
           data-testid="teamsheet-locked-note"
         >
           Rosters are locked once scoring starts.
+        </p>
+      )}
+      {rights.captainLocked && (
+        <p
+          className="mt-3 text-[11px]"
+          style={{ color: "var(--color-bt-text-dim)" }}
+          data-testid="teamsheet-captain-locked-note"
+        >
+          {CAPTAIN_LOCKED_NOTE}
         </p>
       )}
     </div>
@@ -2400,11 +2429,10 @@ function rosterRowContent({
   avatarIcon,
   teamColor,
   isCaptain,
-  canManage,
+  remove = "hidden",
   canAppointCaptain,
   canReorder,
   index,
-  removeLocked,
   onRemove,
   onToggleCaptain,
   removeAriaLabel,
@@ -2415,11 +2443,11 @@ function rosterRowContent({
   avatarIcon: string | null;
   teamColor: string;
   isCaptain: boolean;
-  canManage: boolean;
+  /** This row's × (`rosterRights.remove`): absent, live, or shown disabled. */
+  remove?: RemoveControl;
   canAppointCaptain: boolean;
   canReorder: boolean;
   index: number;
-  removeLocked?: boolean;
   onRemove?: () => void;
   onToggleCaptain?: () => void;
   removeAriaLabel?: string;
@@ -2428,8 +2456,8 @@ function rosterRowContent({
   return (
     <>
       {/* Grip — arms the drag (dnd-kit's PointerSensor + KeyboardSensor), so the
-          row buttons stay tappable everywhere else. Gated on canReorder (owner OR
-          THIS team's captain, mig 094), not canManage — ordering isn't membership. */}
+          row buttons stay tappable everywhere else. Gated on canReorder (staff OR
+          THIS team's captain, mig 094/199), not membership — ordering moves nobody. */}
       {canReorder && handle}
       {/* Row index — quiet table-number column, like the match pickers. */}
       <RowNumber number={index + 1} className="flex-shrink-0" style={{ width: 16 }} />
@@ -2438,9 +2466,8 @@ function rosterRowContent({
         {name}
       </span>
 
-      {/* Captain ★ — OWNER ONLY (`canAppointCaptain`, not `canManage`): setCaptain
-          stayed Owner-gated when membership moved to Organizer (#788/#789).
-          Everyone else, Organizers included, sees it read-only. */}
+      {/* Captain ★ — Owner or Organizer (`canAppointCaptain`, mig 200).
+          Everyone else sees it read-only. */}
       {canAppointCaptain ? (
         <button
           type="button"
@@ -2471,14 +2498,15 @@ function rosterRowContent({
           PointerSensor covers touch and KeyboardSensor covers the non-pointer
           path (verified in #713), so the fallback had no remaining job. */}
 
-      {/* Remove × (owner) — disabled once scoring locks removals. */}
-      {canManage && (
+      {/* Remove × — per row (`rosterRights`): staff see it disabled once
+          scoring locks removals; a captain has none on their own row. */}
+      {remove !== "hidden" && (
         <button
           type="button"
-          onClick={removeLocked ? undefined : onRemove}
-          disabled={removeLocked}
+          onClick={remove === "locked" ? undefined : onRemove}
+          disabled={remove === "locked"}
           aria-label={removeAriaLabel}
-          title={removeLocked ? "Locked — scoring has started. You can still add players." : undefined}
+          title={remove === "locked" ? "Locked — scoring has started. You can still add players." : undefined}
           className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-40"
           style={{ color: "var(--color-bt-text-dim)", WebkitTapHighlightColor: "transparent" }}
         >
@@ -2495,11 +2523,10 @@ function RosterRow({
   avatarIcon,
   teamColor,
   isCaptain,
-  canManage,
+  remove,
   canAppointCaptain,
   canReorder,
   index,
-  removeLocked,
   onRemove,
   onToggleCaptain,
   removeAriaLabel,
@@ -2513,11 +2540,10 @@ function RosterRow({
   avatarIcon: string | null;
   teamColor: string;
   isCaptain: boolean;
-  canManage: boolean;
+  remove: RemoveControl;
   canAppointCaptain: boolean;
   canReorder: boolean;
   index: number;
-  removeLocked: boolean;
   onRemove: () => void;
   onToggleCaptain: () => void;
   removeAriaLabel: string;
@@ -2562,11 +2588,10 @@ function RosterRow({
         avatarIcon,
         teamColor,
         isCaptain,
-        canManage,
+        remove,
         canAppointCaptain,
         canReorder,
         index,
-        removeLocked,
         onRemove,
         onToggleCaptain,
         removeAriaLabel,
@@ -2583,7 +2608,7 @@ function StaticRosterRow({
   avatarIcon,
   teamColor,
   isCaptain,
-  canManage,
+  remove,
   canAppointCaptain,
   canReorder,
   index,
@@ -2592,7 +2617,7 @@ function StaticRosterRow({
   avatarIcon: string | null;
   teamColor: string;
   isCaptain: boolean;
-  canManage: boolean;
+  remove: RemoveControl;
   canAppointCaptain: boolean;
   canReorder: boolean;
   index: number;
@@ -2608,7 +2633,7 @@ function StaticRosterRow({
         avatarIcon,
         teamColor,
         isCaptain,
-        canManage,
+        remove,
         canAppointCaptain,
         canReorder,
         index,

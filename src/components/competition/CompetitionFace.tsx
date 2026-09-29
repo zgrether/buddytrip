@@ -432,9 +432,8 @@ export function CompetitionFace({
         <RostersOverlay
           tripId={tripId}
           competitionId={competition.id}
-          isOwner={isOwner}
-          // #789 — MEMBERSHIP (assign / remove) is Owner-or-Organizer at the
-          // server; `isOwner` above still gates team create/delete + captaincy.
+          // Owner or Organizer — the whole staff side of the rosters screen
+          // (migrations 199 / 200). Captains are resolved per team inside.
           canManageRoster={canEdit}
           // Team-COUNT lock keys on the frozen scoring_model: head-to-head is
           // exactly 2 teams (no add / no delete), so structure is locked; points

@@ -30,31 +30,31 @@ export function isTeamCaptain(
 }
 
 /**
- * Client mirror of the server's team-IDENTITY admission (`requireTeamIdentityEdit`,
- * migration 065): editing a team's name / short name / color is granted to the trip
- * **Owner** OR the **captain of THIS team** (an `is_captain` row on
- * team_assignments). `useTripRole` only knows the TRIP role, so on its own it's
- * blind to a captain-who-is-a-plain-Member — this ORs in the per-team captain grant,
- * exactly as the server admits (mirrors the `useGameEditAccess`/`canEditGame` shape,
- * with `is_captain` swapped in for the `game_delegates` row).
+ * Client mirror of the server's team rules for ONE team, after PR 8's
+ * permissions pass (migrations 199 / 200):
  *
- * IDENTITY ONLY. Roster/structure is gated separately, and as of #789 it is no
- * longer one thing: **membership** (add / remove) is `canManageRoster`
- * (Owner-or-Organizer, matching the server — `assign` has always been
- * Organizer-gated and `remove` moved in #788), **order** is `canReorder`
- * (Owner-or-this-team's-captain, mig 094), and **captaincy** (`setCaptain`) stays
- * `isOwner`. The captain's-draft feature keeps its substance: a captain still
- * cannot add, remove, or name a captain.
+ *  - IDENTITY (name / short / color) and roster ORDER: trip Owner or Organizer,
+ *    or the captain of THIS team (`requireTeamIdentityEdit`, which admits
+ *    Organizer since 199 — whoever can delete a team can rename it).
+ *  - MEMBERSHIP (add / remove / move): Owner or Organizer (`canManageRoster`),
+ *    plus the captain's narrower pre-results add/remove, which is decided per
+ *    row by `rosterRights` (src/lib/rosterRights.ts), not by a flag here.
+ *  - CAPTAINCY (`setCaptain`): Owner or Organizer since 200 — you can hand out
+ *    powers you already hold.
  *
- * Consolidates the two formerly-inlined captain checks (TeamsPanel `canEditIdentity`,
- * CompetitionFace `canEditTeamIdentity`) — both now route through `isTeamCaptain`.
+ * `useTripRole` only knows the TRIP role, so on its own it is blind to a
+ * captain-who-is-a-plain-Member; this ORs in the per-team captain grant exactly
+ * as the server admits.
+ *
+ * Consolidates the formerly-inlined captain checks (TeamsPanel, CompetitionFace)
+ * — both route through `isTeamCaptain`.
  */
 export function useCanEditTeam(
   tripId: string | undefined,
   competitionId: string | undefined,
   teamId: string | null | undefined
 ) {
-  const { isOwner, canEdit: tripCanEdit, loading } = useTripRole(tripId);
+  const { canEdit: tripCanEdit, loading } = useTripRole(tripId);
   const me = useCurrentUser();
   const assignQ = trpc.teamAssignments.list.useQuery(
     { tripId: tripId!, competitionId: competitionId! },
@@ -73,21 +73,17 @@ export function useCanEditTeam(
   );
 
   return {
-    /** Owner (any team) OR this team's captain — mirrors `requireTeamIdentityEdit`. Gates IDENTITY only. */
-    canEdit: isOwner || amCaptain,
-    /** Trip Owner only. Now gates ONE roster power: appointing the captain
-     *  (`setCaptain`), which is still Owner-only at the server — a captain holds
-     *  real RLS grants (migrations 065 / 094), so naming one is "changing who is
-     *  trusted" a level down. Do NOT reuse this for add/remove; see
-     *  `canManageRoster`. */
-    isOwner,
-    /** Trip Owner or Organizer — MEMBERSHIP: add (`assign`, Organizer-gated at the
-     *  server since it shipped) and remove (`teamAssignments.remove`, moved in
-     *  #788). Split from `isOwner` in #789: one flag was guarding both membership
-     *  and captaincy, and the server's answer for those differs. Not a new
-     *  predicate — this is `useTripRole().canEdit`. */
+    /** Owner or Organizer (any team) OR this team's captain — mirrors
+     *  `requireTeamIdentityEdit` (Organizer since 199). Gates IDENTITY and ORDER. */
+    canEdit: tripCanEdit || amCaptain,
+    /** Owner or Organizer — appointing the captain (`setCaptain`, mig 200). */
+    canAppointCaptain: tripCanEdit,
+    /** Owner or Organizer — roster MEMBERSHIP (add / remove / move). A captain's
+     *  narrower membership rights are per-row: see `rosterRights`. */
     canManageRoster: tripCanEdit,
     amCaptain,
+    /** The viewer — a captain may not remove themselves (`rosterRights`). */
+    viewerId: me?.id ?? null,
     loading,
   };
 }

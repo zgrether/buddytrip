@@ -330,13 +330,22 @@ is the Owner's"), which read as a principle and competed with the actual one.
 > recolour their team may also order it. (Reorder is also written as UPDATE-only,
 > never an upsert, so it cannot create a row even if that validation regressed.)
 >
-> **The client does NOT yet mirror mig 199 or 200.** `useCanEditTeam` still resolves
-> identity edit = Owner OR this-team's-captain, and the Edit Team modal gates
-> drag handles / ↑↓ on `canReorder` (owner **or** captain) and ★ captain,
-> × remove and + Add player on `canManage` (owner only). So today the screen
-> offers an Organizer and a captain less than the server allows. The Rosters
-> screen is the next PR of the permissions pass (and needs a look); when it
-> lands, this paragraph describes it.
+> **The client mirrors this (permissions pass step 2).** `useCanEditTeam` resolves
+> identity and order = Owner, Organizer, or this team's captain, and the ★ =
+> Owner or Organizer. Membership controls are decided per row by one pure function,
+> `rosterRights` (src/lib/rosterRights.ts), which both the Rosters overlay's team
+> cards and the Edit Team modal read:
+>
+> - **Staff:** + Add player, the per-row ×, and the drag. After results, adds stay
+>   live and the × shows disabled with the reason.
+> - **This team's captain:** + Add player (unassigned crew only) and × on their
+>   own players except themselves. After results, neither control shows, and one
+>   line says *"Results are in, so only an organizer can change rosters now."*
+> - **Anyone else:** read-only.
+>
+> The Rosters overlay opens only from the staff settings gear, so a captain who is
+> a plain Member manages their team from the Edit Team modal (tap the team on the
+> board). "Save rosters" is Owner or Organizer, matching `competitions.update`.
 
 > **Per-game delegation (Slice D1 §8).** Game edit/configure/enter-results
 > resolves to **`canEdit || isGameDelegate(gameId)`** — trip Owner/Organizer, OR a
