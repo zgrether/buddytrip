@@ -444,11 +444,6 @@ export const competitionsRouter = router({
         shortName: z.string().max(40).nullable().optional(),
         tagline: z.string().max(500).nullable().optional(),
         scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
-        // The roster-setup progression (building → saved → dismissed). "Save
-        // rosters" advances to saved; dismissing the moved-to-Settings signpost
-        // advances to dismissed. One-way, but the server stays permissive (the
-        // check constraint guards the value set).
-        rosterSetup: z.enum(["building", "saved", "dismissed"]).optional(),
       })
     )
     .use(requireCompetitionRole("co_admin"))
@@ -458,7 +453,6 @@ export const competitionsRouter = router({
       if (input.shortName !== undefined) patch.short_name = input.shortName;
       if (input.tagline !== undefined) patch.tagline = input.tagline;
       if (input.scoreboardStyle !== undefined) patch.scoreboard_style = input.scoreboardStyle;
-      if (input.rosterSetup !== undefined) patch.roster_setup = input.rosterSetup;
 
       const { data, error } = await ctx.supabase
         .from("competitions")

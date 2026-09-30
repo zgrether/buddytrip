@@ -28,7 +28,6 @@ interface Competition {
   status: "upcoming" | "active" | "completed";
   /** Roster-setup progression (building → saved → dismissed) — drives the
    *  Team Rosters button + the "moved to Settings" signpost on the board. */
-  roster_setup?: "building" | "saved" | "dismissed";
   /** Scoring-model axis (W-NONGOLF-02), independent of team count. Branches the
    *  non-golf result editor: match_play → win/lose/tie; points → #430 placement.
    *  Defaults to match_play when absent (matches the DB default + backfill). */
@@ -256,19 +255,6 @@ export function CompetitionFace({
   // `competitions.status` setup↔active distinction is retired; do NOT re-add a
   // competition-level reveal/go-live state.
 
-  // Roster-setup progression (building → saved → dismissed). Optimistic so the
-  // Team Rosters button → signpost → clean transition is instant; the face reads
-  // roster_setup from the faceBootstrap snapshot, so invalidate that too (#10).
-  const rosterSetup = competition?.roster_setup ?? "building";
-  const advanceRoster = trpc.competitions.update.useMutation({
-    onSettled: () => {
-      utils.competitions.getByTrip.invalidate({ tripId });
-      utils.competitions.faceBootstrap.invalidate({ tripId });
-    },
-  });
-  const setRosterSetup = (next: "saved" | "dismissed") => {
-    if (competition) advanceRoster.mutate({ tripId, competitionId: competition.id, rosterSetup: next });
-  };
 
   // ── Board (the home, setup + live) ──────────────────────────────────────────
   // The merged hero (identity + gear + scores) lives INSIDE the leaderboard now
@@ -427,7 +413,7 @@ export function CompetitionFace({
 
       {/* Rosters overlay — the one home for team management (W-TEAMSURFACE-01),
           member-visible, owner-editable. Opened ONLY via the Rosters button (or a
-          non-permitted team-name tap). Its "Done" closes it and, the first time, marks rosters ready. */}
+          non-permitted team-name tap). Its "Done" just closes it. */}
       {rostersOpen && competition && (
         <RostersOverlay
           tripId={tripId}
@@ -441,12 +427,6 @@ export function CompetitionFace({
           // was retired with GO LIVE; player-removal protection once scoring
           // starts is a separate SCORE-based lock, teamAssignments.rosterLocked.)
           structureLocked={scoringModel === "match_play"}
-          // Done on every visit; only the FIRST advances roster_setup, so the
-          // setup prompt still moves exactly once.
-          onDone={() => {
-            if (rosterSetup === "building") setRosterSetup("saved");
-            setRostersOpen(false);
-          }}
           onClose={() => setRostersOpen(false)}
         />
       )}

@@ -21,19 +21,19 @@ import { TeamsPanel } from "./TeamsPanel";
  * card chrome + the "Rosters" title) and a "Done" button on every visit.
  *
  * "Done", not "Save": every roster change here is written the moment it is
- * made, so there is never anything to save. It used to be a "Save rosters"
- * button shown only while the cup's `roster_setup` was `building` — a one-way
- * commit that advanced the board's setup prompt and then vanished, so the first
- * visit suggested edits waited on it and every later visit had no button at all
- * for the same edits (found in the #1529 look). The first Done still advances
- * `roster_setup`, silently; the parent decides that in `onDone`.
+ * made, so there is never anything to save, and Done only closes. It used to be
+ * a "Save rosters" button shown only while the cup's `roster_setup` was
+ * `building` — a one-way commit that then vanished, so the first visit suggested
+ * edits waited on it and every later visit had no button for the same edits
+ * (found in the #1529 look). `roster_setup` itself had no reader left (#445
+ * removed the board signposts that read it), so it is no longer written at all;
+ * the column is dropped separately.
  */
 export function RostersOverlay({
   tripId,
   competitionId,
   canManageRoster,
   structureLocked,
-  onDone,
   onClose,
 }: {
   tripId: string;
@@ -47,10 +47,6 @@ export function RostersOverlay({
   /** Head-to-head: team COUNT is fixed at 2 (no add/delete team) — rename + swap
    *  stay. False for points (2–N). */
   structureLocked: boolean;
-  /** "Done": close, and on the FIRST press also mark the rosters ready
-   *  (`roster_setup` building → saved, via `competitions.update`, which admits
-   *  Owner and Organizer). Staff only — the only people who reach this overlay. */
-  onDone: () => void;
   onClose: () => void;
 }) {
   return (
@@ -64,7 +60,7 @@ export function RostersOverlay({
         canManageRoster ? (
           <button
             type="button"
-            onClick={onDone}
+            onClick={onClose}
             className="w-full rounded-xl py-3 text-sm font-semibold"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             data-testid="rosters-done"
