@@ -263,10 +263,16 @@ export async function notifyChatMessage(
   input: ChatNotifyInput,
   opts: { admin?: SupabaseClient } = {}
 ): Promise<ChatNotifyResult> {
-  const admin = opts.admin ?? createAdminClient();
   const result: ChatNotifyResult = { ...EMPTY, eligible: [] };
+  // The client the catch records with — only once one has been built.
+  let recorder: SupabaseClient | null = opts.admin ?? null;
 
   try {
+    // INSIDE the try: "Never throws" above was true of everything except this
+    // line, and `messages.send` awaits this AFTER the message has committed — a
+    // throw here reported a sent message as failed, inviting a duplicate resend.
+    const admin = opts.admin ?? createAdminClient();
+    recorder = admin;
     // 1 · The channel's membership. Crew is every member; Organizers is
     //     Owner + Organizer, mirroring `is_trip_planner()` (migration 029) and
     //     the role gate `messages.send` already enforces on the write.
@@ -477,8 +483,8 @@ export async function notifyChatMessage(
       err,
     });
     try {
-      await recordPushAttempt(
-        admin,
+      if (recorder) await recordPushAttempt(
+        recorder,
         {
           trigger: "chat_message",
           tripId: input.tripId,
