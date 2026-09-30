@@ -152,11 +152,21 @@ export const scoresRouter = router({
         //    failing their score entry over a status flag would be a worse
         //    outcome than a stale badge, and the flag is recoverable via the mode
         //    toggle. Loud, but not fatal.
-        const { error: statusErr } = await createAdminClient()
-          .from("games")
-          .update({ status: "active" })
-          .eq("id", input.gameId)
-          .eq("status", "pending");
+        //
+        // The client is built INSIDE a try (#1424): "logs rather than throws" was
+        // true of the UPDATE's error and not of building the client, which throws
+        // on a preview — reporting a saved score as failed, so the outbox retried
+        // a score that had already landed, forever.
+        let statusErr: { message: string } | null = null;
+        try {
+          ({ error: statusErr } = await createAdminClient()
+            .from("games")
+            .update({ status: "active" })
+            .eq("id", input.gameId)
+            .eq("status", "pending"));
+        } catch (err) {
+          statusErr = { message: err instanceof Error ? err.message : String(err) };
+        }
         if (statusErr) {
           console.error(
             `[scores.upsertEntry] failed to flip game ${input.gameId} pending→active: ${statusErr.message}`

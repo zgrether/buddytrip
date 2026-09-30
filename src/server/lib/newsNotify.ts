@@ -108,10 +108,16 @@ const EMPTY: NewsNotifyResult = { audience: 0, send: null };
  * Resolve who is on the trip, build the copy, and send. Never throws.
  */
 export async function notifyNewsPost(input: NewsNotifyInput): Promise<NewsNotifyResult> {
-  const admin = input.admin ?? createAdminClient();
   const result: NewsNotifyResult = { ...EMPTY };
+  // The client the catch records with — only once one has been built.
+  let recorder: SupabaseClient | null = input.admin ?? null;
 
   try {
+    // INSIDE the try: `news.create` awaits this after the post has committed,
+    // and its comment promises a push failure "never fails the post". Built
+    // outside the try, a failure to build the client did exactly that.
+    const admin = input.admin ?? createAdminClient();
+    recorder = admin;
     // 1 · The trip's membership, minus the author. Everyone on the trip is in
     //     this audience — News has no sub-channel the way Crew/Organizers do.
     const { data: memberRows, error: memberErr } = await admin
@@ -169,8 +175,8 @@ export async function notifyNewsPost(input: NewsNotifyInput): Promise<NewsNotify
   } catch (err) {
     console.error("[notifyNewsPost] failed", { tripId: input.tripId, postId: input.postId, err });
     try {
-      await recordPushAttempt(
-        admin,
+      if (recorder) await recordPushAttempt(
+        recorder,
         { trigger: input.trigger, tripId: input.tripId, actorUserId: input.authorId },
         {
           typeKey: "news",

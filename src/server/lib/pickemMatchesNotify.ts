@@ -84,8 +84,31 @@ export function matchesNotDrawnPayload(o: {
  * inside `afterResponse`, so it never delays or fails the result entry.
  */
 export async function notifyPickemMatchesNotDrawn(
-  input: { tripId: string; gameId: string; actorUserId: string; priorResults: number; newResult: string | null },
+  input: MatchesNotDrawnInput,
   opts: { admin?: SupabaseClient } = {}
+): Promise<SendPushToUsersResult | null> {
+  // Best-effort by construction: it runs after a result has committed. Its one
+  // caller happens to wrap it in `afterResponse`, but a helper that is only safe
+  // because of how today's caller calls it is not best-effort — it is lucky.
+  try {
+    return await notifyMatchesNotDrawnUnguarded(input, opts);
+  } catch (err) {
+    console.error("[notifyPickemMatchesNotDrawn] failed", { gameId: input.gameId, err });
+    return null;
+  }
+}
+
+type MatchesNotDrawnInput = {
+  tripId: string;
+  gameId: string;
+  actorUserId: string;
+  priorResults: number;
+  newResult: string | null;
+};
+
+async function notifyMatchesNotDrawnUnguarded(
+  input: MatchesNotDrawnInput,
+  opts: { admin?: SupabaseClient }
 ): Promise<SendPushToUsersResult | null> {
   const admin = opts.admin ?? createAdminClient();
   const [gameRes, cfgRes, matchRes] = await Promise.all([

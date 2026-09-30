@@ -1079,8 +1079,13 @@ export async function reconcileClinchClaim(
   competitionId: string,
   admin?: SupabaseClient
 ): Promise<void> {
-  const client = admin ?? createAdminClient();
   try {
+    // INSIDE the try (#1424): this runs after a committed save (saveConfig, the
+    // resets, setPointsTotal), and building the client is the step most likely
+    // to fail — on a preview it throws `supabaseKey is required`. Outside the try
+    // it turned a committed save into a 500, and the device then conflicted
+    // with its own save on every retry.
+    const client = admin ?? createAdminClient();
     const [board, claimRow] = await Promise.all([
       computeCompetitionLeaderboard(client, competitionId),
       client
@@ -1390,14 +1395,27 @@ export async function notifyCupClinchedIfDecided(
       err,
     });
     // The client is re-resolved here because the one inside the `try` is out of
-    // scope — and if THAT client is what threw, this record attempt fails too and
-    // is swallowed by `recordPushAttempt`. The log line above is the backstop for
-    // that case; it has already fired by this point regardless.
-    await recordClinchOutcome(
-      input.admin ?? createAdminClient(),
-      input,
-      "threw",
-      err instanceof Error ? err.message : String(err)
-    );
+    // scope. If building it is what threw, it throws AGAIN here — and it is
+    // evaluated as an ARGUMENT, before `recordClinchOutcome` is entered, so
+    // nothing inside it can swallow that. (This comment used to say the failure
+    // "is swallowed by `recordPushAttempt`"; it was not.) So the re-resolve has
+    // its own guard, and with no client there is no record — the log line above
+    // is the backstop, and it has already fired.
+    let recorder: SupabaseClient | null = input.admin ?? null;
+    if (!recorder) {
+      try {
+        recorder = createAdminClient();
+      } catch {
+        recorder = null;
+      }
+    }
+    if (recorder) {
+      await recordClinchOutcome(
+        recorder,
+        input,
+        "threw",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
   }
 }
