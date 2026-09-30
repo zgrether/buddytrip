@@ -570,6 +570,50 @@ seam, never on a calendar.
   more than it names turns every later read into a destructive one, so read
   everything, then write.
 
+- **WORK AFTER A COMMIT IS BEST-EFFORT, AND CAN NEVER TURN A COMMITTED SAVE
+  INTO A REPORTED FAILURE.** Here is what happens when it does:
+  1. The save commits.
+  2. A follow-up step throws: a clinch reconcile, a push, a status flip.
+  3. The procedure reports the save as FAILED.
+  4. The device keeps a draft built on the version before its own save.
+  5. Every later Save then conflicts with ITSELF.
+
+  The result is a device that saved correctly, was told it didn't, and can't
+  save again. Seen on #1529's preview (2026-09-30): one 500, then three 409s,
+  all from the same device.
+
+  A preview's missing service-role key (#634) is one way in:
+  `createAdminClient()` throws `supabaseKey is required`. But ANY post-commit
+  step that can throw does the same in production.
+
+  **The #1424 sweep found it in four save paths:**
+  - `saveConfig` and every reset, via `reconcileClinchClaim`;
+  - `messages.send`, via `notifyChatMessage`: a committed message reported as
+    failed invites a duplicate resend;
+  - `news.create`, via `notifyNewsPost`;
+  - `scores.upsertEntry`'s pending→active flip.
+
+  **Three of the four sat under a comment claiming they were already
+  protected:** "Never throws", "a push failure never fails the post", "logs
+  rather than throws". Each was true of every line but the one that failed:
+  building the client, one line above the `try`. A fourth comment said a
+  re-resolve in a `catch` "is swallowed by `recordPushAttempt`". It could
+  not be: it was an ARGUMENT, evaluated before that function is entered.
+
+  **How to apply:**
+  - Make the HELPER best-effort by construction. Build its client inside
+    the `try`, and record the failure only if a client was built. A helper
+    that is safe only because today's caller wraps it in `afterResponse` is
+    lucky, not best-effort.
+  - The recomputes are already in this shape: `onFailure: "log"`, #776 /
+    #1470.
+  - Test by making `createAdminClient` throw during the call. Assert BOTH
+    that the call reports success AND that the committed row is really
+    there. `postCommitBestEffort.test.ts` does this, with one mutant per site.
+  - Distinguish a step that FOLLOWS the save from a procedure whose whole job
+    is that step. `news.resend`'s push is its purpose, so failing there is
+    honest.
+
 - **A TEST THAT EXERCISES A DESTRUCTIVE WRITE MUST NOT SHARE STATE WITH THE
   NEXT ONE.** Each case establishes its own starting state — a `beforeEach`
   that restores it, or its own freshly built game — never the state an earlier
