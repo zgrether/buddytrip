@@ -105,7 +105,16 @@ R1's shape has changed under it — see §2. What remains:
   should be generic: **"Only the trip owner can do this."** Deliberately NOT an issue (Zach,
   2026-09-29): only a direct database call can reach the text, because tRPC's
   `requireCompetitionRole('owner')` refuses first with its own message. Found by migration 200's
-  production containment check.
+  production containment check. **Fold it into #1530's column-drop migration**, which is going
+  out anyway.
+
+- **The captain functions still say "only AN organizer". Fix it in #1530's migration too.**
+  `captain_add_player` / `captain_remove_player` (migration 199) refuse with *"Results are in, so
+  only an organizer can change rosters now."* The client note was changed to **"only
+  organizers"** in #1529, because the Owner can change rosters too. A captain sees the server's
+  version only in a race: results arriving while their Edit Team modal is open, then a tap on
+  × or Add. So it gets no migration of its own (Zach, 2026-09-30). The rule: no migration just
+  for copy almost nobody can reach, but always fix it when a migration is going out anyway.
 
 - **Split payouts — a side's winnings divided among the units it contains.** Since PR 5 a
   match side must resolve to ONE unit, and the server refuses one that doesn't
