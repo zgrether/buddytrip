@@ -390,7 +390,7 @@ export function SkinsGameView() {
     invalidateGameBoards(utils, { tripId, competitionId });
   }
 
-  const { saveState, saving, saveError, setSaveError, handleSave } = useConfigDraft<
+  const { saveState, handleLoadLatest, loadingLatest, saving, saveError, setSaveError, handleSave } = useConfigDraft<
     SkinsConfigDraft,
     { name: string | null; rules: string | null; scoring: boolean | null; delegates: string[] | null; pointsTotal: number | null | undefined; pointsDistribution: PointsDistribution | null | undefined; groups: string[][] | null; modifiers: ModifiersMap | null; course: SkinsConfigDraft["course"] | null }
   >({
@@ -796,6 +796,8 @@ export function SkinsGameView() {
           saveBar={
             <SettingsSaveBar
               saveState={saveState}
+              onLoadLatest={handleLoadLatest}
+              loadingLatest={loadingLatest}
               saving={saving}
               error={saveError}
               onSave={handleSave}

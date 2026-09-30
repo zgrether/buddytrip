@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  STALE_HINT,
   SettingsSaveBar,
   saveHintFor,
   NOT_READY_HINT,
@@ -64,6 +65,7 @@ function render(props: {
       error={props.error ?? null}
       onSave={neverSaves}
       onDiscard={noop}
+      onLoadLatest={noop}
       onLeave={noop}
       saveDisabledReason={props.saveDisabledReason ?? null}
     />,
@@ -180,5 +182,34 @@ describe("SettingsSaveBar — what the button does with each state", () => {
     const html = render({ saveState: "clean", error: "This game changed on another device." });
     expect(html).toContain('data-testid="settings-save-error"');
     expect(html).not.toContain('data-testid="settings-save-blocked"');
+  });
+
+  // ── PR 8 prerequisite A: the stale draft ──────────────────────────────────
+  it("stale: the short note, Save disabled, and Load latest INSIDE the note", () => {
+    const html = render({ saveState: "stale" });
+    expect(html).toContain(STALE_HINT);
+    // The button is a child of the warning paragraph: between its opening tag and
+    // its close. An anchor nothing else on the bar can emit (CLAUDE.md, the
+    // substring corollary), checked for POSITION, not mere presence.
+    const noteStart = html.indexOf('data-testid="settings-save-blocked"');
+    const noteEnd = html.indexOf("</p>", noteStart);
+    const button = html.indexOf('data-testid="settings-load-latest"');
+    expect(noteStart).toBeGreaterThan(-1);
+    expect(button).toBeGreaterThan(noteStart);
+    expect(button).toBeLessThan(noteEnd);
+    // Save is off: the rendered ATTRIBUTE on the Save button, not the word
+    // "disabled" (every button here carries the `disabled:` Tailwind class).
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-testid="settings-save"/);
+  });
+
+  it("Load latest appears ONLY when stale — not on a refusal, not when ready", () => {
+    for (const saveState of ["ready", "clean", "not-ready"] as const) {
+      expect(render({ saveState }), saveState).not.toContain('data-testid="settings-load-latest"');
+    }
+    // A content refusal outranks the lifecycle hint, so its note must not grow
+    // a Load latest button that has nothing to do with it.
+    expect(render({ saveState: "stale", saveDisabledReason: "Points don't add up." })).not.toContain(
+      'data-testid="settings-load-latest"'
+    );
   });
 });

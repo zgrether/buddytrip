@@ -610,7 +610,7 @@ export function StrokeGameView() {
   // confirm-on-leave) — the ONE shared hook (#626). The overlay itself stays above (opened
   // early to publish the app-bar chrome); the hook writes its dirtyRef/discardRef.
   const {
-    saveState, saveError, setSaveError, saving,
+    saveState, handleLoadLatest, loadingLatest, saveError, setSaveError, saving,
     handleSave: handleSaveConfig,
   } = useConfigDraft<StrokeConfigDraft, typeof draftBundle>({
     tripId, gameId: activeGameId, view: "stroke", canEdit,
@@ -1401,6 +1401,8 @@ export function StrokeGameView() {
           saveBar={
             <SettingsSaveBar
               saveState={saveState}
+              onLoadLatest={handleLoadLatest}
+              loadingLatest={loadingLatest}
               saving={saving}
               error={saveError}
               onSave={handleSaveConfig}
