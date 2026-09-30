@@ -18,22 +18,28 @@ import { TeamsPanel } from "./TeamsPanel";
  *    results, adding unassigned players and removing their own (`rosterRights`).
  *
  * It hosts the relocated TeamsPanel in `embedded` mode (this overlay owns the
- * card chrome + the "Rosters" title) and carries the one-way "Save rosters"
- * commit (staff, during the roster-build phase) that used to live in Settings.
+ * card chrome + the "Rosters" title) and a "Done" button on every visit.
+ *
+ * "Done", not "Save": every roster change here is written the moment it is
+ * made, so there is never anything to save. It used to be a "Save rosters"
+ * button shown only while the cup's `roster_setup` was `building` — a one-way
+ * commit that advanced the board's setup prompt and then vanished, so the first
+ * visit suggested edits waited on it and every later visit had no button at all
+ * for the same edits (found in the #1529 look). The first Done still advances
+ * `roster_setup`, silently; the parent decides that in `onDone`.
  */
 export function RostersOverlay({
   tripId,
   competitionId,
   canManageRoster,
   structureLocked,
-  rosterBuilding,
-  onSaveRosters,
+  onDone,
   onClose,
 }: {
   tripId: string;
   competitionId: string;
   /** Owner OR Organizer — everything a staff member does here: team create /
-   *  delete, identity, membership, drag, and "Save rosters". Was split from an
+   *  delete, identity, membership, drag, and "Done". Was split from an
    *  Owner-only `isOwner` in #789; migrations 199 / 200 made the server's answer
    *  one predicate, so the split is gone. A captain's rights are resolved per
    *  team inside TeamsPanel. */
@@ -41,11 +47,10 @@ export function RostersOverlay({
   /** Head-to-head: team COUNT is fixed at 2 (no add/delete team) — rename + swap
    *  stay. False for points (2–N). */
   structureLocked: boolean;
-  /** Roster-build phase: show the one-way "Save rosters" commit (Owner or
-   *  Organizer — it is `competitions.update`, which admits both). */
-  rosterBuilding: boolean;
-  /** Commit the roster build (advances roster_setup → saved) + closes. */
-  onSaveRosters: () => void;
+  /** "Done": close, and on the FIRST press also mark the rosters ready
+   *  (`roster_setup` building → saved, via `competitions.update`, which admits
+   *  Owner and Organizer). Staff only — the only people who reach this overlay. */
+  onDone: () => void;
   onClose: () => void;
 }) {
   return (
@@ -56,15 +61,15 @@ export function RostersOverlay({
       testId="rosters-overlay"
       maxWidthClass="max-w-3xl"
       footer={
-        canManageRoster && rosterBuilding ? (
+        canManageRoster ? (
           <button
             type="button"
-            onClick={onSaveRosters}
+            onClick={onDone}
             className="w-full rounded-xl py-3 text-sm font-semibold"
             style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
-            data-testid="rosters-save"
+            data-testid="rosters-done"
           >
-            Save rosters
+            Done
           </button>
         ) : undefined
       }

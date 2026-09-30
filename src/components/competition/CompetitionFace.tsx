@@ -427,7 +427,7 @@ export function CompetitionFace({
 
       {/* Rosters overlay — the one home for team management (W-TEAMSURFACE-01),
           member-visible, owner-editable. Opened ONLY via the Rosters button (or a
-          non-permitted team-name tap). Carries the relocated "Save rosters" commit. */}
+          non-permitted team-name tap). Its "Done" closes it and, the first time, marks rosters ready. */}
       {rostersOpen && competition && (
         <RostersOverlay
           tripId={tripId}
@@ -441,8 +441,12 @@ export function CompetitionFace({
           // was retired with GO LIVE; player-removal protection once scoring
           // starts is a separate SCORE-based lock, teamAssignments.rosterLocked.)
           structureLocked={scoringModel === "match_play"}
-          rosterBuilding={rosterSetup === "building"}
-          onSaveRosters={() => { setRosterSetup("saved"); setRostersOpen(false); }}
+          // Done on every visit; only the FIRST advances roster_setup, so the
+          // setup prompt still moves exactly once.
+          onDone={() => {
+            if (rosterSetup === "building") setRosterSetup("saved");
+            setRostersOpen(false);
+          }}
           onClose={() => setRostersOpen(false)}
         />
       )}

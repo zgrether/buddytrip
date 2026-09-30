@@ -345,7 +345,8 @@ is the Owner's"), which read as a principle and competed with the actual one.
 >
 > The Rosters overlay opens only from the staff settings gear, so a captain who is
 > a plain Member manages their team from the Edit Team modal (tap the team on the
-> board). "Save rosters" is Owner or Organizer, matching `competitions.update`.
+> board). The overlay's "Done" (every visit; the first press also marks rosters ready
+> via `competitions.update`) is Owner or Organizer.
 
 > **Per-game delegation (Slice D1 §8).** Game edit/configure/enter-results
 > resolves to **`canEdit || isGameDelegate(gameId)`** — trip Owner/Organizer, OR a
