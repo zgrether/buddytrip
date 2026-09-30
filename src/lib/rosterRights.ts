@@ -63,4 +63,6 @@ export function rosterRights(p: {
 }
 
 /** The line a captain sees once results are in. Names who can still act. */
-export const CAPTAIN_LOCKED_NOTE = "Results are in, so only an organizer can change rosters now.";
+// "organizers", plural: the Owner can change rosters too, and "an organizer" read as
+// the one role. (Zach, #1529 look.)
+export const CAPTAIN_LOCKED_NOTE = "Results are in, so only organizers can change rosters now.";

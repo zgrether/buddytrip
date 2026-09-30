@@ -340,7 +340,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 >   live and the × shows disabled with the reason.
 > - **This team's captain:** + Add player (unassigned crew only) and × on their
 >   own players except themselves. After results, neither control shows, and one
->   line says *"Results are in, so only an organizer can change rosters now."*
+>   line says *"Results are in, so only organizers can change rosters now."*
 > - **Anyone else:** read-only.
 >
 > The Rosters overlay opens only from the staff settings gear, so a captain who is
