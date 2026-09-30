@@ -49,17 +49,43 @@ const SRC = readFileSync(resolve(__dirname, "useConfigDraft.ts"), "utf8");
  * against the correct code and would have passed against the broken code with
  * the comment removed. It was measuring the region, not the thing.
  */
-function saveBody(): string {
-  const start = SRC.indexOf("async function handleSave()");
-  expect(start, "handleSave not found — did it get renamed?").toBeGreaterThan(-1);
-  const end = SRC.indexOf("function handleCancel()", start);
-  expect(end, "could not find the function after handleSave").toBeGreaterThan(start);
-  return SRC.slice(start, end)
+function stripComments(s: string): string {
+  return s
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .split("\n")
     .filter((l) => !l.trim().startsWith("//"))
     .join("\n");
 }
+
+/**
+ * One function's body, bounded by its BRACES — not by "up to the next function
+ * I happen to know the name of".
+ *
+ * The first version of this guard ended the slice at `function handleCancel()`,
+ * which was the next function when it was written. #1521 then added
+ * `handleLoadLatest` between the two, and that function's own (correct)
+ * `hashQ.refetch()` was counted as a second refetch INSIDE `handleSave` — a red
+ * CI naming a bug that did not exist. Same failure as CLAUDE.md's "measure the
+ * thing, not the region": the boundary decided what the guard could see.
+ * Comments are stripped BEFORE the brace count so a brace in prose can't move it.
+ */
+function functionBody(signature: string): string {
+  const src = stripComments(SRC);
+  const start = src.indexOf(signature);
+  expect(start, `${signature} not found — did it get renamed?`).toBeGreaterThan(-1);
+  const open = src.indexOf("{", src.indexOf(")", start));
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") {
+      depth--;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  throw new Error(`unbalanced braces after ${signature}`);
+}
+
+const saveBody = () => functionBody("async function handleSave()");
 
 describe("useConfigDraft — the post-save refresh", () => {
   const body = saveBody();
@@ -104,6 +130,35 @@ describe("useConfigDraft — the post-save refresh", () => {
       refetchAt,
       "hashQ.refetch() runs after reset(true). The baseline re-freezes on the reset, " +
         "so the hash has to be in hand before it, not after."
+    ).toBeLessThan(resetAt);
+  });
+});
+
+// LOAD LATEST (#1521) resets too, so it has the same hazard: reset first and the
+// baseline re-freezes as { fresh draft, stale hash }, and the next Save conflicts.
+describe("useConfigDraft — Load latest refreshes BEFORE it resets", () => {
+  const body = functionBody("async function handleLoadLatest()");
+
+  it("the scan can see the pieces at all", () => {
+    expect(body).toContain("reset(false)");
+    expect(body).toContain("hashQ.refetch");
+    expect(body).toContain("onSaved");
+    // The brace bound really stopped at this function: the one after it is not in
+    // the slice. (A multi-line literal would be inert here — the file is CRLF.)
+    expect(body).not.toContain("function handleCancel");
+    expect(saveBody()).not.toContain("function handleLoadLatest");
+  });
+
+  it("awaits the mirror and the hash together, once, and only then resets", () => {
+    const refetchAt = body.indexOf("hashQ.refetch(");
+    const allAt = body.indexOf("await Promise.all([");
+    const resetAt = body.indexOf("reset(false)");
+    expect((body.match(/hashQ\.refetch\(/g) ?? []).length, "one hash refetch, inside the Promise.all").toBe(1);
+    expect(allAt, "Load latest no longer awaits the refresh with Promise.all").toBeGreaterThan(-1);
+    expect(refetchAt, "the hash refetch is not inside the awaited Promise.all").toBeGreaterThan(allAt);
+    expect(
+      refetchAt,
+      "Load latest resets before the hash is in hand — the baseline re-freezes against a stale hash."
     ).toBeLessThan(resetAt);
   });
 });
