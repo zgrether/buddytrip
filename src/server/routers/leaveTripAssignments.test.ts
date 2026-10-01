@@ -19,30 +19,45 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
-let tripId: string;
-let competitionId: string;
-let teamId: string;
 let member: string;
 
-const assignmentsFor = async (userId: string) =>
-  (await ctx.admin.from("team_assignments").select("user_id").eq("competition_id", competitionId).eq("user_id", userId))
-    .data ?? [];
+/**
+ * EACH CASE BUILDS ITS OWN TRIP AND CUP (#1527). The cases used to share one:
+ * the first removed the member from it, and the third re-added them with
+ * `addTripMemberById` — which collided ("duplicate key … trip_members") the
+ * moment a shuffle put the third case first, while the member was still there
+ * from setup.
+ */
+async function cupTrip(label: string) {
+  const tripId = await ctx.createTrip(`leave-trip ${label}`);
+  await ctx.addTripMember(tripId, "member", "Member");
+  const competitionId = await ctx.createCompetition(tripId, `leave-trip Cup ${label}`);
+  const teamId = await ctx.createTeam(competitionId, "Leavers");
+  return { tripId, competitionId, teamId };
+}
 
-async function assign(userId: string) {
-  await ctx.admin.from("team_assignments").insert({
+async function assignmentsFor(competitionId: string, userId: string) {
+  const { data, error } = await ctx.admin
+    .from("team_assignments")
+    .select("user_id")
+    .eq("competition_id", competitionId)
+    .eq("user_id", userId);
+  if (error) throw new Error(`read assignments: ${error.message}`);
+  return data ?? [];
+}
+
+async function assign(competitionId: string, teamId: string, userId: string) {
+  const { error } = await ctx.admin.from("team_assignments").insert({
     competition_id: competitionId,
     team_id: teamId,
     user_id: userId,
   });
+  if (error) throw new Error(`seed assignment: ${error.message}`);
 }
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("leave-trip Trip");
-  await ctx.addTripMember(tripId, "member", "Member");
   member = ctx.getUser("member").id;
-  competitionId = await ctx.createCompetition(tripId, "leave-trip Cup");
-  teamId = await ctx.createTeam(competitionId, "Leavers");
 }, 120000);
 
 afterAll(async () => {
@@ -51,42 +66,43 @@ afterAll(async () => {
 
 describe("removing a member clears their cup team assignment", () => {
   it("tripMembers.remove — the real-account path", async () => {
-    await assign(member);
-    expect(await assignmentsFor(member)).toHaveLength(1);
+    const { tripId, competitionId, teamId } = await cupTrip("real");
+    await assign(competitionId, teamId, member);
+    expect(await assignmentsFor(competitionId, member)).toHaveLength(1);
 
     await ctx.caller().tripMembers.remove({ tripId, userId: member });
 
-    expect(await assignmentsFor(member)).toHaveLength(0);
+    expect(await assignmentsFor(competitionId, member)).toHaveLength(0);
   });
 
   it("ghostCrew.remove — the guest path", async () => {
+    const { tripId, competitionId, teamId } = await cupTrip("guest");
     const guest = (await ctx.caller().ghostCrew.create({ tripId, name: "Temp Guest" })) as { id: string };
-    await assign(guest.id);
-    expect(await assignmentsFor(guest.id)).toHaveLength(1);
+    await assign(competitionId, teamId, guest.id);
+    expect(await assignmentsFor(competitionId, guest.id)).toHaveLength(1);
 
     await ctx.caller().ghostCrew.remove({ tripId, guestUserId: guest.id });
 
-    expect(await assignmentsFor(guest.id)).toHaveLength(0);
+    expect(await assignmentsFor(competitionId, guest.id)).toHaveLength(0);
   });
 
   it("does NOT touch assignments in another trip's competition", async () => {
     // Scoped to the trip, never to the person globally — someone removed from
     // one trip keeps their teams everywhere else they are still on.
-    const otherTrip = await ctx.createTrip("other Trip");
-    await ctx.addTripMemberById(otherTrip, member, "Member");
-    const otherComp = await ctx.createCompetition(otherTrip, "other Cup");
-    const otherTeam = await ctx.createTeam(otherComp, "Stayers");
-    await ctx.admin.from("team_assignments").insert({
-      competition_id: otherComp, team_id: otherTeam, user_id: member,
-    });
+    const { tripId, competitionId, teamId } = await cupTrip("scoped");
+    const other = await cupTrip("scoped-other");
+    await assign(other.competitionId, other.teamId, member);
+    await assign(competitionId, teamId, member);
+    // Premise: one assignment on each cup.
+    expect(await assignmentsFor(competitionId, member)).toHaveLength(1);
+    expect(await assignmentsFor(other.competitionId, member)).toHaveLength(1);
 
-    await ctx.addTripMemberById(tripId, member, "Member");
-    await assign(member);
     await ctx.caller().tripMembers.remove({ tripId, userId: member });
 
-    expect(await assignmentsFor(member)).toHaveLength(0);
-    const kept = (await ctx.admin.from("team_assignments").select("user_id").eq("competition_id", otherComp)).data ?? [];
-    expect(kept).toHaveLength(1);
+    // The removal did its job here (so the survivor below is a scope, not a no-op)…
+    expect(await assignmentsFor(competitionId, member)).toHaveLength(0);
+    // …and left the other trip's cup alone.
+    expect(await assignmentsFor(other.competitionId, member)).toHaveLength(1);
   });
 });
 
