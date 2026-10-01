@@ -159,14 +159,18 @@ describe("after the roster locks, captains have nothing; organizers still add", 
     const add = await refused(ctx.callerAs("member").teamAssignments.assign({
       tripId: c.tripId, competitionId: c.competitionId, userId: c.outsider, teamId: c.blue,
     }));
+    // The WHOLE sentence: "only organizers", plural (migration 201) — a prefix
+    // match would pass the old "only an organizer" wording too.
+    const LOCKED = "Results are in, so only organizers can change rosters now.";
     expect(add.code).toBe("PRECONDITION_FAILED");
-    expect(add.message).toMatch(/Results are in/);
+    expect(add.message).toBe(LOCKED);
     expect(await teamOf(c.competitionId, c.outsider)).toBeNull();
 
     const rem = await refused(ctx.callerAs("member").teamAssignments.remove({
       tripId: c.tripId, competitionId: c.competitionId, userId: c.planner, teamId: c.blue,
     }));
     expect(rem.code).toBe("PRECONDITION_FAILED");
+    expect(rem.message).toBe(LOCKED);
     expect(await teamOf(c.competitionId, c.planner)).toBe(c.blue);
 
     // CONTROL: an Organizer's ADD still goes through after the lock (adds stay allowed).
