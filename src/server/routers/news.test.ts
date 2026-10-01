@@ -2,11 +2,24 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext, genId, createAnonCaller } from "../../__tests__/helpers/test-setup";
 import type { NewsBlock } from "@/lib/news";
 
+/**
+ * EVERY TEST BUILDS THE TRIP IT READS (#1527). The list tests used to share one
+ * trip and expect exactly the three posts the first of them seeded, so a post
+ * written by any other case — and nearly every case writes one — changed the
+ * count; "blocks round-trip" found its callout only if the seeding case had run.
+ */
 let ctx: TestContext;
-let tripId: string;
+
+/** Owner = primary user; planner = Organizer; member = Member. */
+async function newsTrip(label: string): Promise<string> {
+  const tripId = await ctx.createTrip(`News ${label}`);
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  return tripId;
+}
 
 // Insert a post directly (the create procedure lands in PR2; PR1 is read-only).
-async function seedPost(opts: {
+async function seedPost(tripId: string, opts: {
   authorId: string;
   blocks: NewsBlock[];
   pinned?: boolean;
@@ -28,9 +41,6 @@ async function seedPost(opts: {
 describe("news router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("News Test");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
   });
 
   afterAll(async () => {
@@ -40,18 +50,19 @@ describe("news router", () => {
   // ── list ────────────────────────────────────────────────────────────────
 
   it("list — returns posts pinned-first, then newest-first", async () => {
+    const tripId = await newsTrip("returns posts pinned-first, then newest-");
     const owner = ctx.user.id;
-    await seedPost({
+    await seedPost(tripId, {
       authorId: owner,
       blocks: [{ type: "text", text: "Oldest, unpinned" }],
       createdAt: "2026-01-01T00:00:00Z",
     });
-    await seedPost({
+    await seedPost(tripId, {
       authorId: owner,
       blocks: [{ type: "text", text: "Newest, unpinned" }],
       createdAt: "2026-03-01T00:00:00Z",
     });
-    await seedPost({
+    await seedPost(tripId, {
       authorId: owner,
       blocks: [{ type: "callout", text: "Pinned (older)" }],
       pinned: true,
@@ -68,24 +79,35 @@ describe("news router", () => {
   });
 
   it("list — blocks round-trip as a typed array", async () => {
+    const tripId = await newsTrip("blocks round-trip as a typed array");
+    await seedPost(tripId, {
+      authorId: ctx.user.id,
+      blocks: [{ type: "callout", text: "Pinned (older)" }],
+      pinned: true,
+    });
     const { posts } = await ctx.caller().news.list({ tripId });
+    expect(posts).toHaveLength(1);
     const callout = posts.find((p) => p.blocks[0]?.type === "callout");
     expect(callout).toBeTruthy();
     expect(callout!.blocks[0]).toEqual({ type: "callout", text: "Pinned (older)" });
   });
 
   it("list — any member can read", async () => {
+    const tripId = await newsTrip("any member can read");
+    const id = await seedPost(tripId, { authorId: ctx.user.id, blocks: [{ type: "text", text: "for everyone" }] });
     const { posts } = await ctx.callerAs("member").news.list({ tripId });
-    expect(posts.length).toBe(3);
+    expect(posts.map((p) => p.id)).toEqual([id]);
   });
 
   it("list — a non-member is forbidden", async () => {
+    const tripId = await newsTrip("a non-member is forbidden");
     await expect(
       ctx.callerAs("outsider").news.list({ tripId })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("list — anonymous callers are unauthorized", async () => {
+    const tripId = await newsTrip("anonymous callers are unauthorized");
     await expect(
       createAnonCaller().news.list({ tripId })
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
@@ -94,6 +116,7 @@ describe("news router", () => {
   // ── markRead ────────────────────────────────────────────────────────────
 
   it("markRead — stamps and returns a timestamp", async () => {
+    const tripId = await newsTrip("stamps and returns a timestamp");
     const res = await ctx.callerAs("member").news.markRead({ tripId });
     expect(res.lastReadAt).toBeTruthy();
     // Persistence is covered by the "unreadCount — zero right after the member
@@ -103,19 +126,35 @@ describe("news router", () => {
   // ── unreadCount ────────────────────────────────────────────────────────────
 
   it("unreadCount — excludes the caller's own posts (owner authored all)", async () => {
-    const count = await ctx.caller().news.unreadCount({ tripId });
-    expect(count).toBe(0);
+    const tripId = await newsTrip("excludes the caller's own posts (owner a");
+    await seedPost(tripId, { authorId: ctx.user.id, blocks: [{ type: "text", text: "mine" }] });
+    // Premise: the post is there, and the member — who did not write it — counts it.
+    expect(await ctx.callerAs("member").news.unreadCount({ tripId })).toBe(1);
+    expect(await ctx.caller().news.unreadCount({ tripId })).toBe(0);
+    // Control: someone else's post DOES count for the owner, so the 0 above is
+    // the author exclusion and not a count that cannot move.
+    await seedPost(tripId, { authorId: ctx.getUser("planner").id, blocks: [{ type: "text", text: "theirs" }] });
+    expect(await ctx.caller().news.unreadCount({ tripId })).toBe(1);
   });
 
   it("unreadCount — zero right after the member marks read", async () => {
+    const tripId = await newsTrip("zero right after the member marks read");
+    await seedPost(tripId, {
+      authorId: ctx.user.id,
+      blocks: [{ type: "text", text: "unread until marked" }],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    // Premise: something to read — otherwise 0 is the only possible answer.
+    expect(await ctx.callerAs("member").news.unreadCount({ tripId })).toBe(1);
     await ctx.callerAs("member").news.markRead({ tripId });
     const count = await ctx.callerAs("member").news.unreadCount({ tripId });
     expect(count).toBe(0);
   });
 
   it("unreadCount — a newer post by someone else bumps the member's count", async () => {
+    const tripId = await newsTrip("a newer post by someone else bumps the m");
     await ctx.callerAs("member").news.markRead({ tripId });
-    await seedPost({
+    await seedPost(tripId, {
       authorId: ctx.getUser("planner").id,
       blocks: [{ type: "text", text: "Fresh drop" }],
     });
@@ -126,6 +165,7 @@ describe("news router", () => {
   // ── create ─────────────────────────────────────────────────────────────────
 
   it("create — owner can post; it lands in the feed", async () => {
+    const tripId = await newsTrip("owner can post; it lands in the feed");
     const post = await ctx.caller().news.create({
       tripId,
       blocks: [{ type: "callout", text: "Heads up" }, { type: "text", text: "Body" }],
@@ -140,6 +180,7 @@ describe("news router", () => {
   });
 
   it("create — planner can post", async () => {
+    const tripId = await newsTrip("planner can post");
     const post = await ctx.callerAs("planner").news.create({
       tripId,
       blocks: [{ type: "text", text: "Organizer says hi" }],
@@ -148,6 +189,7 @@ describe("news router", () => {
   });
 
   it("create — a plain member cannot post", async () => {
+    const tripId = await newsTrip("a plain member cannot post");
     await expect(
       ctx.callerAs("member").news.create({
         tripId,
@@ -157,6 +199,7 @@ describe("news router", () => {
   });
 
   it("create — rejects an unknown block type (closed set enforced)", async () => {
+    const tripId = await newsTrip("rejects an unknown block type (closed se");
     await expect(
       ctx.caller().news.create({
         tripId,
@@ -167,6 +210,7 @@ describe("news router", () => {
   });
 
   it("create — rejects an empty block stack", async () => {
+    const tripId = await newsTrip("rejects an empty block stack");
     await expect(
       ctx.caller().news.create({ tripId, blocks: [] })
     ).rejects.toThrow();
@@ -175,6 +219,7 @@ describe("news router", () => {
   // ── heading block + rich-text segments (PR4) ──────────────────────────────
 
   it("create — a heading block round-trips", async () => {
+    const tripId = await newsTrip("a heading block round-trips");
     const post = await ctx.caller().news.create({
       tripId,
       blocks: [{ type: "heading", text: "Saturday — Championship Day" }],
@@ -183,12 +228,14 @@ describe("news router", () => {
   });
 
   it("create — rejects an empty-text heading", async () => {
+    const tripId = await newsTrip("rejects an empty-text heading");
     await expect(
       ctx.caller().news.create({ tripId, blocks: [{ type: "heading", text: "" }] })
     ).rejects.toThrow();
   });
 
   it("create — rich-text segments (bold, link, mention) round-trip intact", async () => {
+    const tripId = await newsTrip("rich-text segments (bold, link, mention)");
     const blocks: NewsBlock[] = [
       {
         type: "text",
@@ -208,6 +255,7 @@ describe("news router", () => {
   });
 
   it("create — a link segment keeps its href (not flattened to plain text)", async () => {
+    const tripId = await newsTrip("a link segment keeps its href (not flatt");
     const post = await ctx.caller().news.create({
       tripId,
       blocks: [{ type: "text", segments: [{ link: "https://buddytrip.app", text: "site" }] }],
@@ -219,6 +267,7 @@ describe("news router", () => {
   // ── update / setPinned / delete ──────────────────────────────────────────
 
   it("update — owner edits blocks and pin state", async () => {
+    const tripId = await newsTrip("owner edits blocks and pin state");
     const post = await ctx.caller().news.create({
       tripId,
       blocks: [{ type: "text", text: "v1" }],
@@ -234,6 +283,7 @@ describe("news router", () => {
   });
 
   it("update — a member cannot edit", async () => {
+    const tripId = await newsTrip("a member cannot edit");
     const post = await ctx.caller().news.create({
       tripId,
       blocks: [{ type: "text", text: "owned by owner" }],
@@ -248,6 +298,7 @@ describe("news router", () => {
   });
 
   it("setPinned — toggles pin without resending blocks", async () => {
+    const tripId = await newsTrip("toggles pin without resending blocks");
     const post = await ctx.caller().news.create({
       tripId,
       blocks: [{ type: "text", text: "pin me" }],
@@ -259,6 +310,7 @@ describe("news router", () => {
   });
 
   it("delete — owner removes a post; member cannot", async () => {
+    const tripId = await newsTrip("owner removes a post; member cannot");
     const post = await ctx.caller().news.create({
       tripId,
       blocks: [{ type: "text", text: "temporary" }],
@@ -282,6 +334,7 @@ describe("news router", () => {
   // call had been deleted outright.
 
   it("create — fires a news push, recorded to push_send_log", async () => {
+    const tripId = await newsTrip("fires a news push, recorded to push_send");
     const before = new Date().toISOString();
     await ctx.caller().news.create({
       tripId,
@@ -307,6 +360,7 @@ describe("news router", () => {
   });
 
   it("resend — Owner/Organizer can re-fire an existing post's notification", async () => {
+    const tripId = await newsTrip("Owner/Organizer can re-fire an existing ");
     const post = await ctx.caller().news.create({
       tripId,
       blocks: [{ type: "heading", text: "Resend me" }],
@@ -315,19 +369,21 @@ describe("news router", () => {
     const res = await ctx.caller().news.resend({ tripId, postId: post.id });
     expect(res.audience).toBe(2);
 
-    const { data } = await ctx.admin
+    // Exactly one resend on this trip — this case's own.
+    const { data: rows, error } = await ctx.admin
       .from("push_send_log")
       .select("trigger, type_key, recipients")
       .eq("trip_id", tripId)
-      .eq("trigger", "news_resend")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .eq("trigger", "news_resend");
+    if (error) throw new Error(`read push_send_log: ${error.message}`);
+    expect(rows).toHaveLength(1);
+    const data = rows![0];
     expect(data?.type_key).toBe("news");
     expect(data?.recipients).toBe(2);
   });
 
   it("resend — excludes the ORIGINAL author, not whoever triggers the resend", async () => {
+    const tripId = await newsTrip("excludes the ORIGINAL author, not whoeve");
     // Owner authors; Organizer (planner) triggers the resend.
     //
     // THE COUNT ALONE CANNOT CATCH THIS, and asserting it would be decorative
@@ -361,6 +417,7 @@ describe("news router", () => {
   });
 
   it("resend — a plain member cannot", async () => {
+    const tripId = await newsTrip("a plain member cannot");
     const post = await ctx.caller().news.create({
       tripId,
       blocks: [{ type: "text", text: "no member resend" }],
@@ -371,6 +428,7 @@ describe("news router", () => {
   });
 
   it("resend — refuses a postId from another trip", async () => {
+    const tripId = await newsTrip("refuses a postId from another trip");
     const otherTripId = await ctx.createTrip("News Resend Other Trip");
     const otherPost = await ctx.caller().news.create({
       tripId: otherTripId,
@@ -397,10 +455,11 @@ describe("news router", () => {
       teamA = await ctx.createTeam(compId, "The Usual Suspects", { color: "#3b82f6" });
       teamB = await ctx.createTeam(compId, "Buddy's Last Stand", { color: "#2dd4bf" });
       // Owner → A, planner → B; member stays unassigned.
-      await ctx.admin.from("team_assignments").insert([
+      const { error } = await ctx.admin.from("team_assignments").insert([
         { competition_id: compId, user_id: ctx.user.id, team_id: teamA },
         { competition_id: compId, user_id: ctx.getUser("planner").id, team_id: teamB },
       ]);
+      if (error) throw new Error(`seed assignments: ${error.message}`);
     });
 
     it("roster — returns every member with name + initials", async () => {
