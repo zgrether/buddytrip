@@ -30,7 +30,7 @@ scorecard (hole-by-hole). "hub" is retired. "face" stays a *navigation* term onl
 | Unit of play | **game** + **match** (a pairing inside match-play) | "round" means golf's 18 holes ONLY — never a game/match |
 | Scoring-on / visibility | **enableScoring** / **Live** (first score flips it) / reveal = Go-Live | one action, one name (`matches.activate` was the old alias — renamed) |
 | Combatants | **team** (roster) / **side** (slot, may be solo) | preserve the split — a side is a slot, a team is the roster |
-| Rights | **Owner / Organizer / Member** (trip) · **co_admin** (comp) · **delegate** (game) | trip role VALUE is `Organizer` (mig 029, not "Planner"); the one game-scope term is `delegate` |
+| Rights | **Owner / Organizer / Member** (trip) · **owner / organizer / member** (comp) · **delegate** (game) | trip role VALUE is `Organizer` (mig 029, not "Planner"); the one game-scope term is `delegate`. The competition role an Organizer resolves to was `co_admin` until 2026-10-01 — one concept under two names, so it was renamed `organizer` (PR 8 permissions pass). **Layers:** code-identifier + display-string only; no DB value, function or policy ever held it (checked live), and the applied migrations that mention it in comments are history. The value crosses the API (`myCompetitionRole`), so client and server changed together. |
 | A person | **member** (trip) / **participant** (game) / **guest** (placeholder) | ghost == guest — grep hazard |
 | Container | **competition** (code) / **cup** (UI) | not "Events" |
 | Bracket structure | **main** / **lower** / **final** (`bracket_matches.bracket`) | `lower`, never "losers" — the column names a STRUCTURE, not the people in it. The grand final is `final`, NOT `main` round N+1: an entrant can reach it having lost, which no `main` match permits. `consolation` is single-elim only and can never co-occur with `lower`. |
@@ -1584,7 +1584,7 @@ These patterns have been established through prior work. Follow them exactly —
       finalize and the delete destination (`competitionId ? leaderboard : trip
       home`, which sent a side game to the Trip tab), the correction refresh,
       and match play's push all did this. Correct-to-skip is only what is
-      genuinely about a cup: standings, clinch, team points, co_admin rights.
+      genuinely about a cup: standings, clinch, team points, competition-organizer rights.
     - **Reading the trip's cup as the game's.** `competitions.getByTrip` answered
       "this game's competition" correctly only while every game was in the cup.
       A side match game on a trip that has one rendered the cup's standings

@@ -239,9 +239,9 @@ is the Owner's"), which read as a principle and competed with the actual one.
 | View competition / teams / leaderboard | ✓ | ✓ | ✓ | `*.list` / `getByTrip` |
 | Create / edit competition | ✓ | ✓ | — | `competitions.create` / `update` |
 | Delete competition | ✓ | — | — | `competitions.delete` *(Owner — CASCADE-deletes its games + all scores/results; gate is the **competition** owner via `requireCompetitionRole('owner')` + the RPC's `assert_competition_owner`, normally the same person as the trip Owner)* |
-| Create a team | ✓ | ✓ | — | `teams.create` *(co-admin, which an Organizer resolves to)* |
+| Create a team | ✓ | ✓ | — | `teams.create` *(competition `organizer`, which a trip Organizer resolves to)* |
 | **Edit team identity** (name / short / color) | ✓ | ✓ | **captain of *that* team** | `teams.update` *(Organizer since mig 199 — whoever can delete a team can rename it; captain since mig 065)* |
-| Delete a team | ✓ | ✓ | — | `teams.delete` *(co-admin — this row said Owner, and the server and `teams_delete` RLS have admitted Organizers all along)* |
+| Delete a team | ✓ | ✓ | — | `teams.delete` *(competition `organizer` — this row said Owner, and the server and `teams_delete` RLS have admitted Organizers all along)* |
 | Assign member to a team (add, or move between teams) | ✓ | ✓ | **captain: add an UNASSIGNED player to *their own* team, before results** | `teamAssignments.assign` *(captain path via `captain_add_player`, mig 199 — a player already on another team is a trade and is refused)* |
 | Remove a team assignment | ✓ | ✓ | **captain: remove from *their own* team, before results, never themselves** | `teamAssignments.remove` *(Organizer+, #786; captain path via `captain_remove_player`, mig 199)* |
 | **Reorder a team's roster** (canonical order) | ✓ | ✓ | **captain of *that* team** | `teamAssignments.reorder` *(Organizer since mig 199; captain since mig 094; same gate as `teams.update`)* |
@@ -260,7 +260,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 > to a three-tier model, enforced **server-side** (the tRPC guard `canWriteScore`
 > **and** the `score_entries` write RLS via `can_score_unit()` — hiding the button
 > is not enough, anyone can call the API directly):
-> - **Owner / Organizer (comp owner/co-admin)** → any unit, any game (`canEditGame`).
+> - **Owner / Organizer (competition owner/organizer)** → any unit, any game (`canEditGame`).
 > - **Delegate of *that* game** → any unit in that game (game-isolated).
 > - **Member** → only the **unit they participate in**; a **non-participant** member
 >   scores nothing.
@@ -416,7 +416,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 > Both gates resolve to the SAME predicate — `requireGameEdit` and
 > `requireGameRunAction` are the same function with a different error string
 > (identical parsing, identical `canEditGame`, identical `next()`), and
-> `canEditGame` passes anyone at `co_admin` or above, which the trip→competition
+> `canEditGame` passes anyone at competition `organizer` or above, which the trip→competition
 > mapping grants every trip **Organizer**. So both are: **Owner, Organizer, or
 > that game's delegate** — consistent with the Owner/Organizer principle at the
 > top, since neither changes who is trusted nor ends a container. (An earlier

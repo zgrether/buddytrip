@@ -1024,7 +1024,7 @@ roster mismatch runs the same way — **the server allows what the UI hides.**
   (rulings 17 and 20), which belongs to owners and organizers. So a captain cannot add a
   teamless player after results, and **pulling someone off another team is a trade**: it
   touches two teams, it is Organizer-level, and **the upsert must refuse it.**
-- **`co_admin`:** if it is the same concept as Organizer, collapse it to one name.
+- **`co_admin`:** if it is the same concept as Organizer, collapse it to one name. **Done (2026-10-01):** it was the same concept — the competition role a trip Organizer resolves to — and is now `organizer` everywhere in code and copy (code-identifier + display-string tier; no DB value ever held it).
 - **Delegation grants no roster rights** — explicitly (Zach's ruling).
 
 **5 · Account linking (`#1481`), because PR 7's per-person rows and PR 8's placeholder
