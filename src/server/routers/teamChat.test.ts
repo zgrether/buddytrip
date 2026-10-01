@@ -289,12 +289,50 @@ describe("history floor on a team change", () => {
 });
 
 describe("notifications follow the crew gate", () => {
-  async function notifyTeam(senderRole: "member" | "planner", teamId: string) {
+  /**
+   * EACH CASE BUILDS ITS OWN CUP (#1527). These shared the file's trip, and the
+   * owner's heartbeat with it: "someone looking at the team panel" leaves a
+   * team `viewing_at` on the owner's row, and the case after it then found the
+   * owner suppressed. Shuffled, "a second member IS notified" met that mark and
+   * got `eligible: []` — the bug the suppression case guards, reported by a case
+   * that was not testing suppression at all.
+   *
+   * Team A = the member alone; team B = the planner, plus the owner when
+   * `ownerOnB` asks for a second person.
+   */
+  async function teamCup(label: string, opts: { ownerOnB: boolean }) {
+    const trip = await ctx.createTrip(`Team Chat Notify ${label}`);
+    await ctx.addTripMember(trip, "planner", "Organizer");
+    await ctx.addTripMember(trip, "member", "Member");
+    const comp = await ctx.createCompetition(trip);
+    const a = await ctx.createTeam(comp, "Buddy", { shortName: "BUD" });
+    const b = await ctx.createTeam(comp, "Banks", { shortName: "BNK" });
+    const rows = [
+      { competition_id: comp, user_id: ctx.getUser("member").id, team_id: a },
+      { competition_id: comp, user_id: ctx.getUser("planner").id, team_id: b },
+      ...(opts.ownerOnB ? [{ competition_id: comp, user_id: ctx.getUser("owner").id, team_id: b }] : []),
+    ];
+    const { error } = await ctx.admin.from("team_assignments").insert(rows);
+    if (error) throw new Error(`seed assignments: ${error.message}`);
+    return { trip, a, b };
+  }
+
+  /** Who is on a team, read back — the premise every audience assertion rests on. */
+  async function rosterOf(teamId: string): Promise<string[]> {
+    const { data, error } = await ctx.admin
+      .from("team_assignments")
+      .select("user_id")
+      .eq("team_id", teamId);
+    if (error) throw new Error(`read roster: ${error.message}`);
+    return (data ?? []).map((r: { user_id: string }) => r.user_id).sort();
+  }
+
+  async function notifyTeam(trip: string, senderRole: "member" | "planner", teamId: string) {
     const id = genId("msg");
     const createdAt = new Date().toISOString();
-    await ctx.admin.from("messages").insert({
+    const { error } = await ctx.admin.from("messages").insert({
       id,
-      trip_id: tripId,
+      trip_id: trip,
       user_id: ctx.getUser(senderRole).id,
       channel: "team",
       team_id: teamId,
@@ -302,9 +340,10 @@ describe("notifications follow the crew gate", () => {
       visibility: "crew",
       message_type: "user",
     });
+    if (error) throw new Error(`seed message: ${error.message}`);
     const res = await notifyChatMessage(
       {
-        tripId,
+        tripId: trip,
         room: { kind: "team", teamId },
         messageId: id,
         messageCreatedAt: createdAt,
@@ -321,76 +360,48 @@ describe("notifications follow the crew gate", () => {
     // excluding them is zero — and it is zero because the Owner and the
     // Organizer are NOT on team A, which is the assertion that matters. A
     // role-based audience would have put both of them here.
-    const res = await notifyTeam("member", teamA);
+    const { trip, a } = await teamCup("roster", { ownerOnB: false });
+    expect(await rosterOf(a)).toEqual([ctx.getUser("member").id]); // premise
+    const res = await notifyTeam(trip, "member", a);
     expect(res.audience).toBe(0);
   });
 
   it("a second member of the team IS notified, and the sender is not", async () => {
-    // Put the owner on team B so it has two people, then send as planner.
-    await ctx.admin.from("team_assignments").upsert(
-      { competition_id: competitionId, user_id: ctx.getUser("owner").id, team_id: teamB },
-      { onConflict: "competition_id,user_id" }
-    );
-    const res = await notifyTeam("planner", teamB);
+    const { trip, b } = await teamCup("second", { ownerOnB: true });
+    expect(await rosterOf(b)).toEqual(
+      [ctx.getUser("owner").id, ctx.getUser("planner").id].sort()
+    ); // premise: two people, so excluding the sender leaves one
+    const res = await notifyTeam(trip, "planner", b);
     expect(res.audience).toBe(1);
     expect(res.eligible).toEqual([ctx.getUser("owner").id]);
     expect(res.eligible).not.toContain(ctx.getUser("planner").id);
-    await ctx.admin
-      .from("team_assignments")
-      .delete()
-      .eq("competition_id", competitionId)
-      .eq("user_id", ctx.getUser("owner").id);
   });
 
   it("someone looking at the team panel is not notified", async () => {
-    await ctx.admin.from("team_assignments").upsert(
-      { competition_id: competitionId, user_id: ctx.getUser("owner").id, team_id: teamB },
-      { onConflict: "competition_id,user_id" }
-    );
+    const { trip, b } = await teamCup("viewing", { ownerOnB: true });
     // The owner's heartbeat for THIS room. Written through the real procedure so
     // it lands on the room's own row rather than a hand-built one.
     await ctx.callerAs("owner").messages.markViewing({
-      tripId,
+      tripId: trip,
       visibility: "team",
-      teamId: teamB,
+      teamId: b,
     });
 
-    const res = await notifyTeam("planner", teamB);
+    const res = await notifyTeam(trip, "planner", b);
     expect(res.audience).toBe(1);
     expect(res.eligible).toEqual([]);
     expect(res.suppressedActive).toBe(1);
-
-    await ctx.admin
-      .from("team_assignments")
-      .delete()
-      .eq("competition_id", competitionId)
-      .eq("user_id", ctx.getUser("owner").id);
   });
 
   it("viewing CREW does not suppress a TEAM notification", async () => {
     // The read-state collision seen from the notification side: if the two rooms
-    // still shared a row, having Crew open would silence team chat.
-    await ctx.admin.from("team_assignments").upsert(
-      { competition_id: competitionId, user_id: ctx.getUser("owner").id, team_id: teamB },
-      { onConflict: "competition_id,user_id" }
-    );
-    // Clear any team viewing mark from the previous case, then view CREW only.
-    await ctx.admin
-      .from("chat_reads")
-      .update({ viewing_at: null })
-      .eq("trip_id", tripId)
-      .eq("user_id", ctx.getUser("owner").id)
-      .eq("visibility", "team");
-    await ctx.callerAs("owner").messages.markViewing({ tripId, visibility: "crew" });
+    // still shared a row, having Crew open would silence team chat. A fresh cup,
+    // so there is no team viewing mark to clear first — the only mark is CREW's.
+    const { trip, b } = await teamCup("crew-viewing", { ownerOnB: true });
+    await ctx.callerAs("owner").messages.markViewing({ tripId: trip, visibility: "crew" });
 
-    const res = await notifyTeam("planner", teamB);
+    const res = await notifyTeam(trip, "planner", b);
     expect(res.audience).toBe(1);
     expect(res.eligible).toEqual([ctx.getUser("owner").id]);
-
-    await ctx.admin
-      .from("team_assignments")
-      .delete()
-      .eq("competition_id", competitionId)
-      .eq("user_id", ctx.getUser("owner").id);
   });
 });
