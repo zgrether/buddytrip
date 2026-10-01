@@ -3,16 +3,54 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 
 const STROKE_PLAY = "gtt_stroke_play";
 
+/**
+ * EVERY CASE BUILDS ITS OWN GAME (#1527). The first block threaded one
+ * `gameId` through a life — created by the first case, given participants by
+ * the next, read, finished — so shuffled ahead of "create", the participant
+ * cases sent `gameId: undefined` and finish tried to group players into no game.
+ */
 let ctx: TestContext;
-let tripId: string;
-let gameId: string;
+
+/** Owner + planner (Organizer) + member, no games yet. */
+async function crewTrip(label: string): Promise<string> {
+  const tripId = await ctx.createTrip(`Stroke Play ${label}`);
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  return tripId;
+}
+
+/** A crew trip with a pending stroke game the Organizer made; optionally the owner + member on it. */
+async function strokeGame(label: string, opts: { withPlayers: boolean }) {
+  const tripId = await crewTrip(label);
+  const game = await ctx
+    .callerAs("planner")
+    .games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Saturday Round" });
+  if (opts.withPlayers) {
+    await ctx.callerAs("planner").games.addParticipants({
+      tripId,
+      gameId: game.id,
+      userIds: [ctx.user.id, ctx.getUser("member").id],
+    });
+  }
+  return { tripId, gameId: game.id as string };
+}
+
+async function gamesOn(tripId: string): Promise<number> {
+  const { count, error } = await ctx.admin.from("games").select("id", { count: "exact", head: true }).eq("trip_id", tripId);
+  if (error) throw new Error(`count games: ${error.message}`);
+  return count ?? 0;
+}
+
+async function participantCount(gameId: string): Promise<number> {
+  const { count, error } = await ctx.admin
+    .from("game_participants").select("id", { count: "exact", head: true }).eq("game_id", gameId);
+  if (error) throw new Error(`count participants: ${error.message}`);
+  return count ?? 0;
+}
 
 describe("games router (Slice A — stroke play)", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Stroke Play Trip");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
   });
 
   afterAll(async () => {
@@ -20,33 +58,40 @@ describe("games router (Slice A — stroke play)", () => {
   });
 
   it("create — Organizer can create a pending game", async () => {
+    const tripId = await crewTrip("organizer-create");
     const game = await ctx
       .callerAs("planner")
       .games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Saturday Round" });
-    gameId = game.id;
     expect(game.status).toBe("pending");
     expect(game.competition_id).toBeNull();
     expect(game.trip_id).toBe(tripId);
+    expect(await gamesOn(tripId)).toBe(1);
   });
 
   it("create — Owner can create too", async () => {
+    const tripId = await crewTrip("owner-create");
     const game = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY });
     expect(game.status).toBe("pending");
   });
 
   it("create — a plain Member cannot (Organizer+ gate)", async () => {
+    const tripId = await crewTrip("member-create");
     await expect(
       ctx.callerAs("member").games.create({ tripId, gameTypeId: STROKE_PLAY })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await gamesOn(tripId)).toBe(0);
   });
 
   it("create — an outsider cannot", async () => {
+    const tripId = await crewTrip("outsider-create");
     await expect(
       ctx.callerAs("outsider").games.create({ tripId, gameTypeId: STROKE_PLAY })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await gamesOn(tripId)).toBe(0);
   });
 
   it("addParticipants — Organizer adds 2 users", async () => {
+    const { tripId, gameId } = await strokeGame("add", { withPlayers: false });
     const participants = await ctx.callerAs("planner").games.addParticipants({
       tripId,
       gameId,
@@ -57,22 +102,36 @@ describe("games router (Slice A — stroke play)", () => {
   });
 
   it("addParticipants — idempotent (re-adding the same users doesn't duplicate)", async () => {
+    const { tripId, gameId } = await strokeGame("idempotent", { withPlayers: true });
+    expect(await participantCount(gameId)).toBe(2); // premise: they are already on it
     const participants = await ctx
       .callerAs("planner")
       .games.addParticipants({ tripId, gameId, userIds: [ctx.user.id, ctx.getUser("member").id] });
     expect(participants).toHaveLength(2);
+    expect(await participantCount(gameId)).toBe(2);
   });
 
   it("addParticipants — a Member cannot", async () => {
+    // A VALID input — two ids, the schema's floor. This case used to send ONE
+    // id, so zod refused it (BAD_REQUEST) before the permission check ever ran,
+    // and a bare `.rejects.toThrow()` read that as the Member being refused. It
+    // never tested the gate in its name.
+    const { tripId, gameId } = await strokeGame("member-add", { withPlayers: false });
     await expect(
-      ctx.callerAs("member").games.addParticipants({ tripId, gameId, userIds: [ctx.user.id] })
-    ).rejects.toThrow();
+      ctx.callerAs("member").games.addParticipants({
+        tripId,
+        gameId,
+        userIds: [ctx.user.id, ctx.getUser("member").id],
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await participantCount(gameId)).toBe(0);
   });
 
   it("getById — a member gets the existence shell for a pending game; the owner sees the roster", async () => {
     // A2-core: a SETUP-mode (pending) game is members-walled — the existence shell
     // (the game row: name/type/status) stays so the placeholder renders, but the
     // ROSTER is withheld from a plain member. The owner (editor) sees it in full.
+    const { tripId, gameId } = await strokeGame("shell", { withPlayers: true });
     const asMember = await ctx.callerAs("member").games.getById({ tripId, gameId });
     expect(asMember.id).toBe(gameId);
     expect(asMember.participants).toHaveLength(0);
@@ -81,11 +140,13 @@ describe("games router (Slice A — stroke play)", () => {
   });
 
   it("listByTrip — any member sees the trip's games", async () => {
+    const { tripId, gameId } = await strokeGame("list", { withPlayers: false });
     const games = await ctx.callerAs("member").games.listByTrip({ tripId });
-    expect(games.some((g: { id: string }) => g.id === gameId)).toBe(true);
+    expect(games.map((g: { id: string }) => g.id)).toEqual([gameId]);
   });
 
   it("finish — computes results, ranks by total, marks complete", async () => {
+    const { tripId, gameId } = await strokeGame("finish", { withPlayers: true });
     const caller = ctx.caller();
     const memberId = ctx.getUser("member").id;
     // Stroke go-live requires grouped participants (mig 089).
@@ -115,20 +176,27 @@ describe("games router (Slice A — stroke play)", () => {
         submitted_at: new Date().toISOString(),
       }))
     );
-    await ctx.admin.from("score_entries").insert(rest);
+    const { error: restErr } = await ctx.admin.from("score_entries").insert(rest);
+    if (restErr) throw new Error(`seed remaining holes: ${restErr.message}`);
 
     const { standings } = await caller.games.finish({ tripId, gameId });
     expect(standings.find((s) => s.entityId === ctx.user.id)).toMatchObject({ rawScore: 8, position: 1 });
     expect(standings.find((s) => s.entityId === memberId)).toMatchObject({ rawScore: 11, position: 2 });
 
-    const { data: game } = await ctx.admin.from("games").select("status").eq("id", gameId).single();
+    const { data: game, error: gErr } = await ctx.admin.from("games").select("status").eq("id", gameId).single();
+    if (gErr) throw new Error(`read game: ${gErr.message}`);
     expect((game as { status: string }).status).toBe("complete");
-    const { data: results } = await ctx.admin.from("game_results").select("entity_id").eq("game_id", gameId);
+    const { data: results, error: rErr } = await ctx.admin.from("game_results").select("entity_id").eq("game_id", gameId);
+    if (rErr) throw new Error(`read results: ${rErr.message}`);
     expect(results).toHaveLength(2);
   });
 
   it("finish — a Member cannot", async () => {
-    await expect(ctx.callerAs("member").games.finish({ tripId, gameId })).rejects.toThrow();
+    const { tripId, gameId } = await strokeGame("member-finish", { withPlayers: true });
+    await expect(ctx.callerAs("member").games.finish({ tripId, gameId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const { data, error } = await ctx.admin.from("games").select("status").eq("id", gameId).single();
+    if (error) throw new Error(`read game: ${error.message}`);
+    expect((data as { status: string }).status).toBe("pending");
   });
 });
 
