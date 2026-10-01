@@ -81,15 +81,15 @@ describe("teams router", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("delete — a co-admin (trip Organizer) can delete a team; a member cannot", async () => {
-    // Member is gated out at the co_admin boundary.
+  it("delete — an Organizer can delete a team; a member cannot", async () => {
+    // Member is gated out at the organizer boundary.
     const memberCaller = ctx.callerAs("member");
     const memberTeams = await memberCaller.teams.list({ tripId, competitionId });
     await expect(
       memberCaller.teams.delete({ tripId, teamId: memberTeams[0].id })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
 
-    // Co-admin (planner) can — editing teams is owner-minus-destructive
+    // Organizer (planner) can — editing teams is owner-minus-destructive
     // (deleting a TEAM isn't a competition-destructive action).
     const plannerCaller = ctx.callerAs("planner");
     const teams = await plannerCaller.teams.list({ tripId, competitionId });

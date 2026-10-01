@@ -4,7 +4,7 @@ import { memberCanScoreUnit, type ScoreUnitMatch, type ScoreUnitSide } from "@/l
 
 /**
  * canWriteScore — the SERVER source of truth for "may this caller write THIS
- * score?" (score-entry permissions). Owner / co-admin / delegate-of-this-game →
+ * score?" (score-entry permissions). Owner / Organizer / delegate-of-this-game →
  * any unit (via `canEditGame`, the reused elevated-tier check). A plain member →
  * only the unit they participate in, resolved per format by `memberCanScoreUnit`
  * (the pure, client-safe core the UI also reads).
@@ -26,7 +26,7 @@ export async function canWriteScore(
   participantId: string,
   participantType: "user" | "play_group",
 ): Promise<boolean> {
-  // Owner / co-admin / delegate of THIS game → any unit. Reuses the same helper
+  // Owner / Organizer / delegate of THIS game → any unit. Reuses the same helper
   // the rest of the game-edit surface uses (Phase 0 #3/#4), so the elevated tier
   // can't drift from the config/run gates.
   if (await canEditGame(ctx, tripId, gameId)) return true;

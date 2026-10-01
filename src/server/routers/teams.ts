@@ -115,7 +115,7 @@ export const teamsRouter = router({
         colorDim: z.string().min(1).max(20),
       })
     )
-    .use(requireCompetitionRole("co_admin"))
+    .use(requireCompetitionRole("organizer"))
     .mutation(async ({ ctx, input }) => {
       // Fewer than two is admitted: a head-to-head cup whose seed never landed
       // must be able to reach two. Two or more is refused.
@@ -231,12 +231,12 @@ export const teamsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // delete — remove a team (owner/co-admin). Editing teams is co-admin work
+  // delete — remove a team (owner/Organizer). Editing teams is Organizer work
   // (not competition-destructive). Cascades clear assignments.
   // -----------------------------------------------------------------------
   delete: authedProcedure
     .input(z.object({ tripId: z.string(), teamId: z.string() }))
-    .use(requireCompetitionRole("co_admin"))
+    .use(requireCompetitionRole("organizer"))
     .mutation(async ({ ctx, input }) => {
       // Roster-removal lock: deleting a team is a MASS removal (cascades to clear
       // its assignments), so it's blocked once the competition has any score.

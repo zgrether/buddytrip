@@ -242,7 +242,7 @@ describe("pickWinner — what it refuses", () => {
     await expect(pick(g.id, 1, 1, 1)).rejects.toThrow(/isn't a bracket/);
   });
 
-  it("a member who is neither co-admin nor this game's delegate", async () => {
+  it("a member who is neither Organizer nor this game's delegate", async () => {
     const gameId = await newBracket("Permission", four());
     await expect(
       ctx.callerAs("member").games.pickWinner({ tripId, gameId, bracket: "main", round: 1, slot: 1, winnerSeed: 1 })

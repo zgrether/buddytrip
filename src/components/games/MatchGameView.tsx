@@ -446,7 +446,7 @@ export function MatchGameView() {
   // rejections as well as connectivity failures. That claim was untrue when
   // first written: the handler skipped server rejections, so "loud" was silent.
   // Score writes go through useScoreSaver (above).
-  // #7 correction path: reopen score entry on a posted game (owner/co-admin/
+  // #7 correction path: reopen score entry on a posted game (owner/Organizer/
   // delegate — server-gated by requireGameRunAction). "Re-lock" is handleFinish.
   // Shared with the other three formats (CLAUDE.md #24). Match had already
   // drifted — it used `gameQ.refetch()` where the other three used

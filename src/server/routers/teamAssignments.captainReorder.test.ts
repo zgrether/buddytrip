@@ -346,8 +346,8 @@ describe("5. RLS enforces the same boundary BELOW tRPC", () => {
     // Documents why migration 094 kept Owner+Organizer in the policy instead of
     // narrowing to Owner+captain the way mig 065 did for `teams`:
     // teamAssignments.assign is requireTripRole("Organizer") and upserts, so a
-    // co-admin moving a player performs an UPDATE. Dropping Organizer here would
-    // have broken assignment for co-admins — a regression the captain work has
+    // Organizer moving a player performs an UPDATE. Dropping Organizer here would
+    // have broken assignment for Organizers — a regression the captain work has
     // no business causing.
     const db = ctx.authedClient("planner");
     const { error } = await db

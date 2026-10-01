@@ -23,7 +23,7 @@ async function teamName(teamId: string): Promise<string> {
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("Identity Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer"); // co_admin — NOT owner, NOT captain
+  await ctx.addTripMember(tripId, "planner", "Organizer"); // organizer — NOT owner, NOT captain
   await ctx.addTripMember(tripId, "member", "Member");
   memberId = ctx.getUser("member").id;
   plannerId = ctx.getUser("planner").id;

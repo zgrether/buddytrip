@@ -12,7 +12,7 @@ import { canWriteOutcome } from "../lib/outcomeAccess";
  *
  * SCOPED permissions (B3 — mig 076, SERVER-enforced, RLS-backed, matching
  * `scores.ts`'s exact model):
- *   Owner / Organizer (co-admin) / delegate-of-this-game → any match.
+ *   Owner / Organizer / delegate-of-this-game → any match.
  *   Member → only the match they participate in (`canWriteOutcome` →
  *            `memberCanScoreUnit`, the SAME pure rule scores.ts uses).
  *   Non-participant member → nothing.
@@ -83,7 +83,7 @@ export const matchOutcomesRouter = router({
       );
 
       // Outcome-entry permissions (SERVER — the real gate; the UI only reflects
-      // it). Owner / co-admin / delegate-of-this-game → any match; a plain
+      // it). Owner / Organizer / delegate-of-this-game → any match; a plain
       // member → only the match they participate in.
       if (!(await canWriteOutcome(ctx, ctx.tripId!, input.gameId, input.matchId))) {
         throw new TRPCError({

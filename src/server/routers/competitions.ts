@@ -127,7 +127,7 @@ export const competitionsRouter = router({
   // It is the ONE place trip-coupling lives: the viewer's competition role is
   // live-derived from THIS request's trip role (resolved fresh by
   // requireTripMember — no cross-request cache, so demoting an organizer revokes
-  // co-admin on the next load). Standalone later swaps only this resolve.
+  // Organizer on the next load). Standalone later swaps only this resolve.
   //
   // Shapes match the individual procedures (getByTrip / teams.list /
   // teamAssignments.list / games.listByTrip / myDelegateGameIds)
@@ -142,7 +142,7 @@ export const competitionsRouter = router({
         ctx.tripRole === "Owner"
           ? "owner"
           : ctx.tripRole === "Organizer"
-            ? "co_admin"
+            ? "organizer"
             : "member";
 
       const { data: competition } = await ctx.supabase
@@ -425,7 +425,7 @@ export const competitionsRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // update — edit metadata (owner/co-admin).
+  // update — edit metadata (owner/Organizer).
   //
   // The `status` (go-live) write path was REMOVED with the GO LIVE control
   // (option A): a competition is visible the moment it exists, so there is no
@@ -446,7 +446,7 @@ export const competitionsRouter = router({
         scoreboardStyle: z.enum(SCOREBOARD_STYLES).optional(),
       })
     )
-    .use(requireCompetitionRole("co_admin"))
+    .use(requireCompetitionRole("organizer"))
     .mutation(async ({ ctx, input }) => {
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (input.name !== undefined) patch.name = input.name;
@@ -474,7 +474,7 @@ export const competitionsRouter = router({
 
   // -----------------------------------------------------------------------
   // delete — remove a competition. DESTRUCTIVE → competition owner only
-  // (co-admins are owner-minus-destructive).
+  // (Organizers are owner-minus-destructive).
   // -----------------------------------------------------------------------
   delete: authedProcedure
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
