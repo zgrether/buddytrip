@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { TestContext } from "../../__tests__/helpers/test-setup";
+import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 import { buildNewsPayload, notifyNewsPost } from "./newsNotify";
 import type { NewsBlock } from "@/lib/news";
 
@@ -143,37 +143,66 @@ describe("buildNewsPayload", () => {
 // ---------------------------------------------------------------------------
 // Integration — the real audience resolution against the DB.
 // ---------------------------------------------------------------------------
+//
+// THE RECIPIENTS ARE THIS FILE'S OWN PEOPLE (#1527). They used to be the shared
+// test users, and the configured-push case asserted `sent: 0` on the premise
+// that those users have no registered devices. Three other files register
+// devices for exactly those users (notifications, its game-results preference
+// test, the push-subscription RLS test), and files run in parallel — so the
+// premise held only when nothing else was running. A shuffled run caught it at
+// `sent: 1`. The afterAll also reset the shared users' notification_prefs,
+// which this file never sets, underneath any file that does.
+//
+// So each case builds a trip of the owner plus two fresh placeholder people,
+// whom nothing else in the suite can know about.
 
 let ctx: TestContext;
-let tripId: string;
 let ownerId: string;
-let organizerId: string;
-let memberId: string;
+const madeUsers: string[] = [];
 
 const HEADING: NewsBlock[] = [{ type: "heading", text: "Test post" }];
 
+async function freshPerson(label: string): Promise<string> {
+  const id = genId(`newsnotify-${label}`);
+  const { error } = await ctx.admin.from("users").insert({ id, name: `Notify ${label}`, is_guest: true });
+  if (error) throw new Error(`seed user: ${error.message}`);
+  madeUsers.push(id);
+  return id;
+}
+
+/** Owner (the shared primary user) + an Organizer and a Member nobody else knows. */
+async function notifyTrip(label: string) {
+  const tripId = await ctx.createTrip(`News Notify ${label}`);
+  const organizerId = await freshPerson(`${label}-org`);
+  const memberId = await freshPerson(`${label}-mem`);
+  // Sequentially, never Promise.all — these race and flake (CLAUDE.md).
+  await ctx.addTripMemberById(tripId, organizerId, "Organizer");
+  await ctx.addTripMemberById(tripId, memberId, "Member");
+  return { tripId, organizerId, memberId };
+}
+
+async function deviceCount(userIds: string[]): Promise<number> {
+  const { count, error } = await ctx.admin
+    .from("push_subscriptions")
+    .select("id", { count: "exact", head: true })
+    .in("user_id", userIds);
+  if (error) throw new Error(`count devices: ${error.message}`);
+  return count ?? 0;
+}
+
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("News Notify Trip");
   ownerId = ctx.user.id;
-  // Sequentially, never Promise.all — these race and flake (CLAUDE.md).
-  await ctx.addTripMember(tripId, "planner", "Organizer");
-  await ctx.addTripMember(tripId, "member", "Member");
-  organizerId = ctx.getUser("planner").id;
-  memberId = ctx.getUser("member").id;
 }, 60_000);
 
 afterAll(async () => {
-  // The 4 test users are SHARED and PERSISTENT across the whole suite.
-  await ctx.admin
-    .from("users")
-    .update({ notification_prefs: {} })
-    .in("id", [ownerId, organizerId, memberId]);
   await ctx.cleanup();
+  if (madeUsers.length) await ctx.admin.from("users").delete().in("id", madeUsers);
 }, 60_000);
 
 describe("notifyNewsPost — audience", () => {
   it("addresses every trip member except the author", async () => {
+    const { tripId } = await notifyTrip("all-but-author");
     const r = await notifyNewsPost({
       tripId,
       postId: crypto.randomUUID(),
@@ -196,11 +225,10 @@ describe("notifyNewsPost — audience", () => {
     // watching an equivalent count-only test pass (see news.test.ts). The
     // decisive check is `push_send_log.actor_user_id`, which `notifyNewsPost`
     // sets to the `authorId` it was actually given.
-    const before = new Date().toISOString();
-    const postId = crypto.randomUUID();
+    const { tripId, memberId } = await notifyTrip("shifts");
     const r = await notifyNewsPost({
       tripId,
-      postId,
+      postId: crypto.randomUUID(),
       blocks: HEADING,
       authorId: memberId,
       trigger: "news_posted",
@@ -208,20 +236,16 @@ describe("notifyNewsPost — audience", () => {
     });
     expect(r.audience).toBe(2);
 
-    // Scoped to AFTER this call, not just "most recent" — other tests in this
-    // suite write `trigger: 'news_posted'` rows for the same trip too, and
-    // ordering-only would be relying on execution order rather than proof.
-    const { data } = await ctx.admin
+    // The trip is this case's own, so its one news_posted row is this call's.
+    const { data, error } = await ctx.admin
       .from("push_send_log")
       .select("actor_user_id")
       .eq("trip_id", tripId)
-      .eq("trigger", "news_posted")
-      .gte("created_at", before)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    expect(data?.actor_user_id).toBe(memberId);
-    expect(data?.actor_user_id).not.toBe(ownerId);
+      .eq("trigger", "news_posted");
+    if (error) throw new Error(`read push_send_log: ${error.message}`);
+    expect(data).toHaveLength(1);
+    expect(data![0].actor_user_id).toBe(memberId);
+    expect(data![0].actor_user_id).not.toBe(ownerId);
   });
 
   it("never throws for an unknown trip — degrades to zero audience", async () => {
@@ -247,6 +271,7 @@ describe("notifyNewsPost — audience", () => {
    * the machine, so the signal means what it says wherever it runs.
    */
   it("reaches the send path — notConfigured, not silently skipped", async () => {
+    const { tripId } = await notifyTrip("unconfigured");
     vapid.configured = false;
     const r = await notifyNewsPost({
       tripId,
@@ -272,11 +297,14 @@ describe("notifyNewsPost — audience", () => {
    * previous version could not show, because it only ever observed one value and
    * could not tell you why it had it.
    *
-   * `sent` stays 0 deliberately: these recipients have no registered devices, so
-   * nothing is dispatched and no network call is attempted. The claim here is
-   * about REACHING the send with push available, not about delivery.
+   * `sent` stays 0 deliberately: these recipients have no registered devices —
+   * asserted now, not assumed — so nothing is dispatched and no network call is
+   * attempted. The claim here is about REACHING the send with push available,
+   * not about delivery. The case below is the control for that 0.
    */
   it("reports configured when push IS configured — the flag follows the config", async () => {
+    const { tripId, organizerId, memberId } = await notifyTrip("configured");
+    expect(await deviceCount([organizerId, memberId])).toBe(0); // premise
     vapid.configured = true;
     try {
       const r = await notifyNewsPost({
@@ -293,6 +321,33 @@ describe("notifyNewsPost — audience", () => {
       expect(r.send?.sent).toBe(0);
     } finally {
       // Restore, so ordering between tests cannot decide the previous case.
+      vapid.configured = false;
+    }
+  });
+
+  it("control: a recipient WITH a registered device is sent to — so the 0 above means no devices", async () => {
+    const { tripId, memberId } = await notifyTrip("with-device");
+    const { error } = await ctx.admin.from("push_subscriptions").insert({
+      id: genId("sub"),
+      user_id: memberId,
+      endpoint: `https://example.test/ep/${genId("ep")}`,
+      p256dh: "k",
+      auth: "a",
+    });
+    if (error) throw new Error(`seed device: ${error.message}`);
+    vapid.configured = true;
+    try {
+      const r = await notifyNewsPost({
+        tripId,
+        postId: crypto.randomUUID(),
+        blocks: HEADING,
+        authorId: ownerId,
+        trigger: "news_posted",
+        admin: ctx.admin,
+      });
+      expect(r.send?.recipients).toBe(2);
+      expect(r.send?.sent).toBe(1);
+    } finally {
       vapid.configured = false;
     }
   });
