@@ -8,86 +8,115 @@ vi.mock("@/lib/email", () => ({
   sendInviteNewUser: vi.fn().mockResolvedValue({}),
 }));
 
+/**
+ * EVERY TEST BUILDS THE TRIP IT USES (#1527). The first block used to share one
+ * trip: "add — owner can add" put the outsider on it, and the duplicate,
+ * promote and remove cases depended on that, while "list" expected exactly
+ * three members — so the order of the cases decided the results. The travel
+ * block's "departure leg is independent" relied on the case before it having
+ * set a departure. Shuffled order surfaced 5 such dependencies.
+ */
+
 let ctx: TestContext;
-let tripId: string;
+
+/** Owner = primary user; planner = Organizer; member = Member. */
+async function crewTrip(label: string): Promise<string> {
+  const tripId = await ctx.createTrip(`Members ${label}`);
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  return tripId;
+}
+
+async function roleOf(tripId: string, userId: string): Promise<string | null> {
+  const { data, error } = await ctx.admin
+    .from("trip_members")
+    .select("role")
+    .eq("trip_id", tripId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`read role: ${error.message}`);
+  return (data?.role as string | undefined) ?? null;
+}
+
+async function nicknameOf(tripId: string, userId: string): Promise<string | null> {
+  const { data, error } = await ctx.admin
+    .from("trip_members")
+    .select("nickname")
+    .eq("trip_id", tripId)
+    .eq("user_id", userId)
+    .single();
+  if (error) throw new Error(`read nickname: ${error.message}`);
+  return (data?.nickname as string | null) ?? null;
+}
 
 describe("tripMembers router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Members Test Trip");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
   }, 30_000);
 
   afterAll(async () => {
     await ctx.cleanup();
   }, 30_000);
 
-  // list
   it("list — any member can view crew roster", async () => {
-    const caller = ctx.callerAs("member");
-    const members = await caller.tripMembers.list({ tripId });
+    const tripId = await crewTrip("list");
+    const members = await ctx.callerAs("member").tripMembers.list({ tripId });
     expect(members.length).toBe(3);
     expect(members[0].user).toBeTruthy();
   });
 
-  // add — Owner-only (Task 53 hardening: roster management is Owner-only).
   it("add — owner can add a member", async () => {
+    const tripId = await crewTrip("add-owner");
     const outsider = ctx.getUser("outsider");
-    const caller = ctx.caller();
-    const added = await caller.tripMembers.add({
-      tripId,
-      userId: outsider.id,
-    });
+    expect(await roleOf(tripId, outsider.id)).toBeNull(); // premise: not on it yet
+    const added = await ctx.caller().tripMembers.add({ tripId, userId: outsider.id });
     expect(added.user_id).toBe(outsider.id);
     expect(added.role).toBe("Member");
+    expect(await roleOf(tripId, outsider.id)).toBe("Member");
   });
 
   // #786/#824 — this asserted the OLD rule ("planner cannot add"). Adding crew
   // is helping run the trip, and moved to Organizer once migration 122 defended
   // the role column. What stays Owner-only is GRANTING a role, pinned below.
   it("add — planner CAN add a Member", async () => {
-    const caller = ctx.callerAs("planner");
+    const tripId = await crewTrip("add-organizer");
     const uid = genId("addable-user");
-    await ctx.admin.from("users").insert({ id: uid, name: "Addable", is_guest: true });
-    await expect(caller.tripMembers.add({ tripId, userId: uid })).resolves.toBeTruthy();
+    const { error } = await ctx.admin.from("users").insert({ id: uid, name: "Addable", is_guest: true });
+    if (error) throw new Error(`seed user: ${error.message}`);
+    await expect(ctx.callerAs("planner").tripMembers.add({ tripId, userId: uid })).resolves.toBeTruthy();
+    expect(await roleOf(tripId, uid)).toBe("Member");
     await ctx.admin.from("trip_members").delete().eq("trip_id", tripId).eq("user_id", uid);
     await ctx.admin.from("users").delete().eq("id", uid);
   });
 
   it("add — planner CANNOT grant Organizer (changing who is trusted stays Owner-only)", async () => {
-    const caller = ctx.callerAs("planner");
+    const tripId = await crewTrip("add-organizer-grant");
     await expect(
-      caller.tripMembers.add({ tripId, userId: genId("fake-user"), role: "Organizer" })
+      ctx.callerAs("planner").tripMembers.add({ tripId, userId: genId("fake-user"), role: "Organizer" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("add — member cannot add", async () => {
-    const caller = ctx.callerAs("member");
-    // Use a random UUID — the FORBIDDEN check fires before user lookup
+    const tripId = await crewTrip("add-member");
+    // A made-up id: the FORBIDDEN check fires before any user lookup.
     await expect(
-      caller.tripMembers.add({ tripId, userId: genId("fake-user") })
+      ctx.callerAs("member").tripMembers.add({ tripId, userId: genId("fake-user") })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("add — duplicate throws CONFLICT", async () => {
-    const outsider = ctx.getUser("outsider");
-    const caller = ctx.caller();
-    await expect(
-      caller.tripMembers.add({ tripId, userId: outsider.id })
-    ).rejects.toMatchObject({ code: "CONFLICT" });
+    const tripId = await crewTrip("add-duplicate");
+    const member = ctx.getUser("member");
+    expect(await roleOf(tripId, member.id)).toBe("Member"); // premise: already on the trip
+    await expect(ctx.caller().tripMembers.add({ tripId, userId: member.id })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
-  // updateRole
   it("updateRole — owner can promote member to planner", async () => {
-    const outsider = ctx.getUser("outsider");
-    const caller = ctx.caller();
-    const updated = await caller.tripMembers.updateRole({
-      tripId,
-      userId: outsider.id,
-      role: "Organizer",
-    });
+    const tripId = await crewTrip("promote");
+    const member = ctx.getUser("member");
+    const updated = await ctx.caller().tripMembers.updateRole({ tripId, userId: member.id, role: "Organizer" });
     expect(updated.role).toBe("Organizer");
+    expect(await roleOf(tripId, member.id)).toBe("Organizer");
   });
 
   it("updateRole — promotion posts a system line in the Organizers chat", async () => {
@@ -95,73 +124,54 @@ describe("tripMembers router", () => {
     // their own message_type='user' rows, so system lines (user_id=null,
     // message_type='system') must go through the service-role admin client.
     // This proves the promotion announcement actually lands in the channel.
-    const freshTrip = await ctx.createTrip("Promote Announce Trip");
-    await ctx.addTripMember(freshTrip, "member", "Member");
+    const tripId = await ctx.createTrip("Promote Announce Trip");
+    await ctx.addTripMember(tripId, "member", "Member");
     const owner = ctx.caller();
-
-    await owner.tripMembers.updateRole({
-      tripId: freshTrip,
-      userId: ctx.getUser("member").id,
-      role: "Organizer",
-    });
-
-    const planning = await owner.messages.list({
-      tripId: freshTrip,
-      visibility: "planning",
-    });
-    expect(
-      planning.some(
-        (m) => m.message_type === "system" && /is now an organizer/.test(m.text)
-      )
-    ).toBe(true);
+    await owner.tripMembers.updateRole({ tripId, userId: ctx.getUser("member").id, role: "Organizer" });
+    const planning = await owner.messages.list({ tripId, visibility: "planning" });
+    expect(planning.some((m) => m.message_type === "system" && /is now an organizer/.test(m.text))).toBe(true);
   });
 
   it("updateRole — owner cannot change own role", async () => {
-    const caller = ctx.caller();
+    const tripId = await crewTrip("own-role");
     await expect(
-      caller.tripMembers.updateRole({ tripId, userId: ctx.user.id, role: "Member" })
+      ctx.caller().tripMembers.updateRole({ tripId, userId: ctx.user.id, role: "Member" })
     ).rejects.toThrow("Cannot change your own role");
+    expect(await roleOf(tripId, ctx.user.id)).toBe("Owner");
   });
 
   it("updateRole — planner cannot change roles", async () => {
+    const tripId = await crewTrip("organizer-role");
     const member = ctx.getUser("member");
-    const caller = ctx.callerAs("planner");
     await expect(
-      caller.tripMembers.updateRole({ tripId, userId: member.id, role: "Organizer" })
+      ctx.callerAs("planner").tripMembers.updateRole({ tripId, userId: member.id, role: "Organizer" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await roleOf(tripId, member.id)).toBe("Member");
   });
 
-  // inviteByEmail — Owner-only (Task 53 hardening).
   it("inviteByEmail — owner can invite a new email", async () => {
-    const caller = ctx.caller();
-    const result = await caller.tripMembers.inviteByEmail({
-      tripId,
-      email: "newperson@example.com",
-    });
+    const tripId = await crewTrip("invite-new");
+    const result = await ctx.caller().tripMembers.inviteByEmail({ tripId, email: `newperson-${Date.now()}@example.com` });
     expect(result.status).toBe("invited_new");
     expect(result.userId).toBeTruthy();
   });
 
   it("inviteByEmail — duplicate invite returns already_member", async () => {
-    const caller = ctx.caller();
-    const result = await caller.tripMembers.inviteByEmail({
-      tripId,
-      email: "newperson@example.com",
-    });
+    const tripId = await crewTrip("invite-dup");
+    const email = `dup-${Date.now()}@example.com`;
+    expect((await ctx.caller().tripMembers.inviteByEmail({ tripId, email })).status).toBe("invited_new"); // premise
+    const result = await ctx.caller().tripMembers.inviteByEmail({ tripId, email });
     expect(result.status).toBe("already_member");
   });
 
   it("inviteByEmail — existing real user gets added directly", async () => {
-    // Use a fresh trip so outsider isn't already a member
-    const freshTripId = await ctx.createTrip("Invite Fresh Trip");
-    await ctx.addTripMember(freshTripId, "planner", "Organizer");
-    const caller = ctx.caller();
+    const tripId = await ctx.createTrip("Invite Fresh Trip");
+    await ctx.addTripMember(tripId, "planner", "Organizer");
     const outsider = ctx.getUser("outsider");
-    const result = await caller.tripMembers.inviteByEmail({
-      tripId: freshTripId,
-      email: outsider.email,
-    });
+    expect(await roleOf(tripId, outsider.id)).toBeNull(); // premise
+    const result = await ctx.caller().tripMembers.inviteByEmail({ tripId, email: outsider.email });
     expect(result.status).toBe("added_existing");
+    expect(await roleOf(tripId, outsider.id)).not.toBeNull();
   });
 
   // #786/#824 — was "planner cannot invite (Owner only)". #823 proved that was
@@ -171,24 +181,16 @@ describe("tripMembers router", () => {
   // is invite someone AS AN ORGANIZER — pinned immediately below, since that is
   // the boundary, not the invite itself.
   it("inviteByEmail — planner CAN invite a Member", async () => {
-    const caller = ctx.callerAs("planner");
+    const tripId = await crewTrip("invite-organizer");
     await expect(
-      caller.tripMembers.inviteByEmail({
-        tripId,
-        email: `planner-invite-${Date.now()}@example.com`,
-        role: "Member",
-      })
+      ctx.callerAs("planner").tripMembers.inviteByEmail({ tripId, email: `planner-invite-${Date.now()}@example.com`, role: "Member" })
     ).resolves.toBeTruthy();
   });
 
   it("inviteByEmail — planner CANNOT invite an Organizer", async () => {
-    const caller = ctx.callerAs("planner");
+    const tripId = await crewTrip("invite-organizer-grant");
     await expect(
-      caller.tripMembers.inviteByEmail({
-        tripId,
-        email: `planner-invite-org-${Date.now()}@example.com`,
-        role: "Organizer",
-      })
+      ctx.callerAs("planner").tripMembers.inviteByEmail({ tripId, email: `planner-invite-org-${Date.now()}@example.com`, role: "Organizer" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -198,22 +200,18 @@ describe("tripMembers router", () => {
     // call — where "Organizer" was a surprising and unsafe value to assume.
     // Asserted through the created row rather than the schema so a silent flip
     // back is caught.
-    const caller = ctx.caller();
+    const tripId = await crewTrip("invite-default");
     const email = `default-role-${Date.now()}@example.test`;
-    await caller.tripMembers.inviteByEmail({ tripId, email });
-    const { data } = await ctx.admin
-      .from("invites")
-      .select("role")
-      .eq("trip_id", tripId)
-      .eq("email", email)
-      .single();
+    await ctx.caller().tripMembers.inviteByEmail({ tripId, email });
+    const { data, error } = await ctx.admin.from("invites").select("role").eq("trip_id", tripId).eq("email", email).single();
+    if (error) throw new Error(`read invite: ${error.message}`);
     expect(data?.role).toBe("Member");
   });
 
   it("inviteByEmail — member cannot invite", async () => {
-    const caller = ctx.callerAs("member");
+    const tripId = await crewTrip("invite-member");
     await expect(
-      caller.tripMembers.inviteByEmail({ tripId, email: "another@example.com" })
+      ctx.callerAs("member").tripMembers.inviteByEmail({ tripId, email: `another-${Date.now()}@example.com` })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -221,125 +219,115 @@ describe("tripMembers router", () => {
   //
   // The earlier MemberEditor only fired ghostCrew.update when the row was a
   // guest, so renames for real-account members silently dropped. This
-  // mutation lives on trip_members so it works for everyone. As of Task 53
-  // it's Owner-only — the Owner row is also locked so an Owner can't rename
-  // themselves through the trip context (they use account settings).
+  // mutation lives on trip_members so it works for everyone. The Owner row is
+  // locked so an Owner can't rename themselves through the trip context (they
+  // use account settings).
   it("updateNickname — owner can rename a member", async () => {
+    const tripId = await crewTrip("nick-owner");
     const member = ctx.getUser("member");
     const caller = ctx.caller();
-    const result = await caller.tripMembers.updateNickname({
-      tripId,
-      userId: member.id,
-      nickname: "Buddy",
-    });
+    const result = await caller.tripMembers.updateNickname({ tripId, userId: member.id, nickname: "Buddy" });
     expect(result.success).toBe(true);
     expect(result.nickname).toBe("Buddy");
 
-    // listMembers now surfaces the override as displayName so the rail and
-    // edit drawer pick it up without extra plumbing.
-    const list = await caller.tripMembers.list({ tripId });
-    const row = list.find((m) => m.user_id === member.id);
+    // listMembers surfaces the override as displayName so the rail and edit
+    // drawer pick it up without extra plumbing.
+    const row = (await caller.tripMembers.list({ tripId })).find((m) => m.user_id === member.id);
     expect(row?.nickname).toBe("Buddy");
     expect(row?.displayName).toBe("Buddy");
   });
 
   it("updateNickname — empty string clears the override", async () => {
+    const tripId = await crewTrip("nick-clear");
     const member = ctx.getUser("member");
-    const caller = ctx.caller();
-    const result = await caller.tripMembers.updateNickname({
-      tripId,
-      userId: member.id,
-      nickname: "   ",
-    });
+    await ctx.caller().tripMembers.updateNickname({ tripId, userId: member.id, nickname: "Buddy" });
+    expect(await nicknameOf(tripId, member.id)).toBe("Buddy"); // premise: there IS an override to clear
+    const result = await ctx.caller().tripMembers.updateNickname({ tripId, userId: member.id, nickname: "   " });
     // Whitespace-only collapses to null so display falls back to users.name.
     expect(result.nickname).toBeNull();
+    expect(await nicknameOf(tripId, member.id)).toBeNull();
   });
 
   it("updateNickname — Owner row is locked", async () => {
     // The Owner-row guard is checked even for Owner callers, so this
     // verifies the guard rather than the role middleware.
-    const caller = ctx.caller();
+    const tripId = await crewTrip("nick-owner-row");
     await expect(
-      caller.tripMembers.updateNickname({
-        tripId,
-        userId: ctx.user.id,
-        nickname: "Boss",
-      })
+      ctx.caller().tripMembers.updateNickname({ tripId, userId: ctx.user.id, nickname: "Boss" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await nicknameOf(tripId, ctx.user.id)).toBeNull();
   });
 
   // #786/#824 — was "planner cannot rename (Owner only)". A nickname touches no
   // role column, so it moved to Organizer. The plain-member case below is the
   // one that still holds and is what actually guards this.
   it("updateNickname — planner CAN rename a member", async () => {
+    const tripId = await crewTrip("nick-organizer");
     const member = ctx.getUser("member");
-    const caller = ctx.callerAs("planner");
     await expect(
-      caller.tripMembers.updateNickname({ tripId, userId: member.id, nickname: "Renamed By Planner" })
+      ctx.callerAs("planner").tripMembers.updateNickname({ tripId, userId: member.id, nickname: "Renamed By Planner" })
     ).resolves.toMatchObject({ success: true });
-    await ctx.admin.from("trip_members").update({ nickname: null })
-      .eq("trip_id", tripId).eq("user_id", member.id);
+    expect(await nicknameOf(tripId, member.id)).toBe("Renamed By Planner");
   });
 
   it("updateNickname — plain member cannot rename others", async () => {
-    const member = ctx.getUser("member");
-    const caller = ctx.callerAs("member");
+    // The name says OTHERS; it used to aim the member at their OWN row, which is
+    // not the case it claims. Aimed at the Organizer's row now.
+    const tripId = await crewTrip("nick-member");
+    const planner = ctx.getUser("planner");
     await expect(
-      caller.tripMembers.updateNickname({
-        tripId,
-        userId: member.id,
-        nickname: "Mine",
-      })
+      ctx.callerAs("member").tripMembers.updateNickname({ tripId, userId: planner.id, nickname: "Mine" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await nicknameOf(tripId, planner.id)).toBeNull();
   });
 
-  // remove
   it("remove — owner cannot remove self", async () => {
-    const caller = ctx.caller();
-    await expect(
-      caller.tripMembers.remove({ tripId, userId: ctx.user.id })
-    ).rejects.toThrow("Cannot remove yourself");
+    const tripId = await crewTrip("remove-self");
+    await expect(ctx.caller().tripMembers.remove({ tripId, userId: ctx.user.id })).rejects.toThrow("Cannot remove yourself");
+    expect(await roleOf(tripId, ctx.user.id)).toBe("Owner");
   });
 
-  it("remove — owner can remove a member", async () => {
-    const outsider = ctx.getUser("outsider");
-    const caller = ctx.caller();
-    const result = await caller.tripMembers.remove({ tripId, userId: outsider.id });
+  it("remove — owner can remove a member, and the row is gone", async () => {
+    const tripId = await crewTrip("remove");
+    const member = ctx.getUser("member");
+    expect(await roleOf(tripId, member.id)).toBe("Member"); // premise
+    const result = await ctx.caller().tripMembers.remove({ tripId, userId: member.id });
     expect(result.success).toBe(true);
+    expect(await roleOf(tripId, member.id)).toBeNull();
   });
 });
 
 // ── Travel tests ─────────────────────────────────────────────────────────
 
 describe("tripMembers router — travel", () => {
-  let ctx: TestContext;
-  let tripId: string;
+  let tctx: TestContext;
 
   beforeAll(async () => {
-    ctx = await TestContext.create();
-    // Create trip and advance to going stage so travel fields are in play
-    tripId = await ctx.createTrip("Travel Test Trip");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
+    tctx = await TestContext.create();
+  });
 
-    // Lock a destination (moves the trip out of the idea phase) + set an
-    // about message.
-    const admin = ctx.admin;
-    await admin.from("trips").update({
+  afterAll(async () => {
+    await tctx.cleanup();
+  });
+
+  /** A crew trip with a locked destination, so travel fields are in play. */
+  async function travelTrip(label: string): Promise<string> {
+    const tripId = await tctx.createTrip(`Travel ${label}`);
+    await tctx.addTripMember(tripId, "planner", "Organizer");
+    await tctx.addTripMember(tripId, "member", "Member");
+    const { error } = await tctx.admin.from("trips").update({
       locked_destination_title: "Test Dest",
       locked_destination_location: "Test, TX",
       locked_destination_at: new Date().toISOString(),
       about_message: "Let's go!",
     }).eq("id", tripId);
-  });
-
-  afterAll(async () => {
-    await ctx.cleanup();
-  });
+    if (error) throw new Error(`lock destination: ${error.message}`);
+    return tripId;
+  }
 
   it("updateTravel — member can update own travel (flying)", async () => {
-    const caller = ctx.callerAs("member");
-    const result = await caller.tripMembers.updateTravel({
+    const tripId = await travelTrip("flying");
+    const result = await tctx.callerAs("member").tripMembers.updateTravel({
       tripId,
       travelMode: "flying",
       flightAirline: "Delta",
@@ -355,8 +343,8 @@ describe("tripMembers router — travel", () => {
   });
 
   it("updateTravel — member can update own travel (driving)", async () => {
-    const caller = ctx.callerAs("member");
-    const result = await caller.tripMembers.updateTravel({
+    const tripId = await travelTrip("driving");
+    const result = await tctx.callerAs("member").tripMembers.updateTravel({
       tripId,
       travelMode: "driving",
       travelDetail: "Renting a car from Enterprise",
@@ -368,18 +356,16 @@ describe("tripMembers router — travel", () => {
   });
 
   it("updateTravel — member can clear travel mode", async () => {
-    const caller = ctx.callerAs("member");
-    const result = await caller.tripMembers.updateTravel({
-      tripId,
-      travelMode: null,
-      travelShared: false,
-    });
+    const tripId = await travelTrip("clear");
+    const member = tctx.callerAs("member");
+    await member.tripMembers.updateTravel({ tripId, travelMode: "driving", travelShared: false });
+    const result = await member.tripMembers.updateTravel({ tripId, travelMode: null, travelShared: false });
     expect(result.travel_mode).toBeNull();
   });
 
   it("updateTravel — member can enter a departure leg (date/time/mode/details)", async () => {
-    const caller = ctx.callerAs("member");
-    const result = await caller.tripMembers.updateTravel({
+    const tripId = await travelTrip("departure");
+    const result = await tctx.callerAs("member").tripMembers.updateTravel({
       tripId,
       travelMode: "flying",
       travelDetail: "Landing Thu",
@@ -397,22 +383,27 @@ describe("tripMembers router — travel", () => {
   });
 
   it("updateTravel — departure leg is independent of the arrival leg", async () => {
-    const caller = ctx.callerAs("member");
-    // Clear arrival but keep departure fields untouched (omit them) — they must
-    // not be wiped by an arrival-only update.
-    const result = await caller.tripMembers.updateTravel({
+    const tripId = await travelTrip("independent");
+    const member = tctx.callerAs("member");
+    // Sets BOTH legs first — this used to rely on the case above having done it.
+    await member.tripMembers.updateTravel({
       tripId,
-      travelMode: null,
-      travelShared: false,
+      travelMode: "flying",
+      departureMode: "driving",
+      departureDetail: "Heading out Sunday",
+      travelShared: true,
     });
+    // Clear arrival but omit the departure fields — they must not be wiped by an
+    // arrival-only update.
+    const result = await member.tripMembers.updateTravel({ tripId, travelMode: null, travelShared: false });
     expect(result.travel_mode).toBeNull();
-    // departure_* untouched (still set from the prior test).
     expect(result.departure_mode).toBe("driving");
   });
 
   it("updateMemberTravel — owner can enter a departure leg for a member", async () => {
-    const caller = ctx.caller();
-    const member = ctx.getUser("member");
+    const tripId = await travelTrip("owner-for-member");
+    const caller = tctx.caller();
+    const member = tctx.getUser("member");
     const result = await caller.tripMembers.updateMemberTravel({
       tripId,
       targetUserId: member.id,
@@ -423,8 +414,7 @@ describe("tripMembers router — travel", () => {
     });
     expect(result.success).toBe(true);
 
-    const list = await caller.tripMembers.list({ tripId });
-    const row = list.find((m) => m.user_id === member.id);
+    const row = (await caller.tripMembers.list({ tripId })).find((m) => m.user_id === member.id);
     expect(row?.departure_mode).toBe("flying");
     expect(row?.departure_detail).toBe("Red-eye home");
   });
@@ -434,20 +424,47 @@ describe("tripMembers router — travel", () => {
 
 describe("tripMembers router — sendInvitationBlast", () => {
   let ctx: TestContext;
-  let tripId: string;
 
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Blast Test Trip");
+  }, 30_000);
+
+  async function blastTrip(label: string): Promise<string> {
+    const tripId = await ctx.createTrip(`Blast ${label}`);
     await ctx.addTripMember(tripId, "planner", "Organizer");
     await ctx.addTripMember(tripId, "member", "Member");
-  }, 30_000);
+    return tripId;
+  }
+
+  /** A crew-tab placeholder on the trip, with an email to send to. */
+  async function placeholder(tripId: string, label: string, name: string) {
+    const ghostId = `ghost-${genId(label)}`;
+    const ghostEmail = `${genId(label)}@example.com`.toLowerCase();
+    const { error } = await ctx.admin.from("users").insert({
+      id: ghostId, name, email: ghostEmail, is_guest: true,
+    });
+    if (error) throw new Error(`seed placeholder: ${error.message}`);
+    await ctx.addTripMemberById(tripId, ghostId, "Member");
+    return { ghostId, ghostEmail };
+  }
+
+  async function sendTracking(tripId: string, userId: string) {
+    const { data, error } = await ctx.admin
+      .from("trip_members")
+      .select("last_emailed_at, email_count")
+      .eq("trip_id", tripId)
+      .eq("user_id", userId)
+      .single();
+    if (error) throw new Error(`read send tracking: ${error.message}`);
+    return data as { last_emailed_at: string | null; email_count: number | null };
+  }
 
   afterAll(async () => {
     await ctx.cleanup();
   }, 30_000);
 
   it("sendInvitationBlast — owner can blast to members with email", async () => {
+    const tripId = await blastTrip("owner can blast to");
     vi.mocked(sendInvitationBlast).mockClear();
     const caller = ctx.caller();
     const planner = ctx.getUser("planner");
@@ -458,11 +475,13 @@ describe("tripMembers router — sendInvitationBlast", () => {
       memberUserIds: [planner.id, member.id],
     });
 
-    expect(result.sent).toBeGreaterThan(0);
-    expect(vi.mocked(sendInvitationBlast)).toHaveBeenCalled();
+    // Both recipients are real accounts with an email, so both are sent.
+    expect(result.sent).toBe(2);
+    expect(vi.mocked(sendInvitationBlast)).toHaveBeenCalledTimes(2);
   });
 
   it("sendInvitationBlast — sends the explicit message body verbatim", async () => {
+    const tripId = await blastTrip("sends the explicit");
     vi.mocked(sendInvitationBlast).mockClear();
     const caller = ctx.caller();
     const member = ctx.getUser("member");
@@ -480,34 +499,24 @@ describe("tripMembers router — sendInvitationBlast", () => {
   });
 
   it("sendInvitationBlast — stamps last_emailed_at and bumps email_count", async () => {
-    const admin = ctx.admin;
+    const tripId = await blastTrip("stamps last_emaile");
     const caller = ctx.caller();
     const member = ctx.getUser("member");
 
-    // Read the starting count so we assert a real increment regardless of
-    // how many prior blast tests already touched this member.
-    const { data: before } = await admin
-      .from("trip_members")
-      .select("email_count")
-      .eq("trip_id", tripId)
-      .eq("user_id", member.id)
-      .single();
-    const startCount = before?.email_count ?? 0;
+    // Premise: a fresh membership has never been emailed. (This used to read
+    // the starting count and swallow a failed read as 0.)
+    const before = await sendTracking(tripId, member.id);
+    expect(before.last_emailed_at).toBeNull();
+    const startCount = before.email_count ?? 0;
 
     await caller.tripMembers.sendInvitationBlast({
       tripId,
       memberUserIds: [member.id],
     });
 
-    const { data: after } = await admin
-      .from("trip_members")
-      .select("last_emailed_at, email_count")
-      .eq("trip_id", tripId)
-      .eq("user_id", member.id)
-      .single();
-
-    expect(after?.last_emailed_at).toBeTruthy();
-    expect(after?.email_count).toBe(startCount + 1);
+    const after = await sendTracking(tripId, member.id);
+    expect(after.last_emailed_at).toBeTruthy();
+    expect(after.email_count).toBe(startCount + 1);
   });
 
   // ── Per-recipient link selection + idempotent minting ────────────────────
@@ -517,6 +526,7 @@ describe("tripMembers router — sendInvitationBlast", () => {
   // `/trips/{uuid}`. So #988's invite router was live but unreachable from the
   // path actually used to invite people.
   it("mints a token for a placeholder, and NOT for a real account, in one send", async () => {
+    const tripId = await blastTrip("mints a token for a placeholder, and NOT");
     vi.mocked(sendInvitationBlast).mockClear();
     const admin = ctx.admin;
     const caller = ctx.caller();
@@ -525,12 +535,7 @@ describe("tripMembers router — sendInvitationBlast", () => {
     // A crew-tab placeholder: `ghost-` prefixed id (ghostCrew.create's shape,
     // deliberately distinct from inviteByEmail's bare UUID — that incidental
     // difference is what made this bug findable, so it is preserved on purpose).
-    const ghostId = `ghost-${genId("blastlink")}`;
-    const ghostEmail = `${genId("ghost")}@example.com`.toLowerCase();
-    await admin.from("users").insert({
-      id: ghostId, name: "Placeholder Pal", email: ghostEmail, is_guest: true,
-    });
-    await ctx.addTripMemberById(tripId, ghostId, "Member");
+    const { ghostId, ghostEmail } = await placeholder(tripId, "blastlink", "Placeholder Pal");
 
     const result = await caller.tripMembers.sendInvitationBlast({
       tripId,
@@ -560,16 +565,12 @@ describe("tripMembers router — sendInvitationBlast", () => {
   }, 30_000);
 
   it("re-sending REUSES the token — no second row per blast", async () => {
+    const tripId = await blastTrip("re-sending REUSES the token — no second ");
     vi.mocked(sendInvitationBlast).mockClear();
     const admin = ctx.admin;
     const caller = ctx.caller();
 
-    const ghostId = `ghost-${genId("resend")}`;
-    const ghostEmail = `${genId("resend")}@example.com`.toLowerCase();
-    await admin.from("users").insert({
-      id: ghostId, name: "Resend Pal", email: ghostEmail, is_guest: true,
-    });
-    await ctx.addTripMemberById(tripId, ghostId, "Member");
+    const { ghostId, ghostEmail } = await placeholder(tripId, "resend", "Resend Pal");
 
     await caller.tripMembers.sendInvitationBlast({ tripId, memberUserIds: [ghostId] });
     await caller.tripMembers.sendInvitationBlast({ tripId, memberUserIds: [ghostId] });
@@ -593,6 +594,7 @@ describe("tripMembers router — sendInvitationBlast", () => {
   }, 30_000);
 
   it("sendInvitationBlast — member cannot blast", async () => {
+    const tripId = await blastTrip("member cannot blas");
     const caller = ctx.callerAs("member");
     await expect(
       caller.tripMembers.sendInvitationBlast({
@@ -608,6 +610,7 @@ describe("tripMembers router — sendInvitationBlast", () => {
   // sibling, and blocked by the same widened policy (#823's CI failure was the
   // `last_emailed_at` UPDATE matching zero rows for an Organizer).
   it("sendInvitationBlast — planner CAN blast", async () => {
+    const tripId = await blastTrip("planner CAN blast");
     const caller = ctx.callerAs("planner");
     await expect(
       caller.tripMembers.sendInvitationBlast({
@@ -618,6 +621,7 @@ describe("tripMembers router — sendInvitationBlast", () => {
   });
 
   it("sendInvitationBlast — a plain member still cannot blast", async () => {
+    const tripId = await blastTrip("a plain member sti");
     const caller = ctx.callerAs("member");
     await expect(
       caller.tripMembers.sendInvitationBlast({
