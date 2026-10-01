@@ -15,6 +15,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { strictTestClient } from "./strictTestClient";
 import { createCallerFactory, type TRPCContext } from "../../server/trpc";
 import { appRouter } from "../../server/router";
 import { readFileSync } from "fs";
@@ -58,7 +59,9 @@ function getSharedUser(role: UserRole): SharedUser {
 // ---------------------------------------------------------------------------
 
 export function getAdminClient(): SupabaseClient {
-  return createClient(SUPABASE_URL, SERVICE_KEY);
+  // Strict (#1527): an infrastructure failure THROWS, so a test can never read a
+  // 502 as "no rows" and report it as a behaviour regression.
+  return strictTestClient(createClient(SUPABASE_URL, SERVICE_KEY), "admin");
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +207,11 @@ export class TestContext {
    *  Use to test what a logged-in user can reach DIRECTLY (e.g. an rpc() call to
    *  a SECURITY DEFINER function), bypassing the tRPC layer. */
   authedClient(role: UserRole): SupabaseClient {
-    return createAuthenticatedClient(getSharedUser(role));
+    // Strict (#1527) — and here it also stops a 502 passing for an RLS refusal:
+    // `expect(error).not.toBeNull()` is satisfied by either. The tRPC caller's
+    // client (createCallerForUser) is deliberately NOT wrapped: that is the code
+    // under test, and it already names its own 502s.
+    return strictTestClient(createAuthenticatedClient(getSharedUser(role)), `authed(${role})`);
   }
 
   // ---- Trip helpers ----

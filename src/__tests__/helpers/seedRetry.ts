@@ -27,7 +27,7 @@
  *      already-committed A is untouched.
  */
 
-const KONG_UPSTREAM_502 = "An invalid response was received from the upstream server";
+import { KONG_UPSTREAM_502, TestInfrastructureError } from "./strictTestClient";
 const MAX_ATTEMPTS = 3;
 const BACKOFFS_MS = [250, 500, 1000];
 
@@ -75,7 +75,17 @@ export async function withSeedRetry(
   let previousWasTransient502 = false;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const { error } = await op();
+    // The seed clients are strict (#1527): an infrastructure failure now THROWS
+    // rather than resolving as `{ error }`. Hand the original result back to the
+    // logic below so the retry decision is exactly what it was — the same Kong
+    // signature retried, nothing else newly retried.
+    const { error } = await Promise.resolve(op()).then(
+      (r) => r,
+      (e: unknown) => {
+        if (e instanceof TestInfrastructureError) return { error: e.original };
+        throw e;
+      }
+    );
 
     if (!error) return;
 
