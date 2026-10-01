@@ -935,7 +935,7 @@ These patterns have been established through prior work. Follow them exactly —
    rename. A dup `NNN` is a cosmetic wart, not a bug; leave applied ones alone.
 4. **RLS INSERT RETURNING split** — separate INSERT and SELECT to avoid RLS race condition
 5. **Middleware auth** — `requireAuth` before any `requireTripMember`/`requireTripRole`
-6. **Test isolation** — 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`), unique trips per test
+6. **Test isolation** — 4 shared persistent users (`test-owner`, `test-planner`, `test-member`, `test-outsider`), unique trips per test. **The shared users are read-only for anything that belongs to the PERSON rather than a trip** — devices, notification preferences, profile fields on `users`, account linking/merging: files run in parallel, so changing those collides with every other file that reads them (newsNotify's `sent: 0` met another file's phones; #1520's merges into the shared outsider). Give such a test its own `ctx.createAccount(...)` or a fresh placeholder row. Trip-scoped state (roles, membership, nicknames) is isolated by the unique trip and is fine. The sweep of existing offenders is #1540.
 7. **Persistence-agnostic game UI** — scorecard components in `src/components/games/`
    (`ScoreEntryView`, `MatchEntryView`, `MatchCard`, `RelHandicapControl`,
    `StrokeKeypad`, `StandardGrid`, `FinalStandings`) take all data via props and
