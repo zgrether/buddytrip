@@ -32,14 +32,25 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
-let tripId: string;
 let userId: string;
 
 const NOTIFIED_AT = "2026-03-04T05:06:07.000Z";
+const VIEWING_AT = "2026-04-05T06:07:08.000Z";
+/** Earlier than any markRead this run can make, so "advanced" is decidable. */
+const OLD_READ_AT = "2026-03-01T00:00:00.000Z";
 
+/**
+ * EVERY CASE OWNS ITS ROW (#1527). These used to walk ONE `chat_reads` row
+ * through a sequence — insert it, stamp it, markRead it, delete it — so each
+ * case asserted on the state the case before had left. Shuffled, "starts NULL"
+ * met a row already stamped, and both preservation cases met a row whose stamp
+ * had never been written, which reads exactly like the bug they guard.
+ *
+ * Each case now builds a trip and, where it needs one, seeds the row it reads,
+ * asserting the seed landed before it tests anything.
+ */
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("chat_reads column trip");
   userId = ctx.user.id;
 }, 60_000);
 
@@ -47,19 +58,32 @@ afterAll(async () => {
   await ctx.cleanup();
 }, 60_000);
 
-async function readRow() {
-  const { data } = await ctx.admin
+type Row = { last_read_at: string; last_notified_at: string | null; viewing_at: string | null };
+
+async function readRow(tripId: string): Promise<Row | null> {
+  const { data, error } = await ctx.admin
     .from("chat_reads")
     .select("last_read_at, last_notified_at, viewing_at")
     .eq("trip_id", tripId)
     .eq("user_id", userId)
     .eq("visibility", "crew")
     .maybeSingle();
-  return data as {
-    last_read_at: string;
-    last_notified_at: string | null;
-    viewing_at: string | null;
-  } | null;
+  if (error) throw new Error(`read chat_reads: ${error.message}`);
+  return data as Row | null;
+}
+
+async function seedRow(tripId: string, cols: Partial<Row>): Promise<Row> {
+  const { error } = await ctx.admin.from("chat_reads").insert({
+    trip_id: tripId,
+    user_id: userId,
+    visibility: "crew",
+    last_read_at: OLD_READ_AT,
+    ...cols,
+  });
+  if (error) throw new Error(`seed chat_reads: ${error.message}`);
+  const row = await readRow(tripId);
+  if (!row) throw new Error("seed chat_reads: row not there after insert");
+  return row;
 }
 
 describe("chat_reads.last_notified_at survives markRead", () => {
@@ -67,24 +91,23 @@ describe("chat_reads.last_notified_at survives markRead", () => {
     // The seed for every existing row after migration 144. A backfilled now()
     // would silence everyone for the first window after deploy, which is the
     // failure the re-arm exists to fix.
-    await ctx.admin.from("chat_reads").insert({
-      trip_id: tripId,
-      user_id: userId,
-      visibility: "crew",
-      last_read_at: "2026-03-01T00:00:00.000Z",
-    });
-    expect((await readRow())?.last_notified_at).toBeNull();
+    const tripId = await ctx.createTrip("chat_reads starts null");
+    const row = await seedRow(tripId, {});
+    expect(row.last_notified_at).toBeNull();
   });
 
   it("holds a value written by the send path", async () => {
-    await ctx.admin
+    const tripId = await ctx.createTrip("chat_reads holds value");
+    expect((await seedRow(tripId, {})).last_notified_at).toBeNull(); // premise
+    const { error } = await ctx.admin
       .from("chat_reads")
       .update({ last_notified_at: NOTIFIED_AT })
       .eq("trip_id", tripId)
       .eq("user_id", userId)
       .eq("visibility", "crew");
+    if (error) throw new Error(`stamp: ${error.message}`);
 
-    const row = await readRow();
+    const row = await readRow(tripId);
     expect(row?.last_notified_at).not.toBeNull();
     expect(new Date(row!.last_notified_at!).toISOString()).toBe(NOTIFIED_AT);
   });
@@ -96,13 +119,16 @@ describe("chat_reads.last_notified_at survives markRead", () => {
    * one action most likely to happen between two pushes.
    */
   it("markRead advances last_read_at WITHOUT clearing last_notified_at", async () => {
-    const before = await readRow();
+    const tripId = await ctx.createTrip("chat_reads markRead keeps notified");
+    const before = await seedRow(tripId, { last_notified_at: NOTIFIED_AT });
+    // Premise: there IS a stamp for markRead to (not) clear.
+    expect(new Date(before.last_notified_at!).toISOString()).toBe(NOTIFIED_AT);
 
     // The real procedure, through the real caller — not a hand-rolled upsert
     // that could differ from what ships.
     await ctx.caller().messages.markRead({ tripId, visibility: "crew" });
 
-    const after = await readRow();
+    const after = await readRow(tripId);
 
     // Preserved, to the exact instant.
     expect(
@@ -114,7 +140,7 @@ describe("chat_reads.last_notified_at survives markRead", () => {
     // ...and it genuinely did its own job, so the check above is not passing
     // against an upsert that silently stopped writing.
     expect(new Date(after!.last_read_at).getTime()).toBeGreaterThan(
-      new Date(before!.last_read_at).getTime()
+      new Date(before.last_read_at).getTime()
     );
   });
 
@@ -124,16 +150,12 @@ describe("chat_reads.last_notified_at survives markRead", () => {
    * as the backfill — a first-ever read must not count as a notification.
    */
   it("a row first created by markRead has a null last_notified_at", async () => {
-    await ctx.admin
-      .from("chat_reads")
-      .delete()
-      .eq("trip_id", tripId)
-      .eq("user_id", userId)
-      .eq("visibility", "crew");
+    const tripId = await ctx.createTrip("chat_reads created by markRead");
+    expect(await readRow(tripId)).toBeNull(); // premise: markRead creates it
 
     await ctx.caller().messages.markRead({ tripId, visibility: "crew" });
 
-    const row = await readRow();
+    const row = await readRow(tripId);
     expect(row).not.toBeNull();
     expect(row?.last_notified_at).toBeNull();
   });
@@ -159,36 +181,29 @@ describe("chat_reads.viewing_at and last_read_at do not clobber each other", () 
    * schema makes the bug unrepresentable in CODE; this is the check that the
    * DATABASE agrees.
    */
-  const VIEWING_AT = "2026-04-05T06:07:08.000Z";
-
   it("markViewing advances viewing_at WITHOUT touching last_read_at", async () => {
-    const caller = ctx.callerAs("owner");
-    await caller.messages.markRead({ tripId, visibility: "crew" });
-    const before = await readRow();
-    expect(before?.last_read_at).toBeTruthy();
+    const tripId = await ctx.createTrip("chat_reads markViewing keeps read");
+    const before = await seedRow(tripId, {});
+    expect(before.viewing_at).toBeNull(); // premise: nothing to mistake for the write
 
-    await caller.messages.markViewing({ tripId, visibility: "crew" });
+    await ctx.callerAs("owner").messages.markViewing({ tripId, visibility: "crew" });
 
-    const after = await readRow();
+    const after = await readRow(tripId);
     expect(after?.viewing_at, "markViewing did not write viewing_at").toBeTruthy();
     expect(
-      after?.last_read_at,
+      new Date(after!.last_read_at).toISOString(),
       "markViewing moved last_read_at — the heartbeat is marking messages read again"
-    ).toBe(before?.last_read_at);
+    ).toBe(OLD_READ_AT);
   });
 
   it("markRead advances last_read_at WITHOUT clearing viewing_at", async () => {
-    const caller = ctx.callerAs("owner");
-    await ctx.admin
-      .from("chat_reads")
-      .update({ viewing_at: VIEWING_AT })
-      .eq("trip_id", tripId)
-      .eq("user_id", userId)
-      .eq("visibility", "crew");
+    const tripId = await ctx.createTrip("chat_reads markRead keeps viewing");
+    const before = await seedRow(tripId, { viewing_at: VIEWING_AT });
+    // Premise: there IS a viewing stamp for markRead to (not) clear.
+    expect(new Date(before.viewing_at!).toISOString()).toBe(VIEWING_AT);
 
-    const before = await readRow();
-    await caller.messages.markRead({ tripId, visibility: "crew" });
-    const after = await readRow();
+    await ctx.callerAs("owner").messages.markRead({ tripId, visibility: "crew" });
+    const after = await readRow(tripId);
 
     expect(
       after?.viewing_at,
@@ -197,7 +212,7 @@ describe("chat_reads.viewing_at and last_read_at do not clobber each other", () 
     expect(new Date(after!.viewing_at!).toISOString()).toBe(VIEWING_AT);
     // The inverse, so this cannot pass against an upsert that stopped writing.
     expect(new Date(after!.last_read_at).getTime()).toBeGreaterThan(
-      new Date(before!.last_read_at).getTime()
+      new Date(before.last_read_at).getTime()
     );
   });
 
@@ -210,19 +225,11 @@ describe("chat_reads.viewing_at and last_read_at do not clobber each other", () 
    * known one rather than a discovery.
    */
   it("a row first created by markViewing still gets a defaulted last_read_at", async () => {
-    const otherTrip = await ctx.createTrip("chat_reads viewing-first trip");
-    const caller = ctx.callerAs("owner");
-    await caller.messages.markViewing({ tripId: otherTrip, visibility: "crew" });
+    const tripId = await ctx.createTrip("chat_reads viewing-first trip");
+    expect(await readRow(tripId)).toBeNull(); // premise: markViewing creates it
+    await ctx.callerAs("owner").messages.markViewing({ tripId, visibility: "crew" });
 
-    const { data } = await ctx.admin
-      .from("chat_reads")
-      .select("last_read_at, viewing_at")
-      .eq("trip_id", otherTrip)
-      .eq("user_id", userId)
-      .eq("visibility", "crew")
-      .maybeSingle();
-    const row = data as { last_read_at: string; viewing_at: string | null } | null;
-
+    const row = await readRow(tripId);
     expect(row?.viewing_at).toBeTruthy();
     expect(row?.last_read_at).toBeTruthy(); // the DEFAULT, not a value we chose
   });
