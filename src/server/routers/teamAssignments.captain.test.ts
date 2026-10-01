@@ -29,7 +29,7 @@ beforeAll(async () => {
   ctx = await TestContext.create();
   ownerId = ctx.user.id;
   tripId = await ctx.createTrip("Captain Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer"); // co_admin — NOT owner
+  await ctx.addTripMember(tripId, "planner", "Organizer"); // organizer — NOT owner
   await ctx.addTripMember(tripId, "member", "Member");
   memberId = ctx.getUser("member").id;
   plannerId = ctx.getUser("planner").id;
@@ -84,7 +84,7 @@ describe("teamAssignments.setCaptain", () => {
     expect(await captainsOf(teamA)).toEqual([]); // neither write landed
   });
 
-  it("an Organizer (co_admin, not owner) CAN set a captain — migration 200", async () => {
+  it("an Organizer (not owner) CAN set a captain — migration 200", async () => {
     // Asserted a refusal until the PR 8 permissions pass: you can hand out
     // powers you already hold, and an Organizer holds every roster right a
     // captain gets. The one-per-team swap is the same function, so it holds too.

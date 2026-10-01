@@ -5,7 +5,7 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * Score-entry permissions (SERVER) — the scoped model, DB-backed (exercises the
  * tRPC guard in scores.upsertEntry/deleteEntry AND the score_entries RLS, since
  * the caller writes through its own RLS-bound client):
- *   Owner / Organizer (co-admin) / delegate-of-this-game → any unit.
+ *   Owner / Organizer / delegate-of-this-game → any unit.
  *   Member → only the match/group they play in.
  *   Non-participant member → nothing.
  * The exhaustive per-format in/out-of-unit matrix is in src/lib/scoreUnit.test.ts
@@ -27,7 +27,7 @@ const FORBIDDEN = { code: "FORBIDDEN" };
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("Score Perms Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer"); // co-admin (elevated)
+  await ctx.addTripMember(tripId, "planner", "Organizer"); // Organizer (elevated)
   await ctx.addTripMember(tripId, "member", "Member"); // plain member
   await ctx.addTripMember(tripId, "outsider", "Member"); // plain member
   owner = ctx.user.id;
@@ -72,7 +72,7 @@ describe("stroke — the unit is the individual player", () => {
     ).rejects.toMatchObject(FORBIDDEN);
   });
 
-  it("the owner enters anyone's score; the Organizer (co-admin) too", async () => {
+  it("the owner enters anyone's score; the Organizer too", async () => {
     expect((await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: member, unitLabel: "3", value: 4 })).value).toBe(4);
     expect((await ctx.callerAs("planner").scores.upsertEntry({ tripId, gameId, participantId: outsider, unitLabel: "3", value: 5 })).value).toBe(5);
   });

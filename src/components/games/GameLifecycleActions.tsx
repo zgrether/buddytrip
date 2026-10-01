@@ -208,7 +208,7 @@ export function GameLifecycleActions({
     );
   }
 
-  // The deliberate, auditable correction path (owner / co-admin / delegate).
+  // The deliberate, auditable correction path (owner / Organizer / delegate).
   // Secondary styling: reopening a locked result is not the encouraged action.
   if (state.canCorrect) {
     return (

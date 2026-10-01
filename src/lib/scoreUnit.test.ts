@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { memberCanScoreUnit, memberCanScoreMatch, type ScoreUnitMatch } from "./scoreUnit";
 
-// The MEMBER tier only — owner/co-admin/delegate bypass this via canEditGame.
+// The MEMBER tier only — owner/Organizer/delegate bypass this via canEditGame.
 // Covers each format × in-unit / out-of-unit / non-participant.
 
 const userSide = (id: string) => ({ type: "user" as const, id });

@@ -8,7 +8,7 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * assignments, the viewer's live-derived competition role, and their delegated
  * game ids. These tests assert that structure is present, the no-competition
  * case is clean, and the role is derived in both directions
- * (owner/co-admin/member).
+ * (owner/Organizer/member).
  *
  * It used to carry the leaderboard roll-up as well. It does not any more
  * (#1281 step 1) — that was the STATE half, 9 of the procedure's 14 Supabase
@@ -28,7 +28,7 @@ let memberId: string;
 beforeAll(async () => {
   ctx = await TestContext.create();
   tripId = await ctx.createTrip("Bootstrap trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer"); // → co_admin
+  await ctx.addTripMember(tripId, "planner", "Organizer"); // → organizer
   await ctx.addTripMember(tripId, "member", "Member");
   memberId = ctx.getUser("member").id;
   competitionId = await ctx.createCompetition(tripId, "Bootstrap Cup", { scoringModel: "points" });
@@ -91,7 +91,7 @@ describe("faceBootstrap — both states in one resolve", () => {
 
   it("derives the competition role in both directions (live, per request)", async () => {
     const asPlanner = await ctx.callerAs("planner").competitions.faceBootstrap({ tripId });
-    expect(asPlanner.myCompetitionRole).toBe("co_admin");
+    expect(asPlanner.myCompetitionRole).toBe("organizer");
 
     const asMember = await ctx.callerAs("member").competitions.faceBootstrap({ tripId });
     expect(asMember.myCompetitionRole).toBe("member");
@@ -102,7 +102,7 @@ describe("faceBootstrap — both states in one resolve", () => {
     await ctx.caller().games.addOrganizer({ tripId, gameId, userId: memberId });
     const asMember = await ctx.callerAs("member").competitions.faceBootstrap({ tripId });
     expect(asMember.myDelegateGameIds).toContain(gameId);
-    // still a member-role competition role — delegate ≠ co-admin
+    // still a member-role competition role — delegate ≠ Organizer
     expect(asMember.myCompetitionRole).toBe("member");
   });
 });

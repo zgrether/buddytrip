@@ -129,7 +129,7 @@ beforeAll(async () => {
   ctx = await TestContext.create();
   ownerId = ctx.user.id;
   tripId = await ctx.createTrip("Reset Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer"); // co_admin — NOT owner
+  await ctx.addTripMember(tripId, "planner", "Organizer"); // organizer — NOT owner
   await ctx.addTripMember(tripId, "member", "Member");
   memberId = ctx.getUser("member").id;
   competitionId = await ctx.createCompetition(tripId, "Reset Cup", { scoringModel: "points" });
@@ -182,7 +182,7 @@ describe("resetScoring — clears results, keeps config + identity, stays armed"
     expect(m.status).toBe("pending");
   });
 
-  it("a non-owner (co_admin) cannot reset scoring", async () => {
+  it("a non-owner (organizer) cannot reset scoring", async () => {
     await expect(
       ctx.callerAs("planner").competitions.resetScoring({ tripId, competitionId })
     ).rejects.toThrow();

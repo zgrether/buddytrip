@@ -14,7 +14,7 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
  *  - resetToSkeleton: also clears ONE game's config, keeps identity (incl. the
  *    per-match point VALUE — §E-1).
  *  - a sibling game in the same competition is NOT touched.
- *  - owner-only (co_admin + a game delegate are both rejected).
+ *  - owner-only (organizer + a game delegate are both rejected).
  *  - the un-guarded cores are not callable by the `authenticated` role directly.
  */
 
@@ -72,7 +72,7 @@ beforeAll(async () => {
   ctx = await TestContext.create();
   ownerId = ctx.user.id;
   tripId = await ctx.createTrip("PG Reset Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer"); // co_admin — NOT owner
+  await ctx.addTripMember(tripId, "planner", "Organizer"); // organizer — NOT owner
   await ctx.addTripMember(tripId, "member", "Member");
   memberId = ctx.getUser("member").id;
   competitionId = await ctx.createCompetition(tripId, "PG Reset Cup", { scoringModel: "points" });
@@ -166,7 +166,7 @@ describe("games.resetScoring — one game's results cleared, config + identity k
     expect((after.data ?? []).filter((r) => r.result != null)).toHaveLength(0);
   });
 
-  it("a co-admin (Organizer) may reset; a game delegate still may not (#786)", async () => {
+  it("an Organizer may reset; a game delegate still may not (#786)", async () => {
     const target = await makeMatchGame("RoleBoundary");
     // Make the member a DELEGATE of this game (can edit/score) — still not reset.
     await ctx.admin.from("game_delegates").insert({ game_id: target, user_id: memberId, granted_by: ownerId });

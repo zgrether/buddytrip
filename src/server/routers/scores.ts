@@ -10,7 +10,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
  * scores — per-unit score entry for a game (Slice A: per-hole strokes).
  *
  * SCOPED score-entry permissions (mig 072 — SERVER-enforced, RLS-backed):
- *   Owner / Organizer (co-admin) / delegate-of-this-game → any unit.
+ *   Owner / Organizer / delegate-of-this-game → any unit.
  *   Member → only the match/group they participate in (per-format `canWriteScore`
  *            → `memberCanScoreUnit`).
  *   Non-participant member → nothing.
@@ -76,7 +76,7 @@ export const scoresRouter = router({
       }
 
       // Score-entry permissions (SERVER — the real gate; the UI only reflects it).
-      // Owner / co-admin / delegate-of-this-game → any unit; a plain member → only
+      // Owner / Organizer / delegate-of-this-game → any unit; a plain member → only
       // the match/group they participate in (per-format, `memberCanScoreUnit`).
       // Anyone else (incl. a non-participant of the game) is rejected — hiding the
       // button isn't enough, this rejects the raw mutation too.

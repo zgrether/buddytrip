@@ -3,7 +3,7 @@
  *
  * Score-entry is scoped (SERVER-enforced; this is the shared truth the mutation
  * guard AND the UI tap-routing both read so they can't diverge):
- *   - Owner / co-admin / delegate-of-this-game → any unit (handled by
+ *   - Owner / Organizer / delegate-of-this-game → any unit (handled by
  *     `canEditGame`, NOT here — this function is only the MEMBER tier).
  *   - Member → only the unit they participate in.
  *   - Non-participant member → nothing.
@@ -62,7 +62,7 @@ export interface MemberScoreAccessInput {
 }
 
 /**
- * Can a plain MEMBER enter this score? (Owner/co-admin/delegate bypass this — they
+ * Can a plain MEMBER enter this score? (Owner/Organizer/delegate bypass this — they
  * are allowed by `canEditGame` before this is ever consulted.)
  */
 export function memberCanScoreUnit(input: MemberScoreAccessInput): boolean {

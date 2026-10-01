@@ -132,9 +132,9 @@ function LiveFaceInner({
     );
 
   const competition = boot?.competition ?? null;
-  // Competition role (owner / co_admin / member), live-derived server-side.
+  // Competition role (owner / organizer / member), live-derived server-side.
   const role = boot?.myCompetitionRole ?? null;
-  const canEdit = role === "owner" || role === "co_admin";
+  const canEdit = role === "owner" || role === "organizer";
   const isOwner = role === "owner";
   // Seed the child caches from the one bootstrap so the board/guide — and the
   // setup↔leaderboard toggle, and the sub-views — render from cache with NO

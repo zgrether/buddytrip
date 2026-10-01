@@ -59,7 +59,7 @@ beforeAll(async () => {
     teams: ["Team A", "Team B", "Team C", "Team D"],
     members: [
       ["member", "Member"], // delegate target (plain Member)
-      ["planner", "Organizer"], // co-admin — deletes now denied (Spec 1)
+      ["planner", "Organizer"], // Organizer — deletes now denied (Spec 1)
     ],
   }));
   memberId = ctx.getUser("member").id;
@@ -210,7 +210,7 @@ describe("Stage 3 — the delegation boundary", () => {
 });
 
 describe("delete — hard removal, OWNER-gated (L3-b, Spec 1)", () => {
-  it("owner and Organizer/co-admin delete a game; a Member cannot", async () => {
+  it("owner and Organizer delete a game; a Member cannot", async () => {
     const g = await newGame(8, "To delete");
     // #786 REVERSES Spec 1's tightening here — and delete still matches its
     // sibling danger-zone resets, which moved to Organizer in the same change.

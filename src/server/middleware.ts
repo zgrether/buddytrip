@@ -104,25 +104,25 @@ export function requireTripRole(minRole: TripRole) {
 // The competition gate honors EXACTLY these roles and nothing else; it must
 // NEVER reach up and check trip roles directly. Instead the CONTAINER grants
 // competition roles: `resolveCompetitionRole` is the container's trip→competition
-// mapping (its implementation of "who are my co-admins"), and it is LIVE —
+// mapping (its implementation of "who are my Organizers"), and it is LIVE —
 // derived fresh from current trip membership on every check, never snapshotted.
-// Demote a trip organizer and their co-admin access is gone on the NEXT check
+// Demote a trip organizer and their Organizer access is gone on the NEXT check
 // (no stale grant to leak). This is the same live-derivation discipline as the
 // roster seed reading team_assignments at pairing time.
 //
-//   co-admin = owner-minus-destructive: configure any game, edit teams, post any
+//   Organizer = owner-minus-destructive: configure any game, edit teams, post any
 //   result, go-live — but NOT delete the competition / transfer ownership.
 //
-// Container mapping (trip-attached): Owner→owner, Organizer→co_admin, else member.
+// Container mapping (trip-attached): Owner→owner, Organizer→organizer, else member.
 // Standalone / Circle are FUTURE container mappings — they swap this derivation,
 // not the gate. The gate below only ever asks for the competition role.
 // ---------------------------------------------------------------------------
 
-export type CompetitionRole = "owner" | "co_admin" | "member";
+export type CompetitionRole = "owner" | "organizer" | "member";
 
 const COMP_ROLE_LEVEL: Record<CompetitionRole, number> = {
   owner: 3,
-  co_admin: 2,
+  organizer: 2,
   member: 1,
 };
 
@@ -138,7 +138,7 @@ async function resolveCompetitionRole(
   // container mapping, live-derived (resolveTripRole reads current membership).
   const tripRole = await resolveTripRole(ctx, tripId);
   if (tripRole === "Owner") return "owner";
-  if (tripRole === "Organizer") return "co_admin";
+  if (tripRole === "Organizer") return "organizer";
   return "member";
 }
 
@@ -160,7 +160,7 @@ export function requireCompetitionRole(minRole: CompetitionRole) {
         message:
           minRole === "owner"
             ? "Only the competition owner can do this."
-            : "Requires competition co-admin access.",
+            : "Requires organizer access.",
       });
     }
     return next({ ctx: { ...ctx, tripId } });
@@ -168,14 +168,14 @@ export function requireCompetitionRole(minRole: CompetitionRole) {
 }
 
 // ---------------------------------------------------------------------------
-// requireGameEdit (Slice D1 §8; co-admin role-model)
+// requireGameEdit (Slice D1 §8; Organizer role-model)
 //
-// The per-game edit gate: passes if the user is a competition owner/co-admin
+// The per-game edit gate: passes if the user is a competition owner/Organizer
 // (granted by the container) OR a delegated organizer of THIS game
 // (game_delegates row). Game-isolated — a pick'em delegate cannot touch the
 // scramble. Mirror of the DB rule (is_game_delegate, migration 045 → renamed 061).
 //
-// Authority is the COMPETITION role, not the trip role — the trip→co-admin
+// Authority is the COMPETITION role, not the trip role — the trip→Organizer
 // mapping lives in resolveCompetitionRole (the container), so this gate stays
 // container-independent (standalone / Circle just change the mapping). Phase-
 // independent: there is no competition-status condition here, by design.
@@ -260,7 +260,7 @@ export function requireTeamIdentityEdit() {
 }
 
 // canEditGame — the NON-throwing core of requireGameEdit (A2-core). True when the
-// user is a competition owner/co-admin (container-granted) OR a delegate of THIS
+// user is a competition owner/Organizer (container-granted) OR a delegate of THIS
 // game (game_delegates row). The throwing middlewares below wrap it; READS that
 // must stay callable by members (e.g. the game scoreboard page, which a member
 // loads but sees redacted for a pending game) call it directly and branch on the
@@ -275,11 +275,11 @@ export async function canEditGame(
   tripId: string,
   gameId: string
 ): Promise<boolean> {
-  // Competition role first (owner/co-admin edit any game). resolveCompetitionRole
+  // Competition role first (owner/Organizer edit any game). resolveCompetitionRole
   // returns "member" for a plain member (it only throws for a non-member, which a
   // requireTripMember-gated read has already excluded) — so this is safe on reads.
   const compRole = await resolveCompetitionRole(ctx, tripId);
-  if (COMP_ROLE_LEVEL[compRole] >= COMP_ROLE_LEVEL.co_admin) return true;
+  if (COMP_ROLE_LEVEL[compRole] >= COMP_ROLE_LEVEL.organizer) return true;
   if (!ctx.user) return false;
   // …otherwise a delegated organizer of THIS game (game-isolated).
   const { data } = await (
@@ -312,7 +312,7 @@ export function requireGameEdit() {
     if (!(await canEditGame(ctx, tripId, gameId))) {
       throw new TRPCError({
         code: "FORBIDDEN",
-        message: "Requires competition co-admin access or a game-organizer grant for this game",
+        message: "Requires organizer access or a delegate grant for this game",
       });
     }
 
@@ -321,12 +321,12 @@ export function requireGameEdit() {
 }
 
 // ---------------------------------------------------------------------------
-// requireGameRunAction (Slice D Run/Post §5; co-admin role-model)
+// requireGameRunAction (Slice D Run/Post §5; Organizer role-model)
 //
 // Competition RUN-actions (post results / open score correction): a competition
-// owner/co-admin (granted by the container) OR THIS game's delegate. Co-admin is
+// owner/Organizer (granted by the container) OR THIS game's delegate. Organizer is
 // owner-minus-destructive, and posting a result is operational, not destructive —
-// so co-admins post (the game-day redundancy this role exists for). Authority is
+// so Organizers post (the game-day redundancy this role exists for). Authority is
 // the COMPETITION role, never the trip role; enforced server-side so the controls
 // can't be reached by hiding the UI.
 // ---------------------------------------------------------------------------
@@ -343,7 +343,7 @@ export function requireGameRunAction() {
     if (!(await canEditGame(ctx, tripId, gameId))) {
       throw new TRPCError({
         code: "FORBIDDEN",
-        message: "Posting and score corrections are limited to a competition owner/co-admin or this game's delegate.",
+        message: "Posting and score corrections are limited to the owner, an organizer, or this game's delegate.",
       });
     }
 

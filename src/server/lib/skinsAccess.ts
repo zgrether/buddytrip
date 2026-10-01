@@ -5,7 +5,7 @@ import { canEditGame, type TripRole } from "@/server/middleware";
  * canWriteSkinsHole — the SERVER source of truth for "may this caller record
  * THIS grouping's hole?"
  *
- * Owner / co-admin / delegate-of-this-game → any grouping. A plain member → only
+ * Owner / Organizer / delegate-of-this-game → any grouping. A plain member → only
  * a grouping they are in.
  *
  * ── Why this is not `canWriteOutcome` with another branch ─────────────────

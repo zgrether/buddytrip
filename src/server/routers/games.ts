@@ -2592,7 +2592,7 @@ export const gamesRouter = router({
   //
   // Gate: `requireTripRole("Organizer")` — the SAME gate `games.create` and
   // `games.delete` already use, and the same population the leaderboard's
-  // `canEdit` (owner + co_admin) shows the affordance to. Reordering is neither
+  // `canEdit` (owner + organizer) shows the affordance to. Reordering is neither
   // changing who is trusted nor ending a container, so a gate that let someone
   // create a game but not move it would be arbitrary. No permission changes here.
   reorder: authedProcedure

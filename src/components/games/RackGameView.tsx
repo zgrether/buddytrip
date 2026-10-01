@@ -182,7 +182,7 @@ export function RackGameView() {
 
   const createGame = trpc.games.create.useMutation();
   const applyCourse = trpc.games.applyCourse.useMutation();
-  // #7 correction path (owner/co-admin/delegate — server-gated by
+  // #7 correction path (owner/Organizer/delegate — server-gated by
   // requireGameRunAction). "Re-lock" reuses finish().
   // Shared with the other three formats (CLAUDE.md #24) — including the
   // optimistic flip that stops the CTA waiting on a round trip for a boolean

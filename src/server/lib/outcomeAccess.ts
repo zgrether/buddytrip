@@ -5,7 +5,7 @@ import { memberCanScoreUnit, type ScoreUnitMatch, type ScoreUnitSide } from "@/l
 /**
  * canWriteOutcome — the SERVER source of truth for "may this caller decide THIS
  * match's hole outcome?" (Refactor B3, the outcome-entry counterpart to
- * `canWriteScore`). Owner / co-admin / delegate-of-this-game → any match. A
+ * `canWriteScore`). Owner / Organizer / delegate-of-this-game → any match. A
  * plain member → only a match they're playing in, resolved by the SAME pure
  * `memberCanScoreUnit` the score path uses (its 1v1/2v2 match-membership
  * branches are exactly the outcome authorization rule — no new pure logic).
@@ -29,7 +29,7 @@ export async function canWriteOutcome(
   gameId: string,
   matchId: string,
 ): Promise<boolean> {
-  // Owner / co-admin / delegate of THIS game → any match. Reuses the same
+  // Owner / Organizer / delegate of THIS game → any match. Reuses the same
   // helper the rest of the game-edit surface uses, so the elevated tier can't
   // drift from the config/run gates.
   if (await canEditGame(ctx, tripId, gameId)) return true;

@@ -15,7 +15,7 @@ import { canWriteSkinsHole } from "../lib/skinsAccess";
  *
  * SCOPED permissions, SERVER-enforced and RLS-backed, matching the model
  * `scores.ts` and `matchOutcomes.ts` use:
- *   Owner / Organizer (co-admin) / delegate-of-this-game → any grouping.
+ *   Owner / Organizer / delegate-of-this-game → any grouping.
  *   Member → only the grouping they are in (`canWriteSkinsHole` →
  *            `can_score_skins_grouping` in RLS, migration 184).
  *   Non-participant member → nothing.
