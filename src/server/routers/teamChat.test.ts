@@ -101,7 +101,13 @@ describe("read state is per-room", () => {
   });
 
   it("readState reports the team room separately", async () => {
-    const state = await ctx.callerAs("member").messages.readState({ tripId });
+    // Writes the two marks it reads (#1527). It used to read what the case above
+    // had marked, so a 502 there failed this as "expected null not to be null".
+    const member = ctx.callerAs("member");
+    await member.messages.markRead({ tripId, visibility: "crew" });
+    await new Promise((r) => setTimeout(r, 10));
+    await member.messages.markRead({ tripId, visibility: "team", teamId: teamA });
+    const state = await member.messages.readState({ tripId });
     expect(state.crew).not.toBeNull();
     expect(state.team).not.toBeNull();
     expect(state.team).not.toBe(state.crew);

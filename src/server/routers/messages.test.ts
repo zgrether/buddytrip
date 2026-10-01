@@ -59,11 +59,15 @@ describe("messages router", () => {
     expect(msgs.filter((m) => m.text === text)).toHaveLength(1);
   });
 
+  // Each list test writes the message it reads (#1527). These used to read what
+  // an EARLIER test had sent, so a 502 in that test failed this one as
+  // "expected false to be true" — a behaviour failure for a send that never ran.
   it("list — member can view trip messages", async () => {
     const caller = ctx.callerAs("member");
+    const text = `visible to the member ${genId("t")}`;
+    await caller.messages.send({ tripId, id: genId("msg"), text });
     const msgs = await caller.messages.list({ tripId });
-    expect(msgs.length).toBeGreaterThanOrEqual(1);
-    expect(msgs.some((m) => m.text === "Hello everyone!")).toBe(true);
+    expect(msgs.some((m) => m.text === text)).toBe(true);
   });
 
   it("send — team channel requires teamId", async () => {
@@ -116,15 +120,25 @@ describe("messages router", () => {
 
   it("list — owner sees planning messages on the planning channel", async () => {
     const caller = ctx.caller();
+    const text = `organizers only ${genId("t")}`;
+    await caller.messages.send({ tripId, id: genId("msg"), visibility: "planning", text });
     const msgs = await caller.messages.list({ tripId, visibility: "planning" });
-    expect(msgs.some((m) => m.text === "Organizers only")).toBe(true);
+    expect(msgs.some((m) => m.text === text)).toBe(true);
   });
 
   it("list — crew channel excludes planning messages", async () => {
+    // Writes BOTH, and checks the crew one IS there: an absence assertion on its
+    // own passes on an empty room, so it could not tell "filtered" from "never
+    // sent" — which is exactly what it read when it borrowed an earlier test's row.
     const caller = ctx.caller();
+    const planning = `planning, hidden from crew ${genId("t")}`;
+    const crew = `crew, shown ${genId("t")}`;
+    await caller.messages.send({ tripId, id: genId("msg"), visibility: "planning", text: planning });
+    await caller.messages.send({ tripId, id: genId("msg"), text: crew });
     const msgs = await caller.messages.list({ tripId, visibility: "crew" });
+    expect(msgs.some((m) => m.text === crew)).toBe(true);
     expect(msgs.every((m) => m.visibility === "crew")).toBe(true);
-    expect(msgs.some((m) => m.text === "Organizers only")).toBe(false);
+    expect(msgs.some((m) => m.text === planning)).toBe(false);
   });
 
   it("list — member cannot read the Organizers channel", async () => {
