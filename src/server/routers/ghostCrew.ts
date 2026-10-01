@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { maybeRowOrThrow } from "@/server/lib/rowOrThrow";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripRole } from "../middleware";
@@ -341,12 +342,20 @@ export const ghostCrewRouter = router({
 
         if (existingUser && existingUser.id !== input.guestUserId) {
           // Reject if that user is already a member of this trip.
-          const { data: alreadyMember } = await ctx.supabase
-            .from("trip_members")
-            .select("id")
-            .eq("trip_id", ctx.tripId)
-            .eq("user_id", existingUser.id)
-            .maybeSingle();
+          // THROWS on a failed read (#1539). This check is the only thing
+          // refusing an account that is already on the trip: `link_guest_to_account`
+          // refuses deleted accounts and shared games but not this, so a failed
+          // read used to fall through to an irreversible merge that collapsed the
+          // placeholder's own trip row (nickname, role, travel) into the account's.
+          const alreadyMember = maybeRowOrThrow(
+            await ctx.supabase
+              .from("trip_members")
+              .select("id")
+              .eq("trip_id", ctx.tripId)
+              .eq("user_id", existingUser.id)
+              .maybeSingle(),
+            "trip's crew list"
+          );
 
           if (alreadyMember) {
             throw new TRPCError({

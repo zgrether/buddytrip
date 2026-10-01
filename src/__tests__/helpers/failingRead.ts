@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createCallerFactory, type TRPCContext } from "../../server/trpc";
 import { appRouter } from "../../server/router";
-import type { TestContext } from "./test-setup";
+import type { TestAccount, TestContext } from "./test-setup";
 
 /**
  * A real, authenticated tRPC caller whose client FAILS EXACTLY ONE READ —
@@ -20,13 +20,18 @@ import type { TestContext } from "./test-setup";
  *
  * Callers should still assert the EXACT refusal sentence: a failure from any
  * other door produces a different one, so the test cannot pass by accident.
+ *
+ * `who` is one of the four shared roles, or a `TestAccount` the test made. Use
+ * an account whenever the procedure writes the CALLER's own person-scoped state
+ * (preferences, devices, profile): changing a shared user's is a cross-file
+ * collision (#1540).
  */
 export function callerFailingRead(
   ctx: TestContext,
-  role: Parameters<TestContext["authedClient"]>[0],
+  who: Parameters<TestContext["authedClient"]>[0] | TestAccount,
   target: { table: string; columns: string },
 ) {
-  const real = ctx.authedClient(role);
+  const real = typeof who === "string" ? ctx.authedClient(who) : who.client();
   const failure = { data: null, count: null, error: { code: "PGRST003", message: "simulated read failure" } };
 
   const failingChain = (): unknown => {
@@ -60,7 +65,7 @@ export function callerFailingRead(
     },
   }) as SupabaseClient;
 
-  const user = ctx.getUser(role);
+  const user = typeof who === "string" ? ctx.getUser(who) : { id: who.id, email: who.email };
   const trpcCtx: TRPCContext = { supabase: client, user: { id: user.id, email: user.email }, membershipCache: new Map() };
   return createCallerFactory(appRouter)(trpcCtx);
 }

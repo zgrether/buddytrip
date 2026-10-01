@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { assertAffected } from "@/server/lib/assertAffected";
+import { maybeRowOrThrow } from "@/server/lib/rowOrThrow";
 import { router, authedProcedure } from "../trpc";
 import { createAdminClient } from "@/lib/supabase-admin";
 import {
@@ -154,12 +155,21 @@ export const notificationsRouter = router({
       const key = input.key as NotificationKey;
 
       // Read-modify-write the jsonb map (merge, don't clobber other keys).
-      const { data } = await ctx.supabase
-        .from("users")
-        .select("notification_prefs")
-        .eq("id", ctx.user.id)
-        .maybeSingle();
-      const prefs = { ...((data?.notification_prefs ?? {}) as NotificationPrefs) };
+      //
+      // The read THROWS on failure (#1539). Read as `data ?? {}`, a failed read
+      // became an empty map, and the write below then saved ONLY this key —
+      // erasing every other preference the person had set, so categories they
+      // had turned off started pushing again. The one irreversible write in the
+      // census: the old values are not recoverable once overwritten.
+      const row = maybeRowOrThrow(
+        await ctx.supabase
+          .from("users")
+          .select("notification_prefs")
+          .eq("id", ctx.user.id)
+          .maybeSingle(),
+        "notification settings"
+      );
+      const prefs = { ...((row?.notification_prefs ?? {}) as NotificationPrefs) };
       prefs[key] = input.enabled;
 
       // #782 — count asserted. Always the caller's OWN row, so zero rows can
