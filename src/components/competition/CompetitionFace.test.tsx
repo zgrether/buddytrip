@@ -16,13 +16,30 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
-let tripId: string;
+
+/**
+ * EVERY CASE BUILDS ITS OWN TRIP (#1527). The cases shared one: "header reads
+ * name + tagline" CREATED its cup, and the no-competition case asserted the
+ * trip had none while the panel cases read the cup the header case made.
+ * Shuffled, the no-competition case met that cup and the panel cases met none.
+ */
+async function faceTrip(label: string): Promise<string> {
+  const tripId = await ctx.createTrip(`CompTab ${label}`);
+  await ctx.addTripMember(tripId, "member", "Member");
+  return tripId;
+}
+
+/** A trip with a cup made through the real create — which seeds Team A / Team B. */
+async function createdCup(label: string, name = "Header Cup") {
+  const tripId = await faceTrip(label);
+  const created = await ctx.caller().competitions.create({ tripId, name, tagline: "First Past the Post" });
+  ctx.trackCompetition(created.id);
+  return { tripId, competitionId: created.id as string };
+}
 
 describe("CompetitionFace data layer", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("CompTab revision tests");
-    await ctx.addTripMember(tripId, "member", "Member");
   });
 
   afterAll(async () => {
@@ -30,63 +47,58 @@ describe("CompetitionFace data layer", () => {
   });
 
   it("no competition state — getByTrip returns null", async () => {
-    const caller = ctx.caller();
-    const competition = await caller.competitions.getByTrip({ tripId });
+    const tripId = await faceTrip("none");
+    const competition = await ctx.caller().competitions.getByTrip({ tripId });
     expect(competition).toBeNull();
   });
 
   it("competition exists — header reads name + tagline", async () => {
-    const caller = ctx.caller();
-    const created = await caller.competitions.create({
-      tripId,
-      name: "Header Cup",
-      tagline: "First Past the Post",
-    });
-    ctx.trackCompetition(created.id);
-
-    const fetched = await caller.competitions.getByTrip({ tripId });
+    const { tripId, competitionId } = await createdCup("header");
+    const fetched = await ctx.caller().competitions.getByTrip({ tripId });
+    expect(fetched?.id).toBe(competitionId);
     expect(fetched?.name).toBe("Header Cup");
     expect(fetched?.tagline).toBe("First Past the Post");
   });
 
   it("competition exists — sibling panels (Teams, Games) all resolve", async () => {
+    const { tripId, competitionId } = await createdCup("panels");
     const caller = ctx.caller();
-    const competition = await caller.competitions.getByTrip({ tripId });
-    expect(competition).not.toBeNull();
 
     const [teams, allGames, assignments] = await Promise.all([
-      caller.teams.list({ tripId, competitionId: competition!.id }),
+      caller.teams.list({ tripId, competitionId }),
       caller.games.listByTrip({ tripId }),
-      caller.teamAssignments.list({ tripId, competitionId: competition!.id }),
+      caller.teamAssignments.list({ tripId, competitionId }),
     ]);
     // create seeds two placeholder teams (Team A / Team B) so the bones board's
     // team hero renders immediately — rosters (assignments) are still empty.
     expect((teams as Array<{ short_name: string }>).map((t) => t.short_name).sort()).toEqual(["A", "B"]);
     expect(
-      (allGames as Array<{ competition_id: string | null }>).filter(
-        (g) => g.competition_id === competition!.id
-      )
+      (allGames as Array<{ competition_id: string | null }>).filter((g) => g.competition_id === competitionId)
     ).toEqual([]);
     expect(assignments).toEqual([]);
   });
 
   it("teams unassigned — members exist but no assignments yet", async () => {
+    // No teams.create here: `competitions.create` already seeded this
+    // head-to-head cup's two teams, and a third is refused since PR 4 (ruling 2).
+    const { tripId, competitionId } = await createdCup("unassigned");
     const caller = ctx.caller();
-    const competition = await caller.competitions.getByTrip({ tripId });
-    // No teams.create here any more: `competitions.create` already seeded this
-    // head-to-head cup's two teams (asserted above), and a third is refused
-    // since PR 4 (ruling 2). The two seeded teams are the "teams exist" half.
 
     const [teams, assignments, members] = await Promise.all([
-      caller.teams.list({ tripId, competitionId: competition!.id }),
-      caller.teamAssignments.list({ tripId, competitionId: competition!.id }),
+      caller.teams.list({ tripId, competitionId }),
+      caller.teamAssignments.list({ tripId, competitionId }),
       caller.tripMembers.list({ tripId }),
     ]);
-    expect(teams.length).toBeGreaterThan(0);
-    expect(members.length).toBeGreaterThan(0);
+    expect(teams).toHaveLength(2);
+    // The owner and the member this case added — exactly, so "every member is
+    // unassigned" is about these two people and not about whoever happens to
+    // be on a shared trip.
+    expect(members.map((m: { user_id: string }) => m.user_id).sort()).toEqual(
+      [ctx.user.id, ctx.getUser("member").id].sort()
+    );
     // Assign Members surface renders dropdowns / drag cards for unassigned
     // members — at this stage every member is unassigned.
-    expect(assignments.length).toBe(0);
+    expect(assignments).toEqual([]);
   });
 
   // (Removed: the event-form + event-agenda-status-line cases tested the retired
@@ -95,18 +107,9 @@ describe("CompetitionFace data layer", () => {
   // and ScheduleTab for the game↔agenda link.)
 
   it("delete gating — owner can delete (reachable at any status)", async () => {
-    // Fresh competition for this test so we don't break the others above.
-    const ownerCaller = ctx.caller();
-    const created = await ownerCaller.competitions.create({
-      tripId: await ctx.createTrip("Delete-gating cup"),
-      name: "Delete Cup",
-    });
-    ctx.trackCompetition(created.id);
-
-    const result = await ownerCaller.competitions.delete({
-      tripId: created.trip_id as string,
-      competitionId: created.id,
-    });
+    const { tripId, competitionId } = await createdCup("delete", "Delete Cup");
+    const result = await ctx.caller().competitions.delete({ tripId, competitionId });
     expect(result).toEqual({ success: true });
+    expect(await ctx.caller().competitions.getByTrip({ tripId })).toBeNull();
   });
 });
