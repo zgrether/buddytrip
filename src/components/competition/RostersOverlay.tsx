@@ -27,7 +27,7 @@ import { TeamsPanel } from "./TeamsPanel";
  * edits waited on it and every later visit had no button for the same edits
  * (found in the #1529 look). `roster_setup` itself had no reader left (#445
  * removed the board signposts that read it), so it is no longer written at all;
- * the column is dropped separately.
+ * the column itself was dropped in migration 201 (#1530).
  */
 export function RostersOverlay({
   tripId,

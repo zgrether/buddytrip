@@ -441,5 +441,21 @@ describe("migration 101 — Organizer parity RLS", () => {
         .eq("id", competitionId);
       expect(data?.map((r) => r.id)).toContain(competitionId);
     });
+
+    it("competitions: the delete FUNCTION refuses an Organizer too, naming no single caller (migration 201)", async () => {
+      // The case above is the table's RLS; the app deletes through this function
+      // (competitions.delete → delete_competition_cascade → assert_competition_owner).
+      // The shared check used to say "Only the trip owner can reset a competition"
+      // while guarding DELETE as well; migration 201 made it generic.
+      const { error } = await ctx.authedClient("planner").rpc("delete_competition_cascade", {
+        p_trip_id: tripId,
+        p_competition_id: competitionId,
+        p_delete_games: true,
+      });
+      expect(error?.code).toBe("42501");
+      expect(error?.message).toBe("Only the trip owner can do this.");
+      const { data } = await ctx.admin.from("competitions").select("id").eq("id", competitionId);
+      expect(data?.map((r) => r.id)).toContain(competitionId);
+    });
   });
 });
