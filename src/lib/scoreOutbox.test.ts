@@ -16,6 +16,27 @@ import {
  * persist → read → clear round-trips and the per-game namespacing hold.
  */
 
+/**
+ * A fresh in-memory localStorage for the node test env, installed by EVERY
+ * block that touches the wrappers (#1527). It used to be inlined in two blocks
+ * and missing from the third: `outboxClearAll` ran on whatever polyfill an
+ * earlier block's beforeEach had left on globalThis, so run first it had no
+ * storage at all, every put was a silent no-op, and the reset read as having
+ * nothing to clear.
+ */
+function installMemoryStorage() {
+  const store = new Map<string, string>();
+  (globalThis as unknown as { window: unknown; localStorage: unknown }).window = globalThis;
+  (globalThis as unknown as { localStorage: Storage }).localStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+    clear: () => store.clear(),
+    key: () => null,
+    length: 0,
+  } as Storage;
+}
+
 describe("scoreOutbox — pure map ops", () => {
   it("putIn adds a keyed entry (idempotent id gameId-agnostic key = pid:unit)", () => {
     const m = putIn({}, "p1", "3", 4);
@@ -44,19 +65,7 @@ describe("scoreOutbox — pure map ops", () => {
 });
 
 describe("scoreOutbox — localStorage wrappers", () => {
-  beforeEach(() => {
-    // Minimal in-memory localStorage polyfill for the node test env.
-    const store = new Map<string, string>();
-    (globalThis as unknown as { window: unknown; localStorage: unknown }).window = globalThis;
-    (globalThis as unknown as { localStorage: Storage }).localStorage = {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
-      removeItem: (k: string) => void store.delete(k),
-      clear: () => store.clear(),
-      key: () => null,
-      length: 0,
-    } as Storage;
-  });
+  beforeEach(installMemoryStorage);
 
   it("persist → read an unconfirmed score", () => {
     outboxPut("g1", "p1", "3", 4);
@@ -91,18 +100,7 @@ describe("scoreOutbox — localStorage wrappers", () => {
 // one — which is what re-runs `useScoreSaver`'s recover-on-mount against the NEW
 // game. These lock the store semantics that recovery depends on.
 describe("scoreOutbox — survives a keyed remount on a game swap (#744)", () => {
-  beforeEach(() => {
-    const store = new Map<string, string>();
-    (globalThis as unknown as { window: unknown; localStorage: unknown }).window = globalThis;
-    (globalThis as unknown as { localStorage: Storage }).localStorage = {
-      getItem: (k: string) => store.get(k) ?? null,
-      setItem: (k: string, v: string) => void store.set(k, v),
-      removeItem: (k: string) => void store.delete(k),
-      clear: () => store.clear(),
-      key: () => null,
-      length: 0,
-    } as Storage;
-  });
+  beforeEach(installMemoryStorage);
 
   /**
    * THE HAZARD THAT DECIDED THE FIX. A participant id for a 1v1 side IS a user id,
@@ -148,6 +146,8 @@ describe("scoreOutbox — survives a keyed remount on a game swap (#744)", () =>
 });
 
 describe("outboxClearAll — the Danger-zone reset", () => {
+  beforeEach(installMemoryStorage);
+
   it("wipes the whole game's outbox, so a reset is not undone on remount", () => {
     // Without this, `outboxEntries` re-sends the survivors on the next mount and
     // quietly re-creates the scores the reset just deleted.
@@ -162,6 +162,7 @@ describe("outboxClearAll — the Danger-zone reset", () => {
   it("leaves other games alone", () => {
     outboxPut("g1", "p1", "1", 4);
     outboxPut("g2", "p1", "1", 4);
+    expect(outboxEntries("g1")).toHaveLength(1); // premise: there is something to clear
     outboxClearAll("g1");
     expect(outboxEntries("g1")).toEqual([]);
     expect(outboxEntries("g2")).toHaveLength(1);
