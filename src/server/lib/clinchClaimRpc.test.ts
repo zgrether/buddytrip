@@ -27,12 +27,27 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
-let tripId: string;
-let compId: string;
-let teamA: string;
-let teamB: string;
 
-const claim = async (team: string, comp = compId): Promise<boolean> => {
+/**
+ * EVERY CASE BUILDS ITS OWN CUP (#1527). The cases used to walk ONE cup's
+ * `clinch_notified_team_id` through a sequence — claim Alpha, lose a repeat,
+ * swap to Bravo, release, re-claim — each asserting on the column the case
+ * before had left. Shuffled, "the FIRST claim wins from a NULL column" met a
+ * column already holding a team, and the release cases met claims that had
+ * never been made. Each case now starts from a fresh, unclaimed cup and makes
+ * the claims its premise needs through the real functions.
+ */
+type Cup = { compId: string; teamA: string; teamB: string };
+
+async function freshCup(label: string): Promise<Cup> {
+  const tripId = await ctx.createTrip(`Clinch RPC ${label}`);
+  const compId = await ctx.createCompetition(tripId, `RPC Cup ${label}`);
+  const teamA = await ctx.createTeam(compId, "Alpha");
+  const teamB = await ctx.createTeam(compId, "Bravo");
+  return { compId, teamA, teamB };
+}
+
+const claim = async (comp: string, team: string): Promise<boolean> => {
   const { data, error } = await ctx.admin.rpc("claim_clinch_notification", {
     p_competition_id: comp,
     p_team_id: team,
@@ -41,7 +56,7 @@ const claim = async (team: string, comp = compId): Promise<boolean> => {
   return data as boolean;
 };
 
-const release = async (expected: string, comp = compId): Promise<boolean> => {
+const release = async (comp: string, expected: string): Promise<boolean> => {
   const { data, error } = await ctx.admin.rpc("release_clinch_claim", {
     p_competition_id: comp,
     p_expected_team_id: expected,
@@ -50,21 +65,18 @@ const release = async (expected: string, comp = compId): Promise<boolean> => {
   return data as boolean;
 };
 
-const held = async (): Promise<string | null> => {
-  const { data } = await ctx.admin
+const held = async (comp: string): Promise<string | null> => {
+  const { data, error } = await ctx.admin
     .from("competitions")
     .select("clinch_notified_team_id")
-    .eq("id", compId)
-    .maybeSingle();
+    .eq("id", comp)
+    .single();
+  if (error) throw new Error(`read claim: ${error.message}`);
   return (data?.clinch_notified_team_id as string | null) ?? null;
 };
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Clinch RPC Trip");
-  compId = await ctx.createCompetition(tripId, "RPC Cup");
-  teamA = await ctx.createTeam(compId, "Alpha");
-  teamB = await ctx.createTeam(compId, "Bravo");
 }, 120_000);
 
 afterAll(async () => {
@@ -75,77 +87,90 @@ describe("claim_clinch_notification — exactly-once, in SQL", () => {
   it("the FIRST claim wins from a NULL column, and the row actually changes", async () => {
     // The case `IS DISTINCT FROM` exists for: a bare `<>` is NULL against a NULL
     // column, so it would match nothing and silently lose EVERY first clinch.
-    expect(await held()).toBeNull();
-    expect(await claim(teamA)).toBe(true);
-    expect(await held()).toBe(teamA);
+    const { compId, teamA } = await freshCup("first");
+    expect(await held(compId)).toBeNull();
+    expect(await claim(compId, teamA)).toBe(true);
+    expect(await held(compId)).toBe(teamA);
   }, 60_000);
 
   it("a second claim for the same team loses, and does NOT report the write it made", async () => {
     // The production regression in one assertion: true here would mean a second
     // push for one clinch; a claim that returned true while writing nothing (or
     // false while writing) is the failure this migration removes.
-    expect(await claim(teamA)).toBe(false);
-    expect(await held()).toBe(teamA);
+    const { compId, teamA } = await freshCup("second-same");
+    expect(await claim(compId, teamA)).toBe(true); // premise: Alpha holds it
+    expect(await claim(compId, teamA)).toBe(false);
+    expect(await held(compId)).toBe(teamA);
   }, 60_000);
 
   it("repeated claims stay lost — idempotent, not alternating", async () => {
-    for (let i = 0; i < 3; i++) expect(await claim(teamA)).toBe(false);
-    expect(await held()).toBe(teamA);
+    const { compId, teamA } = await freshCup("repeated");
+    expect(await claim(compId, teamA)).toBe(true); // premise
+    for (let i = 0; i < 3; i++) expect(await claim(compId, teamA)).toBe(false);
+    expect(await held(compId)).toBe(teamA);
   }, 60_000);
 
   it("a DIFFERENT team wins — an un-clinch then a new decision IS news", async () => {
-    expect(await claim(teamB)).toBe(true);
-    expect(await held()).toBe(teamB);
+    const { compId, teamA, teamB } = await freshCup("different");
+    expect(await claim(compId, teamA)).toBe(true); // premise: Alpha holds it
+    expect(await claim(compId, teamB)).toBe(true);
+    expect(await held(compId)).toBe(teamB);
   }, 60_000);
 
   it("concurrent claims for the same team produce exactly ONE winner", async () => {
     // The property migration 099 introduced, now enforced by the row lock rather
     // than by a filter: concurrent callers serialize and one sees row_count > 0.
-    await ctx.admin
-      .from("competitions")
-      .update({ clinch_notified_team_id: null })
-      .eq("id", compId);
+    const { compId, teamA } = await freshCup("concurrent");
+    expect(await held(compId)).toBeNull(); // premise: everyone races from NULL
 
-    const results = await Promise.all(Array.from({ length: 5 }, () => claim(teamA)));
+    const results = await Promise.all(Array.from({ length: 5 }, () => claim(compId, teamA)));
     expect(results.filter(Boolean)).toHaveLength(1);
-    expect(await held()).toBe(teamA);
+    expect(await held(compId)).toBe(teamA);
   }, 60_000);
 
   it("an unknown competition is a loss, not a throw", async () => {
-    expect(await claim(teamA, genId("no-such-comp"))).toBe(false);
+    const { teamA } = await freshCup("unknown");
+    expect(await claim(genId("no-such-comp"), teamA)).toBe(false);
   }, 60_000);
 });
 
 describe("release_clinch_claim — conditional, never a blind clear", () => {
   it("releases a claim it still holds", async () => {
-    expect(await held()).toBe(teamA);
-    expect(await release(teamA)).toBe(true);
-    expect(await held()).toBeNull();
+    const { compId, teamA } = await freshCup("release-held");
+    expect(await claim(compId, teamA)).toBe(true);
+    expect(await held(compId)).toBe(teamA); // premise
+    expect(await release(compId, teamA)).toBe(true);
+    expect(await held(compId)).toBeNull();
   }, 60_000);
 
   it("clinch → release → the SAME team re-claims → eligible again", async () => {
     // The #841 sequence end to end. Before the release existed, step 3 returned
     // false and the second clinch went unannounced.
-    expect(await claim(teamA)).toBe(true);
-    expect(await release(teamA)).toBe(true);
-    expect(await claim(teamA)).toBe(true);
-    expect(await held()).toBe(teamA);
+    const { compId, teamA } = await freshCup("reclaim");
+    expect(await claim(compId, teamA)).toBe(true);
+    expect(await release(compId, teamA)).toBe(true);
+    expect(await claim(compId, teamA)).toBe(true);
+    expect(await held(compId)).toBe(teamA);
   }, 60_000);
 
   it("a STALE release loses to a newer claim — exactly-once survives", async () => {
     // A observed Alpha; B claims Bravo before A's release lands. A blind clear
     // would wipe B's claim and let one clinch announce twice.
+    const { compId, teamA, teamB } = await freshCup("stale");
+    expect(await claim(compId, teamA)).toBe(true); // what A observed
     const observedByA = teamA;
-    expect(await claim(teamB)).toBe(true);
+    expect(await claim(compId, teamB)).toBe(true);
 
-    expect(await release(observedByA)).toBe(false);
-    expect(await held(), "B's claim survives A's stale release").toBe(teamB);
+    expect(await release(compId, observedByA)).toBe(false);
+    expect(await held(compId), "B's claim survives A's stale release").toBe(teamB);
   }, 60_000);
 
   it("releasing a claim nobody holds is a no-op, not a throw", async () => {
-    expect(await release(teamB)).toBe(true);
-    expect(await held()).toBeNull();
-    expect(await release(teamB)).toBe(false);
+    const { compId, teamB } = await freshCup("nobody");
+    expect(await claim(compId, teamB)).toBe(true);
+    expect(await release(compId, teamB)).toBe(true);
+    expect(await held(compId)).toBeNull();
+    expect(await release(compId, teamB)).toBe(false);
   }, 60_000);
 
   /**
@@ -169,17 +194,18 @@ describe("release_clinch_claim — conditional, never a blind clear", () => {
    * statement, in a rolled-back transaction).
    */
   it("release returns TRUE and the column goes null — the WHERE sees the pre-image", async () => {
-    expect(await claim(teamA)).toBe(true);
-    expect(await held()).toBe(teamA);
+    const { compId, teamA } = await freshCup("pre-image");
+    expect(await claim(compId, teamA)).toBe(true);
+    expect(await held(compId)).toBe(teamA);
 
-    expect(await release(teamA), "row_count > 0 — a post-image filter would match nothing").toBe(
+    expect(await release(compId, teamA), "row_count > 0 — a post-image filter would match nothing").toBe(
       true
     );
-    expect(await held(), "and the write landed — not merely reported").toBeNull();
+    expect(await held(compId), "and the write landed — not merely reported").toBeNull();
 
     // The same call again now genuinely matches nothing: FALSE here is the
     // honest zero, which is what makes the TRUE above meaningful.
-    expect(await release(teamA)).toBe(false);
+    expect(await release(compId, teamA)).toBe(false);
   }, 60_000);
 });
 
@@ -188,6 +214,7 @@ describe("the functions are not reachable by end users", () => {
     // Supabase auto-grants EXECUTE to PUBLIC on new functions. Without the
     // revoke, any signed-in user could set or clear the cup's announcement
     // bookkeeping (revoke-from-public, migration 066's rule).
+    const { compId, teamA } = await freshCup("authenticated");
     const asUser = ctx.authedClient("member");
 
     const claimed = await asUser.rpc("claim_clinch_notification", {
@@ -195,11 +222,15 @@ describe("the functions are not reachable by end users", () => {
       p_team_id: teamA,
     });
     expect(claimed.error, "claim must be denied for authenticated").not.toBeNull();
+    expect(await held(compId), "and nothing was written").toBeNull();
 
+    // Release is denied against a claim that is really there to release.
+    expect(await claim(compId, teamA)).toBe(true);
     const released = await asUser.rpc("release_clinch_claim", {
       p_competition_id: compId,
       p_expected_team_id: teamA,
     });
     expect(released.error, "release must be denied for authenticated").not.toBeNull();
+    expect(await held(compId), "and the claim survives").toBe(teamA);
   }, 60_000);
 });

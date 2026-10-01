@@ -2,20 +2,44 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { HEAD_TO_HEAD_NO_THIRD_TEAM, HEAD_TO_HEAD_KEEPS_BOTH_TEAMS } from "./teams";
 
+/**
+ * EVERY CASE BUILDS ITS OWN CUP (#1527). The first block used to share one,
+ * which started with NO teams: "create" made the only one, and list, rename and
+ * delete all read `teams[0]` — so shuffled ahead of create, list found nothing
+ * and rename/delete dereferenced an undefined team.
+ */
 let ctx: TestContext;
-let tripId: string;
-let competitionId: string;
+
+/**
+ * A POINTS cup on a crew trip, holding one team. These cases are about WHO may
+ * create, rename and delete teams, and a points race takes any number. How many
+ * a head-to-head cup holds is its own block below (ruling 2, PR 4).
+ */
+async function pointsCup(label: string, opts: { withTeam: boolean }) {
+  const tripId = await ctx.createTrip(`Teams ${label}`);
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  const competitionId = await ctx.createCompetition(tripId, `Teams Cup ${label}`, { scoringModel: "points" });
+  const teamId = opts.withTeam ? await ctx.createTeam(competitionId, "Team Hammer") : null;
+  return { tripId, competitionId, teamId };
+}
+
+async function teamCount(competitionId: string): Promise<number> {
+  const { count, error } = await ctx.admin
+    .from("teams").select("id", { count: "exact", head: true }).eq("competition_id", competitionId);
+  if (error) throw new Error(`count teams: ${error.message}`);
+  return count ?? 0;
+}
+
+async function teamName(teamId: string): Promise<string | null> {
+  const { data, error } = await ctx.admin.from("teams").select("name").eq("id", teamId).maybeSingle();
+  if (error) throw new Error(`read team: ${error.message}`);
+  return (data?.name as string | undefined) ?? null;
+}
 
 describe("teams router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Teams Test");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
-    // A POINTS cup: these cases are about WHO may create and delete teams, and a
-    // points race takes any number. How many a head-to-head cup holds is its own
-    // block below (ruling 2, PR 4).
-    competitionId = await ctx.createCompetition(tripId, "Teams Test Cup", { scoringModel: "points" });
   });
 
   afterAll(async () => {
@@ -23,8 +47,8 @@ describe("teams router", () => {
   });
 
   it("create — planner can create a team", async () => {
-    const caller = ctx.callerAs("planner");
-    const team = await caller.teams.create({
+    const { tripId, competitionId } = await pointsCup("organizer-create", { withTeam: false });
+    const team = await ctx.callerAs("planner").teams.create({
       tripId,
       competitionId,
       name: "Team Hammer",
@@ -34,12 +58,13 @@ describe("teams router", () => {
     });
     expect(team.name).toBe("Team Hammer");
     expect(team.short_name).toBe("HAM");
+    expect(await teamCount(competitionId)).toBe(1);
   });
 
   it("create — member cannot create", async () => {
-    const caller = ctx.callerAs("member");
+    const { tripId, competitionId } = await pointsCup("member-create", { withTeam: false });
     await expect(
-      caller.teams.create({
+      ctx.callerAs("member").teams.create({
         tripId,
         competitionId,
         name: "Sneaky",
@@ -48,53 +73,47 @@ describe("teams router", () => {
         colorDim: "#000000",
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await teamCount(competitionId)).toBe(0);
   });
 
   it("list — any member can list teams", async () => {
-    const caller = ctx.callerAs("member");
-    const teams = await caller.teams.list({ tripId, competitionId });
-    expect(teams.length).toBeGreaterThanOrEqual(1);
+    const { tripId, competitionId, teamId } = await pointsCup("list", { withTeam: true });
+    const teams = await ctx.callerAs("member").teams.list({ tripId, competitionId });
+    // Exactly the team this case made — `>= 1` was satisfied by whatever an
+    // earlier case had left behind.
+    expect(teams.map((t) => t.id)).toEqual([teamId]);
   });
 
   it("update — the owner and an Organizer can rename a team's identity; a Member cannot", async () => {
     // Identity (name/short/color): Owner, Organizer (migration 199 — whoever can
     // delete a team can rename it; PR b2 had gated Organizer out), or the team's
     // captain. Captain-specific cases live in teams.identity.test.ts.
-    const teams = await ctx.caller().teams.list({ tripId, competitionId });
-    const target = teams[0];
-    const updated = await ctx.caller().teams.update({
-      tripId,
-      teamId: target.id,
-      name: "Team Hammer 2.0",
-    });
+    const { tripId, teamId } = await pointsCup("rename", { withTeam: true });
+    const updated = await ctx.caller().teams.update({ tripId, teamId: teamId!, name: "Team Hammer 2.0" });
     expect(updated.name).toBe("Team Hammer 2.0");
 
-    const byOrganizer = await ctx.callerAs("planner").teams.update({
-      tripId,
-      teamId: target.id,
-      name: "Team Hammer 3.0",
-    });
+    const byOrganizer = await ctx.callerAs("planner").teams.update({ tripId, teamId: teamId!, name: "Team Hammer 3.0" });
     expect(byOrganizer.name).toBe("Team Hammer 3.0");
 
     await expect(
-      ctx.callerAs("member").teams.update({ tripId, teamId: target.id, name: "Nope" })
+      ctx.callerAs("member").teams.update({ tripId, teamId: teamId!, name: "Nope" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await teamName(teamId!)).toBe("Team Hammer 3.0");
   });
 
   it("delete — an Organizer can delete a team; a member cannot", async () => {
-    // Member is gated out at the organizer boundary.
-    const memberCaller = ctx.callerAs("member");
-    const memberTeams = await memberCaller.teams.list({ tripId, competitionId });
+    const { tripId, competitionId, teamId } = await pointsCup("delete", { withTeam: true });
+    // Member is gated out at the organizer boundary — and the team survives it.
     await expect(
-      memberCaller.teams.delete({ tripId, teamId: memberTeams[0].id })
+      ctx.callerAs("member").teams.delete({ tripId, teamId: teamId! })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await teamCount(competitionId)).toBe(1);
 
     // Organizer (planner) can — editing teams is owner-minus-destructive
     // (deleting a TEAM isn't a competition-destructive action).
-    const plannerCaller = ctx.callerAs("planner");
-    const teams = await plannerCaller.teams.list({ tripId, competitionId });
-    const result = await plannerCaller.teams.delete({ tripId, teamId: teams[0].id });
+    const result = await ctx.callerAs("planner").teams.delete({ tripId, teamId: teamId! });
     expect(result).toEqual({ success: true });
+    expect(await teamCount(competitionId)).toBe(0);
   });
 
   /**
@@ -106,12 +125,6 @@ describe("teams router", () => {
    */
   describe("teams — a head-to-head cup is exactly two teams", () => {
     const TEAM = { shortName: "T", color: "#3b82f6", colorDim: "#0a1a2a" };
-
-    async function teamCount(competitionId: string): Promise<number> {
-      const { count } = await ctx.admin
-        .from("teams").select("id", { count: "exact", head: true }).eq("competition_id", competitionId);
-      return count ?? 0;
-    }
 
     it("refuses a third team, naming what to do instead", async () => {
       const { tripId, competitionId: cup } = await ctx.createCupTrip({ name: "H2H Two", scoringModel: "match_play" });

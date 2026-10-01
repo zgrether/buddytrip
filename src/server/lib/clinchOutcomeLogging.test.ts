@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
-import { notifyCupClinchedIfDecided } from "./gameFinishNotify";
+import { claimClinchNotification, notifyCupClinchedIfDecided } from "./gameFinishNotify";
 
 /**
  * The clinch check must SAY what it did — every path, including the ones that
@@ -22,21 +22,29 @@ import { notifyCupClinchedIfDecided } from "./gameFinishNotify";
  */
 
 let ctx: TestContext;
-let tripId: string;
-let compId: string;
-let winner: string;
-let loser: string;
 const gameIds: string[] = [];
+const compIds: string[] = [];
 
 /** Captured `console.info` / `console.error` first-arguments for this call. */
 let lines: string[];
 let infoSpy: ReturnType<typeof vi.spyOn>;
 let errorSpy: ReturnType<typeof vi.spyOn>;
 
-async function seedFinalizedGame(name: string, first: string, second: string, total: number) {
+/**
+ * EVERY CASE BUILDS ITS OWN CUP (#1527). The cases used to share one and walk
+ * it UNDECIDED → DECIDED → claimed, each relying on the last: "already claimed"
+ * needed the claim the previous case made, and "every pre-send exit also leaves
+ * a ROW" read the rows the earlier cases had written — its own message said so
+ * ("the earlier cases in this file each left a row"). Shuffled, those cases met
+ * an undecided cup and an empty log. Each case now builds a cup in the state it
+ * tests, and the row case produces its own three exits.
+ */
+type Cup = { tripId: string; compId: string; winner: string; loser: string; unplayed: string | null };
+
+async function seedFinalizedGame(cup: Pick<Cup, "tripId" | "compId">, name: string, first: string, second: string, total: number) {
   const id = crypto.randomUUID();
   const g = await ctx.admin.from("games").insert({
-    id, trip_id: tripId, competition_id: compId, game_type_id: "gtt_generic_yard",
+    id, trip_id: cup.tripId, competition_id: cup.compId, game_type_id: "gtt_generic_yard",
     name, status: "complete", scoring_enabled: true,
     points_total: total, points_distribution: { type: "placement", values: [total] },
   });
@@ -50,35 +58,108 @@ async function seedFinalizedGame(name: string, first: string, second: string, to
   return id;
 }
 
-async function run() {
+/**
+ * A head-to-head cup (only a head-to-head cup fires a CUP clinch — ruling 4,
+ * PR 4) where Winner has taken the one finalized game, 2 of 2. With `undecided`
+ * it also holds a 10-point game nobody has played, so nobody can have clinched.
+ */
+async function h2hCup(label: string, opts: { undecided: boolean }): Promise<Cup> {
+  const tripId = await ctx.createTrip(`Clinch outcome logging ${label}`);
+  const compId = await ctx.createCompetition(tripId, `Outcome Cup ${label}`, { scoringModel: "match_play" });
+  compIds.push(compId);
+  const winner = await ctx.createTeam(compId, "Winner", { shortName: "WIN" });
+  const loser = await ctx.createTeam(compId, "Loser", { shortName: "LOS", color: "#ef4444", colorDim: "#2a0a0a" });
+  await seedFinalizedGame({ tripId, compId }, "g1", winner, loser, 2);
+  let unplayed: string | null = null;
+  if (opts.undecided) {
+    unplayed = crypto.randomUUID();
+    const { error } = await ctx.admin.from("games").insert({
+      id: unplayed, trip_id: tripId, competition_id: compId, game_type_id: "gtt_generic_yard",
+      name: "unplayed", status: "pending", scoring_enabled: false,
+      points_total: 10, points_distribution: { type: "placement", values: [10] },
+    });
+    if (error) throw new Error(`seed unplayed game: ${error.message}`);
+    gameIds.push(unplayed);
+  }
+  return { tripId, compId, winner, loser, unplayed };
+}
+
+async function run(cup: Cup, admin: Parameters<typeof notifyCupClinchedIfDecided>[0]["admin"] = ctx.admin) {
   await notifyCupClinchedIfDecided({
-    tripId,
-    competitionId: compId,
+    tripId: cup.tripId,
+    competitionId: cup.compId,
     actorUserId: ctx.getUser("owner").id,
-    admin: ctx.admin,
+    admin,
   });
 }
 
-/** The outcome lines emitted by the call, in order. */
+/** Hold the claim for Winner without a send — the state "already claimed" tests. */
+async function holdClaim(cup: Cup) {
+  expect(await claimClinchNotification(ctx.admin, cup.compId, cup.winner)).toEqual({ outcome: "claimed" });
+}
+
+/**
+ * A client that fails only where the COMPUTE reads, and works everywhere
+ * else — which is production's actual failure shape. A wholly-broken client
+ * would also break the recording, so the row would be missing for a reason
+ * that has nothing to do with the code under test.
+ *
+ * The rejecting builder is chainable-and-thenable rather than
+ * synchronously-throwing: both reads run inside a `Promise.all`, and a sync
+ * throw escapes before Promise.all attaches handlers, leaving the sibling
+ * read as an unhandled rejection — test noise that reads like a product fault.
+ */
+function explodingOnTeams() {
+  const rejecting: Record<string, unknown> = {};
+  for (const m of ["select", "eq", "in", "order", "update", "insert", "delete"]) {
+    rejecting[m] = () => rejecting;
+  }
+  rejecting.maybeSingle = () => Promise.reject(new Error("boom"));
+  rejecting.then = (_ok: unknown, bad: (e: Error) => void) => bad(new Error("boom"));
+
+  return new Proxy(ctx.admin, {
+    get(target, prop, receiver) {
+      if (prop !== "from") return Reflect.get(target, prop, receiver);
+      return (table: string) =>
+        table === "teams"
+          ? rejecting
+          : (Reflect.get(target, "from", receiver) as (t: string) => unknown).call(target, table);
+    },
+  }) as unknown as Parameters<typeof notifyCupClinchedIfDecided>[0]["admin"];
+}
+
+/** The outcome lines emitted since the last reset, in order. */
 function outcomes(): string[] {
   return lines
     .filter((l) => l.startsWith("[push] clinch check:"))
     .map((l) => l.replace("[push] clinch check: ", ""));
 }
 
+async function logRows(compId: string) {
+  const { data, error } = await ctx.admin
+    .from("push_send_log")
+    .select("trigger, outcome, recipients, sent, competition_id")
+    .eq("competition_id", compId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(`read push_send_log: ${error.message}`);
+  return data ?? [];
+}
+
+async function claimHeld(compId: string): Promise<string | null> {
+  const { data, error } = await ctx.admin
+    .from("competitions").select("clinch_notified_team_id").eq("id", compId).single();
+  if (error) throw new Error(`read claim: ${error.message}`);
+  return (data?.clinch_notified_team_id as string | null) ?? null;
+}
+
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Clinch outcome logging");
-  // Head to head: only a head-to-head cup fires a CUP clinch (ruling 4, PR 4).
-  compId = await ctx.createCompetition(tripId, "Outcome Cup", { scoringModel: "match_play" });
-  winner = await ctx.createTeam(compId, "Winner", { shortName: "WIN" });
-  loser = await ctx.createTeam(compId, "Loser", { shortName: "LOS", color: "#ef4444", colorDim: "#2a0a0a" });
 }, 120_000);
 
 afterAll(async () => {
   // push_send_log has no FK to anything (deliberately — migration 105), so
   // ctx.cleanup() does not sweep it. Remove this suite's rows explicitly.
-  await ctx.admin.from("push_send_log").delete().eq("competition_id", compId);
+  if (compIds.length) await ctx.admin.from("push_send_log").delete().in("competition_id", compIds);
   if (gameIds.length) {
     await ctx.admin.from("game_results").delete().in("game_id", gameIds);
     await ctx.admin.from("games").delete().in("id", gameIds);
@@ -103,72 +184,30 @@ afterEach(() => {
 describe("clinch check — every path announces itself", () => {
   it("UNDECIDED cup: logs entry then no_clincher", async () => {
     // One game of two — nobody can have clinched yet.
-    await seedFinalizedGame("g1", winner, loser, 2);
-    const second = crypto.randomUUID();
-    await ctx.admin.from("games").insert({
-      id: second, trip_id: tripId, competition_id: compId, game_type_id: "gtt_generic_yard",
-      name: "unplayed", status: "pending", scoring_enabled: false,
-      points_total: 10, points_distribution: { type: "placement", values: [10] },
-    });
-    gameIds.push(second);
-
-    await run();
-
+    const cup = await h2hCup("undecided", { undecided: true });
+    await run(cup);
     expect(outcomes()).toEqual(["entry", "no_clincher"]);
   }, 60_000);
 
   it("DECIDED cup, unclaimed: logs entry then claimed", async () => {
-    // Remove the big unplayed game so the winner's 2 of 2 decides it.
-    await ctx.admin.from("games").delete().eq("id", gameIds[gameIds.length - 1]);
-    gameIds.pop();
-
-    await run();
-
+    const cup = await h2hCup("decided", { undecided: false });
+    expect(await claimHeld(cup.compId)).toBeNull(); // premise: nobody holds it yet
+    await run(cup);
     expect(outcomes()).toEqual(["entry", "claimed"]);
+    expect(await claimHeld(cup.compId)).toBe(cup.winner);
   }, 60_000);
 
   it("DECIDED cup, already claimed: logs entry then already_claimed", async () => {
-    // The claim is held from the previous case — this is correct suppression,
-    // and it is exactly the case that used to be silent.
-    await run();
-
+    // Correct suppression, and exactly the case that used to be silent.
+    const cup = await h2hCup("claimed", { undecided: false });
+    await holdClaim(cup);
+    await run(cup);
     expect(outcomes()).toEqual(["entry", "already_claimed"]);
   }, 60_000);
 
   it("a THROW still announces itself, under the same prefix", async () => {
-    // A client that fails only where the COMPUTE reads, and works everywhere
-    // else — which is production's actual failure shape. A wholly-broken client
-    // would also break the recording, so the row would be missing for a reason
-    // that has nothing to do with the code under test (that was this test's
-    // first draft, and it asserted the wrong thing).
-    //
-    // The rejecting builder is chainable-and-thenable rather than
-    // synchronously-throwing: both reads run inside a `Promise.all`, and a sync
-    // throw escapes before Promise.all attaches handlers, leaving the sibling
-    // read as an unhandled rejection — test noise that reads like a product fault.
-    const rejecting: Record<string, unknown> = {};
-    for (const m of ["select", "eq", "in", "order", "update", "insert", "delete"]) {
-      rejecting[m] = () => rejecting;
-    }
-    rejecting.maybeSingle = () => Promise.reject(new Error("boom"));
-    rejecting.then = (_ok: unknown, bad: (e: Error) => void) => bad(new Error("boom"));
-
-    const exploding = new Proxy(ctx.admin, {
-      get(target, prop, receiver) {
-        if (prop !== "from") return Reflect.get(target, prop, receiver);
-        return (table: string) =>
-          table === "teams"
-            ? rejecting
-            : (Reflect.get(target, "from", receiver) as (t: string) => unknown).call(target, table);
-      },
-    }) as unknown as Parameters<typeof notifyCupClinchedIfDecided>[0]["admin"];
-
-    await notifyCupClinchedIfDecided({
-      tripId,
-      competitionId: compId,
-      actorUserId: ctx.getUser("owner").id,
-      admin: exploding,
-    });
+    const cup = await h2hCup("throw", { undecided: false });
+    await run(cup, explodingOnTeams());
 
     // Entry fires BEFORE anything can throw — that ordering is the point, and it
     // is what makes "entry with no outcome" mean "it died in between".
@@ -179,21 +218,20 @@ describe("clinch check — every path announces itself", () => {
     // The log line answers the question while an incident is live; the row is
     // what survives Vercel's retention. #842 gave the SEND half that property
     // and the clinch check's pre-send exits never had it — this is that gap.
-    const { data } = await ctx.admin
-      .from("push_send_log")
-      .select("trigger, outcome, recipients, sent, competition_id")
-      .eq("competition_id", compId)
-      .order("created_at", { ascending: true });
+    //
+    // The three exits that used to be indistinguishable silence, produced here
+    // on one cup rather than borrowed from whichever cases ran first.
+    const cup = await h2hCup("rows", { undecided: true });
+    await run(cup); //                                     no_clincher
+    const { error } = await ctx.admin.from("games").delete().eq("id", cup.unplayed!);
+    if (error) throw new Error(`remove unplayed game: ${error.message}`);
+    await holdClaim(cup);
+    await run(cup); //                                     already_claimed
+    await run(cup, explodingOnTeams()); //                 threw
 
-    const rows = data ?? [];
-    expect(rows.length, "the earlier cases in this file each left a row").toBeGreaterThanOrEqual(3);
+    const rows = await logRows(cup.compId);
+    expect(rows.map((r) => r.outcome)).toEqual(["no_clincher", "already_claimed", "threw"]);
     expect(rows.every((r) => r.trigger === "cup_clinched")).toBe(true);
-
-    const recorded = rows.map((r) => r.outcome);
-    // The three that used to be indistinguishable silence.
-    expect(recorded).toContain("no_clincher");
-    expect(recorded).toContain("already_claimed");
-    expect(recorded).toContain("threw");
 
     // All counters zero — which is exactly WHY the outcome column has to exist:
     // nothing in the arithmetic separates these cases from one another.
@@ -221,26 +259,26 @@ describe("clinch check — every path announces itself", () => {
    * so all of that passed. Pairing them per-call is what catches it.
    */
   it("the recorded row's outcome MATCHES the logged outcome, per call", async () => {
-    await ctx.admin.from("push_send_log").delete().eq("competition_id", compId);
+    // DECIDED and claimed → already_claimed, on a cup with no earlier rows.
+    const cup = await h2hCup("match", { undecided: false });
+    await holdClaim(cup);
+    expect(await logRows(cup.compId)).toEqual([]); // premise: holding the claim recorded nothing
 
-    // Currently DECIDED and claimed (from the cases above) → already_claimed.
-    await run();
+    await run(cup);
     const logged = outcomes().filter((o) => o !== "entry");
-    expect(logged).toHaveLength(1);
+    expect(logged).toEqual(["already_claimed"]);
 
-    const { data } = await ctx.admin
-      .from("push_send_log")
-      .select("outcome")
-      .eq("competition_id", compId);
-
-    expect(data ?? []).toHaveLength(1);
-    expect((data ?? [])[0]?.outcome).toBe(logged[0]);
+    const rows = await logRows(cup.compId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].outcome).toBe(logged[0]);
   }, 60_000);
 
   it("EXACTLY ONE outcome per call — never zero, never two", async () => {
     // The invariant that makes the log readable: one call, one verdict. Zero
     // would restore the blind spot; two would mean a path fell through.
-    await run();
+    const cup = await h2hCup("one-outcome", { undecided: false });
+    await holdClaim(cup);
+    await run(cup);
     const os = outcomes();
     expect(os[0]).toBe("entry");
     expect(os.slice(1)).toHaveLength(1);
@@ -260,36 +298,16 @@ describe("clinch check — every path announces itself", () => {
  * facts, and the row is where the next audit reads them.
  */
 describe("clinch check — a points race never fires a cup clinch", () => {
-  let pointsComp: string;
-
-  afterAll(async () => {
-    await ctx.admin.from("push_send_log").delete().eq("competition_id", pointsComp);
-  });
-
   it("a DECIDED points cup: logs entry then not_head_to_head, claims nothing, records the row", async () => {
-    // Its own trip: a trip holds one competition (migration 195), and the file's
-    // trip already holds the head-to-head cup.
-    const { tripId: pointsTrip, competitionId } = await ctx.createCupTrip({
+    const { tripId: pointsTrip, competitionId: pointsComp } = await ctx.createCupTrip({
       title: "Clinch outcome logging (points)",
       name: "Points Race",
       scoringModel: "points",
     });
-    pointsComp = competitionId;
+    compIds.push(pointsComp);
     const lead = await ctx.createTeam(pointsComp, "Lead", { shortName: "LED" });
     const trail = await ctx.createTeam(pointsComp, "Trail", { shortName: "TRL", color: "#ef4444", colorDim: "#2a0a0a" });
-    const id = crypto.randomUUID();
-    const g = await ctx.admin.from("games").insert({
-      id, trip_id: pointsTrip, competition_id: pointsComp, game_type_id: "gtt_generic_yard",
-      name: "only game", status: "complete", scoring_enabled: true,
-      points_total: 2, points_distribution: { type: "placement", values: [2] },
-    });
-    if (g.error) throw new Error(`seed game: ${g.error.message}`);
-    gameIds.push(id);
-    const r = await ctx.admin.from("game_results").insert([
-      { id: crypto.randomUUID(), game_id: id, entity_id: lead, entity_type: "team", value_kind: "rank", position: 1, raw_score: 1 },
-      { id: crypto.randomUUID(), game_id: id, entity_id: trail, entity_type: "team", value_kind: "rank", position: 2, raw_score: 2 },
-    ]);
-    if (r.error) throw new Error(`seed results: ${r.error.message}`);
+    await seedFinalizedGame({ tripId: pointsTrip, compId: pointsComp }, "only game", lead, trail, 2);
 
     await notifyCupClinchedIfDecided({
       tripId: pointsTrip,
@@ -299,13 +317,9 @@ describe("clinch check — a points race never fires a cup clinch", () => {
     });
 
     expect(outcomes()).toEqual(["entry", "not_head_to_head"]);
-
-    const { data: comp } = await ctx.admin
-      .from("competitions").select("clinch_notified_team_id").eq("id", pointsComp).single();
-    expect(comp?.clinch_notified_team_id ?? null).toBeNull();
-
-    const { data: rows } = await ctx.admin
-      .from("push_send_log").select("trigger, outcome").eq("competition_id", pointsComp);
-    expect(rows).toEqual([{ trigger: "cup_clinched", outcome: "not_head_to_head" }]);
+    expect(await claimHeld(pointsComp)).toBeNull();
+    expect((await logRows(pointsComp)).map((r) => ({ trigger: r.trigger, outcome: r.outcome }))).toEqual([
+      { trigger: "cup_clinched", outcome: "not_head_to_head" },
+    ]);
   }, 60_000);
 });

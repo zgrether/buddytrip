@@ -1,15 +1,35 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 
+/**
+ * EVERY CASE BUILDS THE TRIP IT USES (#1527). The cases used to share one trip
+ * and walk its single competition through a life: created by one case, read by
+ * the next, renamed, deleted — and then "CASCADE-deletes its games" created a
+ * second one on the same trip, which only works once the first is gone. A
+ * trip holds one cup (migration 195), so shuffled, the creates collided ("A
+ * competition already exists for this trip"), the duplicate refusal found no
+ * first cup to collide with, and getByTrip read a cup that had not been made.
+ */
 let ctx: TestContext;
-let tripId: string;
+
+/** Owner = primary user; planner = Organizer; member = Member. No cup yet. */
+async function crewTrip(label: string): Promise<string> {
+  const tripId = await ctx.createTrip(`Competitions ${label}`);
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  return tripId;
+}
+
+/** A crew trip that already holds its one cup, made with the sanctioned helper. */
+async function cupTrip(label: string, name = "BBMI 2027"): Promise<{ tripId: string; competitionId: string }> {
+  const tripId = await crewTrip(label);
+  const competitionId = await ctx.createCompetition(tripId, name);
+  return { tripId, competitionId };
+}
 
 describe("competitions router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Competitions Test");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
   });
 
   afterAll(async () => {
@@ -17,24 +37,24 @@ describe("competitions router", () => {
   });
 
   it("getByTrip — returns null when none exists", async () => {
-    const caller = ctx.caller();
-    const result = await caller.competitions.getByTrip({ tripId });
+    const tripId = await crewTrip("none");
+    const result = await ctx.caller().competitions.getByTrip({ tripId });
     expect(result).toBeNull();
   });
 
   it("create — owner can create (scoring_model defaults to head-to-head)", async () => {
-    const caller = ctx.caller();
-    const comp = await caller.competitions.create({
+    const tripId = await crewTrip("create");
+    const comp = await ctx.caller().competitions.create({
       tripId,
       name: "BBMI 2027",
       tagline: "The cup returns",
     });
+    ctx.trackCompetition(comp.id);
     expect(comp.name).toBe("BBMI 2027");
     expect(comp.tagline).toBe("The cup returns");
     expect(comp.status).toBe("upcoming");
     // Shape chooser omitted → match_play (head-to-head) default.
     expect(comp.scoring_model).toBe("match_play");
-    ctx.trackCompetition(comp.id);
   });
 
   it("create — the shape chooser writes scoring_model (points) + defaults to 2 teams", async () => {
@@ -85,85 +105,73 @@ describe("competitions router", () => {
   });
 
   it("create — member cannot create", async () => {
-    const caller = ctx.callerAs("member");
+    const tripId = await crewTrip("member-create");
     await expect(
-      caller.competitions.create({ tripId, name: "Sneaky" })
+      ctx.callerAs("member").competitions.create({ tripId, name: "Sneaky" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    // …and nothing was made, so the refusal is not a create that also threw.
+    expect(await ctx.caller().competitions.getByTrip({ tripId })).toBeNull();
   });
 
   // The READ-FIRST branch: the common case, refused with a sentence before the
   // insert. Since migration 195 it is no longer the guard — the database is, and
   // `competitions.oneCupPerTrip.test.ts` pins that refusal and the race past this one.
   it("create — a second competition on the trip is refused, readably (read-first branch)", async () => {
-    const caller = ctx.caller();
+    const { tripId, competitionId } = await cupTrip("second");
+    // Premise: the first cup is there to collide with.
+    expect((await ctx.caller().competitions.getByTrip({ tripId }))?.id).toBe(competitionId);
     await expect(
-      caller.competitions.create({ tripId, name: "Second one" })
+      ctx.caller().competitions.create({ tripId, name: "Second one" })
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
   it("getByTrip — returns competition for any trip member", async () => {
-    const caller = ctx.callerAs("member");
-    const result = await caller.competitions.getByTrip({ tripId });
+    const { tripId, competitionId } = await cupTrip("member-read");
+    const result = await ctx.callerAs("member").competitions.getByTrip({ tripId });
+    expect(result?.id).toBe(competitionId);
     expect(result?.name).toBe("BBMI 2027");
   });
 
   it("update — planner can edit metadata", async () => {
-    const ownerCaller = ctx.caller();
-    const existing = await ownerCaller.competitions.getByTrip({ tripId });
-    expect(existing).not.toBeNull();
-
-    const plannerCaller = ctx.callerAs("planner");
-    const updated = await plannerCaller.competitions.update({
+    const { tripId, competitionId } = await cupTrip("organizer-update");
+    const updated = await ctx.callerAs("planner").competitions.update({
       tripId,
-      competitionId: existing!.id,
+      competitionId,
       tagline: "If you're not first, you're last",
     });
     expect(updated.tagline).toBe("If you're not first, you're last");
   });
 
   it("update — short_name persists and clears back to null", async () => {
+    const { tripId, competitionId } = await cupTrip("short-name");
     const ownerCaller = ctx.caller();
-    const existing = await ownerCaller.competitions.getByTrip({ tripId });
-    expect(existing).not.toBeNull();
 
     // Set a short label (the bottom-nav tab uses this).
-    const set = await ownerCaller.competitions.update({
-      tripId,
-      competitionId: existing!.id,
-      shortName: "BBMI",
-    });
+    const set = await ownerCaller.competitions.update({ tripId, competitionId, shortName: "BBMI" });
     expect(set.short_name).toBe("BBMI");
 
     // Empty clears it → null (nav falls back to the full name).
-    const cleared = await ownerCaller.competitions.update({
-      tripId,
-      competitionId: existing!.id,
-      shortName: null,
-    });
+    const cleared = await ownerCaller.competitions.update({ tripId, competitionId, shortName: null });
     expect(cleared.short_name).toBeNull();
   });
 
   it("delete — only owner can delete", async () => {
-    const ownerCaller = ctx.caller();
-    const existing = await ownerCaller.competitions.getByTrip({ tripId });
-    expect(existing).not.toBeNull();
+    const { tripId, competitionId } = await cupTrip("delete");
 
-    const plannerCaller = ctx.callerAs("planner");
     await expect(
-      plannerCaller.competitions.delete({
-        tripId,
-        competitionId: existing!.id,
-      })
+      ctx.callerAs("planner").competitions.delete({ tripId, competitionId })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    // The refusal deleted nothing…
+    expect((await ctx.caller().competitions.getByTrip({ tripId }))?.id).toBe(competitionId);
 
-    const ok = await ownerCaller.competitions.delete({
-      tripId,
-      competitionId: existing!.id,
-    });
+    const ok = await ctx.caller().competitions.delete({ tripId, competitionId });
     expect(ok).toEqual({ success: true });
+    // …and the owner's delete really did.
+    expect(await ctx.caller().competitions.getByTrip({ tripId })).toBeNull();
   });
 
   it("delete — CASCADE-deletes its games (Phase 1 default), never leaving detached orphans", async () => {
+    const tripId = await crewTrip("cascade");
     const caller = ctx.caller();
     const comp = await caller.competitions.create({ tripId, name: "Cascade Cup" });
     ctx.trackCompetition(comp.id);
@@ -175,22 +183,25 @@ describe("competitions router", () => {
       pointsDistribution: { type: "placement", values: [3, 1] },
     })) as { id: string };
 
+    const gameRow = async () => {
+      const { data, error } = await ctx.admin.from("games").select("id").eq("id", game.id).maybeSingle();
+      if (error) throw new Error(`read game: ${error.message}`);
+      return data;
+    };
+    expect(await gameRow()).not.toBeNull(); // premise: there is a game to cascade
+
     await caller.competitions.delete({ tripId, competitionId: comp.id });
 
     // The game is DELETED with the competition (delete_competition_cascade,
     // migration 079) — NOT SET NULL-detached. The row is gone, and nothing is
     // left carrying the dead competition id. (The full child-cascade / ordering
     // proof lives in deleteCompetitionCascade.test.ts.)
-    const { data: row } = await ctx.admin
-      .from("games")
-      .select("id")
-      .eq("id", game.id)
-      .maybeSingle();
-    expect(row).toBeNull();
-    const { data: detached } = await ctx.admin
+    expect(await gameRow()).toBeNull();
+    const { data: detached, error } = await ctx.admin
       .from("games")
       .select("id")
       .eq("competition_id", comp.id);
-    expect(detached?.length ?? 0).toBe(0);
+    if (error) throw new Error(`read detached games: ${error.message}`);
+    expect(detached).toEqual([]);
   });
 });

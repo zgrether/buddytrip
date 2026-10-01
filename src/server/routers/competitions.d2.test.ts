@@ -11,21 +11,36 @@ import type { PointsDistribution } from "../../lib/pointsDistribution";
  * All math delegates to competitionPlacement.ts (client-safe lib) — the
  * assertions here prove the endpoint matches what the lib would compute, not a
  * re-implementation of the math.
+ *
+ * EVERY CASE BUILDS ITS OWN CUP (#1527). The first describe's two cases used
+ * to share the file's cup: "early state" asserted every total was zero, and
+ * "in-progress" banked a result on that same cup. Shuffled after it, early
+ * state read 9. (The later describes already built their own.)
  */
 
 const MANUAL = "gtt_manual";
 
 let ctx: TestContext;
-let tripId: string;
-let competitionId: string;
 const gameIds: string[] = [];
 
-async function makeGame(distribution: PointsDistribution | null, name = "Game") {
+type Cup = { tripId: string; competitionId: string; teamA: string; teamB: string };
+
+/** A fresh two-team points cup. */
+async function twoTeamCup(label: string): Promise<Cup> {
+  // D2 verifies the points/placement award model — declare it explicitly now
+  // that the DB default is match_play (W-NONGOLF-02).
+  const { tripId, competitionId } = await ctx.createCupTrip({ name: `D2 Cup ${label}`, scoringModel: "points" });
+  const teamA = await ctx.createTeam(competitionId, "Blue", { shortName: "BLU" });
+  const teamB = await ctx.createTeam(competitionId, "Red", { shortName: "RED" });
+  return { tripId, competitionId, teamA, teamB };
+}
+
+async function makeGame(cup: Cup, distribution: PointsDistribution | null, name = "Game") {
   const g = (await ctx.caller().games.create({
-    tripId,
+    tripId: cup.tripId,
     gameTypeId: MANUAL,
     name,
-    competitionId,
+    competitionId: cup.competitionId,
     pointsDistribution: distribution,
   })) as { id: string };
   gameIds.push(g.id);
@@ -33,13 +48,14 @@ async function makeGame(distribution: PointsDistribution | null, name = "Game") 
 }
 
 async function enterResults(
+  cup: Cup,
   gameId: string,
   placements: { teamId: string; position: number }[]
 ) {
   await ctx
     .caller()
     .games.finish({
-      tripId,
+      tripId: cup.tripId,
       gameId,
       placements: placements.map((p) => ({ entityId: p.teamId, position: p.position })),
     });
@@ -47,10 +63,6 @@ async function enterResults(
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("D2 Leaderboard Trip");
-  // D2 verifies the points/placement award model — declare it explicitly now
-  // that the DB default is match_play (W-NONGOLF-02).
-  competitionId = await ctx.createCompetition(tripId, "D2 Cup", { scoringModel: "points" });
 });
 
 afterAll(async () => {
@@ -69,18 +81,12 @@ afterAll(async () => {
 // board banks a game only once it is finished, so those rows would read as
 // nothing. Same input shape, same writer (`writeManualResults`).
 describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
-  let teamA: string;
-  let teamB: string;
-
-  beforeAll(async () => {
-    teamA = await ctx.createTeam(competitionId, "Blue", { shortName: "BLU" });
-    teamB = await ctx.createTeam(competitionId, "Red", { shortName: "RED" });
-  });
-
   it("early state: all totals zero, winNumber derived, game returns with no cells", async () => {
-    const gameId = await makeGame({ type: "placement", values: [9, 6] }, "Shell Game");
+    const cup = await twoTeamCup("early");
+    const { teamA, teamB } = cup;
+    const gameId = await makeGame(cup, { type: "placement", values: [9, 6] }, "Shell Game");
 
-    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    const lb = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
 
     expect(lb.teamTotals[teamA]).toBe(0);
     expect(lb.teamTotals[teamB]).toBe(0);
@@ -95,19 +101,22 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
   });
 
   it("in-progress: scores entered, teamTotals and pointsToClinch update", async () => {
-    const gameId = await makeGame({ type: "placement", values: [9, 6] }, "Scored Game");
-    await enterResults(gameId, [
+    const cup = await twoTeamCup("in-progress");
+    const { teamA, teamB } = cup;
+    const gameId = await makeGame(cup, { type: "placement", values: [9, 6] }, "Scored Game");
+    await enterResults(cup, gameId, [
       { teamId: teamA, position: 1 },
       { teamId: teamB, position: 2 },
     ]);
 
-    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    const lb = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
 
-    // Points earned: 9 for 1st, 6 for 2nd across all live games with this setup
-    // We only assert the game we just set, net of the shell (0 for shell)
+    // The one game on this cup pays 9 for 1st and 6 for 2nd — exact, now that
+    // no other case's game shares the cup.
     const aTotal = lb.teamTotals[teamA] as number;
     const bTotal = lb.teamTotals[teamB] as number;
-    expect(aTotal).toBeGreaterThan(bTotal);
+    expect(aTotal).toBe(9);
+    expect(bTotal).toBe(6);
 
     // pointsToClinch = winNumber - total
     const aPtc = lb.pointsToClinch[teamA] as number;

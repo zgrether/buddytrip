@@ -20,18 +20,21 @@ const MANUAL = "gtt_manual";
 const DIST = { type: "placement" as const, values: [9, 6] };
 
 let ctx: TestContext;
-let tripId: string;
-let competitionId: string;
-let gameId: string;
 let memberId: string;
 
-beforeAll(async () => {
-  ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Bootstrap trip");
+/**
+ * EVERY CASE BUILDS ITS OWN CUP (#1527). They shared one: the role case
+ * asserted the member was NOT yet a delegate of the game, and the delegate case
+ * made them one — so shuffled after it, the role case found the delegation it
+ * was asserting the absence of.
+ */
+type Cup = { tripId: string; competitionId: string; gameId: string };
+
+async function bootCup(label: string): Promise<Cup> {
+  const tripId = await ctx.createTrip(`Bootstrap ${label}`);
   await ctx.addTripMember(tripId, "planner", "Organizer"); // → organizer
   await ctx.addTripMember(tripId, "member", "Member");
-  memberId = ctx.getUser("member").id;
-  competitionId = await ctx.createCompetition(tripId, "Bootstrap Cup", { scoringModel: "points" });
+  const competitionId = await ctx.createCompetition(tripId, `Bootstrap Cup ${label}`, { scoringModel: "points" });
   await ctx.createTeam(competitionId, "Blue", { shortName: "BLU" });
   await ctx.createTeam(competitionId, "Red", { shortName: "RED" });
   const g = (await ctx.caller().games.create({
@@ -41,18 +44,21 @@ beforeAll(async () => {
     competitionId,
     pointsDistribution: DIST,
   })) as { id: string };
-  gameId = g.id;
+  return { tripId, competitionId, gameId: g.id };
+}
+
+beforeAll(async () => {
+  ctx = await TestContext.create();
+  memberId = ctx.getUser("member").id;
 });
 
 afterAll(async () => {
-  await ctx.admin.from("game_delegates").delete().eq("game_id", gameId);
-  await ctx.admin.from("game_results").delete().eq("game_id", gameId);
-  await ctx.admin.from("games").delete().eq("id", gameId);
   await ctx.cleanup();
 });
 
 describe("faceBootstrap — both states in one resolve", () => {
   it("returns the shared STRUCTURE base for the owner", async () => {
+    const { tripId, competitionId, gameId } = await bootCup("structure");
     const boot = await ctx.caller().competitions.faceBootstrap({ tripId });
     expect(boot.competition?.id).toBe(competitionId);
     expect(boot.myCompetitionRole).toBe("owner");
@@ -74,7 +80,9 @@ describe("faceBootstrap — both states in one resolve", () => {
    * the structure refetch that every score event triggers on every client.
    */
   it("does NOT carry the leaderboard roll-up — that is the state half", async () => {
+    const { tripId, competitionId } = await bootCup("no-rollup");
     const boot = await ctx.caller().competitions.faceBootstrap({ tripId });
+    expect(boot.competition?.id).toBe(competitionId); // premise: a real cup, so there was a roll-up to carry
     expect(Object.hasOwn(boot, "leaderboard")).toBe(false);
   });
 
@@ -84,12 +92,14 @@ describe("faceBootstrap — both states in one resolve", () => {
    * happily if the standings had stopped being computed anywhere at all.
    */
   it("...and competitions.leaderboard still serves the same roll-up", async () => {
+    const { tripId, competitionId } = await bootCup("leaderboard");
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
     expect(lb.teams.length).toBe(2);
     expect(lb.pointsAvailable).toBeGreaterThan(0);
   });
 
   it("derives the competition role in both directions (live, per request)", async () => {
+    const { tripId, gameId } = await bootCup("roles");
     const asPlanner = await ctx.callerAs("planner").competitions.faceBootstrap({ tripId });
     expect(asPlanner.myCompetitionRole).toBe("organizer");
 
@@ -99,6 +109,11 @@ describe("faceBootstrap — both states in one resolve", () => {
   });
 
   it("surfaces the viewer's delegated games (drives the 'Yours' marking)", async () => {
+    const { tripId, gameId } = await bootCup("delegate");
+    // Premise: not a delegate before — so the id below arrived with the grant.
+    const before = await ctx.callerAs("member").competitions.faceBootstrap({ tripId });
+    expect(before.myDelegateGameIds).not.toContain(gameId);
+
     await ctx.caller().games.addOrganizer({ tripId, gameId, userId: memberId });
     const asMember = await ctx.callerAs("member").competitions.faceBootstrap({ tripId });
     expect(asMember.myDelegateGameIds).toContain(gameId);
