@@ -1,103 +1,106 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 
+/**
+ * EVERY TEST BUILDS THE IDEA IT USES (#1527). This file used to share one idea
+ * created by the first case — update, both vote toggles and remove all acted on
+ * it — so a failure early failed the rest as if behaviour broke, and "toggle
+ * off" only meant anything if "toggle on" had run first. Shuffled order surfaced
+ * 5 such dependencies.
+ */
+
 let ctx: TestContext;
-let tripId: string;
-let ideaId: string;
+
+beforeAll(async () => {
+  ctx = await TestContext.create();
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
+async function crewTrip(label: string): Promise<string> {
+  const tripId = await ctx.createTrip(`Ideas ${label}`);
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  return tripId;
+}
+
+/** A crew trip with one idea the owner created. */
+async function ideaTrip(label: string) {
+  const tripId = await crewTrip(label);
+  const idea = await ctx.caller().ideas.create({ tripId, id: genId("idea"), title: "Scottsdale", location: "Scottsdale, AZ" });
+  return { tripId, ideaId: idea.id as string };
+}
+
+async function listed(tripId: string) {
+  return ctx.caller().ideas.list({ tripId });
+}
 
 describe("ideas router", () => {
-  beforeAll(async () => {
-    ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Ideas Test Trip");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
-  });
-
-  afterAll(async () => {
-    await ctx.cleanup();
-  });
-
   it("create — owner can create an idea", async () => {
-    const caller = ctx.callerAs("owner");
-    const idea = await caller.ideas.create({
-      tripId,
-      id: genId("idea"),
-      title: "Scottsdale",
-      location: "Scottsdale, AZ",
-    });
-    ideaId = idea.id;
+    const tripId = await crewTrip("create-owner");
+    const idea = await ctx.callerAs("owner").ideas.create({ tripId, id: genId("idea"), title: "Scottsdale", location: "Scottsdale, AZ" });
     expect(idea.title).toBe("Scottsdale");
+    expect((await listed(tripId)).some((i: { id: string }) => i.id === idea.id)).toBe(true);
   });
 
   // Reversed by #786: proposing where the trip might go is Organizer work.
   it("create — planner (Organizer) CAN create", async () => {
-    const caller = ctx.callerAs("planner");
-    const idea = await caller.ideas.create({
-      tripId,
-      id: genId("idea"),
-      title: "Organizer's idea",
-      location: "Somewhere",
-    });
+    const tripId = await crewTrip("create-organizer");
+    const idea = await ctx.callerAs("planner").ideas.create({ tripId, id: genId("idea"), title: "Organizer's idea", location: "Somewhere" });
     expect(idea.title).toBe("Organizer's idea");
   });
 
-  it("create — member cannot create", async () => {
-    const caller = ctx.callerAs("member");
+  it("create — member cannot create, and nothing is added", async () => {
+    const tripId = await crewTrip("create-member");
     await expect(
-      caller.ideas.create({
-        tripId,
-        id: genId("idea"),
-        title: "Nope",
-        location: "Nowhere",
-      })
+      ctx.callerAs("member").ideas.create({ tripId, id: genId("idea"), title: "Nope", location: "Nowhere" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await listed(tripId)).toHaveLength(0);
   });
 
   it("list — any member can list ideas with votes", async () => {
-    const caller = ctx.callerAs("member");
-    const ideas = await caller.ideas.list({ tripId });
-    expect(ideas.length).toBeGreaterThanOrEqual(1);
-    expect(ideas[0].votes).toBeDefined();
+    const { tripId, ideaId } = await ideaTrip("list");
+    const ideas = await ctx.callerAs("member").ideas.list({ tripId });
+    const idea = ideas.find((i: { id: string }) => i.id === ideaId);
+    expect(idea).toBeDefined();
+    expect(idea!.votes).toBeDefined();
   });
 
   it("update — planner can edit idea", async () => {
-    const caller = ctx.callerAs("planner");
-    const updated = await caller.ideas.update({
-      tripId,
-      ideaId,
-      description: "Great golf destination",
-    });
+    const { tripId, ideaId } = await ideaTrip("update");
+    const updated = await ctx.callerAs("planner").ideas.update({ tripId, ideaId, description: "Great golf destination" });
     expect(updated.description).toBe("Great golf destination");
   });
 
   it("vote — member can vote (toggle on)", async () => {
-    const caller = ctx.callerAs("member");
-    const result = await caller.ideas.vote({ tripId, ideaId });
+    const { tripId, ideaId } = await ideaTrip("vote-on");
+    const result = await ctx.callerAs("member").ideas.vote({ tripId, ideaId });
     expect(result.voted).toBe(true);
   });
 
   it("vote — member can vote again (toggle off)", async () => {
-    const caller = ctx.callerAs("member");
-    const result = await caller.ideas.vote({ tripId, ideaId });
+    const { tripId, ideaId } = await ideaTrip("vote-off");
+    const member = ctx.callerAs("member");
+    expect((await member.ideas.vote({ tripId, ideaId })).voted).toBe(true); // premise: ON first
+    const result = await member.ideas.vote({ tripId, ideaId });
     expect(result.voted).toBe(false);
   });
 
   // Reversed by #786: an idea is one unit of work, not a container.
   it("remove — planner (Organizer) CAN remove", async () => {
-    const caller = ctx.callerAs("planner");
-    const doomed = await ctx.caller().ideas.create({
-      tripId,
-      id: genId("idea"),
-      title: "Organizer removes this",
-      location: "Somewhere",
-    });
-    const result = await caller.ideas.remove({ tripId, ideaId: doomed.id });
+    const { tripId, ideaId } = await ideaTrip("remove-organizer");
+    const result = await ctx.callerAs("planner").ideas.remove({ tripId, ideaId });
     expect(result.success).toBe(true);
+    expect((await listed(tripId)).some((i: { id: string }) => i.id === ideaId)).toBe(false);
   });
 
   it("remove — owner can remove", async () => {
-    const caller = ctx.callerAs("owner");
-    const result = await caller.ideas.remove({ tripId, ideaId });
+    const { tripId, ideaId } = await ideaTrip("remove-owner");
+    expect((await listed(tripId)).some((i: { id: string }) => i.id === ideaId)).toBe(true); // premise
+    const result = await ctx.callerAs("owner").ideas.remove({ tripId, ideaId });
     expect(result.success).toBe(true);
+    expect((await listed(tripId)).some((i: { id: string }) => i.id === ideaId)).toBe(false);
   });
 });
