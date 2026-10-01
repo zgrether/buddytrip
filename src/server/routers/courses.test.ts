@@ -140,10 +140,15 @@ describe("courses router — global library", () => {
   });
 
   it("list + getById surface a saved course", async () => {
+    // Saves its own course (#1527): it used to read `courseIds[0]`, the course the
+    // FIRST case happened to create, so a reordered run read some other course.
+    const name = `List Me ${Date.now()}`;
+    const saved = await ctx.caller().courses.create({ name, holeCount: 18, par: PAR, handicapIndex: IDX });
+    courseIds.push(saved.id as string);
     const list = await ctx.caller().courses.list({ limit: 50 });
-    expect(list.some((c: { id: string }) => c.id === courseIds[0])).toBe(true);
-    const one = await ctx.caller().courses.getById({ courseId: courseIds[0] });
-    expect(one.name).toBe("Pebble Creek");
+    expect(list.some((c: { id: string }) => c.id === saved.id)).toBe(true);
+    const one = await ctx.caller().courses.getById({ courseId: saved.id as string });
+    expect(one.name).toBe(name);
   });
 
   it("search — local name ILIKE finds a saved course (the free typeahead path)", async () => {

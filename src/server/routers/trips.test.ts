@@ -1,88 +1,113 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 
-let ctx: TestContext;
-let tripId: string;
+/**
+ * EVERY TEST BUILDS THE TRIP IT USES (#1527). This file used to thread one trip
+ * through two dozen cases: two "tests" were setup (add the crew, lock the
+ * destination), later cases relied on earlier renames and locks, and the
+ * ownership-transfer case transferred BACK at the end "so subsequent tests work".
+ * A failure anywhere failed everything after it as if behaviour broke, and the
+ * refusal cases could pass against a trip that was never set up. Shuffled test
+ * order surfaced 17 such dependencies here.
+ *
+ * So each case starts from `crewTrip()` (or creates its own) and, where it tests
+ * a refusal or an absence, first asserts that the thing it is about EXISTS — a
+ * FORBIDDEN on a missing trip, or an absence in an empty list, proves nothing.
+ */
+
+/** Owner = the primary user; planner = Organizer; member = Member; destination locked. */
+async function crewTrip(ctx: TestContext, title: string): Promise<string> {
+  const tripId = await ctx.createTrip(title);
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  // Members only see a trip once a destination is locked (RLS: an idea-phase
+  // trip is planner-only).
+  const { error } = await ctx.admin
+    .from("trips")
+    .update({ locked_destination_title: "Test Dest", locked_destination_at: new Date().toISOString() })
+    .eq("id", tripId);
+  if (error) throw new Error(`lock destination: ${error.message}`);
+  return tripId;
+}
+
+/** The trip row, or null if it does not exist. A failed READ throws: a helper
+ *  that returned null on an error would make "the trip is gone" indistinguishable
+ *  from "the query failed", the exact confusion this file is being rewritten to end. */
+async function tripRow(ctx: TestContext, tripId: string) {
+  const { data, error } = await ctx.admin.from("trips").select("id, title").eq("id", tripId).maybeSingle();
+  if (error) throw new Error(`read trip ${tripId}: ${error.message}`);
+  return data as { id: string; title: string } | null;
+}
+
+async function roleOf(ctx: TestContext, tripId: string, userId: string): Promise<string | null> {
+  const { data, error } = await ctx.admin
+    .from("trip_members")
+    .select("role")
+    .eq("trip_id", tripId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(`read role: ${error.message}`);
+  return (data?.role as string | undefined) ?? null;
+}
 
 describe("trips router", () => {
+  let ctx: TestContext;
+
   beforeAll(async () => {
     ctx = await TestContext.create();
   });
 
   afterAll(async () => {
-    if (tripId) ctx.trackTrip(tripId);
     await ctx.cleanup();
   });
 
-  // create
   it("create — any user can create a trip and becomes Owner", async () => {
-    const caller = ctx.caller();
-    const trip = await caller.trips.create({
-      id: `test-trip-${Date.now()}`,
-      title: "Test Trip",
-      description: "A test trip",
-    });
-    tripId = trip.id;
+    const id = `test-trip-${Date.now()}`;
+    const trip = await ctx.caller().trips.create({ id, title: "Test Trip", description: "A test trip" });
+    ctx.trackTrip(id);
     expect(trip.title).toBe("Test Trip");
 
     const { data: memberRow } = await ctx.admin
       .from("trip_members")
       .select("role, status")
-      .eq("trip_id", tripId)
+      .eq("trip_id", id)
       .eq("user_id", ctx.user.id)
       .single();
     expect(memberRow?.role).toBe("Owner");
     expect(memberRow?.status).toBe("in");
   });
 
-  it("setup — add planner and member", async () => {
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
-  });
-
-
-  // list
   it("list — returns trips for the current user", async () => {
-    const caller = ctx.caller();
-    const trips = await caller.trips.list();
+    const tripId = await crewTrip(ctx, "List Mine");
+    const trips = await ctx.caller().trips.list();
     expect(trips.some((t: { id: string }) => t.id === tripId)).toBe(true);
   });
 
-  it("list — outsider sees no trips", async () => {
-    const caller = ctx.callerAs("outsider");
-    const trips = await caller.trips.list();
-    expect(trips.some((t: { id: string }) => t.id === tripId)).toBe(false);
+  it("list — an outsider does not see the trip (the owner does)", async () => {
+    const tripId = await crewTrip(ctx, "List Outsider");
+    // CONTROL: the trip exists and is listed for someone on it, so its absence
+    // from the outsider's list is the filter, not an empty table.
+    const mine = await ctx.caller().trips.list();
+    expect(mine.some((t: { id: string }) => t.id === tripId)).toBe(true);
+    const theirs = await ctx.callerAs("outsider").trips.list();
+    expect(theirs.some((t: { id: string }) => t.id === tripId)).toBe(false);
   });
 
-  // A destination must be locked for member visibility
-  // (RLS: idea phase / no destination = planner-only).
-  it("setup — lock destination for member visibility", async () => {
-    await ctx.admin
-      .from("trips")
-      .update({ locked_destination_at: new Date().toISOString() })
-      .eq("id", tripId);
-  });
-
-  // getById
   it("getById — member can view trip", async () => {
-    const caller = ctx.callerAs("member");
-    const trip = await caller.trips.getById({ tripId });
+    const tripId = await crewTrip(ctx, "Get Member");
+    const trip = await ctx.callerAs("member").trips.getById({ tripId });
     expect(trip.id).toBe(tripId);
   });
 
-  it("getById — outsider is FORBIDDEN", async () => {
-    const caller = ctx.callerAs("outsider");
-    await expect(caller.trips.getById({ tripId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  it("getById — outsider is FORBIDDEN from a trip that exists", async () => {
+    const tripId = await crewTrip(ctx, "Get Outsider");
+    expect(await tripRow(ctx, tripId)).not.toBeNull();
+    await expect(ctx.callerAs("outsider").trips.getById({ tripId })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  // lockDestination
   it("lockDestination — owner can lock", async () => {
-    const caller = ctx.caller();
-    const trip = await caller.trips.lockDestination({
-      tripId,
-      title: "Pebble Beach",
-      location: "Monterey, CA",
-    });
+    const tripId = await crewTrip(ctx, "Lock Owner");
+    const trip = await ctx.caller().trips.lockDestination({ tripId, title: "Pebble Beach", location: "Monterey, CA" });
     expect(trip.locked_destination_title).toBe("Pebble Beach");
     expect(trip.comparison_mode).toBe(false);
   });
@@ -90,20 +115,14 @@ describe("trips router", () => {
   // Reversed by #786: choosing the destination is trip-running, not trip
   // administration. transferOwnership (below) is what stays Owner-only.
   it("lockDestination — planner (Organizer) CAN lock", async () => {
-    const caller = ctx.callerAs("planner");
-    const trip = await caller.trips.lockDestination({
-      tripId,
-      title: "Somewhere",
-      location: "Nowhere",
-    });
+    const tripId = await crewTrip(ctx, "Lock Organizer");
+    const trip = await ctx.callerAs("planner").trips.lockDestination({ tripId, title: "Somewhere", location: "Nowhere" });
     expect(trip.locked_destination_title).toBe("Somewhere");
   });
 
-  // create with comparisonMode + lockedDestination
   it("create — Choice A: creates trip with locked destination", async () => {
-    const caller = ctx.caller();
     const id = `test-trip-known-${Date.now()}`;
-    const trip = await caller.trips.create({
+    const trip = await ctx.caller().trips.create({
       id,
       title: "Known Dest Trip",
       comparisonMode: false,
@@ -117,9 +136,8 @@ describe("trips router", () => {
   });
 
   it("create — Choice B: creates trip with comparisonMode and seeded ideas", async () => {
-    const caller = ctx.caller();
     const id = `test-trip-vote-${Date.now()}`;
-    const trip = await caller.trips.create({
+    const trip = await ctx.caller().trips.create({
       id,
       title: "Vote Trip",
       comparisonMode: true,
@@ -132,7 +150,6 @@ describe("trips router", () => {
     expect(trip.comparison_mode).toBe(true);
     expect(trip.locked_destination_title).toBeNull();
 
-    // Verify ideas were seeded
     const { data: ideas } = await ctx.admin
       .from("ideas")
       .select("title, source")
@@ -146,104 +163,91 @@ describe("trips router", () => {
   });
 
   it("create — co-planners are added as trip members", async () => {
-    const caller = ctx.caller();
     const id = `test-trip-coplan-${Date.now()}`;
     const planner = ctx.getUser("planner");
-    const trip = await caller.trips.create({
+    const trip = await ctx.caller().trips.create({
       id,
       title: "Coplanners Trip",
       coplanners: [{ userId: planner.id, role: "Organizer" }],
     });
     ctx.trackTrip(id);
     expect(trip.title).toBe("Coplanners Trip");
-
-    // Verify co-planner was added
-    const { data: members } = await ctx.admin
-      .from("trip_members")
-      .select("user_id, role")
-      .eq("trip_id", id);
-    const plannerMember = members?.find((m) => m.user_id === planner.id);
-    expect(plannerMember).toBeTruthy();
-    expect(plannerMember!.role).toBe("Organizer");
+    expect(await roleOf(ctx, id, planner.id)).toBe("Organizer");
   });
 
-  // renameTripName
   it("renameTripName — owner can rename", async () => {
-    const caller = ctx.caller();
-    const result = await caller.trips.renameTripName({ tripId, name: "Renamed Trip" });
+    const tripId = await crewTrip(ctx, "Rename Owner");
+    const result = await ctx.caller().trips.renameTripName({ tripId, name: "Renamed Trip" });
     expect(result.name).toBe("Renamed Trip");
   });
 
   it("renameTripName — planner can rename", async () => {
-    const caller = ctx.callerAs("planner");
-    const result = await caller.trips.renameTripName({ tripId, name: "Organizer Renamed" });
+    const tripId = await crewTrip(ctx, "Rename Organizer");
+    const result = await ctx.callerAs("planner").trips.renameTripName({ tripId, name: "Organizer Renamed" });
     expect(result.name).toBe("Organizer Renamed");
   });
 
-  it("renameTripName — member cannot rename", async () => {
-    const caller = ctx.callerAs("member");
+  it("renameTripName — member cannot rename, and the name is unchanged", async () => {
+    const tripId = await crewTrip(ctx, "Rename Member");
+    const before = await tripRow(ctx, tripId);
+    expect(before).not.toBeNull();
     await expect(
-      caller.trips.renameTripName({ tripId, name: "Hacked" })
+      ctx.callerAs("member").trips.renameTripName({ tripId, name: "Hacked" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await tripRow(ctx, tripId))?.title).toBe(before!.title);
   });
 
-  // transferOwnership
-  it("transferOwnership — owner can transfer to member", async () => {
-    const caller = ctx.caller();
+  it("transferOwnership — owner can transfer to member, and the roles swap", async () => {
+    const tripId = await crewTrip(ctx, "Transfer Member");
     const member = ctx.getUser("member");
-    const result = await caller.trips.transferOwnership({ tripId, newOwnerId: member.id });
+    const result = await ctx.caller().trips.transferOwnership({ tripId, newOwnerId: member.id });
     expect(result.success).toBe(true);
-
-    // Verify roles swapped
-    const { data: rows } = await ctx.admin
-      .from("trip_members")
-      .select("user_id, role")
-      .eq("trip_id", tripId)
-      .in("user_id", [ctx.user.id, member.id]);
-    const oldOwner = rows?.find((r) => r.user_id === ctx.user.id);
-    const newOwner = rows?.find((r) => r.user_id === member.id);
-    expect(oldOwner?.role).toBe("Organizer");
-    expect(newOwner?.role).toBe("Owner");
-
-    // Transfer back so subsequent tests work (owner is now the member user)
-    const memberCaller = ctx.callerAs("member"); // member is now Owner
-    await memberCaller.trips.transferOwnership({ tripId, newOwnerId: ctx.user.id });
+    expect(await roleOf(ctx, tripId, ctx.user.id)).toBe("Organizer");
+    expect(await roleOf(ctx, tripId, member.id)).toBe("Owner");
+    // No transfer back: this trip is this test's alone.
   });
 
   it("transferOwnership — cannot transfer to self", async () => {
-    const caller = ctx.caller();
+    const tripId = await crewTrip(ctx, "Transfer Self");
     await expect(
-      caller.trips.transferOwnership({ tripId, newOwnerId: ctx.user.id })
+      ctx.caller().trips.transferOwnership({ tripId, newOwnerId: ctx.user.id })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(await roleOf(ctx, tripId, ctx.user.id)).toBe("Owner");
   });
 
-  it("transferOwnership — planner cannot transfer", async () => {
-    const caller = ctx.callerAs("planner");
+  it("transferOwnership — planner cannot transfer, and nobody's role changes", async () => {
+    const tripId = await crewTrip(ctx, "Transfer Organizer");
     const member = ctx.getUser("member");
     await expect(
-      caller.trips.transferOwnership({ tripId, newOwnerId: member.id })
+      ctx.callerAs("planner").trips.transferOwnership({ tripId, newOwnerId: member.id })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await roleOf(ctx, tripId, ctx.user.id)).toBe("Owner");
+    expect(await roleOf(ctx, tripId, member.id)).toBe("Member");
   });
 
-  it("transferOwnership — cannot transfer to non-member", async () => {
-    const caller = ctx.caller();
+  it("transferOwnership — cannot transfer to someone who is not on the trip", async () => {
+    const tripId = await crewTrip(ctx, "Transfer Outsider");
     const outsider = ctx.getUser("outsider");
+    expect(await roleOf(ctx, tripId, outsider.id)).toBeNull(); // premise: really not on it
     await expect(
-      caller.trips.transferOwnership({ tripId, newOwnerId: outsider.id })
+      ctx.caller().trips.transferOwnership({ tripId, newOwnerId: outsider.id })
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(await roleOf(ctx, tripId, ctx.user.id)).toBe("Owner");
   });
 
-  // delete
-  it("delete — member cannot delete", async () => {
-    const caller = ctx.callerAs("member");
-    await expect(caller.trips.delete({ tripId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  it("delete — member cannot delete, and the trip is still there", async () => {
+    const tripId = await crewTrip(ctx, "Delete Member");
+    expect(await tripRow(ctx, tripId)).not.toBeNull();
+    await expect(ctx.callerAs("member").trips.delete({ tripId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await tripRow(ctx, tripId)).not.toBeNull();
   });
 
-  it("delete — owner can delete", async () => {
-    const caller = ctx.caller();
-    const result = await caller.trips.delete({ tripId });
+  it("delete — owner can delete, and the trip is gone", async () => {
+    const tripId = await crewTrip(ctx, "Delete Owner");
+    expect(await tripRow(ctx, tripId)).not.toBeNull();
+    const result = await ctx.caller().trips.delete({ tripId });
     expect(result.success).toBe(true);
-    tripId = "";
+    expect(await tripRow(ctx, tripId)).toBeNull();
   });
 });
 
@@ -253,193 +257,158 @@ describe("trips router", () => {
 
 describe("trips router — destination model", () => {
   let ctx: TestContext;
-  let stageTrip: string;
 
   beforeAll(async () => {
     ctx = await TestContext.create();
   });
 
   afterAll(async () => {
-    if (stageTrip) ctx.trackTrip(stageTrip);
     await ctx.cleanup();
   });
 
-  it("new trip without a destination has no lock timestamp (idea phase)", async () => {
-    const caller = ctx.caller();
-    const id = `test-dest-idea-${Date.now()}`;
-    await caller.trips.create({ id, title: "Idea Test" });
+  async function ideaTrip(label: string): Promise<string> {
+    const id = `test-dest-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    await ctx.caller().trips.create({ id, title: `Idea ${label}` });
     ctx.trackTrip(id);
-    stageTrip = id;
+    return id;
+  }
 
-    const fetched = await caller.trips.getById({ tripId: id });
+  async function lockedTrip(label: string): Promise<string> {
+    const id = `test-dest-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    await ctx.caller().trips.create({ id, title: `Locked ${label}`, lockedDestination: { title: "Pebble Beach", location: "Monterey, CA" } });
+    ctx.trackTrip(id);
+    return id;
+  }
+
+  it("new trip without a destination has no lock timestamp (idea phase)", async () => {
+    const id = await ideaTrip("idea");
+    const fetched = await ctx.caller().trips.getById({ tripId: id });
     expect(fetched.locked_destination_at).toBeFalsy();
   });
 
   it("new trip with a locked destination has a lock timestamp", async () => {
-    const caller = ctx.caller();
-    const id = `test-dest-known-${Date.now()}`;
-    await caller.trips.create({
-      id,
-      title: "Known Dest",
-      lockedDestination: { title: "Pebble Beach", location: "Monterey, CA" },
-    });
-    ctx.trackTrip(id);
-
-    const fetched = await caller.trips.getById({ tripId: id });
+    const id = await lockedTrip("known");
+    const fetched = await ctx.caller().trips.getById({ tripId: id });
     expect(fetched.locked_destination_at).toBeTruthy();
   });
 
   it("lockDestination moves an idea trip forward (sets the lock timestamp)", async () => {
-    const caller = ctx.caller();
-    const result = await caller.trips.lockDestination({
-      tripId: stageTrip,
-      title: "Kohler",
-      location: "Kohler, WI",
-    });
+    const id = await ideaTrip("move");
+    expect((await ctx.caller().trips.getById({ tripId: id })).locked_destination_at).toBeFalsy(); // premise
+    const result = await ctx.caller().trips.lockDestination({ tripId: id, title: "Kohler", location: "Kohler, WI" });
     expect(result.locked_destination_at).toBeTruthy();
     expect(result.comparison_mode).toBe(false);
   });
 
   it("changeDestination — planner can change once a destination is locked", async () => {
-    await ctx.addTripMember(stageTrip, "planner", "Organizer");
-    const caller = ctx.callerAs("planner");
-    const result = await caller.trips.changeDestination({
-      tripId: stageTrip,
-      destination: "Bandon Dunes",
-    });
+    const id = await lockedTrip("change");
+    await ctx.addTripMember(id, "planner", "Organizer");
+    const result = await ctx.callerAs("planner").trips.changeDestination({ tripId: id, destination: "Bandon Dunes" });
     expect(result.locked_destination_title).toBe("Bandon Dunes");
   });
 
   it("changeDestination — rejected while the trip is still an idea", async () => {
-    const caller = ctx.caller();
-    const id = `test-dest-nolock-${Date.now()}`;
-    await caller.trips.create({ id, title: "No Lock" });
-    ctx.trackTrip(id);
+    const id = await ideaTrip("nolock");
     await expect(
-      caller.trips.changeDestination({ tripId: id, destination: "Anywhere" })
+      ctx.caller().trips.changeDestination({ tripId: id, destination: "Anywhere" })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
-  it("changeDestination — member cannot call", async () => {
-    await ctx.addTripMember(stageTrip, "member", "Member");
-    const caller = ctx.callerAs("member");
+  it("changeDestination — member cannot call, and the destination is unchanged", async () => {
+    const id = await lockedTrip("member");
+    await ctx.addTripMember(id, "member", "Member");
     await expect(
-      caller.trips.changeDestination({ tripId: stageTrip, destination: "Hacked" })
+      ctx.callerAs("member").trips.changeDestination({ tripId: id, destination: "Hacked" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect((await ctx.caller().trips.getById({ tripId: id })).locked_destination_title).toBe("Pebble Beach");
   });
-
 });
 
 // ── setPollMode — poll mode toggle ────────────────────────────────────────
 
 describe("datePoll router — setPollMode", () => {
   let ctx: TestContext;
-  let pollTripId: string;
 
   beforeAll(async () => {
     ctx = await TestContext.create();
-    const caller = ctx.caller();
-    const id = `test-poll-mode-${Date.now()}`;
-    await caller.trips.create({ id, title: "Poll Mode Test" });
-    ctx.trackTrip(id);
-    pollTripId = id;
-    await ctx.admin
-      .from("trips")
-      .update({ locked_destination_title: "Test Dest", locked_destination_at: new Date().toISOString() })
-      .eq("id", pollTripId);
   });
 
   afterAll(async () => {
     await ctx.cleanup();
   });
 
-  it("setPollMode — owner can flip poll_mode on", async () => {
-    const caller = ctx.caller();
-    await caller.datePoll.setPollMode({ tripId: pollTripId, pollMode: true });
-    const { data } = await ctx.admin
+  /** A trip with a locked destination, so the date poll is reachable. */
+  async function pollTrip(label: string): Promise<string> {
+    const id = `test-poll-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    await ctx.caller().trips.create({ id, title: `Poll ${label}` });
+    ctx.trackTrip(id);
+    const { error } = await ctx.admin
       .from("trips")
-      .select("poll_mode")
-      .eq("id", pollTripId)
-      .single();
-    expect(data?.poll_mode).toBe(true);
+      .update({ locked_destination_title: "Test Dest", locked_destination_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) throw new Error(`lock destination: ${error.message}`);
+    return id;
+  }
+
+  async function pollMode(tripId: string): Promise<boolean | null> {
+    const { data } = await ctx.admin.from("trips").select("poll_mode").eq("id", tripId).single();
+    return (data?.poll_mode as boolean | null) ?? null;
+  }
+
+  it("setPollMode — owner can flip poll_mode on", async () => {
+    const id = await pollTrip("on");
+    expect(await pollMode(id)).not.toBe(true); // premise: starts off
+    await ctx.caller().datePoll.setPollMode({ tripId: id, pollMode: true });
+    expect(await pollMode(id)).toBe(true);
   });
 
   it("setPollMode — owner can flip poll_mode off", async () => {
-    const caller = ctx.caller();
-    await caller.datePoll.setPollMode({ tripId: pollTripId, pollMode: false });
-    const { data } = await ctx.admin
-      .from("trips")
-      .select("poll_mode")
-      .eq("id", pollTripId)
-      .single();
-    expect(data?.poll_mode).toBe(false);
+    const id = await pollTrip("off");
+    await ctx.caller().datePoll.setPollMode({ tripId: id, pollMode: true });
+    expect(await pollMode(id)).toBe(true); // premise: it is ON before we turn it off
+    await ctx.caller().datePoll.setPollMode({ tripId: id, pollMode: false });
+    expect(await pollMode(id)).toBe(false);
   });
 
-  it("setPollMode — member cannot call", async () => {
-    await ctx.addTripMember(pollTripId, "member", "Member");
-    const caller = ctx.callerAs("member");
+  it("setPollMode — member cannot call, and poll_mode is unchanged", async () => {
+    const id = await pollTrip("member");
+    await ctx.addTripMember(id, "member", "Member");
+    const before = await pollMode(id);
     await expect(
-      caller.datePoll.setPollMode({ tripId: pollTripId, pollMode: true })
+      ctx.callerAs("member").datePoll.setPollMode({ tripId: id, pollMode: true })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await pollMode(id)).toBe(before);
   });
 
   it("setPollMode(false) — clears date windows and votes", async () => {
-    // Fresh trip so we don't collide with other tests in this describe block.
-    const clearTripId = `test-poll-cancel-${Date.now()}`;
+    const clearTripId = await pollTrip("cancel");
     const caller = ctx.caller();
-    await caller.trips.create({ id: clearTripId, title: "Cancel Poll Test" });
-    ctx.trackTrip(clearTripId);
-    await ctx.admin
-      .from("trips")
-      .update({ locked_destination_title: "Test Dest", locked_destination_at: new Date().toISOString() })
-      .eq("id", clearTripId);
-
-    // Open the poll.
     await caller.datePoll.setPollMode({ tripId: clearTripId, pollMode: true });
 
-    // Add 2 date windows.
     const w1 = `w1-${Date.now()}`;
     const w2 = `w2-${Date.now()}`;
     await caller.datePoll.addWindow({ tripId: clearTripId, id: w1, startDate: "2026-10-01", endDate: "2026-10-04" });
     await caller.datePoll.addWindow({ tripId: clearTripId, id: w2, startDate: "2026-11-01", endDate: "2026-11-05" });
-
-    // Add the shared member user to this trip so they can vote.
     await ctx.addTripMember(clearTripId, "member", "Member");
 
-    // Cast 3 votes (owner votes on both windows; member votes on one).
     await caller.datePoll.castDateVote({ tripId: clearTripId, windowId: w1, answer: "yes" });
     await caller.datePoll.castDateVote({ tripId: clearTripId, windowId: w2, answer: "maybe" });
-    const memberCaller = ctx.callerAs("member");
-    await memberCaller.datePoll.castDateVote({ tripId: clearTripId, windowId: w1, answer: "no" });
+    await ctx.callerAs("member").datePoll.castDateVote({ tripId: clearTripId, windowId: w1, answer: "no" });
 
-    // Confirm data exists before cancel.
+    // Premise: the windows and votes exist before the cancel.
     let poll = await caller.datePoll.get({ tripId: clearTripId });
     expect(poll.windows.length).toBe(2);
-    const totalVotesBefore = poll.windows.reduce((sum, w) => sum + w.votes.length, 0);
-    expect(totalVotesBefore).toBe(3);
+    expect(poll.windows.reduce((sum, w) => sum + w.votes.length, 0)).toBe(3);
 
-    // Cancel the poll — setPollMode(false) should clear everything.
     await caller.datePoll.setPollMode({ tripId: clearTripId, pollMode: false });
 
-    // Verify windows are gone.
     poll = await caller.datePoll.get({ tripId: clearTripId });
     expect(poll.windows.length).toBe(0);
-
-    // Verify votes are gone (direct DB check via admin).
     const { count: voteCount } = await ctx.admin
       .from("date_poll_votes")
       .select("window_id", { count: "exact", head: true })
       .in("window_id", [w1, w2]);
     expect(voteCount).toBe(0);
-
-    // Verify poll_mode is false on the trip.
-    const { data: tripRow } = await ctx.admin
-      .from("trips")
-      .select("poll_mode")
-      .eq("id", clearTripId)
-      .single();
-    expect(tripRow?.poll_mode).toBe(false);
+    expect(await pollMode(clearTripId)).toBe(false);
   });
 });
-
-

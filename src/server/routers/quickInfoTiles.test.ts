@@ -1,85 +1,85 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 
+/**
+ * EVERY TEST BUILDS THE TILE IT USES (#1527). This file used to share one tile
+ * created by the first case — update and remove acted on it — so a failure
+ * early failed the rest as if behaviour broke. Shuffled order surfaced 2 such
+ * dependencies.
+ *
+ * Quick Info lives in the trip-header dock and is curated by Owner+Organizer;
+ * members are read-only.
+ */
+
 let ctx: TestContext;
-let tripId: string;
-let tileId: string;
+
+beforeAll(async () => {
+  ctx = await TestContext.create();
+});
+
+afterAll(async () => {
+  await ctx.cleanup();
+});
+
+async function crewTrip(label: string): Promise<string> {
+  const tripId = await ctx.createTrip(`Tiles ${label}`);
+  await ctx.addTripMember(tripId, "planner", "Organizer");
+  await ctx.addTripMember(tripId, "member", "Member");
+  return tripId;
+}
+
+/** A crew trip with one tile the owner created ("Door Code" / 4892 / lock). */
+async function tileTrip(label: string) {
+  const tripId = await crewTrip(label);
+  const tile = await ctx.caller().quickInfoTiles.create({ tripId, id: genId("tile"), label: "Door Code", value: "4892", icon: "lock" });
+  return { tripId, tileId: tile.id as string };
+}
+
+async function tiles(tripId: string) {
+  return ctx.caller().quickInfoTiles.list({ tripId });
+}
 
 describe("quickInfoTiles router", () => {
-  beforeAll(async () => {
-    ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Tiles Test");
-    await ctx.addTripMember(tripId, "planner", "Organizer");
-    await ctx.addTripMember(tripId, "member", "Member");
-  });
-
-  afterAll(async () => {
-    await ctx.cleanup();
-  });
-
-  // Quick Info now lives in the trip-header dock and is curated by
-  // Owner+Organizer ("Owner/organizer" per the redesign spec). Members are
-  // still read-only.
-
   it("create — owner can create a tile (with explicit icon)", async () => {
-    const caller = ctx.caller();
-    const tile = await caller.quickInfoTiles.create({
-      tripId,
-      id: genId("tile"),
-      label: "Door Code",
-      value: "4892",
-      icon: "lock",
-    });
+    const tripId = await crewTrip("create-owner");
+    const tile = await ctx.caller().quickInfoTiles.create({ tripId, id: genId("tile"), label: "Door Code", value: "4892", icon: "lock" });
     expect(tile.label).toBe("Door Code");
     expect(tile.value).toBe("4892");
     expect(tile.icon).toBe("lock");
-    tileId = tile.id;
   });
 
   it("create — planner can create (Owner/organizer permission)", async () => {
-    const caller = ctx.callerAs("planner");
-    const tile = await caller.quickInfoTiles.create({
-      tripId,
-      id: genId("tile"),
-      label: "Wifi",
-      value: "password123",
-    });
+    const tripId = await crewTrip("create-organizer");
+    const tile = await ctx.callerAs("planner").quickInfoTiles.create({ tripId, id: genId("tile"), label: "Wifi", value: "password123" });
     expect(tile.label).toBe("Wifi");
   });
 
-  it("create — plain member cannot create", async () => {
-    const caller = ctx.callerAs("member");
+  it("create — plain member cannot create, and nothing is added", async () => {
+    const tripId = await crewTrip("create-member");
     await expect(
-      caller.quickInfoTiles.create({
-        tripId,
-        id: genId("tile"),
-        label: "Address",
-        value: "42 Oak",
-      })
+      ctx.callerAs("member").quickInfoTiles.create({ tripId, id: genId("tile"), label: "Address", value: "42 Oak" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await tiles(tripId)).toHaveLength(0);
   });
 
   it("list — any member can view tiles", async () => {
-    const caller = ctx.callerAs("member");
-    const tiles = await caller.quickInfoTiles.list({ tripId });
-    expect(tiles.length).toBeGreaterThanOrEqual(1);
+    const { tripId, tileId } = await tileTrip("list");
+    const list = await ctx.callerAs("member").quickInfoTiles.list({ tripId });
+    expect(list.some((t: { id: string }) => t.id === tileId)).toBe(true);
   });
 
   it("update — planner can update a tile (including icon)", async () => {
-    const caller = ctx.callerAs("planner");
-    const updated = await caller.quickInfoTiles.update({
-      tripId,
-      tileId,
-      value: "9999",
-      icon: "key",
-    });
+    const { tripId, tileId } = await tileTrip("update");
+    const updated = await ctx.callerAs("planner").quickInfoTiles.update({ tripId, tileId, value: "9999", icon: "key" });
     expect(updated.value).toBe("9999");
     expect(updated.icon).toBe("key");
   });
 
-  it("remove — owner can remove a tile", async () => {
-    const caller = ctx.caller();
-    const result = await caller.quickInfoTiles.remove({ tripId, tileId });
+  it("remove — owner can remove a tile, and it is gone", async () => {
+    const { tripId, tileId } = await tileTrip("remove");
+    expect((await tiles(tripId)).some((t: { id: string }) => t.id === tileId)).toBe(true); // premise
+    const result = await ctx.caller().quickInfoTiles.remove({ tripId, tileId });
     expect(result.success).toBe(true);
+    expect((await tiles(tripId)).some((t: { id: string }) => t.id === tileId)).toBe(false);
   });
 });
