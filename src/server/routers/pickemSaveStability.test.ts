@@ -34,13 +34,21 @@ import {
  */
 
 let ctx: TestContext;
-let tripId: string;
-let competitionId: string;
-let gameId: string;
 let users: string[];
+const madeGames: string[] = [];
 
-const hashOf = async () =>
-  ((await ctx.caller().games.configHash({ tripId, gameId })) as { hash: string | null }).hash!;
+/**
+ * EVERY CASE BUILDS ITS OWN GAME (#1527). They shared one, paired once in
+ * `beforeAll`, and "STILL moves the hash when the pairing genuinely changes"
+ * CHANGES that pairing — so shuffled ahead of the stability cases, they were
+ * measuring an identical save of a different pairing than the one their
+ * comments describe (the reported spare-player shape was gone), and the third-
+ * save case read a hash the change had moved.
+ */
+type Game = { tripId: string; gameId: string };
+
+const hashOf = async (g: Game) =>
+  ((await ctx.caller().games.configHash({ tripId: g.tripId, gameId: g.gameId })) as { hash: string | null }).hash!;
 
 /**
  * NOTE: `select("*")` is WIDER than `pickem.get`'s own select, so this baseline
@@ -54,8 +62,9 @@ const hashOf = async () =>
  * would tie it to a second concern. The router's select is covered directly by
  * `pickemGameCols.test.ts`, which needs no database.
  */
-const snapshot = async () => {
-  const { data } = await ctx.admin.from("games").select("*").eq("id", gameId).single();
+const snapshot = async (g: Game) => {
+  const { data, error } = await ctx.admin.from("games").select("*").eq("id", g.gameId).single();
+  if (error) throw new Error(`read game: ${error.message}`);
   return data as unknown as Parameters<typeof configToPickemDraft>[0];
 };
 
@@ -68,12 +77,13 @@ const snapshot = async () => {
  * wearing a fixture. The first version of this file did exactly that and failed
  * against correct code.
  */
-async function storedMatches() {
-  const { data } = await ctx.admin
+async function storedMatches(g: Game) {
+  const { data, error } = await ctx.admin
     .from("game_matches")
     .select("display_order, side_a, side_b")
-    .eq("game_id", gameId)
+    .eq("game_id", g.gameId)
     .order("display_order");
+  if (error) throw new Error(`read matches: ${error.message}`);
   return (data ?? []).map((m, i) => ({
     matchNumber: i + 1,
     playersPerSide: 1 as const,
@@ -85,18 +95,18 @@ async function storedMatches() {
 }
 
 /** The settings page's Save, built the way the page builds it. */
-async function save(over: Partial<PickemConfigDraft> = {}) {
+async function save(g: Game, over: Partial<PickemConfigDraft> = {}) {
   const base = configToPickemDraft(
-    await snapshot(),
+    await snapshot(g),
     [],
     { rollUp: "individual_matches", useConfidence: true },
-    await storedMatches()
+    await storedMatches(g)
   );
   const draft: PickemConfigDraft = { ...base, ...over };
   await ctx.caller().games.saveConfig({
-    tripId,
-    gameId,
-    baseHash: await hashOf(),
+    tripId: g.tripId,
+    gameId: g.gameId,
+    baseHash: await hashOf(g),
     payload: pickemDraftToPayload(draft, base),
   });
 }
@@ -108,13 +118,12 @@ const PAIRING = (u: string[]) => [
   { matchNumber: 2, playersPerSide: 1 as const, a: [u[2]], b: [], handicap: 0, pointValue: null },
 ];
 
-beforeAll(async () => {
-  ctx = await TestContext.create();
-  tripId = await ctx.createTrip("pickem save stability");
+/** A cup's pick'em game with the reported pairing established. */
+async function pairedGame(label: string): Promise<Game> {
+  const tripId = await ctx.createTrip(`pickem save stability ${label}`);
   await ctx.addTripMember(tripId, "member", "Member");
   await ctx.addTripMember(tripId, "planner", "Organizer");
-  competitionId = await ctx.createCompetition(tripId, "stability cup");
-  users = [ctx.user.id, ctx.getUser("member").id, ctx.getUser("planner").id];
+  const competitionId = await ctx.createCompetition(tripId, `stability cup ${label}`);
   // Rostered before pairing: a Ryder cup (the default) refuses an unrostered
   // participant since migration 193, and the app's pairing picker offers only
   // rostered players. The clean-replace re-inserts all three on every pairing
@@ -124,36 +133,58 @@ beforeAll(async () => {
   await ctx.assignTeam(competitionId, blue, [users[0], users[2]]);
   await ctx.assignTeam(competitionId, red, [users[1]]);
 
-  const g = (await ctx.caller().games.create({
+  const created = (await ctx.caller().games.create({
     tripId,
     gameTypeId: "gtt_pickem",
     name: "Stability",
     competitionId,
   })) as { id: string };
-  gameId = g.id;
+  madeGames.push(created.id);
+  const g = { tripId, gameId: created.id };
 
   // Establish the pairing. This save SHOULD move the hash — the structure is new.
-  await save({ pointsTotal: 24, matches: PAIRING(users) });
+  const empty = await hashOf(g);
+  await save(g, { pointsTotal: 24, matches: PAIRING(users) });
+  expect(await hashOf(g)).not.toBe(empty); // premise: the pairing landed
+  return g;
+}
+
+async function pairedRows(g: Game) {
+  const { data, error } = await ctx.admin
+    .from("game_matches")
+    .select("match_number, side_a, side_b")
+    .eq("game_id", g.gameId);
+  if (error) throw new Error(`read matches: ${error.message}`);
+  return data ?? [];
+}
+
+beforeAll(async () => {
+  ctx = await TestContext.create();
+  users = [ctx.user.id, ctx.getUser("member").id, ctx.getUser("planner").id];
 }, 120_000);
 
 afterAll(async () => {
-  await ctx.admin.from("game_matches").delete().eq("game_id", gameId);
-  await ctx.admin.from("games").delete().eq("id", gameId);
+  if (madeGames.length) {
+    await ctx.admin.from("game_matches").delete().in("game_id", madeGames);
+    await ctx.admin.from("games").delete().in("id", madeGames);
+  }
   await ctx.cleanup();
 }, 60_000);
 
 describe("an identical pick'em save", () => {
   it("does NOT move the config hash", async () => {
-    const before = await hashOf();
-    await save({ pointsTotal: 24, matches: PAIRING(users) });
-    expect(await hashOf()).toBe(before);
+    const g = await pairedGame("identical");
+    const before = await hashOf(g);
+    await save(g, { pointsTotal: 24, matches: PAIRING(users) });
+    expect(await hashOf(g)).toBe(before);
   }, 120_000);
 
   it("is still stable on a THIRD save — not merely different once", async () => {
-    const before = await hashOf();
-    await save({ pointsTotal: 24, matches: PAIRING(users) });
-    await save({ pointsTotal: 24, matches: PAIRING(users) });
-    expect(await hashOf()).toBe(before);
+    const g = await pairedGame("third");
+    const before = await hashOf(g);
+    await save(g, { pointsTotal: 24, matches: PAIRING(users) });
+    await save(g, { pointsTotal: 24, matches: PAIRING(users) });
+    expect(await hashOf(g)).toBe(before);
   }, 120_000);
 
   it("keeps the pairing — stability must not come from writing nothing", async () => {
@@ -161,15 +192,15 @@ describe("an identical pick'em save", () => {
      * The control. "The hash did not move" is also true of a build that dropped
      * the matches on the floor, which is the failure mode a too-eager
      * not-dirty flag produces. The rows have to still be there and still be
-     * paired.
+     * paired — after the identical saves the stability cases make.
      */
-    const { data } = await ctx.admin
-      .from("game_matches")
-      .select("match_number, side_a, side_b")
-      .eq("game_id", gameId);
+    const g = await pairedGame("keeps");
+    await save(g, { pointsTotal: 24, matches: PAIRING(users) });
+    await save(g, { pointsTotal: 24, matches: PAIRING(users) });
+    const data = await pairedRows(g);
     expect(data).toHaveLength(1);
-    expect((data ?? [])[0]?.side_a).toBeTruthy();
-    expect((data ?? [])[0]?.side_b).toBeTruthy();
+    expect(data[0]?.side_a).toBeTruthy();
+    expect(data[0]?.side_b).toBeTruthy();
   }, 60_000);
 
   it("STILL moves the hash when the pairing genuinely changes", async () => {
@@ -178,13 +209,14 @@ describe("an identical pick'em save", () => {
      * simply always reports clean. Without it, "does not churn" is satisfied by
      * never propagating anything.
      */
-    const before = await hashOf();
-    await save({
+    const g = await pairedGame("changes");
+    const before = await hashOf(g);
+    await save(g, {
       pointsTotal: 24,
       matches: [
         { matchNumber: 1, playersPerSide: 1 as const, a: [users[0]], b: [users[2]], handicap: 0, pointValue: null },
       ],
     });
-    expect(await hashOf()).not.toBe(before);
+    expect(await hashOf(g)).not.toBe(before);
   }, 120_000);
 });
