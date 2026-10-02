@@ -29,6 +29,38 @@ let matchCompId: string;
 let pointsGameId: string;
 let matchGameId: string;
 
+/** A pick'em game with one open slate game, in the given cup. */
+const mk = async (competitionId: string, name: string, gameTripId: string): Promise<string> => {
+    const id = genId("p7game");
+    const ins = await ctx.admin.from("games").insert({
+      id,
+      trip_id: gameTripId,
+      competition_id: competitionId,
+      game_type_id: "gtt_pickem",
+      name,
+      points_distribution: { type: "placement", values: [2, 1.5, 0.5, 0] },
+    });
+    expect(ins.error).toBeNull();
+    const cfg = await ctx.admin.from("pickem_games").insert({
+      game_id: id,
+      use_confidence: true,
+      // INERT in a points cup — see the file header. Set on purpose.
+      roll_up: "individual_matches",
+      picks_opened_at: new Date(Date.now() - 3_600_000).toISOString(),
+    });
+    expect(cfg.error).toBeNull();
+    const slate = await ctx.admin.from("pickem_slate_games").insert({
+      id: genId("sl"),
+      game_id: id,
+      display_order: 0,
+      away_team: "Away",
+      home_team: "Home",
+      multiplier: 1,
+    });
+    expect(slate.error).toBeNull();
+    return id;
+  };
+
 describe("pick'em under a points competition", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
@@ -44,36 +76,6 @@ describe("pick'em under a points competition", () => {
       members: ["member"],
     }));
 
-    const mk = async (competitionId: string, name: string, gameTripId: string) => {
-      const id = genId("p7game");
-      const ins = await ctx.admin.from("games").insert({
-        id,
-        trip_id: gameTripId,
-        competition_id: competitionId,
-        game_type_id: "gtt_pickem",
-        name,
-        points_distribution: { type: "placement", values: [2, 1.5, 0.5, 0] },
-      });
-      expect(ins.error).toBeNull();
-      const cfg = await ctx.admin.from("pickem_games").insert({
-        game_id: id,
-        use_confidence: true,
-        // INERT in a points cup — see the file header. Set on purpose.
-        roll_up: "individual_matches",
-        picks_opened_at: new Date(Date.now() - 3_600_000).toISOString(),
-      });
-      expect(cfg.error).toBeNull();
-      const slate = await ctx.admin.from("pickem_slate_games").insert({
-        id: genId("sl"),
-        game_id: id,
-        display_order: 0,
-        away_team: "Away",
-        home_team: "Home",
-        multiplier: 1,
-      });
-      expect(slate.error).toBeNull();
-      return id;
-    };
 
     pointsGameId = await mk(pointsCompId, "Points Pick'em", tripId);
     matchGameId = await mk(matchCompId, "Match Pick'em", matchTripId);
@@ -153,9 +155,24 @@ describe("pick'em under a points competition", () => {
     // Migration 161's pick'em arm is `result IS NOT NULL` with no roll-up or
     // scoring_model condition, so points mode is covered by construction.
     // Asserted rather than assumed, since it is what puts the game On Tap.
-    const { data } = await ctx.admin
-      .from("game_started").select("game_id").eq("game_id", pointsGameId);
-    expect((data ?? []).map((r) => r.game_id)).toEqual([pointsGameId]);
+    //
+    // Its OWN game and its OWN result (#1527): it used to read the result the
+    // "does NOT reject a result" case wrote, and shuffled ahead of that case
+    // (seed 31337) it read a game nobody had scored.
+    const gameId = await mk(pointsCompId, "Started Pick'em", tripId);
+    const started = async () => {
+      const { data, error } = await ctx.admin.from("game_started").select("game_id").eq("game_id", gameId);
+      if (error) throw new Error(`read game_started: ${error.message}`);
+      return (data ?? []).map((r) => r.game_id);
+    };
+    expect(await started()).toEqual([]); // premise: not started before the result
+
+    const { data: slate, error: sErr } = await ctx.admin
+      .from("pickem_slate_games").select("id").eq("game_id", gameId).single();
+    if (sErr) throw new Error(`read slate: ${sErr.message}`);
+    await ctx.caller().pickem.setResult({ tripId, gameId, slateGameId: slate!.id, result: "home" });
+
+    expect(await started()).toEqual([gameId]);
   });
 
   it("a game with no result is NOT started — the non-vacuity control", async () => {
