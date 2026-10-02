@@ -64,10 +64,16 @@ export default defineConfig({
     // fail fast (a retry there would mask real failures during TDD); retries fire only
     // on failure, so the happy path is unaffected. (#638)
     // The 502's cause is now known (#1527): Kong reusing its upstream connections.
-    // CI turns that off right after `supabase start`; locally, run
-    //   docker exec -e KONG_UPSTREAM_KEEPALIVE_POOL_SIZE=0 supabase_kong_buddytrip kong reload
-    // once per stack start for a full-suite run that does not 502.
+    // CI turns that off right after `supabase start`; locally, global setup refuses
+    // to run until it is off (`assertKongReuseOff`), and prints the command.
+    //
+    // A retry that PASSES prints nothing in the default reporter, so this line
+    // used to absorb failures invisibly — the 502s for months. `retryReporter`
+    // names every retried test (summary line always, plus annotations and a job
+    // summary table in Actions). Once that count has stayed at zero for a while,
+    // this retry has no known job left and should go.
     retry: process.env.CI ? 2 : 0,
+    reporters: ["default", "./src/__tests__/helpers/retryReporter.ts"],
     /**
      * EVERY RUN IS SHUFFLED — files and the tests inside them (#1527).
      *
