@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowRightLeft, UserMinus, Ban } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
@@ -124,7 +125,12 @@ export function RosterChangeSheet({
   return (
     <ScrollLock>
       <div
-        className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+        // z-[60] and portalled to <body> by the provider: it opens FROM inside the
+        // Rosters overlay and the Edit Team sheet, both z-50, and must clear them —
+        // the app's convention for a sheet over a modal (TeamsPanel's add-player
+        // picker does the same). Found in the first local render, where the sheet
+        // existed with the right title and sat behind the overlay.
+        className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center"
         style={{ background: "var(--color-bt-overlay)" }}
         onClick={onCancel}
         data-testid="roster-change-sheet"
@@ -270,7 +276,7 @@ export function RosterChangeGateProvider({
   return (
     <GateContext.Provider value={competitionId ? open : null}>
       {children}
-      {request && (
+      {request && createPortal(
         <RosterChangeSheet
           request={request}
           state={state}
@@ -280,7 +286,8 @@ export function RosterChangeGateProvider({
             request.run(state.preview.fingerprint);
             close();
           }}
-        />
+        />,
+        document.body
       )}
     </GateContext.Provider>
   );

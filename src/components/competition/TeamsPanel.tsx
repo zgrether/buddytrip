@@ -443,7 +443,7 @@ export function TeamsPanel({
           <p
             className="rounded-lg px-3 py-2 text-[11px]"
             style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-            data-testid="rosters-locked-note"
+            data-testid="rosters-results-note"
           >
             Results are in. Moving or removing a player shows what it changes first — finished games keep their points.
           </p>

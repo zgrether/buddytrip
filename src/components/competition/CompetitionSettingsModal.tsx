@@ -632,8 +632,9 @@ function ScoringStartedNote() {
         style={{ color: "var(--color-bt-text-dim)", flexShrink: 0, marginTop: 1 }}
       />
       <span>
-        Scoring has started — the competition shape and teams are locked. You can
-        still rename it, and the reset / delete hatches stay available below.
+        Scoring has started — the competition&rsquo;s shape is locked. You can still
+        rename it and change rosters (each change shows what it does first), and
+        the reset / delete hatches stay available below.
       </span>
     </p>
   );
