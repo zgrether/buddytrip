@@ -45,7 +45,7 @@ function withParams(pathname: string, patch: Record<string, string | null>) {
   return q ? `${pathname}?${q}` : pathname;
 }
 
-function openGamePanel(pathname: string, gameId: string, settings: boolean) {
+export function openGamePanel(pathname: string, gameId: string, settings: boolean) {
   // Tagged via pushMarker, not a bare pushState(null): an UNTAGGED entry reads as
   // depth 0, which makes every marker below it think it sits above them — so
   // popping this entry would make the settings overlay / a modal / an in-page

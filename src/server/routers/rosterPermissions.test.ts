@@ -173,8 +173,15 @@ describe("after the roster locks, captains have nothing; organizers still add", 
     expect(rem.message).toBe(LOCKED);
     expect(await teamOf(c.competitionId, c.planner)).toBe(c.blue);
 
-    // CONTROL: an Organizer's ADD still goes through after the lock (adds stay allowed).
-    await ctx.callerAs("planner").teamAssignments.assign({ tripId: c.tripId, competitionId: c.competitionId, userId: c.outsider, teamId: c.red });
+    // CONTROL: an Organizer can still add after results — through the reviewed
+    // path since PR 8b-2 (ruling 20: an add is previewed like a move), so it
+    // carries the preview's fingerprint. The captain above has no such path.
+    const { fingerprint } = await ctx.callerAs("planner").teamAssignments.previewChange({
+      tripId: c.tripId, competitionId: c.competitionId, userId: c.outsider,
+    });
+    await ctx.callerAs("planner").teamAssignments.assign({
+      tripId: c.tripId, competitionId: c.competitionId, userId: c.outsider, teamId: c.red, rosterFingerprint: fingerprint,
+    });
     expect(await teamOf(c.competitionId, c.outsider)).toBe(c.red);
   }, 60000);
 });

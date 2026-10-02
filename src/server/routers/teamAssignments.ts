@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireTeamIdentityEdit } from "../middleware";
 import { competitionHasResults } from "../lib/rosterLock";
-import { assertRosterChangeAllowed, blockedRefusal, personUnfinishedGames, previewRosterChange } from "../lib/rosterChange";
+import { assertRosterChangeAllowed, previewRosterChange } from "../lib/rosterChange";
 import { tripDisplayNames } from "../lib/tripDisplayNames";
 import { notifyCupClinchedIfDecided } from "../lib/gameFinishNotify";
 import { afterResponse } from "../lib/afterResponse";
@@ -153,8 +153,8 @@ export const teamAssignmentsRouter = router({
         competitionId: z.string(),
         userId: z.string(),
         teamId: z.string(),
-        /** Required for a staff MOVE once results are in: the fingerprint the
-         *  preview was built on (PR 8b). Ignored before results and for adds. */
+        /** Required for a staff MOVE or ADD once results are in: the fingerprint
+         *  the preview was built on (PR 8b). Ignored before results. */
         rosterFingerprint: z.string().optional(),
       })
     )
@@ -185,21 +185,20 @@ export const teamAssignmentsRouter = router({
       );
       const isSameTeam = !!existing && (existing.team_id as string) === input.teamId;
       const isMove = !!existing && (existing.team_id as string) !== input.teamId;
+      // A MOVE and an ADD share one gate (ruling 20: ANY roster change after
+      // points exist is previewed). An add changes what the person's unfinished
+      // games count for just as a move does — a stroke round in progress now
+      // counts for the team they join — so it carries the preview's fingerprint
+      // and gets the same refusal. (8b-1 let adds through unreviewed; Zach, on
+      // the 8b-2 look: a refusal for the blocked case does not tell an organizer
+      // what the add will do in the allowed one.)
       let changedAfterResults = false;
       if (!isSameTeam) {
         const personName = (await tripDisplayNames(ctx.supabase, ctx.tripId, [input.userId])).get(input.userId) ?? "This player";
-        if (isMove) {
-          ({ hasResults: changedAfterResults } = await assertRosterChangeAllowed(ctx.supabase, {
-            tripId: ctx.tripId, competitionId: input.competitionId, userId: input.userId,
-            personName, rosterFingerprint: input.rosterFingerprint,
-          }));
-        } else if (await competitionHasResults(ctx.supabase, input.competitionId)) {
-          const { blocking } = await personUnfinishedGames(ctx.supabase, input.competitionId, input.userId);
-          if (blocking.length > 0) {
-            throw new TRPCError({ code: "PRECONDITION_FAILED", message: blockedRefusal(personName, blocking) });
-          }
-          changedAfterResults = true;
-        }
+        ({ hasResults: changedAfterResults } = await assertRosterChangeAllowed(ctx.supabase, {
+          tripId: ctx.tripId, competitionId: input.competitionId, userId: input.userId,
+          personName, rosterFingerprint: input.rosterFingerprint,
+        }));
       }
 
       // sort_order (mig 070): a genuine ADD or a MOVE to a different team lands at

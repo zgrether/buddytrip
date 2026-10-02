@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { rosterRights } from "./rosterRights";
 
-// Each case pins one refusal the server makes (migrations 199/200 and
-// assertRosterUnlocked), so the screen never offers what the server refuses and
+// Each case pins one rule the server enforces (migrations 199/200, and PR 8b's
+// rosterChange.ts), so the screen never offers what the server refuses and
 // never hides what it allows.
 const ME = "me";
 const TEAMMATE = "teammate";
@@ -13,14 +13,14 @@ describe("rosterRights — staff (Owner or Organizer)", () => {
     expect([r.add, r.trade, r.remove(TEAMMATE), r.remove(ME), r.captainLocked]).toEqual([true, true, "enabled", "enabled", false]);
   });
 
-  it("after results: adds stay open, trades stop, and the × shows LOCKED rather than vanishing", () => {
+  it("after results: still add, trade and remove — through the preview (PR 8b), no longer locked", () => {
     const r = rosterRights({ staff: true, captainOfTeam: false, locked: true, viewerId: ME });
-    expect([r.add, r.trade, r.remove(TEAMMATE), r.captainLocked]).toEqual([true, false, "locked", false]);
+    expect([r.add, r.trade, r.remove(TEAMMATE), r.captainLocked]).toEqual([true, true, "enabled", false]);
   });
 
   it("staff who also captain get STAFF rights, not the captain's narrower ones", () => {
     const r = rosterRights({ staff: true, captainOfTeam: true, locked: true, viewerId: ME });
-    expect([r.add, r.remove(ME), r.captainLocked]).toEqual([true, "locked", false]);
+    expect([r.add, r.trade, r.remove(ME), r.captainLocked]).toEqual([true, true, "enabled", false]);
   });
 });
 
