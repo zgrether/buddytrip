@@ -161,10 +161,10 @@ describe("the delegate tier around points (migration 158)", () => {
         baseHash: await hashOf(gameId),
         payload: payload({ name: "nope", omitDelegates: true, pointsTotal: 99 }),
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires organizer access or a delegate grant for this game") });
     await expect(
       ctx.callerAs("member").games.setPointsTotal({ tripId, gameId, total: 99 })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires organizer access or a delegate grant for this game") });
   });
 });
 
@@ -196,7 +196,7 @@ describe("delegation itself did NOT move — and now REFUSES instead of dropping
         baseHash: await hashOf(gameId),
         payload: payload({ name: "n", delegates: [member, ctx.getUser("outsider").id] }),
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("You can't edit this game.") });
 
     // ...and nothing was granted on the way past.
     expect(await delegatesOf(gameId)).toEqual([member]);

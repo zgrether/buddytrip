@@ -649,7 +649,7 @@ describe("saveConfig — delegates (the flip's silent-revoke bug)", () => {
         baseHash: (await asDelegate.games.configHash({ tripId, gameId })).hash,
         payload: configDraftToPayload({ ...draft, name: "Delegate Edited", delegates: [outsider] }, draft),
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("You can't edit this game.") });
 
     // The whole save is refused, so the NAME does not land either — it is one
     // transaction, and a partial apply is the thing being removed.
@@ -694,7 +694,7 @@ describe("saveConfig — delegates (the flip's silent-revoke bug)", () => {
         baseHash: await hashOf(gameId),
         payload: configDraftToPayload({ ...draft, name: "Hijacked" }, draft),
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires organizer access or a delegate grant for this game") });
     expect((await ctx.caller().games.getById({ tripId, gameId })).name).toBe("Not yours");
   });
 });

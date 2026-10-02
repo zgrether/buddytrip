@@ -187,7 +187,7 @@ describe("the runner writes a score", () => {
         awayScore: -1,
         homeScore: 3,
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["awayScore"] }] } });
   });
 });
 
@@ -250,7 +250,7 @@ describe("the gate", () => {
         awayScore: 99,
         homeScore: 0,
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires organizer access or a delegate grant for this game") });
     // ...and the row is untouched, which is the half a rejection alone does not
     // prove: a procedure that threw AFTER writing would pass the line above.
     expect((await scoreRow()).away_score).toBeNull();

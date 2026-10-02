@@ -16,6 +16,29 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // A bare `toThrow()` passes on ANY throw, so it cannot tell the refusal a
+  // test is named for from any other (#1543). "a Member cannot add
+  // participants" sent one user id where the schema's floor is two: zod refused
+  // it before the permission gate ran, and the bare assertion read that as the
+  // Member being refused. With the gate forced open, the requests still died on
+  // a LATER refusal (RLS, a downstream precondition) — which the bare form also
+  // accepted. Name what is expected: `toMatchObject({ code, message })`, a zod
+  // issue's `cause.issues[].path`, or `toThrow(<message or /pattern/>)`.
+  {
+    files: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          // `.not.toThrow()` is exempt: "does not throw" names exactly one outcome.
+          selector:
+            "CallExpression[callee.property.name=/^toThrow(Error)?$/][arguments.length=0]:not([callee.object.property.name='not'])",
+          message:
+            "A bare toThrow() passes on ANY error, so it cannot tell the refusal this test is named for from any other (#1543). Name it: .rejects.toMatchObject({ code: \"FORBIDDEN\", message: … }), a zod issue path via cause.issues, or .toThrow(\"…\" / /…/).",
+        },
+      ],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

@@ -140,10 +140,10 @@ describe("read state is per-room", () => {
     // caller and a malformed read row is the refine.
     await expect(
       ctx.callerAs("member").messages.markRead({ tripId, visibility: "team" })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["teamId"] }] } });
     await expect(
       ctx.callerAs("member").messages.markRead({ tripId, visibility: "crew", teamId: teamA })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["teamId"] }] } });
   });
 });
 

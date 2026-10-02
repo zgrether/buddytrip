@@ -140,7 +140,7 @@ describe("doubles setup — sides are play_groups", () => {
           { playersPerSide: 2, sideA: { members: [owner, planner] }, sideB: { members: [member, outsider] }, matchNumber: 1 },
         ],
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires organizer access or a delegate grant for this game") });
   });
 });
 

@@ -149,7 +149,7 @@ describe("per-game organizer delegation (§8)", () => {
     // Owner can edit both.
     await expect(ctx.caller().games.setStatus({ tripId, gameId: other, status: "active" })).resolves.toBeTruthy();
     // A non-member (outsider) is blocked outright.
-    await expect(ctx.callerAs("outsider").games.setStatus({ tripId, gameId: mine, status: "active" })).rejects.toThrow();
+    await expect(ctx.callerAs("outsider").games.setStatus({ tripId, gameId: mine, status: "active" })).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("You are not a member of this trip") });
   });
 
   it("a plain trip member with no grant cannot edit a game", async () => {

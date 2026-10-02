@@ -60,7 +60,7 @@ describe("feedback router", () => {
     process.env.FEEDBACK_TO_EMAIL = "founder@example.com";
     await expect(
       ctx.caller().feedback.send({ category: "bug", message: "   " }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["message"] }] } });
   });
 
   it("rejects unknown categories", async () => {
@@ -68,7 +68,7 @@ describe("feedback router", () => {
     await expect(
       // @ts-expect-error — testing runtime rejection
       ctx.caller().feedback.send({ category: "rant", message: "ok" }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["category"] }] } });
   });
 
   it("rejects malformed replyTo addresses", async () => {
@@ -79,7 +79,7 @@ describe("feedback router", () => {
         message: "broke",
         replyTo: "not-an-email",
       }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["replyTo"] }] } });
   });
 
   it("requires authentication", async () => {

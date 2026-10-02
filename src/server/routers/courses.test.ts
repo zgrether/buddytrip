@@ -136,7 +136,7 @@ describe("courses router — global library", () => {
         handicapIndex: IDX,
         teeSets: names.map((name) => ({ name, yards: Array(18).fill(400) })),
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["teeSets"] }] } });
   });
 
   it("list + getById surface a saved course", async () => {

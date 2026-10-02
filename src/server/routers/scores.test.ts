@@ -82,7 +82,7 @@ describe("scores router (Slice A — per-hole entry)", () => {
       ctx
         .callerAs("outsider")
         .scores.upsertEntry({ tripId, gameId, participantId: ownerId, unitLabel: "2", value: 4 })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("You are not a member of this trip") });
   });
 
   it("listByGame returns the game's entries to any member", async () => {

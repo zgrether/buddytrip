@@ -206,14 +206,14 @@ describe("news router", () => {
         // @ts-expect-error — 'poll' is not one of the six block types
         blocks: [{ type: "poll", options: ["a", "b"] }],
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["blocks",0,"type"] }] } });
   });
 
   it("create — rejects an empty block stack", async () => {
     const tripId = await newsTrip("rejects an empty block stack");
     await expect(
       ctx.caller().news.create({ tripId, blocks: [] })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["blocks"] }] } });
   });
 
   // ── heading block + rich-text segments (PR4) ──────────────────────────────
@@ -231,7 +231,7 @@ describe("news router", () => {
     const tripId = await newsTrip("rejects an empty-text heading");
     await expect(
       ctx.caller().news.create({ tripId, blocks: [{ type: "heading", text: "" }] })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["blocks",0,"text"] }] } });
   });
 
   it("create — rich-text segments (bold, link, mention) round-trip intact", async () => {
