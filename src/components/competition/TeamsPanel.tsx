@@ -446,7 +446,7 @@ export function TeamsPanel({
             style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
             data-testid="rosters-results-note"
           >
-            Results are in. Moving or removing a player shows what it changes first — finished games keep their points.
+            Results are in. Adding, moving or removing a player shows what it changes first — finished games keep their points.
           </p>
         )}
         {!teamsExist && (
@@ -2321,7 +2321,7 @@ function TeamSheetRoster({
           style={{ color: "var(--color-bt-text-dim)" }}
           data-testid="teamsheet-locked-note"
         >
-          Results are in. Removing a player from the team shows what it changes first.
+          Results are in. Adding or removing a player shows what it changes first.
         </p>
       )}
       {rights.captainLocked && (
