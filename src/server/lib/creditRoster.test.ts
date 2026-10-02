@@ -29,7 +29,7 @@ import type { WriteFailureMode } from "./writeGameResults";
  *
  * A fake client, not the database: the database half — the wrapper keeping the
  * FIRST roster, the reset clearing it, the guest merge re-keying it — is in
- * `creditRoster.db.test.ts`.
+ * `creditRoster.db.test.ts` and `creditedRosterMigration.db.test.ts`.
  */
 
 const G = "g1";

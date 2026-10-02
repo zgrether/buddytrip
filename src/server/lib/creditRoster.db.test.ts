@@ -11,9 +11,11 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  *     with the roster the game finalized with, through `games.finish` and the
  *     real `write_game_results`. With a CONTROL: the same trade made BEFORE the
  *     first finalize moves the credit, so the fixture's trade is real;
- *   - the wrapper keeps the FIRST roster and refuses a non-map;
- *   - a scoring reset clears it, so a replayed game is credited afresh;
- *   - the guest merge re-keys it, with the real account winning a collision.
+ *   - a scoring reset clears it, and the replayed game is credited through the
+ *     roster at ITS finalize.
+ *
+ * The migration's own contract (first roster wins, non-map refused, merge
+ * re-keying) is pinned without any writer in `creditedRosterMigration.db.test.ts`.
  *
  * The roster lock still refuses a trade on a scored cup (PR 8b lifts it), so the
  * trade here is a direct write — the state 8b will make reachable.
@@ -147,52 +149,5 @@ describe("a finished game keeps the roster it was credited through (end to end)"
     await playRound(c.tripId, c.gameId, SCORES());
     await ctx.caller().games.finish({ tripId: c.tripId, gameId: c.gameId });
     expect(await teamTotals(c.gameId)).toEqual({ [c.alpha]: 5, [c.bravo]: 14 });
-  });
-});
-
-describe("write_game_results keeps the FIRST roster", () => {
-  it("a second roster does not replace the first, and a non-map is refused", async () => {
-    const c = await strokeCup("First wins");
-    const db = ctx.authedClient("owner");
-    const write = (roster: unknown) =>
-      db.rpc("write_game_results", { p_game_id: c.gameId, p_rows: [], p_scope: "all", p_credited_roster: roster });
-
-    expect((await write({ [owner]: c.alpha })).error).toBeNull();
-    expect((await write({ [owner]: c.bravo })).error).toBeNull();
-    expect(await creditedRoster(c.gameId)).toEqual({ [owner]: c.alpha });
-
-    // Refused on a FRESH game, where the update would otherwise have landed —
-    // on the game above the first-wins rule alone would leave it untouched.
-    const fresh = await strokeCup("Non-map refused");
-    const { error } = await db.rpc("write_game_results", {
-      p_game_id: fresh.gameId, p_rows: [], p_scope: "all", p_credited_roster: [owner],
-    });
-    expect(error?.message).toContain("CREDITED_ROSTER_NOT_OBJECT");
-    expect(await creditedRoster(fresh.gameId)).toBeNull();
-  });
-});
-
-describe("the guest merge re-keys a credited roster", () => {
-  it("moves a placeholder's team to the real account, and the real account wins a collision", async () => {
-    const c = await strokeCup("Merge re-key");
-    const ghostA = `ghost-${crypto.randomUUID()}`;
-    const ghostB = `ghost-${crypto.randomUUID()}`;
-    const real = await ctx.createAccount("credited-roster-merge");
-    for (const id of [ghostA, ghostB]) {
-      const { error } = await ctx.admin.from("users").insert({ id, name: "Placeholder", is_guest: true });
-      if (error) throw error;
-    }
-
-    // Plain move: only the placeholder was on the roster.
-    await ctx.admin.from("games").update({ credited_roster: { [ghostA]: c.alpha, [owner]: c.bravo } }).eq("id", c.gameId);
-    const moved = await ctx.admin.rpc("merge_guest_to_real_user", { p_ghost_id: ghostA, p_real_id: real.id });
-    expect(moved.error).toBeNull();
-    expect(await creditedRoster(c.gameId)).toEqual({ [real.id]: c.alpha, [owner]: c.bravo });
-
-    // Collision: both were on the roster; the real account's entry stands.
-    await ctx.admin.from("games").update({ credited_roster: { [ghostB]: c.alpha, [real.id]: c.bravo } }).eq("id", c.gameId);
-    const collided = await ctx.admin.rpc("merge_guest_to_real_user", { p_ghost_id: ghostB, p_real_id: real.id });
-    expect(collided.error).toBeNull();
-    expect(await creditedRoster(c.gameId)).toEqual({ [real.id]: c.bravo });
   });
 });
