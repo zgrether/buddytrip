@@ -7,9 +7,11 @@
  * The server is the authority; this only decides what to SHOW. Each branch
  * matches a refusal the server makes, so nothing offered here is refused there:
  *
- *  - STAFF (trip Owner or Organizer): add, remove, move. After results, adds
- *    stay open, while removals and moves lock (the × is shown disabled, with
- *    why, so it reads as intentional). `assertRosterUnlocked`.
+ *  - STAFF (trip Owner or Organizer): add, remove, move — before AND after
+ *    results. After results a move or removal opens the before-and-after
+ *    preview first (`RosterChangeGate`, PR 8b), and the server refuses it for
+ *    someone in an unfinished team-dependent game (`rosterChange.ts`). Until 8b
+ *    results LOCKED staff moves and removals; that lock is gone.
  *  - CAPTAIN of THIS team (and not staff): until results, add an UNASSIGNED
  *    player and remove their own players, never themselves (the team would be
  *    left captainless — that is `setCaptain`'s job). After results, nothing,
@@ -21,7 +23,7 @@
  * The lock is ONE moment for both (`game_started`, via `hasResults`).
  */
 
-export type RemoveControl = "hidden" | "enabled" | "locked";
+export type RemoveControl = "hidden" | "enabled";
 
 export interface RosterRights {
   /** "+ Add player" from the unassigned pool. */
@@ -39,15 +41,15 @@ export function rosterRights(p: {
   staff: boolean;
   /** The viewer captains THIS team. */
   captainOfTeam: boolean;
-  /** Results are in (`teamAssignments.hasResults`). */
+  /** Results are in (`teamAssignments.hasResults`). Gates CAPTAINS only now. */
   locked: boolean;
   viewerId: string | null | undefined;
 }): RosterRights {
   if (p.staff) {
     return {
       add: true,
-      trade: !p.locked,
-      remove: () => (p.locked ? "locked" : "enabled"),
+      trade: true,
+      remove: () => "enabled",
       captainLocked: false,
     };
   }

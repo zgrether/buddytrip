@@ -11,6 +11,7 @@ import { SideGamesBoard } from "./SideGamesBoard";
 import { CompetitionSetupPanel } from "./CompetitionSetupPanel";
 import { CompetitionSettingsModal } from "./CompetitionSettingsModal";
 import { RostersOverlay } from "./RostersOverlay";
+import { RosterChangeGateProvider } from "./RosterChangeGate";
 import { TeamSheet, type Team } from "./TeamsPanel";
 import { GameSheet } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
@@ -274,6 +275,10 @@ export function CompetitionFace({
      * `lg:` ones), so opening a game reflows rather than remounting the board —
      * still the whole point of the panel idiom.
      */
+    // The roster-change gate (PR 8b-2): every roster surface below — the
+    // Rosters overlay's TeamsPanel and the Edit Team sheet — routes a staff
+    // move or removal through it once the cup has results.
+    <RosterChangeGateProvider tripId={tripId} competitionId={competition?.id ?? null}>
     <div
       /**
        * THE STAGE. A clip box holding the one column; it never scrolls (the
@@ -673,5 +678,6 @@ export function CompetitionFace({
         />
       )}
     </div>
+    </RosterChangeGateProvider>
   );
 }
