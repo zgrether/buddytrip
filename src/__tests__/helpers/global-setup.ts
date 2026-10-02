@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { writeFileSync } from "fs";
 import { resolve } from "path";
 import { assertLocalTestDatabase } from "./assertLocalTestDatabase";
+import { assertKongReuseOff } from "./assertKongReuseOff";
 import { loadTestEnv, resolvedSupabaseUrl } from "./testEnv";
 import { sweepRunLeftovers } from "./runLeakSweep";
 
@@ -58,6 +59,9 @@ export async function setup() {
   // rather than in `test-setup.ts` (per-file) or in a convention nobody can
   // enforce. See `assertLocalTestDatabase` for what it caught.
   assertLocalTestDatabase(SUPABASE_URL);
+  // Then the local Kong: a stack restart silently turns its connection reuse back
+  // on, and writes start failing as 502s (#1527). CI checks this in its own step.
+  assertKongReuseOff(SUPABASE_URL);
   RUN_STARTED_AT = new Date().toISOString();
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);
