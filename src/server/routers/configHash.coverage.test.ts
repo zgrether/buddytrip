@@ -38,7 +38,11 @@ import { canonicalize, computeConfigHash } from "../../lib/configHash";
  */
 
 const NOT_HASHED: Record<keyof typeof HASH_COLS, string[]> = {
-  games: ["id", "trip_id", "competition_id", "scheduled_at", "created_at", "schedule_item_id", "display_order"],
+  // `credited_roster` (migration 203) is RESULT state, the same category as
+  // game_matches.result: written once, by the finalize path, never by
+  // `save_game_config`. Hashing it would move every open settings draft's
+  // fingerprint at the moment a game finishes, for a value no setting edits.
+  games: ["id", "trip_id", "competition_id", "scheduled_at", "created_at", "schedule_item_id", "display_order", "credited_roster"],
   game_participants: ["id", "game_id", "created_at"],
   play_groups: ["game_id", "created_at"],
   game_matches: ["game_id", "result", "margin", "status", "created_at"],
