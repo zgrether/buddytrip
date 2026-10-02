@@ -244,8 +244,8 @@ describe("teams.delete — a decided head-to-head cup keeps both teams, and its 
 
     // The premise: the roster lock is gated on score_entries specifically, and
     // manual games never write there, so it is NOT what refuses below.
-    const { competitionHasScore } = await import("../lib/rosterLock");
-    expect(await competitionHasScore(ctx.admin, compId)).toBe(false);
+    const { competitionHasResults } = await import("../lib/rosterLock");
+    expect(await competitionHasResults(ctx.admin, compId)).toBe(false);
 
     const { HEAD_TO_HEAD_KEEPS_BOTH_TEAMS } = await import("./teams");
     await expect(ctx.caller().teams.delete({ tripId, teamId: winner })).rejects.toThrow(HEAD_TO_HEAD_KEEPS_BOTH_TEAMS);

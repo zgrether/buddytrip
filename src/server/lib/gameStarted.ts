@@ -22,7 +22,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * ── Why a helper and not two copies of the same query ─────────────────────
  *
- * `findContributionBlockers` and `competitionHasScore` are two guards asking
+ * `findContributionBlockers` and `competitionHasResults` are two guards asking
  * one question, and they had already drifted: the first grew a second source
  * for outcome-mode play (#1016), the second never did. Two hand-edited copies
  * of a predicate are how that happens, so there is one function and both call

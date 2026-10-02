@@ -18,7 +18,7 @@
  *    off another team is a trade, which is Organizer-level.
  *  - Anyone else: read-only. Delegation grants no roster rights.
  *
- * The lock is ONE moment for both (`game_started`, via `rosterLocked`).
+ * The lock is ONE moment for both (`game_started`, via `hasResults`).
  */
 
 export type RemoveControl = "hidden" | "enabled" | "locked";
@@ -39,7 +39,7 @@ export function rosterRights(p: {
   staff: boolean;
   /** The viewer captains THIS team. */
   captainOfTeam: boolean;
-  /** Results are in (`teamAssignments.rosterLocked`). */
+  /** Results are in (`teamAssignments.hasResults`). */
   locked: boolean;
   viewerId: string | null | undefined;
 }): RosterRights {

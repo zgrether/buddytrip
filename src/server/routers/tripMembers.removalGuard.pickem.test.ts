@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext, genId, getAdminClient } from "../../__tests__/helpers/test-setup";
-import { competitionHasScore } from "../lib/rosterLock";
+import { competitionHasResults } from "../lib/rosterLock";
 
 /**
  * #1151 / #1018 — the two removal guards could not see a pick'em.
@@ -29,7 +29,7 @@ import { competitionHasScore } from "../lib/rosterLock";
  *
  * Case 2 (points mode) fails the `game_started`-only build — the tempting half
  * fix, which genuinely does repair case 1 and therefore looks complete.
- * Case 6 drives `competitionHasScore` directly, and fails a build that repairs
+ * Case 6 drives `competitionHasResults` directly, and fails a build that repairs
  * `participationGuard.ts` alone — the likelier half-ship, since only the other
  * call site produces the reported symptom.
  * Case 5 is the negative control: without it a guard that refuses EVERY removal
@@ -397,7 +397,7 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
     await restore(target);
   }, 60_000);
 
-  it("7 · competitionHasScore — the OTHER call site, driven directly", async () => {
+  it("7 · competitionHasResults — the OTHER call site, driven directly", async () => {
     /**
      * `rosterLock.ts`, not `participationGuard.ts`. This is the half-ship guard:
      * one call site produces the reported symptom and this one does not, so a
@@ -414,7 +414,7 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
       members: ["member", "outsider"],
     });
 
-    const before = await competitionHasScore(getAdminClient(), competitionId);
+    const before = await competitionHasResults(getAdminClient(), competitionId);
     expect(before, "a cup with no games has not started").toBe(false);
 
     const { gameId, slateIds } = await makePickem({
@@ -428,14 +428,14 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
     // Non-vacuity: the pick'em exists and is NOT started, so a `true` below
     // cannot come from the mere presence of a game.
     expect(
-      await competitionHasScore(getAdminClient(), competitionId),
+      await competitionHasResults(getAdminClient(), competitionId),
       "picks submitted but no result is not started"
     ).toBe(false);
 
     await ctx.admin.from("pickem_slate_games").update({ result: "away" }).eq("id", slateIds[1]);
 
     expect(
-      await competitionHasScore(getAdminClient(), competitionId),
+      await competitionHasResults(getAdminClient(), competitionId),
       "a recorded slate result starts the cup — this is the #1018 fix"
     ).toBe(true);
 

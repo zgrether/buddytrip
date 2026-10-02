@@ -260,7 +260,7 @@ export function TeamsPanel({
   // server-blocked (C1). Disable those controls here so the block isn't a surprise;
   // ADDS stay enabled. (Distinct from `structureLocked`, the scoring_model
   // team-count lock.)
-  const { data: removalsLocked = false } = trpc.teamAssignments.rosterLocked.useQuery(
+  const { data: removalsLocked = false } = trpc.teamAssignments.hasResults.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
@@ -2043,7 +2043,7 @@ function TeamSheetRoster({
   );
   // Removals are server-blocked once scoring starts (C1) — disable the × so it
   // isn't a surprise. Adds + reorder stay live (reorder orphans no one).
-  const { data: removalsLocked = false } = trpc.teamAssignments.rosterLocked.useQuery(
+  const { data: removalsLocked = false } = trpc.teamAssignments.hasResults.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
   );

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { rowsOrThrow } from "./rowOrThrow";
 import { isPickemGame } from "../../lib/resultStrategy";
 import { startedGameIds } from "./gameStarted";
 
@@ -174,6 +175,62 @@ const EMPTY: ContributionBlockers = { games: [], expensesPaid: 0, expenseSplits:
  * stay frictionless: someone added by mistake, or who dropped out during
  * planning before anything happened, deletes without argument.
  */
+/** Which of a set of games one person is IN, and every id their side is
+ *  recorded under. The single answer to that question (CLAUDE.md #27), shared by
+ *  the removal guard below and the roster-change refusal (`rosterChange.ts`).
+ *
+ *  - `gameIds`: a `game_participants` row, or a pick'em sheet. A sheet is the
+ *    participation for points-mode and unpaired pick'em, which have no
+ *    participant row (#1151). A ROW IS A PICK: `pickem_picks.pick` is NOT NULL
+ *    and nothing seeds a row per participant (migrations 146, 166).
+ *  - `sideIds`: the person, plus any doubles `play_group` they belong to —
+ *    `game_participants.play_group_id` is what `setPairings`' `mkSide` writes,
+ *    so it is the only link from a person to their 2v2 side's id (#1016).
+ *  - `entrantIds` / `entrantGameIds`: bracket entrants they are a member of,
+ *    and the games those entrants are drawn into. Kept SEPARATE from `gameIds`:
+ *    to the removal guard a draw is a plan, while to a roster change an entrant
+ *    in an unfinished bracket is in that game.
+ *
+ *  Reads through the rowOrThrow family: a failed read throws rather than
+ *  answering "in no games", which would open both guards. */
+export interface PersonParticipation {
+  gameIds: Set<string>;
+  sideIds: Set<string>;
+  entrantIds: string[];
+  entrantGameIds: Set<string>;
+}
+
+export async function readPersonParticipation(
+  supabase: SupabaseClient,
+  gameIds: string[],
+  userId: string
+): Promise<PersonParticipation> {
+  const out: PersonParticipation = {
+    gameIds: new Set(), sideIds: new Set([userId]), entrantIds: [], entrantGameIds: new Set(),
+  };
+  if (gameIds.length === 0) return out;
+  const [parts, sheets, entrants] = await Promise.all([
+    supabase.from("game_participants").select("game_id, play_group_id").eq("user_id", userId).in("game_id", gameIds),
+    supabase.from("pickem_picks").select("game_id").eq("user_id", userId).in("game_id", gameIds),
+    supabase.from("bracket_entrant_members").select("entrant_id").eq("user_id", userId),
+  ]);
+  for (const r of rowsOrThrow(parts, "game participants")) {
+    out.gameIds.add(r.game_id as string);
+    const pg = r.play_group_id as string | null;
+    if (pg) out.sideIds.add(pg);
+  }
+  for (const r of rowsOrThrow(sheets, "pick'em sheets")) out.gameIds.add(r.game_id as string);
+  out.entrantIds = rowsOrThrow(entrants, "bracket entrants").map((r) => r.entrant_id as string);
+  if (out.entrantIds.length > 0) {
+    const games = rowsOrThrow(
+      await supabase.from("bracket_entrants").select("game_id").in("id", out.entrantIds).in("game_id", gameIds),
+      "bracket entrants' games"
+    );
+    for (const r of games) out.entrantGameIds.add(r.game_id as string);
+  }
+  return out;
+}
+
 export async function findContributionBlockers(
   supabase: SupabaseClient,
   tripId: string,
@@ -214,74 +271,30 @@ export async function findContributionBlockers(
   // Everything here is answerable from their user id alone. The queries that
   // need to know their SIDE ids wait for round 2, because a doubles side id is
   // only discoverable from the participant rows this round returns.
-  const [parts, decidedMatches, entrantRows, sheets] = await Promise.all([
-    supabase
-      .from("game_participants")
-      .select("game_id, play_group_id")
-      .eq("user_id", userId)
-      .in("game_id", gameIds),
-    // Decided matches only, filtered for THEM in JS rather than with a
-    // PostgREST `->>` filter on the JSONB. The filter form would be fewer rows,
-    // but its syntax is the one thing here that cannot be checked without a
-    // live PostgREST — and a mistyped filter returns the WRONG SET rather than
-    // an error, which is precisely how a guard silently stops guarding.
-    // `game_matches` is tens of rows per trip; the trade is not close.
+  // Round 1: who they are in these games — the ONE reading of "is this person
+  // in this game", shared with the roster-change refusal (`readPersonParticipation`).
+  // The queries that need their SIDE ids wait for round 2, because a doubles side
+  // id is only discoverable from the participant rows this round returns.
+  //
+  // Decided matches only, filtered for THEM in JS rather than with a PostgREST
+  // `->>` filter on the JSONB. The filter form would be fewer rows, but its
+  // syntax is the one thing here that cannot be checked without a live
+  // PostgREST — and a mistyped filter returns the WRONG SET rather than an
+  // error, which is precisely how a guard silently stops guarding.
+  // `game_matches` is tens of rows per trip; the trade is not close.
+  const [participation, decidedMatches] = await Promise.all([
+    readPersonParticipation(supabase, gameIds, userId),
     supabase
       .from("game_matches")
       .select("game_id, result, status, side_a, side_b")
       .in("game_id", gameIds),
-    supabase.from("bracket_entrant_members").select("entrant_id").eq("user_id", userId),
-    // PICK'EM MEMBERSHIP (#1151). A sheet is the participation, and it is the
-    // only signal for two of the three shapes a pick'em player comes in:
-    //
-    //   paired head-to-head  `save_pickem_matches` reconciles `game_participants`
-    //                        in the same transaction as the pairing, so the row
-    //                        above already finds them
-    //   POINTS MODE          the format has no matches at all, so nobody in the
-    //                        game has a participant row
-    //   UNPAIRED in H2H      the sheet deliberately SURVIVES being unpaired, so
-    //                        the participant row is gone and the sheet is not
-    //
-    // A ROW IS A PICK. `pickem_picks.pick` is NOT NULL (migration 146, verified
-    // against the live schema and never relaxed — 166's header states the
-    // consequence deliberately: "no row exists for a game with no pick. That is
-    // the accepted cost of keeping 'has any rows' meaning 'has submitted
-    // something'"). Every row is written by `_pickem_write_sheet` from an item
-    // the person or their proxy supplied; nothing seeds a row per participant,
-    // so this cannot degenerate into blocking the whole roster.
-    //
-    // Rows, not a `head:true` count, because the answer needed is WHICH games —
-    // and unlike the played-probe this is filtered to ONE user, so the reply is
-    // bounded by (their games × slate size), tens of rows, not the unfiltered
-    // hundreds the 1000-row cap note below is about.
-    supabase.from("pickem_picks").select("game_id").eq("user_id", userId).in("game_id", gameIds),
   ]);
-  for (const [what, res] of [
-    ["game participants", parts],
-    ["matches", decidedMatches],
-    ["bracket entrants", entrantRows],
-    ["pick'em sheets", sheets],
-  ] as const) {
-    if (res.error) throw new Error(`Failed to read ${what}: ${res.error.message}`);
-  }
-
-  // Every id this person answers to as a SIDE: themselves, plus any doubles
-  // group they are a member of. `game_participants.play_group_id` is what
-  // `setPairings`' `mkSide` writes when it mints a 2v2 side, so it is the only
-  // link from a person to the id their side is recorded under — and the same id
-  // `scores.upsertEntry` writes as `participant_id` for a 2v2 entry.
-  const mySideIds = new Set<string>([userId]);
-  const myGameIds = new Set<string>();
-  for (const r of parts.data ?? []) {
-    myGameIds.add(r.game_id as string);
-    const pgId = r.play_group_id as string | null;
-    if (pgId) mySideIds.add(pgId);
-  }
-  // A sheet makes them a member of the game exactly as a participant row does.
-  // NOT added to `mySideIds`: a pick'em side is `{type:"user", id:<user_id>}`,
-  // so `userId` already covers them there — a sheet mints no second id the way
-  // a doubles `play_group` does.
-  for (const r of sheets.data ?? []) myGameIds.add(r.game_id as string);
+  if (decidedMatches.error) throw new Error(`Failed to read matches: ${decidedMatches.error.message}`);
+  const mySideIds = participation.sideIds;
+  // Membership by participant row or pick'em sheet — NOT bracket entrants: a
+  // draw is a plan here, and only a DECIDED bracket match involving them blocks
+  // (below). The roster-change refusal reads entrant games too; this does not.
+  const myGameIds = participation.gameIds;
   const sideIds = [...mySideIds];
 
   // ── Round 2: what has been PLAYED, and what is recorded under their sides ──
@@ -358,7 +371,7 @@ export async function findContributionBlockers(
   }
 
   // Bracket: a draw is a plan. A decided match involving their entrant is not.
-  const entrantIds = (entrantRows.data ?? []).map((r) => r.entrant_id as string);
+  const entrantIds = participation.entrantIds;
   if (entrantIds.length > 0) {
     const { data: bm, error: bmErr } = await supabase
       .from("bracket_matches")
