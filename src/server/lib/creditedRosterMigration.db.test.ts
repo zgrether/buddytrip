@@ -121,3 +121,66 @@ describe("the guest merge re-keys a credited roster", () => {
     expect(await creditedRoster(g.gameId)).toEqual({ [real.id]: g.bravo });
   });
 });
+
+describe("_backfill_credited_rosters — games finished before 203", () => {
+  /** A game row straight into the table: the backfill reads STORED state, so the
+   *  fixture is the state, not a path that produces it. */
+  async function seedGame(tripId: string, competitionId: string | null, status: "active" | "complete", credited?: unknown) {
+    const id = crypto.randomUUID();
+    const { error } = await ctx.admin.from("games").insert({
+      id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_manual",
+      name: `backfill ${status}`, status, ...(credited === undefined ? {} : { credited_roster: credited }),
+    });
+    if (error) throw error;
+    return id;
+  }
+
+  it("fills every finished cup game from its cup's roster, and nothing else", async () => {
+    const { tripId, competitionId } = await ctx.createCupTrip({
+      name: "Backfill cup", scoringModel: "points", members: [["member", "Member"]],
+    });
+    const alpha = await ctx.createTeam(competitionId, "Alpha", { shortName: "ALP" });
+    const bravo = await ctx.createTeam(competitionId, "Bravo", { shortName: "BRV" });
+    const member = ctx.getUser("member").id;
+    await ctx.admin.from("team_assignments").insert([
+      { competition_id: competitionId, user_id: owner, team_id: alpha },
+      { competition_id: competitionId, user_id: member, team_id: bravo },
+    ]);
+    // A second cup with NOBODY on a team (a teamless race).
+    const teamless = await ctx.createCupTrip({ name: "Backfill teamless", scoringModel: "points" });
+
+    const finished = await seedGame(tripId, competitionId, "complete");
+    const finishedTeamless = await seedGame(teamless.tripId, teamless.competitionId, "complete");
+    const live = await seedGame(tripId, competitionId, "active");
+    const side = await seedGame(tripId, null, "complete");
+    const alreadyCredited = await seedGame(tripId, competitionId, "complete", { [owner]: bravo });
+    const ids = [finished, finishedTeamless, live, side, alreadyCredited];
+
+    const filled = await ctx.admin.rpc("_backfill_credited_rosters", { p_game_ids: ids });
+    expect(filled.error).toBeNull();
+    expect(filled.data).toBe(2);
+
+    expect(await creditedRoster(finished)).toEqual({ [owner]: alpha, [member]: bravo });
+    // Credited with nobody — `{}`, NOT NULL. A NULL here would read as "never
+    // credited" and fall back to whatever the roster is on the day of a correction.
+    expect(await creditedRoster(finishedTeamless)).toEqual({});
+    // Not finished: its points are not earned yet (ruling 15), so nothing is anchored.
+    expect(await creditedRoster(live)).toBeNull();
+    // A side game has no cup and no roster to read.
+    expect(await creditedRoster(side)).toBeNull();
+    // First wins here too: an existing roster is never replaced.
+    expect(await creditedRoster(alreadyCredited)).toEqual({ [owner]: bravo });
+
+    // Re-runnable, and a re-run reports that it found nothing.
+    const again = await ctx.admin.rpc("_backfill_credited_rosters", { p_game_ids: ids });
+    expect(again.data).toBe(0);
+  });
+
+  it("is not callable by a signed-in user — a maintenance core", async () => {
+    const { error } = await ctx.authedClient("owner").rpc("_backfill_credited_rosters", { p_game_ids: [] });
+    // The GRANT refusal by its code — not "some error", which a typo in the
+    // function name or a gateway 502 would satisfy just as well.
+    expect(error?.code).toBe("42501");
+    expect(error?.message).toContain("permission denied for function _backfill_credited_rosters");
+  });
+});

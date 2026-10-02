@@ -58,6 +58,35 @@
 -- Only the finalize path passes it (`writeGameResults` forwards it in "throw"
 -- mode only); a live recompute during play must not anchor the credit early —
 -- under ruling 15 a game's points are not earned until it finalizes.
+--
+-- ── GAMES FINISHED BEFORE THIS MIGRATION: BACKFILLED, HERE ─────────────────
+--
+-- Every game already finished has no stored roster, so its next re-finalize
+-- would read today's. That is harmless only while the roster cannot change —
+-- and PR 8b lifts the lock so people CAN be traded after results. A correction
+-- on an old game after a trade would then re-credit it through the post-trade
+-- roster: the exact bug this migration exists to prevent, arriving through the
+-- games it did not cover. So the backfill lands with the column, before 8b can.
+--
+-- The backfill records each finished cup game's CURRENT cup roster. That is
+-- the roster it finalized with wherever the lock held: the lock refuses every
+-- move and removal once any game in the cup has a score, so a scored cup's
+-- roster has not moved since its first finished game. **It is the best record
+-- available, not a certain one, for cups whose only results were manual
+-- placements or brackets.** Those never wrote `score_entries`, so the lock
+-- (`game_started`, migration 199's note) did not hold for them, and a roster
+-- change after such a game finished is possible and unrecorded. Neither format
+-- reads the roster to credit anyway (manual placements name their unit; a
+-- bracket credits its entrants' stored `team_id`), so the doubt touches nothing
+-- they compute today.
+--
+-- `_backfill_credited_rosters` is a function rather than a bare UPDATE so it can
+-- be tested against real rows, and re-run: games that finish between this push
+-- and the deploy of the writers that record a roster (PR 8a part 2) finish
+-- without one, and must be backfilled again before 8b lifts the lock.
+--
+-- NULL and `{}` stay distinct here too: a finished game in a cup with nobody
+-- on a team records `{}` (credited with nobody), never NULL (never credited).
 -- ════════════════════════════════════════════════════════════════════════════
 
 -- ── 1 · The column ─────────────────────────────────────────────────────────
@@ -354,3 +383,46 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.merge_guest_to_real_user(text, text) FROM PUBLIC, anon, authenticated;
+
+-- ── 5 · Backfill every game that finished before this migration ─────────────
+--
+-- See "GAMES FINISHED BEFORE THIS MIGRATION" above for why, and for where the
+-- result is the best record available rather than a certain one.
+--
+-- `p_game_ids` scopes it for tests; NULL (the migration's call) means every
+-- game. Only games that are FINISHED (`status = 'complete'`, which includes
+-- one open for correction), IN A CUP (a side game has no roster to read), and
+-- NOT YET CREDITED — an existing roster is never replaced, the same first-wins
+-- rule as the wrapper. Returns how many games it filled, so a re-run says
+-- whether it found anything.
+
+CREATE OR REPLACE FUNCTION public._backfill_credited_rosters(p_game_ids text[] DEFAULT NULL)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  v_filled integer;
+BEGIN
+  UPDATE public.games g
+     SET credited_roster = COALESCE(
+           (SELECT jsonb_object_agg(ta.user_id, ta.team_id)
+              FROM public.team_assignments ta
+             WHERE ta.competition_id = g.competition_id),
+           -- jsonb_object_agg over no rows is NULL; a cup with nobody on a team
+           -- is CREDITED WITH NOBODY, which is `{}`, never "not credited".
+           '{}'::jsonb)
+   WHERE g.status = 'complete'
+     AND g.competition_id IS NOT NULL
+     AND g.credited_roster IS NULL
+     AND (p_game_ids IS NULL OR g.id = ANY (p_game_ids));
+  GET DIAGNOSTICS v_filled = ROW_COUNT;
+  RETURN v_filled;
+END;
+$$;
+
+-- A maintenance core: no caller but the migration, a test, and an operator.
+REVOKE ALL ON FUNCTION public._backfill_credited_rosters(text[]) FROM PUBLIC, anon, authenticated;
+
+SELECT public._backfill_credited_rosters();
