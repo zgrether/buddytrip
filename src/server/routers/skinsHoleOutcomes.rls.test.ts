@@ -216,10 +216,18 @@ describe("184 — skins hole outcomes", () => {
      * this table that refusal would name an action the reader had already taken,
      * and the groupings would be frozen forever.
      *
-     * The rows here are the ones the cases above left behind, so the assertion
-     * is over a table that demonstrably had contents — a delete that clears
-     * nothing would otherwise pass this.
+     * The case records its OWN row first (#1527). It used to rely on "the ones
+     * the cases above left behind", and run first — as a shuffle at seed 90210
+     * did — there were none; the premise below caught it, which is what it is
+     * for. A delete that clears nothing would otherwise pass this.
      */
+    const seed = await ctx.admin.from("skins_hole_outcomes").insert({
+      id: genId("sho"), game_id: gameId, grouping_id: myGroupId,
+      hole_number: 77, result: "tied", winner_user_id: null,
+      submitted_by: ctx.getUser("member").id,
+    });
+    if (seed.error) throw new Error(`seed a hole outcome: ${seed.error.message}`);
+
     const before = await ctx.admin
       .from("skins_hole_outcomes")
       .select("id", { count: "exact", head: true })
