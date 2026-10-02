@@ -1076,6 +1076,50 @@ built on it.** (Line numbers are as of `32b52300`.)
 a head-to-head game is refused; a correction on a stroke round re-attributes and records; a
 captain cannot correct; a delegate cannot add to a team.
 
+### Verify-first, done 2026-10-02 — and the finding that split PR 8
+
+**The roster lock was holding up rulings 15–17, and nothing said so.** `assertRosterUnlocked`
+(and `_competition_roster_locked` for captains) refuses every move, removal and team delete
+once any game in the cup has a score. Ruling 16 lifts that for trades. But the five result
+writers (stroke/scramble, skins, match play's awards, rack, pick'em) rebuilt their team rows
+from the CURRENT `team_assignments`, and a correction re-runs them — so with the lock gone, a
+trade followed by a one-hole correction carries a finished round to the new team. PR 2 made
+the board read stored credit; the writers' own re-reads were not on its list because the lock
+made them unreachable. (CLAUDE.md now carries the general rule: before removing a guard,
+enumerate what it was making unreachable.)
+
+**Ruled (2026-10-02):**
+
+- **Split.** **8a** — a finished game is credited through the roster it FIRST finalized with
+  (`games.credited_roster`, migration 203; server only). **8b** — lift the lock for trades and
+  removals behind the fingerprint-checked preview (a surface: look first). **8c** — the owner
+  correction for team-independent games (`teamDependent: false`: stroke play, skins), with
+  its record. **8d (deletion → placeholder results) is dropped:** migration 132 already keeps
+  a deleted account's results under a "Deleted User" placeholder, which is ruling 19; removing
+  a person WITH results from a trip stays refused until a real case asks for it. *(Ruling 19
+  is Zach's — this reading of it awaits his confirmation.)*
+- **Why a column and not the result rows** (8a's design question): rack and pick'em write
+  team rows only; a re-finalize needs person → team, which team rows do not carry; and
+  migration 191 keeps `credited_team_id` NULL on person rows deliberately. One jsonb map per
+  game, written only while NULL (first finalize wins, in the database), cleared by a scoring
+  reset, re-keyed by the guest merge. NULL = never credited; `{}` = credited with nobody on a
+  team; absent from a map = on no team then (ruling 17).
+- **A trade while the person is in an UNFINISHED team-dependent game is refused (8b),**
+  naming the game, as #1481's refusal does — finish the match or unpair them first. During an
+  unfinished team-INDEPENDENT game (a stroke round) it is allowed, and the result credits the
+  new team at finalize: under ruling 15 a game's points are not earned until it finalizes.
+- **The correction record gets a visible consumer (8c):** a small "corrected" note on the
+  affected game's completed row, saying by whom and when. The before/after detail stays in the
+  record for anyone investigating. A correction changes standings after the fact; a silent
+  one breeds suspicion.
+- **`#1404` stays separate** — cosmetic, and not part of the preview's correctness.
+- **F2 is done** (#1523, migration 198): a game's delegate can record a bracket pick, and a
+  refused pick fails loudly.
+
+**Carried to 8b:** a team deleted after a game finalized can still be named in that game's
+credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize
+that team's members would credit nowhere. Lifting the lock for team delete has to decide this.
+
 ---
 
 ## PR 9 — Display
