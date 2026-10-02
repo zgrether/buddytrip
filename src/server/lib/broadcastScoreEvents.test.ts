@@ -291,8 +291,33 @@ describe("096 broadcast trigger — score writes", () => {
 });
 
 describe("096 broadcast trigger — game lifecycle", () => {
+  /**
+   * EACH CASE GETS ITS OWN GAME (#1527). They shared `gameId` and walked
+   * its lifecycle: "does not re-broadcast when a lifecycle column is written to
+   * its current value" wrote `status: complete` — its CURRENT value only if the
+   * go-live case had already run. Shuffled first, it was a real change, and the
+   * broadcast it correctly fired failed the case.
+   *
+   * Creating a game in the cup is itself a broadcast (migration 109), so the
+   * helper waits for that INSERT's event and clears it before returning: each
+   * case starts with an empty inbox and a game in the state it names.
+   */
+  async function lifecycleGame(start: Record<string, unknown> = {}): Promise<string> {
+    const id = rid("game-life");
+    const r = await ctx.admin.from("games").insert({
+      id, trip_id: tripId, competition_id: competitionId, game_type_id: "gtt_manual",
+      name: "Lifecycle", ...start,
+    });
+    if (r.error) throw new Error(`seed lifecycle game: ${r.error.message}`);
+    await settle();
+    received = [];
+    tripReceived = [];
+    return id;
+  }
+
   it("broadcasts on go-live, finalize and re-open-for-correction", async (t) => {
     if (!requireRealtime(t)) return;
+    const gameId = await lifecycleGame();
 
     // The go-live patch writes all three columns a real go-live writes, not
     // just `scoring_enabled`. Migration 135 refuses scoring opening on a game
@@ -305,23 +330,24 @@ describe("096 broadcast trigger — game lifecycle", () => {
       { status: "complete" },
       { corrections_open: true },
     ]) {
-      const r = await ctx.admin.from("games").update(patch).eq("id", compGameId);
+      const r = await ctx.admin.from("games").update(patch).eq("id", gameId);
       expect(r.error).toBeNull();
     }
 
     await waitFor(3);
     expect(received).toHaveLength(3);
-    expect(received.every((p) => p.gameId === compGameId)).toBe(true);
+    expect(received.every((p) => p.gameId === gameId)).toBe(true);
     // 189 (#1284): a games-row change is the other kind.
     expect(received.map((p) => p.kind)).toEqual(["game", "game", "game"]);
   }, 60_000);
 
   it("stays silent on a games UPDATE that the board does not care about", async (t) => {
     if (!requireRealtime(t)) return;
+    const gameId = await lifecycleGame();
 
     // The WHEN guard is what keeps this from becoming the high-frequency firehose
     // migration 084 was right to refuse. Every settings save touches this table.
-    const r = await ctx.admin.from("games").update({ name: "Renamed" }).eq("id", compGameId);
+    const r = await ctx.admin.from("games").update({ name: "Renamed" }).eq("id", gameId);
     expect(r.error).toBeNull();
 
     await settle();
@@ -335,23 +361,25 @@ describe("096 broadcast trigger — game lifecycle", () => {
   // UPDATE, so the existing lookup-by-id path needs nothing else.
   it("broadcasts when display_order changes — the reorder gap", async (t) => {
     if (!requireRealtime(t)) return;
+    const gameId = await lifecycleGame();
 
-    const r = await ctx.admin.from("games").update({ display_order: 7 }).eq("id", compGameId);
+    const r = await ctx.admin.from("games").update({ display_order: 7 }).eq("id", gameId);
     expect(r.error).toBeNull();
 
     await waitFor(1);
     expect(received).toHaveLength(1);
-    expect(received[0].gameId).toBe(compGameId);
+    expect(received[0].gameId).toBe(gameId);
     expect(received[0].competitionId).toBe(competitionId);
     expect(received[0].kind).toBe("game");
   }, 60_000);
 
   it("does not re-broadcast when a lifecycle column is written to its current value", async (t) => {
     if (!requireRealtime(t)) return;
+    const gameId = await lifecycleGame({ status: "complete" });
 
     // IS DISTINCT FROM, not just "column was in the UPDATE" — an idempotent
     // re-save of the same status should not wake every viewer's board.
-    const r = await ctx.admin.from("games").update({ status: "complete" }).eq("id", compGameId);
+    const r = await ctx.admin.from("games").update({ status: "complete" }).eq("id", gameId);
     expect(r.error).toBeNull();
 
     await settle();
