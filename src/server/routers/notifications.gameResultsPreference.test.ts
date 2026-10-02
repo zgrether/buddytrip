@@ -22,13 +22,17 @@ import { sendPushToUsers } from "../lib/sendPushToUsers";
 
 let ctx: TestContext;
 let userId: string;
+/** This file's own account (#1540, CLAUDE.md #6). It sets preferences and
+ *  registers a device, both person-scoped; on the SHARED owner they collided with
+ *  notifications.test.ts, which seeds and deletes the owner's devices. */
+let me: Awaited<ReturnType<TestContext["createAccount"]>>;
 const TRIGGER = `test:game-results-pref-${genId("t")}`;
 
 const PAYLOAD = { title: "Final: Test", body: "Alpha 2 – Bravo 1" };
 
 /** Set the preference through the REAL front door the toggle uses. */
 async function setGameResults(enabled: boolean) {
-  await ctx.caller().notifications.setPreference({ key: "game_results", enabled });
+  await me.caller().notifications.setPreference({ key: "game_results", enabled });
 }
 
 /** Send under `game_results` with the log context a real trigger passes. */
@@ -52,7 +56,8 @@ async function lastRow() {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  userId = ctx.getUser("owner").id;
+  me = await ctx.createAccount("game-results-pref");
+  userId = me.id;
 }, 120_000);
 
 afterAll(async () => {
@@ -70,7 +75,7 @@ describe("the game_results preference is enforced, not decorative", () => {
     // are opted out.
     await ctx.admin.from("users").update({ notification_prefs: {} }).eq("id", userId);
 
-    const prefs = await ctx.caller().notifications.getPreferences();
+    const prefs = await me.caller().notifications.getPreferences();
     expect(prefs.game_results).toBe(true);
 
     const res = await send();
@@ -80,7 +85,7 @@ describe("the game_results preference is enforced, not decorative", () => {
 
   it("OFF removes the user at SEND time, and the skip is RECORDED", async () => {
     await setGameResults(false);
-    expect((await ctx.caller().notifications.getPreferences()).game_results).toBe(false);
+    expect((await me.caller().notifications.getPreferences()).game_results).toBe(false);
 
     const res = await send();
 
@@ -96,7 +101,7 @@ describe("the game_results preference is enforced, not decorative", () => {
 
   it("ON again puts the user back in the audience", async () => {
     await setGameResults(true);
-    expect((await ctx.caller().notifications.getPreferences()).game_results).toBe(true);
+    expect((await me.caller().notifications.getPreferences()).game_results).toBe(true);
 
     const res = await send();
     expect(res.skippedPreferenceOff).toBe(0);
@@ -112,15 +117,15 @@ describe("the game_results preference is enforced, not decorative", () => {
     // chat defaulted OFF and reasoned the opposite direction; the default was
     // flipped and the comment was not. The test itself sets chat explicitly, so
     // it never depended on the default — only the explanation was wrong.)
-    await ctx.caller().notifications.setPreference({ key: "chat", enabled: true });
+    await me.caller().notifications.setPreference({ key: "chat", enabled: true });
     await setGameResults(false);
 
-    const prefs = await ctx.caller().notifications.getPreferences();
+    const prefs = await me.caller().notifications.getPreferences();
     expect(prefs.chat, "chat survives a game_results write").toBe(true);
     expect(prefs.game_results).toBe(false);
 
     await setGameResults(true);
-    expect((await ctx.caller().notifications.getPreferences()).chat).toBe(true);
+    expect((await me.caller().notifications.getPreferences()).chat).toBe(true);
   }, 60_000);
 });
 
@@ -141,15 +146,15 @@ describe("muting every category leaves the device activated", () => {
 
   it("keeps the push_subscriptions row while sending nothing", async () => {
     // A registered device, through the same procedure the modal's toggle uses.
-    await ctx.caller().notifications.subscribe({
+    await me.caller().notifications.subscribe({
       endpoint: ENDPOINT,
       p256dh: "test-p256dh-key",
       auth: "test-auth-key",
     });
 
     // Mute EVERY exposed category.
-    await ctx.caller().notifications.setPreference({ key: "game_results", enabled: false });
-    await ctx.caller().notifications.setPreference({ key: "chat", enabled: false });
+    await me.caller().notifications.setPreference({ key: "game_results", enabled: false });
+    await me.caller().notifications.setPreference({ key: "chat", enabled: false });
 
     const res = await send();
     expect(res.skippedPreferenceOff).toBe(1);
@@ -170,9 +175,9 @@ describe("muting every category leaves the device activated", () => {
 
     // And the device is still reported as registered, which is what makes the
     // modal show the category list rather than the activation prompt.
-    const reg = await ctx.caller().notifications.isRegistered({ endpoint: ENDPOINT });
+    const reg = await me.caller().notifications.isRegistered({ endpoint: ENDPOINT });
     expect(reg.registered).toBe(true);
 
-    await ctx.caller().notifications.unsubscribe({ endpoint: ENDPOINT });
+    await me.caller().notifications.unsubscribe({ endpoint: ENDPOINT });
   });
 });

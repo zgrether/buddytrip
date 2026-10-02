@@ -11,15 +11,21 @@ vi.mock("../lib/vapid", () => ({
 }));
 
 let ctx: TestContext;
+/** This block's own account (#1540, CLAUDE.md #6). Devices are person-scoped:
+ *  registering them on the SHARED owner, and then deleting every device the
+ *  owner had in afterAll, wiped devices other files had just seeded for the
+ *  same owner — reproduced on clean main with notifications.gameResultsPreference. */
+let me: Awaited<ReturnType<TestContext["createAccount"]>>;
 
 describe("notifications router", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
+    me = await ctx.createAccount("notif-router");
   });
 
   afterAll(async () => {
     // Clean up any subscriptions left by these tests (admin — bypasses RLS).
-    await ctx.admin.from("push_subscriptions").delete().eq("user_id", ctx.user.id);
+    await ctx.admin.from("push_subscriptions").delete().eq("user_id", me.id);
     // (No preference reset any more: this block no longer writes the shared
     // owner's preferences, and resetting them here ran UNDER any other file
     // that had set them — #1540.)
@@ -28,7 +34,7 @@ describe("notifications router", () => {
 
   // ── gate 2: subscribe is idempotent ──────────────────────────────────────
   it("subscribe is idempotent — same endpoint twice → ONE row", async () => {
-    const caller = ctx.caller();
+    const caller = me.caller();
     const endpoint = `https://example.test/ep/${genId("ep")}`;
     await caller.notifications.subscribe({ endpoint, p256dh: "k1", auth: "a1" });
     await caller.notifications.subscribe({ endpoint, p256dh: "k2", auth: "a2" });
@@ -42,7 +48,7 @@ describe("notifications router", () => {
   });
 
   it("unsubscribe removes the caller's device by endpoint", async () => {
-    const caller = ctx.caller();
+    const caller = me.caller();
     const endpoint = `https://example.test/ep/${genId("ep")}`;
     await caller.notifications.subscribe({ endpoint, p256dh: "k", auth: "a" });
     await caller.notifications.unsubscribe({ endpoint });
@@ -60,7 +66,7 @@ describe("notifications router", () => {
    * Without it the label could only guess, and it guessed by not looking at all.
    */
   it("isRegistered tracks subscribe and unsubscribe for THIS endpoint", async () => {
-    const caller = ctx.caller();
+    const caller = me.caller();
     const endpoint = `https://example.test/ep/${genId("ep")}`;
 
     expect((await caller.notifications.isRegistered({ endpoint })).registered).toBe(false);
@@ -74,7 +80,9 @@ describe("notifications router", () => {
     // It must not be usable to probe whether some other user has registered a
     // given endpoint, and turning one device off must never report on another's.
     const endpoint = `https://example.test/ep/${genId("other")}`;
-    const other = ctx.getUser("member");
+    // Another account of the test's own — not the shared member, whose devices
+    // other files count.
+    const other = await ctx.createAccount("notif-other");
     await ctx.admin.from("push_subscriptions").insert({
       user_id: other.id,
       endpoint,
@@ -82,13 +90,13 @@ describe("notifications router", () => {
       auth: "a",
     });
 
-    expect((await ctx.caller().notifications.isRegistered({ endpoint })).registered).toBe(false);
+    expect((await me.caller().notifications.isRegistered({ endpoint })).registered).toBe(false);
 
     await ctx.admin.from("push_subscriptions").delete().eq("endpoint", endpoint);
   });
 
   it("unsubscribing one device leaves the caller's OTHER devices registered", async () => {
-    const caller = ctx.caller();
+    const caller = me.caller();
     const a = `https://example.test/ep/${genId("a")}`;
     const b = `https://example.test/ep/${genId("b")}`;
     await caller.notifications.subscribe({ endpoint: a, p256dh: "k", auth: "a" });
@@ -181,20 +189,22 @@ describe("notifications router", () => {
 // takes an injected admin client, so we drive it directly against the local DB.
 describe("sendPush helper", () => {
   let sctx: TestContext;
+  /** Its own account, for the same reason as the router block above (#1540). */
+  let target: { id: string };
 
   beforeAll(async () => {
     sctx = await TestContext.create();
+    target = await sctx.createAccount("sendpush-target");
   });
   afterAll(async () => {
-    await sctx.admin.from("push_subscriptions").delete().eq("user_id", sctx.user.id);
-    await sctx.admin.from("users").update({ notification_prefs: {} }).eq("id", sctx.user.id);
+    await sctx.admin.from("push_subscriptions").delete().eq("user_id", target.id);
     await sctx.cleanup();
   });
 
   async function seedDevice(id = genId("sub")): Promise<string> {
     await sctx.admin.from("push_subscriptions").insert({
       id,
-      user_id: sctx.user.id,
+      user_id: target.id,
       endpoint: `https://example.test/ep/${genId("ep")}`,
       p256dh: "k",
       auth: "a",
@@ -207,11 +217,11 @@ describe("sendPush helper", () => {
     // Every category defaults ON now, so the gate must be tested with an EXPLICIT
     // opt-out — the only input that distinguishes "reads the stored value" from
     // "assumes on", and the one standing between a muted user and the push.
-    await sctx.admin.from("users").update({ notification_prefs: { chat: false } }).eq("id", sctx.user.id);
+    await sctx.admin.from("users").update({ notification_prefs: { chat: false } }).eq("id", target.id);
     sendMock.mockClear();
 
     const res = await sendPush(
-      sctx.user.id,
+      target.id,
       "chat",
       { title: "t", body: "b" },
       { admin: sctx.admin }
@@ -227,7 +237,7 @@ describe("sendPush helper", () => {
     sendMock.mockResolvedValue({ statusCode: 201 });
 
     const res = await sendPush(
-      sctx.user.id,
+      target.id,
       "game_results", // default ON
       { title: "t", body: "b" },
       { admin: sctx.admin }
@@ -242,7 +252,7 @@ describe("sendPush helper", () => {
     sendMock.mockRejectedValue({ statusCode: 410 }); // Gone
 
     const res = await sendPush(
-      sctx.user.id,
+      target.id,
       "game_results",
       { title: "t", body: "b" },
       { admin: sctx.admin }
