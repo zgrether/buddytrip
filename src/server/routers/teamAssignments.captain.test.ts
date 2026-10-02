@@ -8,49 +8,63 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  */
 
 let ctx: TestContext;
-let tripId: string;
-let competitionId: string;
-let teamA: string;
-let teamB: string;
 let ownerId: string;
 let memberId: string;
 let plannerId: string;
 
+/**
+ * EVERY CASE BUILDS ITS OWN CUP (#1527). They shared one, and threaded team
+ * A's captain through set → swap → unmark → refusals; the Organizer case even
+ * ended "Leave team A captainless, as the next case expects to set it from
+ * scratch". A shuffle at seed 90210 ran "unmark" and the refusals while A
+ * still held the captain an earlier case had set, so "[] (unchanged)" read a
+ * captain that was never theirs to clear. Each case now starts captainless.
+ */
+type Cup = { tripId: string; competitionId: string; teamA: string; teamB: string };
+
+/** owner + member on A, planner on B; nobody captains anything. */
+async function captainCup(label: string): Promise<Cup> {
+  const tripId = await ctx.createTrip(`Captain ${label}`);
+  await ctx.addTripMember(tripId, "planner", "Organizer"); // organizer — NOT owner
+  await ctx.addTripMember(tripId, "member", "Member");
+  const competitionId = await ctx.createCompetition(tripId, `Captain Cup ${label}`);
+  const teamA = await ctx.createTeam(competitionId, "Alpha", { shortName: "ALP" });
+  const teamB = await ctx.createTeam(competitionId, "Bravo", { shortName: "BRV" });
+  const { error } = await ctx.admin.from("team_assignments").insert([
+    { competition_id: competitionId, user_id: ownerId, team_id: teamA },
+    { competition_id: competitionId, user_id: memberId, team_id: teamA },
+    { competition_id: competitionId, user_id: plannerId, team_id: teamB },
+  ]);
+  if (error) throw new Error(`seed assignments: ${error.message}`);
+  const cup = { tripId, competitionId, teamA, teamB };
+  expect(await captainsOf(teamA)).toEqual([]); // premise
+  return cup;
+}
+
 async function captainsOf(teamId: string): Promise<string[]> {
-  const { data } = await ctx.admin
+  const { data, error } = await ctx.admin
     .from("team_assignments")
     .select("user_id")
     .eq("team_id", teamId)
     .eq("is_captain", true);
+  if (error) throw new Error(`read captains: ${error.message}`);
   return (data ?? []).map((r) => r.user_id as string);
 }
 
 beforeAll(async () => {
   ctx = await TestContext.create();
   ownerId = ctx.user.id;
-  tripId = await ctx.createTrip("Captain Trip");
-  await ctx.addTripMember(tripId, "planner", "Organizer"); // organizer — NOT owner
-  await ctx.addTripMember(tripId, "member", "Member");
   memberId = ctx.getUser("member").id;
   plannerId = ctx.getUser("planner").id;
-  competitionId = await ctx.createCompetition(tripId, "Captain Cup");
-  teamA = await ctx.createTeam(competitionId, "Alpha", { shortName: "ALP" });
-  teamB = await ctx.createTeam(competitionId, "Bravo", { shortName: "BRV" });
-  // owner + member on A, planner on B
-  await ctx.admin.from("team_assignments").insert([
-    { competition_id: competitionId, user_id: ownerId, team_id: teamA },
-    { competition_id: competitionId, user_id: memberId, team_id: teamA },
-    { competition_id: competitionId, user_id: plannerId, team_id: teamB },
-  ]);
 }, 30000);
 
 afterAll(async () => {
-  await ctx.admin.from("team_assignments").delete().eq("competition_id", competitionId);
   await ctx.cleanup();
 }, 30000);
 
 describe("teamAssignments.setCaptain", () => {
   it("owner sets a captain; setting another on the same team CLEARS the first (one per team)", async () => {
+    const { tripId, competitionId, teamA } = await captainCup("swap");
     await ctx.caller().teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: memberId, isCaptain: true });
     expect(await captainsOf(teamA)).toEqual([memberId]);
 
@@ -59,19 +73,25 @@ describe("teamAssignments.setCaptain", () => {
   });
 
   it("unmark clears just that captain (team left with none)", async () => {
+    const { tripId, competitionId, teamA } = await captainCup("unmark");
+    await ctx.caller().teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: ownerId, isCaptain: true });
+    expect(await captainsOf(teamA)).toEqual([ownerId]); // premise: there IS a captain to clear
     await ctx.caller().teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: ownerId, isCaptain: false });
     expect(await captainsOf(teamA)).toEqual([]);
   });
 
   it("target must be assigned to the team", async () => {
-    // plannerId is on team B, not A
+    const { tripId, competitionId, teamA } = await captainCup("not-on-team");
+    // plannerId is on team B, not A. The refusal is named: the bare form also
+    // passed on any other failure on the way.
     await expect(
       ctx.caller().teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: plannerId, isCaptain: true })
-    ).rejects.toThrow();
+    ).rejects.toThrow(/is not assigned to team/);
     expect(await captainsOf(teamA)).toEqual([]); // unchanged
   });
 
   it("a plain member cannot set captain — through tRPC, or by calling the function directly", async () => {
+    const { tripId, competitionId, teamA } = await captainCup("member");
     await expect(
       ctx.callerAs("member").teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: memberId, isCaptain: true })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -88,13 +108,11 @@ describe("teamAssignments.setCaptain", () => {
     // Asserted a refusal until the PR 8 permissions pass: you can hand out
     // powers you already hold, and an Organizer holds every roster right a
     // captain gets. The one-per-team swap is the same function, so it holds too.
+    const { tripId, competitionId, teamA } = await captainCup("organizer");
     await ctx.callerAs("planner").teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: memberId, isCaptain: true });
     expect(await captainsOf(teamA)).toEqual([memberId]);
     await ctx.callerAs("planner").teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: ownerId, isCaptain: true });
     expect(await captainsOf(teamA)).toEqual([ownerId]);
-    // Leave team A captainless, as the next case expects to set it from scratch.
-    await ctx.callerAs("planner").teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: ownerId, isCaptain: false });
-    expect(await captainsOf(teamA)).toEqual([]);
   });
 
   it("an Organizer of THIS trip cannot appoint in another trip's cup by naming this trip", async () => {
@@ -103,6 +121,7 @@ describe("teamAssignments.setCaptain", () => {
     // role check is on p_trip_id, so without it an Organizer here could name
     // this trip and another trip's competition. Called directly: the tRPC gate
     // reads the same tripId and would admit it too.
+    const { tripId } = await captainCup("cross-trip-home");
     const otherTrip = await ctx.createTrip("Captain other trip");
     await ctx.addTripMember(otherTrip, "member", "Member");
     const otherComp = await ctx.createCompetition(otherTrip, "Other Cup");
@@ -120,6 +139,7 @@ describe("teamAssignments.setCaptain", () => {
   });
 
   it("captains are independent per team (N-team)", async () => {
+    const { tripId, competitionId, teamA, teamB } = await captainCup("per-team");
     await ctx.caller().teamAssignments.setCaptain({ tripId, competitionId, teamId: teamA, userId: memberId, isCaptain: true });
     await ctx.caller().teamAssignments.setCaptain({ tripId, competitionId, teamId: teamB, userId: plannerId, isCaptain: true });
     expect(await captainsOf(teamA)).toEqual([memberId]);
