@@ -5,6 +5,7 @@ import { requireTripMember, requireTripRole } from "../middleware";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { notifyChatMessage } from "../lib/chatNotify";
 import { viewerTeamForTrip } from "../lib/viewerTeam";
+import { maybeRowOrThrow } from "../lib/rowOrThrow";
 import { ChatRoomInput, toChatRoom, chatRoomReadRow, type ChatRoom } from "@/lib/chatRoom";
 import type { TRPCContext, TripRoleString } from "../trpc";
 
@@ -319,12 +320,20 @@ export const messagesRouter = router({
       } else {
         const floorCol =
           input.visibility === "crew" ? "chat_visible_from" : "planning_visible_from";
-        const { data: memberRow } = await ctx.supabase
-          .from("trip_members")
-          .select(floorCol)
-          .eq("trip_id", ctx.tripId)
-          .eq("user_id", ctx.user!.id)
-          .maybeSingle();
+        // THROWS on a failed read (#1539): read as `data` alone, a failure left
+        // the floor NULL — which means "sees all history". The policy enforces
+        // the same floor since migration 202, so this is no longer the only
+        // thing standing between a new member and pre-join history; it fails
+        // closed anyway, rather than leaning on the layer below.
+        const memberRow = maybeRowOrThrow(
+          await ctx.supabase
+            .from("trip_members")
+            .select(floorCol)
+            .eq("trip_id", ctx.tripId)
+            .eq("user_id", ctx.user!.id)
+            .maybeSingle(),
+          "chat history settings"
+        );
         if (memberRow) {
           visibilityFloor = (memberRow as Record<string, string | null>)[floorCol] ?? null;
         }
