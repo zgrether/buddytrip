@@ -36,32 +36,63 @@ afterAll(async () => {
 });
 
 describe("matches router (Slice B — setup + visibility)", () => {
-  let gameId: string;
-  let m1: string, m2: string;
+  /**
+   * EVERY CASE BUILDS ITS OWN GAME (#1527). The block used to share one game
+   * and its two match ids, set by the setPairings case and read by the rest —
+   * so shuffled ahead of it, setHandicap and assignPlayer sent `matchId:
+   * undefined` (a validation error), and the Organizer view found no matches.
+   */
+  type Paired = { gameId: string; m1: string; m2: string };
 
-  beforeAll(async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Singles" });
-    gameId = game.id;
-  });
-
-  it("setPairings — Organizer sets two matches; one with an empty slot", async () => {
+  /** Match 1: owner v member. Match 2: planner v an empty (TBD) slot. Unpublished. */
+  async function pairedGame(name: string): Promise<Paired> {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name });
     const matches = (await ctx.callerAs("planner").matches.setPairings({
       tripId,
-      gameId,
+      gameId: game.id,
+      matches: [
+        { playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 },
+        { playersPerSide: 1, sideA: { members: [planner] }, sideB: null, matchNumber: 2 },
+      ],
+    })) as MatchRow[];
+    return { gameId: game.id as string, m1: matches[0].id, m2: matches[1].id };
+  }
+
+  async function handicaps(gameId: string): Promise<Record<string, number | null>> {
+    const { data, error } = await ctx.admin
+      .from("game_participants")
+      .select("user_id, handicap_strokes")
+      .eq("game_id", gameId);
+    if (error) throw new Error(`read handicaps: ${error.message}`);
+    return Object.fromEntries(
+      (data as { user_id: string; handicap_strokes: number | null }[]).map((p) => [p.user_id, p.handicap_strokes])
+    );
+  }
+
+  async function seats(gameId: string): Promise<Record<string, { side_a: Side; side_b: Side }>> {
+    const { data, error } = await ctx.admin.from("game_matches").select("id, side_a, side_b").eq("game_id", gameId);
+    if (error) throw new Error(`read matches: ${error.message}`);
+    return Object.fromEntries((data as { id: string; side_a: Side; side_b: Side }[]).map((r) => [r.id, r]));
+  }
+
+  it("setPairings — Organizer sets two matches; one with an empty slot", async () => {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Singles" });
+    const matches = (await ctx.callerAs("planner").matches.setPairings({
+      tripId,
+      gameId: game.id,
       matches: [
         { playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 },
         { playersPerSide: 1, sideA: { members: [planner] }, sideB: null, matchNumber: 2 },
       ],
     })) as MatchRow[];
     expect(matches).toHaveLength(2);
-    m1 = matches[0].id;
-    m2 = matches[1].id;
     expect(matches[0].side_a?.id).toBe(owner);
     expect(matches[0].side_b?.id).toBe(member);
     expect(matches[1].side_b).toBeNull(); // TBD slot
   });
 
   it("setHandicap — recipient gets n, the other side gets 0 (never split)", async () => {
+    const { gameId, m1 } = await pairedGame("Handicap");
     await ctx.callerAs("planner").matches.setHandicap({
       tripId,
       gameId,
@@ -69,27 +100,22 @@ describe("matches router (Slice B — setup + visibility)", () => {
       recipientId: member,
       strokes: 3,
     });
-    const { data } = await ctx.admin
-      .from("game_participants")
-      .select("user_id, handicap_strokes")
-      .eq("game_id", gameId);
-    const hcap = Object.fromEntries(
-      (data as { user_id: string; handicap_strokes: number | null }[]).map((p) => [
-        p.user_id,
-        p.handicap_strokes,
-      ])
-    );
+    const hcap = await handicaps(gameId);
     expect(hcap[member]).toBe(3);
     expect(hcap[owner]).toBe(0);
   });
 
   it("listByGame — a Member sees nothing before pairings are published", async () => {
+    const { gameId } = await pairedGame("Unpublished, member");
+    // Premise: there ARE matches to withhold — the empty answer is the wall.
+    expect(Object.keys(await seats(gameId))).toHaveLength(2);
     const res = await ctx.callerAs("member").matches.listByGame({ tripId, gameId });
     expect(res.published).toBe(false);
     expect(res.matches).toHaveLength(0);
   });
 
   it("listByGame — Owner/Organizer always see match detail (even unpublished)", async () => {
+    const { gameId } = await pairedGame("Unpublished, organizer");
     const res = await ctx.callerAs("planner").matches.listByGame({ tripId, gameId });
     expect(res.published).toBe(false);
     expect(res.matches).toHaveLength(2);
@@ -98,8 +124,7 @@ describe("matches router (Slice B — setup + visibility)", () => {
   it("enableScoring — readiness-gated; publishes + goes active; the Member can now see them", async () => {
     // A2-core: enable now (a) is refused until every match is paired (the server
     // readiness guard) and (b) the toggle OWNS status — Setup→Scoring sets
-    // status:'active' (no longer "first score owns Live"). The shared fixture has an
-    // empty slot, so use a dedicated game here to exercise both halves.
+    // status:'active' (no longer "first score owns Live").
     const g = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Enable Test" });
     // under-configured (one empty slot) → enable REFUSED
     await ctx.callerAs("planner").matches.setPairings({
@@ -118,12 +143,18 @@ describe("matches router (Slice B — setup + visibility)", () => {
     const res = await ctx.callerAs("member").matches.listByGame({ tripId, gameId: g.id });
     expect(res.published).toBe(true);
     expect(res.matches).toHaveLength(1);
-    const { data: game } = await ctx.admin.from("games").select("status, scoring_enabled").eq("id", g.id).single();
+    const { data: game, error } = await ctx.admin.from("games").select("status, scoring_enabled").eq("id", g.id).single();
+    if (error) throw new Error(`read game: ${error.message}`);
     expect((game as { scoring_enabled: boolean }).scoring_enabled).toBe(true);
     expect((game as { status: string }).status).toBe("active"); // A2-core: toggle owns status
   });
 
   it("assignPlayer — moving a player clears the vacated match's handicap", async () => {
+    const { gameId, m1, m2 } = await pairedGame("Move");
+    await ctx.callerAs("planner").matches.setHandicap({ tripId, gameId, matchId: m1, recipientId: member, strokes: 3 });
+    // Premise: match 1 HAS a handicap relationship to clear.
+    expect(await handicaps(gameId)).toMatchObject({ [member]: 3, [owner]: 0 });
+
     // member is in match 1 (side_b). Move them into match 2's empty slot.
     await ctx.callerAs("planner").matches.assignPlayer({
       tripId,
@@ -132,40 +163,33 @@ describe("matches router (Slice B — setup + visibility)", () => {
       slot: "b",
       userId: member,
     });
-    const { data: matches } = await ctx.admin
-      .from("game_matches")
-      .select("id, side_a, side_b")
-      .eq("game_id", gameId);
-    const byId = Object.fromEntries(
-      (matches as { id: string; side_a: Side; side_b: Side }[]).map((r) => [r.id, r])
-    );
+    const byId = await seats(gameId);
     expect(byId[m1].side_b).toBeNull(); // vacated
     expect(byId[m2].side_b?.id).toBe(member); // moved here
 
-    const { data: parts } = await ctx.admin
-      .from("game_participants")
-      .select("user_id, handicap_strokes")
-      .eq("game_id", gameId);
-    const hcap = Object.fromEntries(
-      (parts as { user_id: string; handicap_strokes: number | null }[]).map((p) => [
-        p.user_id,
-        p.handicap_strokes,
-      ])
-    );
     // match 1's relationship is gone → both its players' handicaps cleared
+    const hcap = await handicaps(gameId);
     expect(hcap[member]).toBeNull();
     expect(hcap[owner]).toBeNull();
   });
 
   it("setup procedures reject a plain Member", async () => {
+    const { gameId, m1 } = await pairedGame("Member refused");
+    // FORBIDDEN, not any throw — and a VALID payload, so the refusal cannot come
+    // from validation instead of the permission check this case is named for.
     await expect(
       ctx.callerAs("member").matches.setPairings({
         tripId,
         gameId,
-        matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
+        matches: [{ playersPerSide: 1, sideA: { members: [member] }, sideB: { members: [owner] }, matchNumber: 1 }],
       })
-    ).rejects.toThrow();
-    await expect(ctx.callerAs("member").matches.enableScoring({ tripId, gameId })).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(ctx.callerAs("member").matches.enableScoring({ tripId, gameId })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    // Nothing moved: the pairings are the Organizer's, and scoring is still off.
+    expect((await seats(gameId))[m1].side_a?.id).toBe(owner);
+    const { data, error } = await ctx.admin.from("games").select("scoring_enabled").eq("id", gameId).single();
+    if (error) throw new Error(`read game: ${error.message}`);
+    expect((data as { scoring_enabled: boolean }).scoring_enabled).toBe(false);
   });
 });
 

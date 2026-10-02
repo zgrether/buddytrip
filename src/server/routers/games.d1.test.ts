@@ -13,17 +13,30 @@ const MANUAL = "gtt_manual";
 let ctx: TestContext;
 let tripId: string;
 let competitionId: string;
-let teamA: string;
-let teamB: string;
 let memberId: string;
 const gameIds: string[] = [];
 
-async function newGame(distribution: PointsDistribution | null, name = "Game") {
+type Cup = { tripId: string; competitionId: string; teamA: string; teamB: string };
+
+/**
+ * A points cup of its own (#1527), for the cases that read the CUP's totals.
+ * The file's shared cup accumulates every other case's games, so a total read
+ * there depended on which cases had run first (the shell case read 135 points
+ * available where its own game contributes 15).
+ */
+async function ownCup(label: string): Promise<Cup> {
+  const { tripId: t, competitionId: c } = await ctx.createCupTrip({ name: `D1 ${label}`, scoringModel: "points" });
+  const a = await ctx.createTeam(c, "Blue", { shortName: "BLU" });
+  const b = await ctx.createTeam(c, "Red", { shortName: "RED" });
+  return { tripId: t, competitionId: c, teamA: a, teamB: b };
+}
+
+async function newGame(distribution: PointsDistribution | null, name = "Game", cup?: Cup) {
   const g = (await ctx.caller().games.create({
-    tripId,
+    tripId: cup?.tripId ?? tripId,
     gameTypeId: MANUAL,
     name,
-    competitionId,
+    competitionId: cup?.competitionId ?? competitionId,
     pointsDistribution: distribution,
   })) as { id: string };
   gameIds.push(g.id);
@@ -41,8 +54,8 @@ beforeAll(async () => {
   // Placement/manual-adapter roll-up suite — points model (DB default is now
   // match_play, which would award these manual games winner-take-all).
   competitionId = await ctx.createCompetition(tripId, "D1 Comp", { scoringModel: "points" });
-  teamA = await ctx.createTeam(competitionId, "Blue", { shortName: "BLU" });
-  teamB = await ctx.createTeam(competitionId, "Red", { shortName: "RED" });
+  await ctx.createTeam(competitionId, "Blue", { shortName: "BLU" });
+  await ctx.createTeam(competitionId, "Red", { shortName: "RED" });
 });
 
 afterAll(async () => {
@@ -61,8 +74,9 @@ afterAll(async () => {
 // nothing. Same input shape, same writer (`writeManualResults`).
 describe("Phase-1 shell + leaderboard (§3/§6)", () => {
   it("a game with all Phase-2 fields null is creatable and contributes points-available", async () => {
-    const id = await newGame(DIST_9642, "Shell");
-    const game = (await ctx.caller().games.getById({ tripId, gameId: id })) as {
+    const cup = await ownCup("shell");
+    const id = await newGame(DIST_9642, "Shell", cup);
+    const game = (await ctx.caller().games.getById({ tripId: cup.tripId, gameId: id })) as {
       scorecard_schema: unknown;
       course_id: unknown;
       points_distribution: PointsDistribution;
@@ -73,28 +87,30 @@ describe("Phase-1 shell + leaderboard (§3/§6)", () => {
     expect(game.points_distribution).toEqual({ type: "placement", values: [9, 6, 4, 2] }); // …but Phase-1 set
     expect(game.status).toBe("pending");
 
-    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    const lb = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
     expect(lb.pointsAvailable).toBe(15); // sum(dist[0..1]) for 2 teams
     expect(lb.winNumber).toBe(8); // > half of 15
-    expect(lb.teamTotals[teamA]).toBe(0); // nothing awarded yet
+    expect(lb.teamTotals[cup.teamA]).toBe(0); // nothing awarded yet
   });
 });
 
 describe("manual adapter → universal roll-up (§5)", () => {
   it("entered per-team placements write game_results and roll up to distribution points", async () => {
-    const id = await newGame(DIST_9642, "Pickem");
+    // Its own cup, so the totals are this game's alone (#1527) — on the shared
+    // cup they included whatever other cases had banked.
+    const cup = await ownCup("adapter");
+    const id = await newGame(DIST_9642, "Pickem", cup);
     await ctx.caller().games.finish({
-      tripId,
+      tripId: cup.tripId,
       gameId: id,
       placements: [
-        { entityId: teamA, position: 1 },
-        { entityId: teamB, position: 2 },
+        { entityId: cup.teamA, position: 1 },
+        { entityId: cup.teamB, position: 2 },
       ],
     });
-    // Only this game is live with results; the Shell game contributes available only.
-    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
-    expect(lb.teamTotals[teamA]).toBe(9); // 1st
-    expect(lb.teamTotals[teamB]).toBe(6); // 2nd
+    const lb = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
+    expect(lb.teamTotals[cup.teamA]).toBe(9); // 1st
+    expect(lb.teamTotals[cup.teamB]).toBe(6); // 2nd
   });
 
   it("averaged ties flow through the stack (two teams tie 1st on [9,6] → 7.5 each)", async () => {

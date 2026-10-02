@@ -13,11 +13,18 @@ const STROKE_PLAY = "gtt_stroke_play";
  * (applyCourse 9-hole front → setBackNine 9-hole back → composed 18 snapshot) had
  * never been asserted producing a correct interleaved stroke index + handicap
  * allocation. This closes that: two real indexed nines through the actual router.
+ *
+ * EVERY CASE BUILDS ITS OWN GAME (#1527). The courses are made once and only
+ * read; the GAME used to be shared and walked front → composed → swapped, so
+ * shuffled ahead of the front case, the compose cases met a game with no front
+ * ("Set a front nine first"), and the 18-hole refusal met that same refusal
+ * instead of its own.
  */
+type Schema = { units: { count: number; metadata: { par: number[]; handicap_index?: number[] } } } | null;
+
 describe("games.setBackNine — indexed two-nines compose (W-9HOLE-01)", () => {
   let ctx: TestContext;
   let tripId: string;
-  let gameId: string;
   let frontId: string;
   let backId: string;
   let back2Id: string;
@@ -46,16 +53,23 @@ describe("games.setBackNine — indexed two-nines compose (W-9HOLE-01)", () => {
     createdCourses.push(c.id as string);
     return c.id as string;
   }
-  const schemaOf = async () => {
+  const schemaOf = async (gameId: string): Promise<Schema> => {
     const g = await ctx.caller().games.getById({ tripId, gameId });
-    return (g as { scorecard_schema: { units: { count: number; metadata: { par: number[]; handicap_index?: number[] } } } | null }).scorecard_schema;
+    return (g as { scorecard_schema: Schema }).scorecard_schema;
   };
+
+  /** A stroke game with the indexed front nine applied, optionally the first back composed onto it. */
+  async function frontGame(name: string, opts: { withBack: boolean }): Promise<string> {
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name });
+    await ctx.caller().games.applyCourse({ tripId, gameId: game.id, courseId: frontId });
+    if (opts.withBack) await ctx.caller().games.setBackNine({ tripId, gameId: game.id, backCourseId: backId });
+    expect((await schemaOf(game.id))?.units.count).toBe(opts.withBack ? 18 : 9); // premise
+    return game.id as string;
+  }
 
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("9-hole compose");
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Two Nines" });
-    gameId = game.id;
     frontId = await makeNine(`Front 9 ${Date.now()}`, fIdx);
     backId = await makeNine(`Back 9 ${Date.now()}`, bIdx);
     back2Id = await makeNine(`Back 9b ${Date.now()}`, b2Idx);
@@ -67,15 +81,17 @@ describe("games.setBackNine — indexed two-nines compose (W-9HOLE-01)", () => {
   });
 
   it("a 9-hole front applies as a 9-hole schema (a lone front — needs a back)", async () => {
-    await ctx.caller().games.applyCourse({ tripId, gameId, courseId: frontId });
-    const s = await schemaOf();
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Lone Front" });
+    await ctx.caller().games.applyCourse({ tripId, gameId: game.id, courseId: frontId });
+    const s = await schemaOf(game.id);
     expect(s?.units.count).toBe(9);
     expect(s?.units.metadata.par).toHaveLength(9);
   });
 
   it("setBackNine composes a full 18 with the INTERLEAVED stroke index (front odd, back even)", async () => {
+    const gameId = await frontGame("Compose", { withBack: false });
     await ctx.caller().games.setBackNine({ tripId, gameId, backCourseId: backId });
-    const s = await schemaOf();
+    const s = await schemaOf(gameId);
     expect(s?.units.count).toBe(18);
     // par concatenates front then back
     expect(s?.units.metadata.par).toEqual([...par9, ...par9]);
@@ -89,7 +105,8 @@ describe("games.setBackNine — indexed two-nines compose (W-9HOLE-01)", () => {
   });
 
   it("handicap allocation spreads across BOTH nines on real indexed data (the fairness point)", async () => {
-    const strokeIndex = strokeIndexOf(unitsFromSchema(await schemaOf()));
+    const gameId = await frontGame("Allocation", { withBack: true });
+    const strokeIndex = strokeIndexOf(unitsFromSchema(await schemaOf(gameId)));
     // A 5-stroke player gets the 5 hardest holes (overall index 1..5).
     const holes = [...strokeHoles(5, strokeIndex, 18)].sort((a, b) => a - b);
     expect(holes).toHaveLength(5);
@@ -98,9 +115,10 @@ describe("games.setBackNine — indexed two-nines compose (W-9HOLE-01)", () => {
   });
 
   it("swap preserves the front nine's index and replaces only the back", async () => {
-    const before = (await schemaOf())!.units.metadata.handicap_index!;
+    const gameId = await frontGame("Swap", { withBack: true });
+    const before = (await schemaOf(gameId))!.units.metadata.handicap_index!;
     await ctx.caller().games.setBackNine({ tripId, gameId, backCourseId: back2Id });
-    const after = (await schemaOf())!.units.metadata.handicap_index!;
+    const after = (await schemaOf(gameId))!.units.metadata.handicap_index!;
     expect(after.slice(0, 9)).toEqual(before.slice(0, 9));      // front untouched
     expect(after.slice(9)).toEqual(b2Idx.map((s) => 2 * s));    // back is the new nine
     expect(after.slice(9)).not.toEqual(before.slice(9));        // and it actually changed
@@ -108,19 +126,25 @@ describe("games.setBackNine — indexed two-nines compose (W-9HOLE-01)", () => {
   });
 
   it("rejects an 18-hole course as the back nine", async () => {
+    // A game WITH a 9-hole front, so the refusal is about the back course and
+    // not the "Set a front nine first" a bare game gets.
+    const gameId = await frontGame("18 as back", { withBack: false });
     const eighteen = await make18(`Real 18 ${Date.now()}`);
     await expect(
       ctx.caller().games.setBackNine({ tripId, gameId, backCourseId: eighteen })
     ).rejects.toThrow(/9-hole/);
+    expect((await schemaOf(gameId))?.units.count).toBe(9); // nothing composed
   });
 
   it("rejects setBackNine on a real 18-hole course (not a two-nines front)", async () => {
     const g = await ctx.caller().games.create({ tripId, gameTypeId: STROKE_PLAY, name: "Real 18 game" });
     const eighteen = await make18(`Real 18b ${Date.now()}`);
     await ctx.caller().games.applyCourse({ tripId, gameId: g.id, courseId: eighteen });
+    // Named refusal, not any throw: the front is real, so the reason is that
+    // an 18-hole course takes no back nine.
     await expect(
       ctx.caller().games.setBackNine({ tripId, gameId: g.id, backCourseId: backId })
-    ).rejects.toThrow();
+    ).rejects.toThrow(/isn't a 9-hole front/);
   });
 
   // W-GAMEPAGE-01 pin #3 — the back nine INHERITS the front's tee. The composed

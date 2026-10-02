@@ -62,20 +62,34 @@ afterAll(async () => {
 
 describe("post — commit current standing, points from configured distribution", () => {
   it("manual post writes the entered ORDER; points come from the distribution", async () => {
-    const g = await newManualGame();
+    // Its OWN cup (#1527): this is the one case here that reads the CUP's
+    // totals, and every other case posts games to the shared one — shuffled
+    // after them, teamA read 35 rather than this game's 5.
+    const { tripId: ownTrip, competitionId: ownCup } = await ctx.createCupTrip({ name: "Run Cup (totals)", scoringModel: "points" });
+    const blue = await ctx.createTeam(ownCup, "Blue", { shortName: "BLU" });
+    const red = await ctx.createTeam(ownCup, "Red", { shortName: "RED" });
+    const g = (await ctx.caller().games.create({
+      tripId: ownTrip,
+      gameTypeId: MANUAL,
+      name: "Cornhole",
+      competitionId: ownCup,
+      pointsDistribution: { type: "placement", values: [5, 3] },
+      pointsTotal: 8,
+    })) as { id: string };
+    gameIds.push(g.id);
     await ctx.caller().games.finish({
-      tripId, gameId: g,
-      placements: [{ entityId: teamA, position: 1 }, { entityId: teamB, position: 2 }],
+      tripId: ownTrip, gameId: g.id,
+      placements: [{ entityId: blue, position: 1 }, { entityId: red, position: 2 }],
     });
 
-    const game = (await ctx.caller().games.getById({ tripId, gameId: g })) as { status: string; corrections_open: boolean };
+    const game = (await ctx.caller().games.getById({ tripId: ownTrip, gameId: g.id })) as { status: string; corrections_open: boolean };
     expect(game.status).toBe("complete"); // posted/locked
     expect(game.corrections_open).toBe(false);
 
-    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    const lb = await ctx.caller().competitions.leaderboard({ tripId: ownTrip, competitionId: ownCup });
     // Poster set positions 1,2 — points come from the configured [5,3].
-    expect(lb.teamTotals[teamA]).toBe(5);
-    expect(lb.teamTotals[teamB]).toBe(3);
+    expect(lb.teamTotals[blue]).toBe(5);
+    expect(lb.teamTotals[red]).toBe(3);
     expect(lb.pointsAvailable).toBe(8);
   });
 
@@ -145,8 +159,15 @@ describe("permissions — run-actions: owner / Organizer / game-delegate", () =>
   it("an outsider (non-member) cannot post or correct", async () => {
     const g = await newManualGame("Outsider blocked");
     await ctx.caller().games.finish({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] });
-    await expect(ctx.callerAs("outsider").games.finish({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] })).rejects.toThrow();
-    await expect(ctx.callerAs("outsider").games.openCorrection({ tripId, gameId: g })).rejects.toThrow();
+    // FORBIDDEN, not any throw: a refusal from somewhere else (validation, a
+    // later guard) would also have satisfied a bare toThrow().
+    await expect(ctx.callerAs("outsider").games.finish({ tripId, gameId: g, placements: [{ entityId: teamA, position: 1 }] }))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(ctx.callerAs("outsider").games.openCorrection({ tripId, gameId: g }))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    const { data, error } = await ctx.admin.from("games").select("status, corrections_open").eq("id", g).single();
+    if (error) throw new Error(`read game: ${error.message}`);
+    expect(data).toMatchObject({ status: "complete", corrections_open: false }); // still posted, not reopened
   });
 
   it("an Organizer can open correction", async () => {
