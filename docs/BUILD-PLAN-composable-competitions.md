@@ -1094,10 +1094,12 @@ enumerate what it was making unreachable.)
   (`games.credited_roster`, migration 203; server only). **8b** — lift the lock for trades and
   removals behind the fingerprint-checked preview (a surface: look first). **8c** — the owner
   correction for team-independent games (`teamDependent: false`: stroke play, skins), with
-  its record. **8d (deletion → placeholder results) is dropped:** migration 132 already keeps
-  a deleted account's results under a "Deleted User" placeholder, which is ruling 19; removing
-  a person WITH results from a trip stays refused until a real case asks for it. *(Ruling 19
-  is Zach's — this reading of it awaits his confirmation.)*
+  its record. **8d — leaving a trip is an ARCHIVE** (ruling 19, settled by Zach 2026-10-02):
+  account deletion keeps migration 132's "Deleted User" placeholder; leaving or being removed
+  from a trip takes the trip off the person's list and stops its notifications, and their
+  results stay attached to them. It replaces today's refusal (`findContributionBlockers`) for
+  people with results. Disconnecting someone from their data on removal is an escape clause
+  recorded in TRACKER.md, not part of 8d.
 - **Why a column and not the result rows** (8a's design question): rack and pick'em write
   team rows only; a re-finalize needs person → team, which team rows do not carry; and
   migration 191 keeps `credited_team_id` NULL on person rows deliberately. One jsonb map per
