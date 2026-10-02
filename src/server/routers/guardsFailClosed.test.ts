@@ -136,12 +136,31 @@ describe("teamAssignments.assign — a failed read never lets a MOVE past the lo
 });
 
 describe("teams.delete — a failed team read never skips both guards", () => {
-  it("CONTROL: real reads — deleting a team from a scored cup is refused as LOCKED", async () => {
-    await expect(ctx.caller().teams.delete({ tripId, teamId: teamC })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  // Charlie carries banked points. Until PR 8b this control leaned on the roster
+  // LOCK (any team in a scored cup was undeletable); 8b lifted it, and an empty
+  // team with nothing banked is now correctly deletable. So the refusal the
+  // control proves is the one 8b kept: a team with banked points cannot vanish.
+  beforeAll(async () => {
+    const done = genId("gfc-done");
+    const g = await ctx.admin.from("games").insert({
+      id: done, trip_id: tripId, competition_id: cup, game_type_id: "gtt_manual", name: "Banked", status: "complete",
+    });
+    if (g.error) throw new Error(`games insert failed: ${g.error.message}`);
+    const r = await ctx.admin.from("game_results").insert({
+      id: genId("gfc-gr"), game_id: done, entity_type: "team", entity_id: teamC,
+      credited_team_id: teamC, position: 1, value_kind: "rank",
+    });
+    if (r.error) throw new Error(`game_results insert failed: ${r.error.message}`);
+  });
+
+  it("CONTROL: real reads — deleting a team with banked points is refused, by name", async () => {
+    await expect(ctx.caller().teams.delete({ tripId, teamId: teamC })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED", message: expect.stringContaining("Charlie has results banked"),
+    });
   }, 60_000);
 
   it("a FAILED team read refuses — the team is not deleted", async () => {
-    const failing = callerFailingRead(ctx, "owner", { table: "teams", columns: "competition_id" });
+    const failing = callerFailingRead(ctx, "owner", { table: "teams", columns: "competition_id, name" });
     await expect(failing.teams.delete({ tripId, teamId: teamC })).rejects.toThrow(SENTENCE("team"));
     const { count } = await ctx.admin.from("teams").select("id", { count: "exact", head: true }).eq("id", teamC);
     expect(count).toBe(1);

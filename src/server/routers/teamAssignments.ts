@@ -6,7 +6,8 @@ import { requireTripMember, requireTripRole, requireTeamIdentityEdit } from "../
 import { competitionHasResults } from "../lib/rosterLock";
 import { assertRosterChangeAllowed, blockedRefusal, personUnfinishedGames, previewRosterChange } from "../lib/rosterChange";
 import { tripDisplayNames } from "../lib/tripDisplayNames";
-import { reconcileClinchClaim } from "../lib/gameFinishNotify";
+import { notifyCupClinchedIfDecided } from "../lib/gameFinishNotify";
+import { afterResponse } from "../lib/afterResponse";
 import { maybeRowOrThrow } from "../lib/rowOrThrow";
 import { readRosterFingerprint } from "../lib/rosterFingerprint";
 
@@ -15,6 +16,31 @@ import { readRosterFingerprint } from "../lib/rosterFingerprint";
  * is on at most one team per competition. assign() upserts that pairing;
  * remove() deletes it (Owner only per spec).
  */
+
+/**
+ * After a post-results roster change, settle the clinch the way `games.finish`
+ * does — announce a clinch the change created, release one it undid — rather
+ * than release-only.
+ *
+ * #1425's ruling 2 keeps a LIVE game on its owner-set total precisely so no
+ * path but finalize can cross a threshold, because a clinch crossed elsewhere
+ * would be shown with nobody told. Checked for 8b (2026-10-02): a trade moves no
+ * banked points (8a), and every live per-match game in production sizes its pool
+ * from its owner total — so in reachable data a trade cannot move the target.
+ * The one exception is a legacy fallback: a game with NO owner total sizes its
+ * pool from current team sizes (`deriveMatchCount`). Production's only live
+ * game on that arm has a per-match value of 0, so its pool is 0 whatever the
+ * roster. Rather than lean on that, a roster change settles the clinch exactly
+ * as a finalize does, so the announcement stays attached to the event that
+ * caused it. The claim dedupes, so an unchanged clinch announces nothing.
+ *
+ * After the response and best-effort by construction (`afterResponse`,
+ * `notifyCupClinchedIfDecided`): the roster change has committed, and a failed
+ * clinch check must never report it as failed (CLAUDE.md).
+ */
+async function settleClinchAfterRosterChange(tripId: string, competitionId: string, actorUserId: string) {
+  await afterResponse(() => notifyCupClinchedIfDecided({ tripId, competitionId, actorUserId }));
+}
 
 /** Shared between teamAssignments.list and competitions.hydrate. */
 export async function listTeamAssignments(
@@ -237,12 +263,7 @@ export const teamAssignmentsRouter = router({
         });
       }
 
-      // After results a change can move points AVAILABLE (unfinished per-match
-      // games size their pool from team sizes), so a held clinch may no longer
-      // hold. Release-only and best-effort by construction, as for every config
-      // edit; a NEW clinch from a roster change is not announced, the same
-      // documented gap (`reconcileClinchClaim`).
-      if (changedAfterResults) await reconcileClinchClaim(input.competitionId);
+      if (changedAfterResults) await settleClinchAfterRosterChange(ctx.tripId, input.competitionId, ctx.user!.id);
 
       return inserted;
     }),
@@ -311,7 +332,7 @@ export const teamAssignmentsRouter = router({
         });
       }
 
-      if (hasResults) await reconcileClinchClaim(input.competitionId);
+      if (hasResults) await settleClinchAfterRosterChange(ctx.tripId, input.competitionId, ctx.user!.id);
       return { success: true };
     }),
 

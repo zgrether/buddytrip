@@ -207,6 +207,35 @@ describe("after results — a move or removal is reviewed first", () => {
   });
 });
 
+describe("after results — a change settles the clinch the way a finalize does", () => {
+  /** `push_send_log` rows the clinch check wrote for this cup. */
+  const clinchChecks = async (competitionId: string) => {
+    const { count, error } = await ctx.admin
+      .from("push_send_log").select("id", { count: "exact", head: true })
+      .eq("trigger", "cup_clinched").eq("competition_id", competitionId);
+    if (error) throw new Error(`read push_send_log: ${error.message}`);
+    return count ?? 0;
+  };
+
+  it("a reviewed move after results runs the clinch check; a move before results does not", async () => {
+    // CONTROL first: before results there is no target to move.
+    const before = await rosterCup("clinch-before");
+    await ctx.caller().teamAssignments.assign({ tripId: before.tripId, competitionId: before.competitionId, userId: memberId, teamId: before.teamA });
+    await ctx.caller().teamAssignments.assign({ tripId: before.tripId, competitionId: before.competitionId, userId: memberId, teamId: before.teamB });
+    expect(await clinchChecks(before.competitionId)).toBe(0);
+
+    // After results: the check runs (it records every outcome, including "no
+    // clincher"), so a clinch a trade created would be announced, and one it
+    // undid released — not left for a later finalize to find.
+    const cup = await cupWithResults("clinch-after");
+    const fp = await fingerprintFor(cup, memberId);
+    await ctx.caller().teamAssignments.assign({
+      tripId: cup.tripId, competitionId: cup.competitionId, userId: memberId, teamId: cup.teamB, rosterFingerprint: fp,
+    });
+    expect(await clinchChecks(cup.competitionId)).toBe(1);
+  });
+});
+
 describe("after results — refused while the person is in an unfinished team-dependent game", () => {
   it("a move is refused, NAMING the game; an unfinished stroke round does not block", async () => {
     const cup = await cupWithResults("blocked");

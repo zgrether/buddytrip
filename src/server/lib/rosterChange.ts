@@ -29,9 +29,12 @@ import { countOrThrow, rowsOrThrow } from "./rowOrThrow";
  *  - A change confirmed against a roster another organizer has since changed —
  *    refused by the fingerprint the preview was built on (#1517).
  *  - Captaincy riding along on a move — `teamAssignments.assign` clears it.
- *  - Points available for unfinished per-match games, which size their pool
- *    from current team sizes — the caller reconciles the clinch claim after a
- *    post-results change (release only, like every config edit).
+ *  - The clinch. A trade moves no banked points, and live games count their
+ *    owner-set total (#1425 ruling 2), so in reachable data a trade cannot move
+ *    the target — but a legacy game with no owner total sizes its pool from
+ *    team sizes. So a post-results change settles the clinch exactly as a
+ *    finalize does (`settleClinchAfterRosterChange` in teamAssignments):
+ *    announce one it created, release one it undid, after the response.
  *
  * Before results nothing here applies: a stale move is visible, reversible and
  * scores nothing, so the working drag-to-move flow is left exactly as it was.
