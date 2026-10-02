@@ -1118,6 +1118,31 @@ enumerate what it was making unreachable.)
 - **F2 is done** (#1523, migration 198): a game's delegate can record a bracket pick, and a
   refused pick fails loudly.
 
+**Migration 203 is in production (2026-10-02)** with a backfill: all 50 finished cup games
+carry the roster they are credited through (one, in a teamless cup, `{}`), 0 without. **8b's
+checklist, before the lock lifts:** games that finish between 203's push and part 2's deploy
+record no roster, so re-run `_backfill_credited_rosters()` and re-check that zero finished cup
+games lack one. Keep that window short: deploy part 2 soon after 203.
+
+**8d's verify-first compares the two designs honestly** (Zach, 2026-10-02), rather than
+assuming either. **Delete the membership row** is the lean: every membership check stays
+correct by construction, and 8a's stored rosters keep finished credit intact. Its two known
+costs are finite — two places, fixed once:
+- **Names.** Standings read names as the viewer, and `users_select` admits only people you
+  share a trip with, so a departed player would render as "Someone". Keep the name the crew
+  SAW: a trip nickname ("Biscuit") is part of the trip's history, and it lives on the row
+  being deleted, so 8d decides where it survives. Resolution stays as narrow as possible — the
+  display name only, and only for people with results in a game the viewer can already see.
+  Widening who can read whose name is a privacy change, even a small one.
+- **Participation.** `clearTripParticipation` deletes game participation and vacates match
+  seats. Keep FINISHED games exactly as they are; vacate seats only in unfinished ones — for a
+  game still in progress, someone leaving really has left.
+
+**A membership flag** is the alternative; its cost is open-ended — every membership check,
+including every future one, must remember to exclude archived members, and one that forgets
+leaks (chat delivery among them: today's cut-off on removal depends on the row being gone,
+verified with a Realtime probe 2026-10-02).
+
 **Carried to 8b:** a team deleted after a game finalized can still be named in that game's
 credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize
 that team's members would credit nowhere. Lifting the lock for team delete has to decide this.
