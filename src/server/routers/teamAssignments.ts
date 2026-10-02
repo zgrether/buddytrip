@@ -30,7 +30,7 @@ import { readRosterFingerprint } from "../lib/rosterFingerprint";
  * The one exception is a legacy fallback: a game with NO owner total sizes its
  * pool from current team sizes (`deriveMatchCount`). Production's only live
  * game on that arm has a per-match value of 0, so its pool is 0 whatever the
- * roster. Rather than lean on that, a roster change settles the clinch exactly
+ * roster. Removing the fallback is #1556. Rather than lean on that, a roster change settles the clinch exactly
  * as a finalize does, so the announcement stays attached to the event that
  * caused it. The claim dedupes, so an unchanged clinch announces nothing.
  *
