@@ -182,6 +182,27 @@ jobs:
             echo "NEXT_PUBLIC_SITE_URL=http://localhost:3000"
           } >> "$GITHUB_ENV"
           rm -f supabase.env
+      # Kong must NOT reuse its connections to PostgREST (#1527). With reuse on,
+      # PostgREST sometimes closes a pooled connection while Kong is waiting on
+      # a reply ("upstream prematurely closed connection while reading response
+      # header"). Kong retries a read on a fresh connection; it never retries a
+      # write, so the write reaches the test as a 502. Measured locally on one
+      # seed: reuse on 46/45/46/28 errors per run (incl. a 10s idle timeout and
+      # 6 workers), reuse off 0/0/0. WHY PostgREST closes the connection is
+      # still unknown; this removes the condition rather than explaining it.
+      #
+      # NOT a retry: the failing requests are writes, and that error cannot say
+      # whether PostgREST ran one, so retrying could apply a write twice.
+      #
+      # config.toml exposes no Kong settings, hence the reload. The read-back is
+      # the point: a `kong reload` that silently kept the old value cost one
+      # bogus control run while measuring this, so the step fails unless the
+      # resolved config says 0.
+      - name: Turn off Kong upstream connection reuse (#1527)
+        if: needs.changes.outputs.code == 'true'
+        run: |
+          docker exec -e KONG_UPSTREAM_KEEPALIVE_POOL_SIZE=0 supabase_kong_buddytrip kong reload
+          docker exec supabase_kong_buddytrip grep -E '^upstream_keepalive_pool_size = 0$' /usr/local/kong/.kong_env
       - run: npx tsc --noEmit
         if: needs.changes.outputs.code == 'true'
       - run: npx vitest run
