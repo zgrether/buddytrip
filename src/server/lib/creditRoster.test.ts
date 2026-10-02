@@ -290,6 +290,32 @@ describe("absence from a credited roster is a fact (ruling 17)", () => {
   });
 });
 
+describe("NO stored roster and a stored roster WITHOUT the player are different answers", () => {
+  // One fixture, read two ways. Today Alice is on Blue. Confusing the two
+  // states fails in BOTH directions, and each direction is a real bug:
+  //   - read "absent" as "fall back to today": a player who joined a team after
+  //     the game finished gets its points (ruling 17 broken);
+  //   - read "no roster" as "nobody was on a team": every game finished before
+  //     a roster was stored credits everyone to nobody on its next correction.
+  const stroke = ENGINES.find((e) => e.name === "stroke play")!;
+  const today = [
+    { user_id: "alice", team_id: BLUE, competition_id: C },
+    { user_id: "carol", team_id: RED, competition_id: C },
+  ];
+
+  it("NO stored roster (null): falls back to today's — Alice credits Blue", async () => {
+    const { client, rpcs } = fakeDb({ ...withGame(stroke, null), team_assignments: today });
+    await computeStrokePlayResults(client, G, { onFailure: "throw", requireQualified: true });
+    expect(teamRows(rpcs)).toEqual({ [BLUE]: 72, [RED]: 90 });
+  });
+
+  it("a stored roster WITHOUT Alice: she was on no team then — she credits nobody", async () => {
+    const { client, rpcs } = fakeDb({ ...withGame(stroke, { carol: RED }), team_assignments: today });
+    await computeStrokePlayResults(client, G, { onFailure: "throw", requireQualified: true });
+    expect(teamRows(rpcs)).toEqual({ [RED]: 90 });
+  });
+});
+
 describe("parseCreditedRoster fails closed", () => {
   it("refuses an array, a scalar, and a player with no team", () => {
     expect(() => parseCreditedRoster([], G)).toThrow(/not a map/);
