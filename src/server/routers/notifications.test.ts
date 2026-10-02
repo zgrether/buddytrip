@@ -20,11 +20,9 @@ describe("notifications router", () => {
   afterAll(async () => {
     // Clean up any subscriptions left by these tests (admin — bypasses RLS).
     await ctx.admin.from("push_subscriptions").delete().eq("user_id", ctx.user.id);
-    // Reset prefs so other suites see a clean users row.
-    await ctx.admin
-      .from("users")
-      .update({ notification_prefs: {} })
-      .eq("id", ctx.user.id);
+    // (No preference reset any more: this block no longer writes the shared
+    // owner's preferences, and resetting them here ran UNDER any other file
+    // that had set them — #1540.)
     await ctx.cleanup();
   });
 
@@ -103,8 +101,16 @@ describe("notifications router", () => {
   });
 
   // ── gate 3: preferences default from the registry, setPreference persists ──
+  //
+  // EACH CASE USES AN ACCOUNT OF ITS OWN (#1527, found at seed 4096; and
+  // CLAUDE.md #6). These used to write the SHARED owner's preferences, and the
+  // persist case's "reset" set chat to FALSE — the opposite of the default — so
+  // "returns registry defaults when unset" failed whenever it ran after it. A
+  // shared user's preferences are person-scoped state other files read too.
+
   it("getPreferences returns registry defaults when unset (every category ON)", async () => {
-    const prefs = await ctx.caller().notifications.getPreferences();
+    const account = await ctx.createAccount("prefs-defaults");
+    const prefs = await account.caller().notifications.getPreferences();
     expect(prefs).toEqual({
       game_results: true,
       planning: true,
@@ -115,43 +121,51 @@ describe("notifications router", () => {
     });
   });
 
-  it("setPreference persists and merges (chat ON, others untouched)", async () => {
-    const caller = ctx.caller();
-    await caller.notifications.setPreference({ key: "chat", enabled: true });
-    const prefs = await caller.notifications.getPreferences();
-    expect(prefs.chat).toBe(true);
-    expect(prefs.game_results).toBe(true); // unchanged
-    // reset
+  it("setPreference persists and merges (chat OFF, others untouched)", async () => {
+    // FALSE, not TRUE: every category defaults ON, so storing TRUE would match
+    // the default and "persists" would pass whether or not anything was saved.
+    // This case used to do exactly that.
+    const account = await ctx.createAccount("prefs-persist");
+    const caller = account.caller();
     await caller.notifications.setPreference({ key: "chat", enabled: false });
+    const prefs = await caller.notifications.getPreferences();
+    expect(prefs.chat).toBe(false);
+    expect(prefs.game_results).toBe(true); // unchanged
+    expect(prefs.news).toBe(true); // unchanged
   });
 
   it("setPreference rejects a key outside the registry", async () => {
+    const account = await ctx.createAccount("prefs-unknown-key");
     await expect(
-      ctx.caller().notifications.setPreference({ key: "score_posted", enabled: true })
+      account.caller().notifications.setPreference({ key: "score_posted", enabled: true })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
   it("a member's subscription is theirs — a second user's getPreferences is independent", async () => {
-    // Owner turns chat OFF; the member is unaffected and still resolves to the
-    // registry default. Storing FALSE rather than TRUE is deliberate: every
+    // One account turns chat OFF; another is unaffected and still resolves to
+    // the registry default. Storing FALSE rather than TRUE is deliberate: every
     // category now defaults ON, so a stored TRUE would match the default and
     // this would pass whether or not preferences are per-user.
-    await ctx.caller().notifications.setPreference({ key: "chat", enabled: false });
-    const memberPrefs = await ctx.callerAs("member").notifications.getPreferences();
-    expect(memberPrefs.chat).toBe(true);
-    await ctx.caller().notifications.setPreference({ key: "chat", enabled: true });
+    const first = await ctx.createAccount("prefs-first");
+    const second = await ctx.createAccount("prefs-second");
+    await first.caller().notifications.setPreference({ key: "chat", enabled: false });
+    expect((await first.caller().notifications.getPreferences()).chat).toBe(false); // premise
+    const secondPrefs = await second.caller().notifications.getPreferences();
+    expect(secondPrefs.chat).toBe(true);
   });
 
   it("testSend delivers to the caller's own devices EVEN with the category off (bypasses the gate)", async () => {
-    const caller = ctx.caller();
+    const account = await ctx.createAccount("prefs-testsend");
+    const caller = account.caller();
     // Seed a device and turn scores OFF — a self-test must still fire.
-    await ctx.admin.from("push_subscriptions").insert({
+    const { error } = await ctx.admin.from("push_subscriptions").insert({
       id: genId("sub"),
-      user_id: ctx.user.id,
+      user_id: account.id,
       endpoint: `https://example.test/ep/${genId("ep")}`,
       p256dh: "k",
       auth: "a",
     });
+    if (error) throw new Error(`seed device: ${error.message}`);
     await caller.notifications.setPreference({ key: "game_results", enabled: false });
     sendMock.mockClear();
     sendMock.mockResolvedValue({ statusCode: 201 });
@@ -159,8 +173,6 @@ describe("notifications router", () => {
     const res = await caller.notifications.testSend();
     expect(res.skippedPreferenceOff).toBe(false); // gate bypassed
     expect(res.sent).toBeGreaterThanOrEqual(1);
-
-    await caller.notifications.setPreference({ key: "game_results", enabled: true });
   });
 });
 
