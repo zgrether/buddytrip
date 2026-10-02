@@ -64,6 +64,29 @@ export default defineConfig({
     // fail fast (a retry there would mask real failures during TDD); retries fire only
     // on failure, so the happy path is unaffected. (#638)
     retry: process.env.CI ? 2 : 0,
+    /**
+     * EVERY RUN IS SHUFFLED — files and the tests inside them (#1527).
+     *
+     * A fixed order hid dozens of files whose tests read state an earlier test
+     * had left (the #1527 sweep lists them): a game created by the case above, a claim the previous case made, a
+     * cup the first case built. They passed only because they always ran in the
+     * order they were written. With a new order every run, a test that leans on
+     * another fails on some runs, so a new dependency cannot settle in quietly.
+     *
+     * Vitest prints the seed at the top of the run:
+     *
+     *     Running tests with seed "1790902716050"
+     *
+     * and the same order comes back with
+     *
+     *     npx vitest run --dir src --sequence.seed=1790902716050
+     *
+     * A failure that appears under one seed and not another is an ORDER
+     * dependency until proven otherwise. The proof is a rerun at the SAME seed:
+     * if a different test fails in the identical order, it is the transient
+     * gateway 502 (#1527), which an order dependency cannot be.
+     */
+    sequence: { shuffle: true },
   },
   resolve: {
     alias: {
