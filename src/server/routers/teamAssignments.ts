@@ -3,7 +3,11 @@ import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireTeamIdentityEdit } from "../middleware";
-import { assertRosterUnlocked, competitionHasScore } from "../lib/rosterLock";
+import { competitionHasResults } from "../lib/rosterLock";
+import { assertRosterChangeAllowed, blockedRefusal, personUnfinishedGames, previewRosterChange } from "../lib/rosterChange";
+import { tripDisplayNames } from "../lib/tripDisplayNames";
+import { notifyCupClinchedIfDecided } from "../lib/gameFinishNotify";
+import { afterResponse } from "../lib/afterResponse";
 import { maybeRowOrThrow } from "../lib/rowOrThrow";
 import { readRosterFingerprint } from "../lib/rosterFingerprint";
 
@@ -12,6 +16,31 @@ import { readRosterFingerprint } from "../lib/rosterFingerprint";
  * is on at most one team per competition. assign() upserts that pairing;
  * remove() deletes it (Owner only per spec).
  */
+
+/**
+ * After a post-results roster change, settle the clinch the way `games.finish`
+ * does — announce a clinch the change created, release one it undid — rather
+ * than release-only.
+ *
+ * #1425's ruling 2 keeps a LIVE game on its owner-set total precisely so no
+ * path but finalize can cross a threshold, because a clinch crossed elsewhere
+ * would be shown with nobody told. Checked for 8b (2026-10-02): a trade moves no
+ * banked points (8a), and every live per-match game in production sizes its pool
+ * from its owner total — so in reachable data a trade cannot move the target.
+ * The one exception is a legacy fallback: a game with NO owner total sizes its
+ * pool from current team sizes (`deriveMatchCount`). Production's only live
+ * game on that arm has a per-match value of 0, so its pool is 0 whatever the
+ * roster. Removing the fallback is #1556. Rather than lean on that, a roster change settles the clinch exactly
+ * as a finalize does, so the announcement stays attached to the event that
+ * caused it. The claim dedupes, so an unchanged clinch announces nothing.
+ *
+ * After the response and best-effort by construction (`afterResponse`,
+ * `notifyCupClinchedIfDecided`): the roster change has committed, and a failed
+ * clinch check must never report it as failed (CLAUDE.md).
+ */
+async function settleClinchAfterRosterChange(tripId: string, competitionId: string, actorUserId: string) {
+  await afterResponse(() => notifyCupClinchedIfDecided({ tripId, competitionId, actorUserId }));
+}
 
 /** Shared between teamAssignments.list and competitions.hydrate. */
 export async function listTeamAssignments(
@@ -95,13 +124,23 @@ export const teamAssignmentsRouter = router({
       fingerprint: await readRosterFingerprint(ctx.supabase, ctx.tripId, input.competitionId),
     })),
 
-  // rosterLocked — has scoring started (any score entered)? Drives the Rosters
-  // sheet's disabled remove/delete controls (C1 is the enforcement; this is so the
-  // block isn't a surprising error). Adds stay enabled regardless.
-  rosterLocked: authedProcedure
+  // hasResults — has any game in this cup produced a result? Was `rosterLocked`
+  // until PR 8b lifted the lock it named; it now means what it says. Captains lose
+  // roster rights at this moment, a staff change starts needing a preview, and the
+  // settings modal reads it as "the cup is underway".
+  hasResults: authedProcedure
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireTripMember)
-    .query(({ ctx, input }) => competitionHasScore(ctx.supabase, input.competitionId)),
+    .query(({ ctx, input }) => competitionHasResults(ctx.supabase, input.competitionId)),
+
+  // previewChange — what moving or removing one person does, built on a roster
+  // fingerprint the confirm sends back (PR 8b, ruling 20). Finished games are a
+  // count, not a list: none of their points move (8a). Staff only: it is the
+  // first half of a staff action.
+  previewChange: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string(), userId: z.string() }))
+    .use(requireTripRole("Organizer"))
+    .query(({ ctx, input }) => previewRosterChange(ctx.supabase, { ...input, tripId: ctx.tripId })),
 
   // -----------------------------------------------------------------------
   // assign — set a user's team (canEdit). Upsert behaviour relies on the
@@ -114,6 +153,9 @@ export const teamAssignmentsRouter = router({
         competitionId: z.string(),
         userId: z.string(),
         teamId: z.string(),
+        /** Required for a staff MOVE once results are in: the fingerprint the
+         *  preview was built on (PR 8b). Ignored before results and for adds. */
+        rosterFingerprint: z.string().optional(),
       })
     )
     // Organizers add, remove and move (ruled). A CAPTAIN may add an UNASSIGNED
@@ -125,13 +167,13 @@ export const teamAssignmentsRouter = router({
         await captainRosterWrite(ctx.supabase, "captain_add_player", input);
         return { competition_id: input.competitionId, user_id: input.userId, team_id: input.teamId };
       }
-      // Roster-removal lock — asymmetric: a pure ADD (no prior assignment) always
-      // passes. A MOVE/TRADE (already on a DIFFERENT team) removes them from that
-      // team, so it's blocked once scoring has started. (Re-assigning to the same
-      // team is a no-op, not a removal — passes.)
+      // A MOVE (already on a DIFFERENT team) is a trade. After results it needs
+      // the preview's fingerprint and is refused while they are in an unfinished
+      // team-dependent game (PR 8b, `assertRosterChangeAllowed`). An ADD needs no
+      // preview but gets the same refusal: joining a team mid-match changes that
+      // match's sides just as a trade does. A same-team re-assign is a no-op.
       // #1469: a failed read must not read as "not on a team yet" — isMove
-      // would be false, the roster lock skipped, and the upsert would MOVE a
-      // player on a scored cup.
+      // would be false and the move's gate skipped.
       const existing = maybeRowOrThrow(
         await ctx.supabase
           .from("team_assignments")
@@ -143,7 +185,22 @@ export const teamAssignmentsRouter = router({
       );
       const isSameTeam = !!existing && (existing.team_id as string) === input.teamId;
       const isMove = !!existing && (existing.team_id as string) !== input.teamId;
-      if (isMove) await assertRosterUnlocked(ctx.supabase, input.competitionId);
+      let changedAfterResults = false;
+      if (!isSameTeam) {
+        const personName = (await tripDisplayNames(ctx.supabase, ctx.tripId, [input.userId])).get(input.userId) ?? "This player";
+        if (isMove) {
+          ({ hasResults: changedAfterResults } = await assertRosterChangeAllowed(ctx.supabase, {
+            tripId: ctx.tripId, competitionId: input.competitionId, userId: input.userId,
+            personName, rosterFingerprint: input.rosterFingerprint,
+          }));
+        } else if (await competitionHasResults(ctx.supabase, input.competitionId)) {
+          const { blocking } = await personUnfinishedGames(ctx.supabase, input.competitionId, input.userId);
+          if (blocking.length > 0) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: blockedRefusal(personName, blocking) });
+          }
+          changedAfterResults = true;
+        }
+      }
 
       // sort_order (mig 070): a genuine ADD or a MOVE to a different team lands at
       // the END of the target team's canonical order. A same-team re-assign is a
@@ -154,11 +211,18 @@ export const teamAssignmentsRouter = router({
         team_id: string;
         sort_order?: number;
         team_visible_from?: string;
+        is_captain?: boolean;
       } = {
         competition_id: input.competitionId,
         user_id: input.userId,
         team_id: input.teamId,
       };
+      // A captain who MOVES is not the new team's captain. Without this the flag
+      // rode along on the upsert: into a team with a captain it failed on
+      // `team_assignments_one_captain_per_team` with a raw duplicate-key error,
+      // and into one without, it silently made them captain. Captaincy is
+      // appointed (`setCaptain`), never inherited by a trade.
+      if (isMove) payload.is_captain = false;
       if (!isSameTeam) {
         // Team chat's history floor (migration 172). Stamped on the SAME
         // condition as sort_order and for the same reason: a genuine ADD or a
@@ -199,6 +263,8 @@ export const teamAssignmentsRouter = router({
         });
       }
 
+      if (changedAfterResults) await settleClinchAfterRosterChange(ctx.tripId, input.competitionId, ctx.user!.id);
+
       return inserted;
     }),
 
@@ -214,6 +280,8 @@ export const teamAssignmentsRouter = router({
         // Required for a CAPTAIN (the removal is scoped to their team); ignored
         // for an Organizer, who may remove from any team.
         teamId: z.string().optional(),
+        /** Required for a staff removal once results are in (PR 8b). */
+        rosterFingerprint: z.string().optional(),
       })
     )
     // #786 — Organizer parity, and it closes a split INSIDE this one table:
@@ -234,9 +302,15 @@ export const teamAssignmentsRouter = router({
         });
         return { success: true };
       }
-      // Roster-removal lock: a removal is blocked once any game in the competition
-      // has a score (it could orphan the player in a configured match).
-      await assertRosterUnlocked(ctx.supabase, input.competitionId);
+      // A removal from the team is a trade with no destination (Zach): after
+      // results it needs the preview's fingerprint and is refused while they are
+      // in an unfinished team-dependent game — the "orphan the player in a
+      // configured match" case the roster lock used to guard by refusing all.
+      const personName = (await tripDisplayNames(ctx.supabase, ctx.tripId, [input.userId])).get(input.userId) ?? "This player";
+      const { hasResults } = await assertRosterChangeAllowed(ctx.supabase, {
+        tripId: ctx.tripId, competitionId: input.competitionId, userId: input.userId,
+        personName, rosterFingerprint: input.rosterFingerprint,
+      });
 
       // #781 — count deliberately NOT asserted. Shared trip data: another
       // organizer removing the same player first is a race, not a defect, and the
@@ -258,6 +332,7 @@ export const teamAssignmentsRouter = router({
         });
       }
 
+      if (hasResults) await settleClinchAfterRosterChange(ctx.tripId, input.competitionId, ctx.user!.id);
       return { success: true };
     }),
 

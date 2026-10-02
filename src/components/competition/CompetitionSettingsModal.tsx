@@ -111,7 +111,7 @@ export function CompetitionSettingsModal({
 
   // Score-based lock — the SAME signal the Rosters surface uses, so the two
   // can't disagree about whether the competition is "underway".
-  const { data: scored = false } = trpc.teamAssignments.rosterLocked.useQuery(
+  const { data: scored = false } = trpc.teamAssignments.hasResults.useQuery(
     { tripId, competitionId: competition.id },
     { enabled: !!competition.id },
   );
@@ -240,7 +240,7 @@ export function CompetitionSettingsModal({
     utils.scores.listByGame.invalidate();
     utils.matches.listByGame.invalidate();
     utils.playGroups.listByGame.invalidate();
-    utils.teamAssignments.rosterLocked.invalidate({
+    utils.teamAssignments.hasResults.invalidate({
       tripId,
       competitionId: competition.id,
     });

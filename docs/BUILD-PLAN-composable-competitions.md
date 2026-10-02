@@ -1124,6 +1124,23 @@ checklist, before the lock lifts:** games that finish between 203's push and par
 record no roster, so re-run `_backfill_credited_rosters()` and re-check that zero finished cup
 games lack one. Keep that window short: deploy part 2 soon after 203.
 
+**8b, ruled 2026-10-02 and built server-first (8b-1; the preview sheet is 8b-2, look-gated):**
+- **A team with banked points cannot be deleted**, and says why — a result credited to it, or a
+  finished game's credited roster naming it. One with players must be emptied first, one reviewed
+  change at a time. (Making every writer tolerate a vanished team would spread a special case
+  across five places for something nobody needs; ruling 15 says points stay with their unit.)
+- **The fingerprint only where the preview appears** — after results. Before results a stale move
+  is visible, reversible and scores nothing, so the working drag-to-move flow is untouched.
+- **A removal from the team gets the same preview and refusal as a trade** — a trade with no
+  destination. The sheet says *removed from the team*, never *removed*: 8d's leaving the trip is
+  a different act, and an organizer must not be able to confuse the two from the wording.
+- **`rosterLocked` is renamed `hasResults` in 8b**, the PR that changes its meaning — after 8b it
+  locks nothing, and the name would be a small false statement read by everyone in the code.
+- **Found while enumerating what the lock made unreachable:** a move carried `is_captain` with it
+  (a raw duplicate-key error into a captained team, a silent appointment otherwise) — a move now
+  clears captaincy; and unfinished per-match games size their pool from team sizes, so a
+  post-results change reconciles the clinch claim (release-only, the config-edit gap stands).
+
 **8d's verify-first compares the two designs honestly** (Zach, 2026-10-02), rather than
 assuming either. **Delete the membership row** is the lean: every membership check stays
 correct by construction, and 8a's stored rosters keep finished credit intact. Its two known

@@ -3,7 +3,8 @@ import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireCompetitionRole, requireTeamIdentityEdit } from "../middleware";
-import { assertRosterUnlocked, competitionHasScore } from "../lib/rosterLock";
+import { competitionHasResults } from "../lib/rosterLock";
+import { assertTeamDeletable } from "../lib/rosterChange";
 import { reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
 import { canPlayInTeamlessRace } from "@/lib/gameTypes";
@@ -128,7 +129,7 @@ export const teamsRouter = router({
       // the first result — converting would make every participant a teamless
       // player joining a team, and ruling 17 would null the whole race.
       if (h2hTeams === null && (await teamCount(ctx.supabase, input.competitionId)) === 0) {
-        if (await competitionHasScore(ctx.supabase, input.competitionId)) {
+        if (await competitionHasResults(ctx.supabase, input.competitionId)) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: INDIVIDUALS_LOCKED_AT_FIRST_RESULT });
         }
       }
@@ -238,12 +239,13 @@ export const teamsRouter = router({
     .input(z.object({ tripId: z.string(), teamId: z.string() }))
     .use(requireCompetitionRole("organizer"))
     .mutation(async ({ ctx, input }) => {
-      // Roster-removal lock: deleting a team is a MASS removal (cascades to clear
-      // its assignments), so it's blocked once the competition has any score.
+      // After results a team carrying banked points cannot be deleted, and one
+      // with players has to be emptied first, one reviewed change at a time
+      // (PR 8b, `assertTeamDeletable`). This replaced the roster lock.
       // #1469: a failed read must not read as "no such team" — `competition_id`
       // would be undefined, BOTH guards below skipped, and the delete run.
       const team = maybeRowOrThrow(
-        await ctx.supabase.from("teams").select("competition_id").eq("id", input.teamId).maybeSingle(),
+        await ctx.supabase.from("teams").select("competition_id, name").eq("id", input.teamId).maybeSingle(),
         "team"
       );
       if (team?.competition_id) {
@@ -253,7 +255,11 @@ export const teamsRouter = router({
         if (h2hTeams !== null && h2hTeams <= 2) {
           throw new TRPCError({ code: "BAD_REQUEST", message: HEAD_TO_HEAD_KEEPS_BOTH_TEAMS });
         }
-        await assertRosterUnlocked(ctx.supabase, team.competition_id as string);
+        await assertTeamDeletable(ctx.supabase, {
+          competitionId: team.competition_id as string,
+          teamId: input.teamId,
+          teamName: (team.name as string | null)?.trim() || "This team",
+        });
         // PR 7: deleting a points race's LAST team makes it a teamless race (ruling
         // B), which holds only formats that record a result per person. A game
         // that pays teams would then finish paying nobody, so it is named here.

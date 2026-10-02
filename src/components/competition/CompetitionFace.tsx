@@ -425,7 +425,7 @@ export function CompetitionFace({
           // exactly 2 teams (no add / no delete), so structure is locked; points
           // is 2–N, so adds/deletes stay open. (The go-live freeze this replaced
           // was retired with GO LIVE; player-removal protection once scoring
-          // starts is a separate SCORE-based lock, teamAssignments.rosterLocked.)
+          // starts is a separate SCORE-based lock, teamAssignments.hasResults.)
           structureLocked={scoringModel === "match_play"}
           onClose={() => setRostersOpen(false)}
         />
