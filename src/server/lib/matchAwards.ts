@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { readCreditRoster } from "./creditRoster";
 import { tallyMatchAwards, teamsInGame, type SideRef } from "@/lib/matchAwards";
 import { playGroupUnits } from "@/lib/sideUnit";
 import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
@@ -90,14 +91,13 @@ export async function prepareTeamMatchPoints(
 ): Promise<
   (evenShareFallback: number, allMatches: AwardMatch[], freshOutcomes: DecidedMatch[], onFailure?: WriteFailureMode) => Promise<void>
 > {
-  // user → team for this competition.
-  const assignments = rowsOrThrow(
-    await supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", competitionId),
-    "cup's rosters"
-  );
+  // user → team, through the roster this game is credited through (203): today's
+  // until it first finalizes, then the one it finalized with — so a trade and a
+  // later correction cannot hand a finished match to the player's new team.
+  const roster = await readCreditRoster(supabase, gameId, competitionId);
   const userTeam = new Map<string, string>();
-  for (const a of assignments) {
-    userTeam.set(a.user_id as string, a.team_id as string);
+  for (const a of roster.rows) {
+    userTeam.set(a.user_id, a.team_id);
   }
 
   // play_group → its unit (2v2), by the ONE rule every surface uses (`sideUnit`):
@@ -255,6 +255,7 @@ export async function prepareTeamMatchPoints(
       gameId,
       scope: { kind: "entity_type", entityType: "team" },
       rows,
+      creditedRoster: roster.record,
       onFailure,
     });
   };
