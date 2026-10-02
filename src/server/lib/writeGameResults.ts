@@ -124,6 +124,15 @@ export interface WriteGameResultsInput {
    * build rather than silently reintroducing the swallowed-failure bug.
    */
   onFailure?: WriteFailureMode;
+  /**
+   * The roster this write's team rows were credited through (user_id -> team_id,
+   * the whole cup roster), from `readCreditRoster`. Recorded on the game only on
+   * a FINALIZE ("throw" mode) and only if the game has none yet — the database
+   * keeps the first (migration 203). A live recompute never records it: under
+   * ruling 15 a game's points are not earned until it finalizes, so a trade
+   * mid-round must still be able to move a team-independent game's credit.
+   */
+  creditedRoster?: Record<string, string>;
 }
 
 /**
@@ -163,6 +172,7 @@ export async function writeGameResults(
     p_entity_ids: input.scope.kind === "entity_ids" ? input.scope.entityIds : null,
     p_entity_type: input.scope.kind === "entity_type" ? input.scope.entityType : null,
     p_match_updates: input.matchUpdates ?? [],
+    p_credited_roster: mode === "throw" && input.creditedRoster ? input.creditedRoster : null,
   });
 
   if (!error) return;

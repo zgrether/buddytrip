@@ -1076,6 +1076,77 @@ built on it.** (Line numbers are as of `32b52300`.)
 a head-to-head game is refused; a correction on a stroke round re-attributes and records; a
 captain cannot correct; a delegate cannot add to a team.
 
+### Verify-first, done 2026-10-02 — and the finding that split PR 8
+
+**The roster lock was holding up rulings 15–17, and nothing said so.** `assertRosterUnlocked`
+(and `_competition_roster_locked` for captains) refuses every move, removal and team delete
+once any game in the cup has a score. Ruling 16 lifts that for trades. But the five result
+writers (stroke/scramble, skins, match play's awards, rack, pick'em) rebuilt their team rows
+from the CURRENT `team_assignments`, and a correction re-runs them — so with the lock gone, a
+trade followed by a one-hole correction carries a finished round to the new team. PR 2 made
+the board read stored credit; the writers' own re-reads were not on its list because the lock
+made them unreachable. (CLAUDE.md now carries the general rule: before removing a guard,
+enumerate what it was making unreachable.)
+
+**Ruled (2026-10-02):**
+
+- **Split.** **8a** — a finished game is credited through the roster it FIRST finalized with
+  (`games.credited_roster`, migration 203; server only). **8b** — lift the lock for trades and
+  removals behind the fingerprint-checked preview (a surface: look first). **8c** — the owner
+  correction for team-independent games (`teamDependent: false`: stroke play, skins), with
+  its record. **8d — leaving a trip is an ARCHIVE** (ruling 19, settled by Zach 2026-10-02):
+  account deletion keeps migration 132's "Deleted User" placeholder; leaving or being removed
+  from a trip takes the trip off the person's list and stops its notifications, and their
+  results stay attached to them. It replaces today's refusal (`findContributionBlockers`) for
+  people with results. Disconnecting someone from their data on removal is an escape clause
+  recorded in TRACKER.md, not part of 8d.
+- **Why a column and not the result rows** (8a's design question): rack and pick'em write
+  team rows only; a re-finalize needs person → team, which team rows do not carry; and
+  migration 191 keeps `credited_team_id` NULL on person rows deliberately. One jsonb map per
+  game, written only while NULL (first finalize wins, in the database), cleared by a scoring
+  reset, re-keyed by the guest merge. NULL = never credited; `{}` = credited with nobody on a
+  team; absent from a map = on no team then (ruling 17).
+- **A trade while the person is in an UNFINISHED team-dependent game is refused (8b),**
+  naming the game, as #1481's refusal does — finish the match or unpair them first. During an
+  unfinished team-INDEPENDENT game (a stroke round) it is allowed, and the result credits the
+  new team at finalize: under ruling 15 a game's points are not earned until it finalizes.
+- **The correction record gets a visible consumer (8c):** a small "corrected" note on the
+  affected game's completed row, saying by whom and when. The before/after detail stays in the
+  record for anyone investigating. A correction changes standings after the fact; a silent
+  one breeds suspicion.
+- **`#1404` stays separate** — cosmetic, and not part of the preview's correctness.
+- **F2 is done** (#1523, migration 198): a game's delegate can record a bracket pick, and a
+  refused pick fails loudly.
+
+**Migration 203 is in production (2026-10-02)** with a backfill: all 50 finished cup games
+carry the roster they are credited through (one, in a teamless cup, `{}`), 0 without. **8b's
+checklist, before the lock lifts:** games that finish between 203's push and part 2's deploy
+record no roster, so re-run `_backfill_credited_rosters()` and re-check that zero finished cup
+games lack one. Keep that window short: deploy part 2 soon after 203.
+
+**8d's verify-first compares the two designs honestly** (Zach, 2026-10-02), rather than
+assuming either. **Delete the membership row** is the lean: every membership check stays
+correct by construction, and 8a's stored rosters keep finished credit intact. Its two known
+costs are finite — two places, fixed once:
+- **Names.** Standings read names as the viewer, and `users_select` admits only people you
+  share a trip with, so a departed player would render as "Someone". Keep the name the crew
+  SAW: a trip nickname ("Biscuit") is part of the trip's history, and it lives on the row
+  being deleted, so 8d decides where it survives. Resolution stays as narrow as possible — the
+  display name only, and only for people with results in a game the viewer can already see.
+  Widening who can read whose name is a privacy change, even a small one.
+- **Participation.** `clearTripParticipation` deletes game participation and vacates match
+  seats. Keep FINISHED games exactly as they are; vacate seats only in unfinished ones — for a
+  game still in progress, someone leaving really has left.
+
+**A membership flag** is the alternative; its cost is open-ended — every membership check,
+including every future one, must remember to exclude archived members, and one that forgets
+leaks (chat delivery among them: today's cut-off on removal depends on the row being gone,
+verified with a Realtime probe 2026-10-02).
+
+**Carried to 8b:** a team deleted after a game finalized can still be named in that game's
+credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize
+that team's members would credit nowhere. Lifting the lock for team delete has to decide this.
+
 ---
 
 ## PR 9 — Display

@@ -9,6 +9,7 @@ import {
 import { computeStrokeTeamStandings } from "@/lib/strokePlay";
 import { unitsFromSchema } from "@/lib/strokePlayConfig";
 import { failClosedOnRead, writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { readCreditRoster } from "./creditRoster";
 import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**
@@ -143,12 +144,13 @@ async function skinsResults(
   // `competition_id`, so `teamOf` stays empty and the roll-up returns [],
   // leaving the user-only shape identical to a standalone finalize.
   const teamOf: Record<string, string> = {};
+  // Through the roster this game is credited through (203), not today's once
+  // it has finalized — see readCreditRoster.
+  let creditedRoster: Record<string, string> | undefined;
   if (game?.competition_id) {
-    const assigns = rowsOrThrow(
-      await supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", game.competition_id as string),
-      "cup's rosters"
-    );
-    for (const a of assigns) teamOf[a.user_id as string] = a.team_id as string;
+    const roster = await readCreditRoster(supabase, gameId, game.competition_id as string);
+    creditedRoster = roster.record;
+    for (const a of roster.rows) teamOf[a.user_id] = a.team_id;
   }
   const teamStandings = computeStrokeTeamStandings(
     standings.map((s) => ({ entityId: s.entityId, rawScore: s.skins, position: s.position })),
@@ -181,6 +183,7 @@ async function skinsResults(
         competition_points_earned: null,
       })),
     ],
+    creditedRoster,
     onFailure,
   });
   return standings;

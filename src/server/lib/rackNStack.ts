@@ -4,6 +4,7 @@ import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { failClosedOnRead, writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { readCreditRoster } from "./creditRoster";
 import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**
@@ -88,23 +89,22 @@ async function rackResults(
   // The two sides are the COMPETITION's two teams (`rackSides`, ruling 12) —
   // one answer shared with the board's projection and the rack screen, in the
   // cup's creation order. Then user_id → team_id for scoring.
-  const [cupTeamsRes, assignsRes] = await Promise.all([
+  // The roster comes through readCreditRoster (203): today's until the game
+  // first finalizes, then the one it finalized with.
+  const [cupTeamsRes, roster] = await Promise.all([
     supabase
       .from("teams")
       .select("id")
       .eq("competition_id", game.competition_id as string)
       .order("created_at", { ascending: true }),
-    supabase
-      .from("team_assignments")
-      .select("user_id, team_id")
-      .eq("competition_id", game.competition_id as string),
+    readCreditRoster(supabase, gameId, game.competition_id as string),
   ]);
   const cupTeams = rowsOrThrow(cupTeamsRes, "cup's teams");
-  const assigns = rowsOrThrow(assignsRes, "cup's rosters");
+  const assigns = roster.rows;
   const sides = rackSides(cupTeams.map((t) => t.id as string));
   if (!sides) return []; // not a two-team cup — not a rack a person can build
   const teamOf = new Map<string, string>();
-  for (const a of assigns) teamOf.set(a.user_id as string, a.team_id as string);
+  for (const a of assigns) teamOf.set(a.user_id, a.team_id);
   // A side nobody is rostered on writes nothing, as it always has. What an empty
   // side SHOULD pay is ruling 9 (forfeit), which is PR 3's, not this one's.
   const rostered = new Set(teamOf.values());
@@ -196,7 +196,7 @@ async function rackResults(
     competition_points_earned: null,
   }));
   // #776: atomic replace (delete + insert commit together, or not at all).
-  await writeGameResults(supabase, { gameId, scope: { kind: "all" }, rows, onFailure });
+  await writeGameResults(supabase, { gameId, scope: { kind: "all" }, rows, creditedRoster: roster.record, onFailure });
 
   return teamIds.map((teamId) => ({ teamId, points: teamPoints[teamId], position: position(teamId) }));
 }

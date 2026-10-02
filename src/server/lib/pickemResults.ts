@@ -9,6 +9,7 @@ import {
 import { effectiveDistribution, type PointsDistribution } from "@/lib/pointsDistribution";
 import type { ScoredPick } from "@/lib/pickemScoring";
 import { failClosedOnRead, writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { readCreditRoster } from "./creditRoster";
 import { maybeRowOrThrow, rowOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**
@@ -174,7 +175,7 @@ async function pickemResults(
       .from("game_matches")
       .select("side_a, side_b, point_value")
       .eq("game_id", gameId),
-    readCompetition(supabase, (game.competition_id as string | null) ?? null),
+    readCompetition(supabase, gameId, (game.competition_id as string | null) ?? null),
   ]);
 
   /**
@@ -232,7 +233,7 @@ async function pickemResults(
     slate,
     picks,
     matches,
-    competition: compRes,
+    competition: compRes?.competition ?? null,
   });
 
   const outcome = pickemFinalize(input);
@@ -275,6 +276,7 @@ async function pickemResults(
     gameId,
     rows,
     scope: { kind: "all" },
+    creditedRoster: compRes?.creditedRoster,
     onFailure: opts.onFailure,
   });
 
@@ -369,28 +371,34 @@ export function buildPickemFinalizeInput(rows: PickemFinalizeRows): PickemFinali
  */
 async function readCompetition(
   supabase: SupabaseClient,
+  gameId: string,
   competitionId: string | null
-): Promise<PickemCompetition | null> {
+): Promise<{ competition: PickemCompetition; creditedRoster: Record<string, string> } | null> {
   if (!competitionId) return null;
-  const [compRes, teamRes, assignRes] = await Promise.all([
+  // Members come through readCreditRoster (203): today's roster until the game
+  // first finalizes, then the one it finalized with.
+  const [compRes, teamRes, roster] = await Promise.all([
     supabase.from("competitions").select("scoring_model").eq("id", competitionId).maybeSingle(),
     supabase.from("teams").select("id").eq("competition_id", competitionId),
-    supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", competitionId),
+    readCreditRoster(supabase, gameId, competitionId),
   ]);
 
   const comp = maybeRowOrThrow(compRes, "cup");
   const teams = rowsOrThrow(teamRes, "cup's teams");
-  const assigns = rowsOrThrow(assignRes, "cup's rosters");
+  const assigns = roster.rows;
 
   const memberIds = new Map<string, string[]>();
   for (const t of teams) memberIds.set(t.id as string, []);
   for (const a of assigns) {
-    memberIds.get(a.team_id as string)?.push(a.user_id as string);
+    memberIds.get(a.team_id)?.push(a.user_id);
   }
 
   return {
-    pointsMode: (comp?.scoring_model as string | null) === "points",
-    teams: [...memberIds.entries()].map(([id, ids]) => ({ id, memberIds: ids })),
+    competition: {
+      pointsMode: (comp?.scoring_model as string | null) === "points",
+      teams: [...memberIds.entries()].map(([id, ids]) => ({ id, memberIds: ids })),
+    },
+    creditedRoster: roster.record,
   };
 }
 

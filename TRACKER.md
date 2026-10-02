@@ -181,6 +181,15 @@ R1's shape has changed under it — see §2. What remains:
   condition that would make it live, and the one that would make unifying the two
   paths correct, is written beside `halfC` in `MatchCard.tsx`.
 
+- **Disconnect a removed person from their data — the escape clause to ruling 19 (Zach,
+  2026-10-02).** Leaving or being removed from a trip is an ARCHIVE by default (PR 8d): the trip
+  leaves their list and stops notifying them, and their results stay attached to them. Account
+  deletion keeps migration 132's "Deleted User" placeholder. The escape clause is an option, when
+  an organizer removes someone, to ALSO disconnect them from their data: their results become a
+  placeholder's. It has to block reconnection too, or it undoes itself: the email auto-link
+  (`handle_new_user` / `ghostCrew.update`'s link) must not reattach them to that placeholder, and
+  any invite they hold is revoked. **Becomes live when:** someone asks to be fully removed from a
+  crew's record, not just their list.
 - **Money / gambling** — killer feature *only if* UI/UX nailed. **The "no vision yet" half is spent:** the
   side-bets handoff is the vision, and it is BUILT on Quick Play — bets as objects with a start hole
   (`src/lib/sideBets.ts`), presses derived rather than recorded, Nassau in one action, carryovers, the ☠️

@@ -511,6 +511,8 @@ seam, never on a calendar.
 
 - **ONLY A RULE ENFORCED IN THE DATABASE KEEPS FIXTURES HONEST.** Fixtures insert rows directly and never touch app code, so app-level guards cannot see them; three sightings of test data built in states the app forbids (#1402's forty impossible cups, #1428's live games with finished rows, twelve files migration 193's trigger refused) were caught only when a rule moved into the database.
 
+- **BEFORE REMOVING A GUARD, ENUMERATE WHAT IT WAS MAKING UNREACHABLE.** Lifting one exposes everything behind it at once, and nothing lists what that is: the roster lock was silently holding up rulings 15–17, because every result writer re-credits through today's roster and only the lock kept a trade from reaching a re-finalize (PR 8a, migration 203).
+
 - **A REFUSAL MUST NAME AN ACTION THE READER CAN TAKE.** The worst message is not a
   vague one — it is a specific instruction for something that is not there. The reader
   believes it, goes looking, finds nothing, and concludes the app is broken rather than

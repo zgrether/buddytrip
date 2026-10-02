@@ -13,6 +13,7 @@ import { strokeHoles } from "@/lib/matchPlay";
 import { scoringOf } from "@/lib/stableford";
 import { strokeIndexOf, unitsFromSchema } from "@/lib/strokePlayConfig";
 import { failClosedOnRead, writeGameResults, type WriteFailureMode } from "./writeGameResults";
+import { readCreditRoster } from "./creditRoster";
 import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**
@@ -210,19 +211,22 @@ async function strokeResults(
   // competition_id, so `teamOf` stays empty and `computeStrokeTeamStandings`
   // returns [], leaving the user-only shape byte-identical to before.
   const teamOf: Record<string, string> = {};
+  // The roster this game is credited through (203): today's until it first
+  // finalizes, then the one it finalized with — so a later trade and a
+  // correction cannot carry a finished round to a new team (ruling 15).
+  let creditedRoster: Record<string, string> | undefined;
   if (game?.competition_id) {
-    const assigns = rowsOrThrow(
-      await supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", game.competition_id as string),
-      "cup's rosters"
-    );
-    const teamOfUser = new Map(assigns.map((a) => [a.user_id as string, a.team_id as string]));
+    const roster = await readCreditRoster(supabase, gameId, game.competition_id as string);
+    creditedRoster = roster.record;
+    const teamOfUser = new Map(roster.rows.map((a) => [a.user_id, a.team_id]));
     if (isScramble) {
       /**
        * SCRAMBLE keys its standings to a play_group, so the map this function
        * needs is GROUP -> team, not user -> team. Derived through the members'
        * roster — the same rule `MatchGameView.teamOfSide` follows, and for the
-       * same reason: team identity belongs to the PERSON, so moving somebody
-       * re-attributes their group with no second write.
+       * same reason: team identity belongs to the PERSON. Moving somebody
+       * re-attributes their group while the game is live; once it has
+       * finalized, the members' teams come from the credited roster instead.
        *
        * Two rounds, unavoidably: a group's id is not knowable from
        * `team_assignments` alone (CLAUDE.md #27 — a side is not a person).
@@ -286,6 +290,7 @@ async function strokeResults(
         competition_points_earned: null,
       })),
     ],
+    creditedRoster,
     onFailure,
   });
   return standings;
