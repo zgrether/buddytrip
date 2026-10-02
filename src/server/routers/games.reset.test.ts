@@ -174,7 +174,7 @@ describe("games.resetScoring — one game's results cleared, config + identity k
     // The delegate is refused, and the write does not land.
     await expect(
       ctx.callerAs("member").games.resetScoring({ tripId, gameId: target })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires Organizer role or higher") });
     expect(await count("game_results", target)).toBe(1);
 
     // The Organizer is admitted. This REVERSES the original assertion here
@@ -224,7 +224,7 @@ describe("games.resetToSkeleton — one game's config cleared, identity kept (in
     const target = await makeMatchGame("SkelOwnerOnly");
     await expect(
       ctx.callerAs("member").games.resetToSkeleton({ tripId, gameId: target })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires Organizer role or higher") });
     expect(await count("game_participants", target)).toBe(2); // unchanged
   });
 });

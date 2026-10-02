@@ -148,9 +148,9 @@ describe("the scanner goes red on a known-bad view before it is trusted", () => 
   it("throws rather than passing when it cannot find the view's parts", () => {
     // A green from a scan that parsed nothing is the failure this whole file
     // is about. Renaming `anyTouched` must break the suite, not satisfy it.
-    expect(() => sliceReport(COMPLETE.replace("const anyTouched", "const somethingElse"))).toThrow();
-    expect(() => sliceReport(COMPLETE.replace("function resetSlices", "function somethingElse"))).toThrow();
-    expect(() => sliceReport(COMPLETE.replace("const draftBundle", "const somethingElse"))).toThrow();
+    expect(() => sliceReport(COMPLETE.replace("const anyTouched", "const somethingElse"))).toThrow("no `const anyTouched`");
+    expect(() => sliceReport(COMPLETE.replace("function resetSlices", "function somethingElse"))).toThrow("no `function resetSlices(`");
+    expect(() => sliceReport(COMPLETE.replace("const draftBundle", "const somethingElse"))).toThrow("no `const draftBundle`");
   });
 });
 

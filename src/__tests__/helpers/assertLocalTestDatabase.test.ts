@@ -52,7 +52,7 @@ describe("assertLocalTestDatabase", () => {
   });
 
   it("allows a remote URL ONLY with the explicit opt-in", () => {
-    expect(() => assertLocalTestDatabase(PROD_URL, {})).toThrow();
+    expect(() => assertLocalTestDatabase(PROD_URL, {})).toThrow(/pointed at a NON-LOCAL database and will not run/);
     expect(() =>
       assertLocalTestDatabase(PROD_URL, { [REMOTE_DB_OPT_IN]: "1" })
     ).not.toThrow();

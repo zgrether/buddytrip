@@ -121,7 +121,7 @@ describe("users router", () => {
       const caller = ctx.caller();
       await expect(
         caller.users.updateAvatar({ avatarIcon: "x".repeat(51) })
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({ code: "BAD_REQUEST", cause: { issues: [{ path: ["avatarIcon"] }] } });
     });
 
     it("throws UNAUTHORIZED for anonymous callers", async () => {

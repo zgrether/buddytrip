@@ -191,7 +191,7 @@ describe("matches.setResult — declares a match's result", () => {
     const { gameId, matchId } = await freshDecidableGame("Member refused");
     await expect(
       ctx.callerAs("member").matches.setResult({ tripId, gameId, matchId, result: "a_win" })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires organizer access or a delegate grant for this game") });
     expect((await matchRow(matchId))?.result).toBeNull();
   });
 
@@ -199,7 +199,7 @@ describe("matches.setResult — declares a match's result", () => {
     const { gameId, matchId } = await freshDecidableGame("Outsider refused");
     await expect(
       ctx.callerAs("outsider").matches.setResult({ tripId, gameId, matchId, result: "a_win" })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires organizer access or a delegate grant for this game") });
   });
 
   it("a match id from a DIFFERENT game is refused, not silently found", async () => {

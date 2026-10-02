@@ -72,7 +72,7 @@ describe("matchOutcomes.upsertOutcome — scoped permissions (B3)", () => {
     const { gameId, matchId } = await freshOutcomeMatch("Outsider Blocked");
     await expect(
       ctx.callerAs("outsider").matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("You can only decide outcomes for your own match.") });
   });
 
   it("is idempotent on (match_id, hole_number) — a re-tap UPDATES the same row, not a duplicate", async () => {
@@ -121,7 +121,7 @@ describe("matchOutcomes.deleteOutcome — Reset hole (same scoped permissions)",
     await ctx.caller().matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" });
     await expect(
       ctx.callerAs("outsider").matchOutcomes.deleteOutcome({ tripId, gameId, matchId, holeNumber: 1 })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("You can only clear outcomes for your own match.") });
   });
 });
 

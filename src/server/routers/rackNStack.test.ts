@@ -115,7 +115,7 @@ describe("rack-n-stack — finish distills team points to game_results", () => {
     // A plain member cannot set strokes (game setup is canEdit-only).
     await expect(
       ctx.callerAs("member").playGroups.setParticipantStrokes({ tripId, gameId, userId: owner, strokes: 5 })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires organizer access or a delegate grant for this game") });
   });
 
   it("a tied slot halves ½/½", async () => {

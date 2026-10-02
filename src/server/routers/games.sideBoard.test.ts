@@ -81,7 +81,7 @@ describe("a game needs no competition", () => {
     const tripId = await sideTrip("Who can see");
     await ctx.caller().games.create({ tripId, gameTypeId: "gtt_skins", name: "Skins, back nine" });
     await expect(ctx.callerAs("member").games.sideBoard({ tripId })).resolves.toHaveLength(1);
-    await expect(ctx.callerAs("outsider").games.sideBoard({ tripId })).rejects.toThrow();
+    await expect(ctx.callerAs("outsider").games.sideBoard({ tripId })).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("You are not a member of this trip") });
   }, 60_000);
 });
 

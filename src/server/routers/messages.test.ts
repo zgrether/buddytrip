@@ -210,7 +210,7 @@ describe("messages router", () => {
     const trip = await ctx.createTrip("Mark Viewing Member Guard");
     await expect(
       ctx.callerAs("outsider").messages.markViewing({ tripId: trip, visibility: "crew" })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("You are not a member of this trip") });
   });
 
   it("readState — read marks are per-user, not shared", async () => {

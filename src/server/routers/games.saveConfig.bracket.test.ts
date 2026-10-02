@@ -289,7 +289,7 @@ describe("saveConfig — HAS_PICKS, the bracket's destroys tier", () => {
     const gameId = await seeded("Atomic refusal");
     await recordWinner(gameId);
     const before = await drawOf(gameId);
-    await expect(save(gameId, { entrants: threeEntrants().slice(0, 2), draw: buildDraw(2) as DrawMatch[] })).rejects.toThrow();
+    await expect(save(gameId, { entrants: threeEntrants().slice(0, 2), draw: buildDraw(2) as DrawMatch[] })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Results are already recorded, so the field and seeding are set. Undo those changes to save the rest.") });
     expect(await drawOf(gameId)).toEqual(before);
   });
 });
@@ -628,7 +628,7 @@ describe("saveConfig — a consolation match can be added after play starts", ()
         entrants: [...threeEntrants(), { seed: 4, teamId, userIds: [outsider] }],
         draw: buildDraw(4, { consolation: true }) as DrawMatch[],
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Results are already recorded, so the field and seeding are set. Undo those changes to save the rest.") });
   });
 
   it("adding consolation AND reseeding together is refused, not silently split", async () => {
@@ -640,6 +640,6 @@ describe("saveConfig — a consolation match can be added after play starts", ()
     const reseeded = (buildDraw(3, { consolation: true }) as DrawMatch[]).map((m) =>
       m.bracket === "main" && m.round === 1 && m.slot === 1 ? { ...m, aSeed: 2 } : m
     );
-    await expect(save(gameId, { entrants: threeEntrants(), draw: reseeded })).rejects.toThrow();
+    await expect(save(gameId, { entrants: threeEntrants(), draw: reseeded })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Results are already recorded, so the field and seeding are set. Undo those changes to save the rest.") });
   });
 });

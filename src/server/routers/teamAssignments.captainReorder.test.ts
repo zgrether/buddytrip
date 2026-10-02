@@ -124,7 +124,7 @@ describe("reorder — the boundary (direct procedure calls, no client involved)"
         teamId: teamB,
         orderedUserIds: teamBIds,
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Only an organizer or this team's captain can edit its identity.") });
   });
 
   it("3. an Organizer (non-captain, on another team) reorders team A → ADMITTED (migration 199)", async () => {
@@ -150,7 +150,7 @@ describe("reorder — the boundary (direct procedure calls, no client involved)"
         teamId: teamA,
         orderedUserIds: [...order].reverse(),
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "NOT_FOUND", message: expect.stringContaining("Team not found") });
   });
 });
 
@@ -189,7 +189,7 @@ describe("6. the captain's roster grant stops where migration 199 draws it", () 
         userId: teamAOther,
         isCaptain: true,
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires Organizer role or higher") });
   });
 
   it("the refusals above left the roster untouched", async () => {

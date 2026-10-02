@@ -185,7 +185,7 @@ describe("resetScoring — clears results, keeps config + identity, stays armed"
   it("a non-owner (organizer) cannot reset scoring", async () => {
     await expect(
       ctx.callerAs("planner").competitions.resetScoring({ tripId, competitionId })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Only the competition owner can do this.") });
   });
 });
 
@@ -245,6 +245,6 @@ describe("resetToSkeleton — also clears config, keeps identity, un-arms", () =
   it("a plain member cannot reset to skeleton", async () => {
     await expect(
       ctx.callerAs("member").competitions.resetToSkeleton({ tripId, competitionId })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Only the competition owner can do this.") });
   });
 });

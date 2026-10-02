@@ -194,7 +194,7 @@ describe("Stage 3 — the delegation boundary", () => {
     const g = await newGame(8, "Not delegated");
     await expect(
       ctx.callerAs("member").games.setPointsTotal({ tripId, gameId: g.id, total: 12 })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires organizer access or a delegate grant for this game") });
   });
 
   it("a delegate exceeding the total is rejected", async () => {
@@ -215,7 +215,7 @@ describe("delete — hard removal, OWNER-gated (L3-b, Spec 1)", () => {
     // #786 REVERSES Spec 1's tightening here — and delete still matches its
     // sibling danger-zone resets, which moved to Organizer in the same change.
     // A plain Member (would-be delegate) still cannot.
-    await expect(ctx.callerAs("member").games.delete({ tripId, gameId: g.id })).rejects.toThrow();
+    await expect(ctx.callerAs("member").games.delete({ tripId, gameId: g.id })).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Requires Organizer role or higher") });
     // Owner hard-deletes → the game is gone.
     await expect(ctx.caller().games.delete({ tripId, gameId: g.id })).resolves.toBeTruthy();
     await expect(ctx.caller().games.getById({ tripId, gameId: g.id })).rejects.toThrow(/not found/i);

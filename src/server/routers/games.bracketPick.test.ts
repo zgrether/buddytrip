@@ -246,7 +246,7 @@ describe("pickWinner — what it refuses", () => {
     const gameId = await newBracket("Permission", four());
     await expect(
       ctx.callerAs("member").games.pickWinner({ tripId, gameId, bracket: "main", round: 1, slot: 1, winnerSeed: 1 })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "FORBIDDEN", message: expect.stringContaining("Posting and score corrections are limited to the owner, an organizer, or this game's delegate.") });
   });
 
   /**
