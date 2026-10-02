@@ -41,10 +41,10 @@ describe("rosterGateDecision — what stops for a preview", () => {
     }
   });
 
-  it("after results, for staff: a MOVE and a removal stop; an add and a same-team no-op do not", () => {
+  it("after results, for staff: a MOVE, an ADD and a removal all stop (ruling 20); a same-team no-op does not", () => {
     expect(rosterGateDecision({ staff: true, hasResults: true, kind: "assign", currentTeamId: "red", toTeamId: "blue" })).toBe("preview");
     expect(rosterGateDecision({ staff: true, hasResults: true, kind: "remove", currentTeamId: "red" })).toBe("preview");
-    expect(rosterGateDecision({ staff: true, hasResults: true, kind: "assign", currentTeamId: null, toTeamId: "blue" })).toBe("direct");
+    expect(rosterGateDecision({ staff: true, hasResults: true, kind: "assign", currentTeamId: null, toTeamId: "blue" })).toBe("preview");
     expect(rosterGateDecision({ staff: true, hasResults: true, kind: "assign", currentTeamId: "red", toTeamId: "red" })).toBe("direct");
   });
 
@@ -82,12 +82,13 @@ describe("RosterChangeSheet — a move", () => {
     expect(textOf(html, "roster-change-no-points")).toBe("No points move. Nothing has finished yet.");
   });
 
-  it("BLOCKED: names the game, offers no confirm", () => {
+  it("BLOCKED: names the game, offers no confirm — and a ROUTE to the game", () => {
     const html = render({
       request: move,
       state: { phase: "ready", preview: preview({ blocking: [{ gameId: "m", name: "Hole 7 Match" }] }) },
-      onCancel: noop, onConfirm: noop,
+      onCancel: noop, onConfirm: noop, onOpenGame: noop,
     });
+    expect(textOf(html, "roster-change-open-game")).toBe("Open Hole 7 Match");
     expect(textOf(html, "roster-change-title")).toBe("Alice can't be moved yet");
     expect(textOf(html, "roster-change-blocked")).toBe(
       "Alice is still playing in Hole 7 Match, which was set up with their current team. Finish it or take them out of it first."
@@ -139,5 +140,44 @@ describe("RosterChangeSheet — while checking, and when the check fails", () =>
     const html = render({ request: move, state: { phase: "error" }, onCancel: noop, onConfirm: noop });
     expect(textOf(html, "roster-change-error")).toContain("Couldn");
     expect(html).not.toContain('data-testid="roster-change-confirm"');
+  });
+});
+
+describe("RosterChangeSheet — an ADD after results (ruling 20)", () => {
+  const add = { kind: "add" as const, userId: "u", personName: "Alice", fromTeamName: "", toTeamName: "Blue" };
+
+  it("asks, says earlier results stay unattached, and names what will count for the new team", () => {
+    const html = render({
+      request: add,
+      state: { phase: "ready", preview: preview({ moving: [{ gameId: "g", name: "Sunday Stroke" }] }) },
+      onCancel: noop, onConfirm: noop,
+    });
+    expect(textOf(html, "roster-change-title")).toBe("Add Alice to Blue?");
+    expect(textOf(html, "roster-change-no-points")).toBe("No points move. Games Alice already finished stay counting for no team.");
+    expect(allOf(html, "roster-change-moving")).toEqual([
+      "Sunday Stroke isn’t finished — Alice’s result in it will count for Blue when it is.",
+    ]);
+    expect(textOf(html, "roster-change-confirm")).toBe("Add to Blue");
+    expect(textOf(html, "roster-change-stays")).toBeNull();
+  });
+
+  it("BLOCKED: says they can't join yet, and routes to the game", () => {
+    const html = render({
+      request: add,
+      state: { phase: "ready", preview: preview({ blocking: [{ gameId: "m", name: "Hole 7 Match" }] }) },
+      onCancel: noop, onConfirm: noop, onOpenGame: noop,
+    });
+    expect(textOf(html, "roster-change-title")).toBe("Alice can't join Blue yet");
+    expect(textOf(html, "roster-change-open-game")).toBe("Open Hole 7 Match");
+  });
+});
+
+describe("RosterChangeSheet — the route to a blocking game", () => {
+  it("is offered only when the host gives one, and never on an allowed change", () => {
+    const move = { kind: "move" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamName: "Blue" };
+    const blocked = { phase: "ready" as const, preview: preview({ blocking: [{ gameId: "m", name: "Hole 7 Match" }] }) };
+    expect(render({ request: move, state: blocked, onCancel: noop, onConfirm: noop })).not.toContain("roster-change-open-game");
+    const allowed = { phase: "ready" as const, preview: preview() };
+    expect(render({ request: move, state: allowed, onCancel: noop, onConfirm: noop, onOpenGame: noop })).not.toContain("roster-change-open-game");
   });
 });

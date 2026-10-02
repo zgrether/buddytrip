@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowRightLeft, UserMinus, Ban } from "lucide-react";
+import { ArrowRightLeft, UserMinus, UserPlus, Ban } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
 
@@ -27,12 +27,19 @@ import { ScrollLock } from "@/hooks/useScrollLock";
  *
  * Before results, and for anyone but staff, the mutation runs exactly as it did
  * (ruled: a stale pre-results move is visible, reversible and scores nothing).
- * A pure ADD after results also goes straight through — it needs no preview; the
- * server still refuses one for someone in an unfinished team-dependent game, and
- * says which game.
+ * After results an ADD is previewed too (ruling 20, settled on the 8b-2 look):
+ * it changes what the person's unfinished games count for, and a refusal for the
+ * blocked case would not tell an organizer what the add does in the allowed one.
+ *
+ * ── A blocked change has a ROUTE, not only a reason ───────────────────────
+ *
+ * "Finish it or take them out of it first" with nothing else left the organizer
+ * stranded in Edit Team to go and find the game. The blocked sheet's primary
+ * action opens the game (Zach, on the 8b-2 look) — the same lesson as an
+ * unpaired match: a state with a reason but no route is half the improvement.
  */
 
-export type RosterChangeKind = "move" | "remove";
+export type RosterChangeKind = "move" | "remove" | "add";
 
 /** Whether a change runs now or goes through the preview. Pure, so every rule
  *  the screen follows is testable without a DOM. */
@@ -45,9 +52,10 @@ export function rosterGateDecision(p: {
 }): "direct" | "preview" {
   if (!p.staff || !p.hasResults) return "direct";
   if (p.kind === "remove") return p.currentTeamId ? "preview" : "direct";
-  // assign: an ADD (no current team) or a same-team no-op runs directly; only a
-  // MOVE between teams is a trade, and a trade after results is reviewed.
-  if (!p.currentTeamId || p.currentTeamId === p.toTeamId) return "direct";
+  // assign: a same-team re-assign is a no-op and runs directly. A MOVE between
+  // teams and an ADD to a team both change what the person's unfinished games
+  // count for, so after results both are reviewed (ruling 20).
+  if (p.currentTeamId === p.toTeamId) return "direct";
   return "preview";
 }
 
@@ -68,9 +76,9 @@ export interface RosterChangeRequest {
   kind: RosterChangeKind;
   userId: string;
   personName: string;
-  /** The team they are on now. */
+  /** The team they are on now (unused for an add — they are on none). */
   fromTeamName: string;
-  /** The destination, for a move. */
+  /** The destination, for a move or an add. */
   toTeamName?: string;
   /** Runs the change with the fingerprint the preview was built on. */
   run: (rosterFingerprint: string) => void;
@@ -101,26 +109,34 @@ export function RosterChangeSheet({
   isPending = false,
   onCancel,
   onConfirm,
+  onOpenGame,
 }: {
   request: Omit<RosterChangeRequest, "run">;
   state: SheetState;
   isPending?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  /** Open a game the change is blocked by. Absent → the blocked sheet offers OK only. */
+  onOpenGame?: (game: RosterGame) => void;
 }) {
   const { kind, personName, fromTeamName, toTeamName } = request;
   const blocked = state.phase === "ready" && state.preview.blocking.length > 0;
-  const destination = kind === "move" ? toTeamName ?? "the new team" : null;
+  const destination = kind === "remove" ? null : toTeamName ?? "the new team";
 
   const title = blocked
     ? kind === "move"
       ? `${personName} can't be moved yet`
-      : `${personName} can't be removed from ${fromTeamName} yet`
+      : kind === "add"
+        ? `${personName} can't join ${destination} yet`
+        : `${personName} can't be removed from ${fromTeamName} yet`
     : kind === "move"
       ? `Move ${personName} to ${destination}?`
-      : `Remove ${personName} from ${fromTeamName}?`;
+      : kind === "add"
+        ? `Add ${personName} to ${destination}?`
+        : `Remove ${personName} from ${fromTeamName}?`;
 
-  const Icon = blocked ? Ban : kind === "move" ? ArrowRightLeft : UserMinus;
+  const Icon = blocked ? Ban : kind === "remove" ? UserMinus : kind === "add" ? UserPlus : ArrowRightLeft;
+  const firstBlocking = state.phase === "ready" ? state.preview.blocking[0] : undefined;
 
   return (
     <ScrollLock>
@@ -179,9 +195,11 @@ export function RosterChangeSheet({
                   </li>
                 )}
                 <li data-testid="roster-change-no-points">
-                  {state.preview.finishedGames > 0
-                    ? "No points move. Finished games stay with the team they were played for."
-                    : "No points move. Nothing has finished yet."}
+                  {state.preview.finishedGames === 0
+                    ? "No points move. Nothing has finished yet."
+                    : kind === "add"
+                      ? `No points move. Games ${personName} already finished stay counting for no team.`
+                      : "No points move. Finished games stay with the team they were played for."}
                 </li>
                 {state.preview.moving.map((g) => (
                   <li key={g.gameId} data-testid="roster-change-moving">
@@ -214,18 +232,31 @@ export function RosterChangeSheet({
                   style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
                   data-testid="roster-change-confirm"
                 >
-                  {kind === "move" ? `Move to ${destination}` : `Remove from ${fromTeamName}`}
+                  {kind === "move" ? `Move to ${destination}` : kind === "add" ? `Add to ${destination}` : `Remove from ${fromTeamName}`}
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={onCancel}
-                className="rounded-xl px-4 py-2.5 text-sm font-medium"
-                style={{ background: "transparent", color: "var(--color-bt-text-dim)", border: "0.5px solid var(--color-bt-border)" }}
-              >
-                {state.phase === "loading" ? "Cancel" : "OK"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="rounded-xl px-4 py-2.5 text-sm font-medium"
+                  style={{ background: "transparent", color: "var(--color-bt-text-dim)", border: "0.5px solid var(--color-bt-border)" }}
+                >
+                  {state.phase === "loading" ? "Cancel" : "OK"}
+                </button>
+                {blocked && firstBlocking && onOpenGame && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenGame(firstBlocking)}
+                    className="rounded-xl px-4 py-2.5 text-sm font-semibold"
+                    style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+                    data-testid="roster-change-open-game"
+                  >
+                    Open {firstBlocking.name}
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -246,10 +277,14 @@ export function useRosterChangeGate() {
 export function RosterChangeGateProvider({
   tripId,
   competitionId,
+  onOpenGame,
   children,
 }: {
   tripId: string;
   competitionId: string | null;
+  /** Take the organizer to a game a change is blocked by: the host closes its
+   *  roster overlays and opens the game's panel. */
+  onOpenGame?: (gameId: string) => void;
   children: React.ReactNode;
 }) {
   const utils = trpc.useUtils();
@@ -281,6 +316,14 @@ export function RosterChangeGateProvider({
           request={request}
           state={state}
           onCancel={close}
+          onOpenGame={
+            onOpenGame
+              ? (g) => {
+                  close();
+                  onOpenGame(g.gameId);
+                }
+              : undefined
+          }
           onConfirm={() => {
             if (state.phase !== "ready") return;
             request.run(state.preview.fingerprint);

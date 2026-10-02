@@ -243,7 +243,8 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
       const decision = rosterGateDecision({ staff, hasResults, kind: "assign", currentTeamId, toTeamId: vars.teamId });
       if (decision === "direct" || !gate) return rawAssign.mutate(vars);
       gate({
-        kind: "move",
+        // No current team: an ADD (previewed after results, ruling 20).
+        kind: currentTeamId ? "move" : "add",
         userId: vars.userId,
         personName: nameOf(vars.userId),
         fromTeamName: teamNameOf(currentTeamId),
