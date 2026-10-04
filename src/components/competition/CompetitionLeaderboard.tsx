@@ -78,6 +78,9 @@ export interface LBGame {
    *  the pair. Optional so existing fixtures/tests that build an `LBGame` by hand
    *  stay valid — absent reads as "not in review", which is the safe default. */
   correctionsOpen?: boolean;
+  /** The latest re-credit of this finished game (PR 8c): who moved a person's
+   *  credit, and when. A different act from a correction, and never shown as one. */
+  recredited?: { byName: string; at: string } | null;
   /** Points in play for this game — the §A5 outer-column `N PTS` value. Carries
    *  the match-play total too (whose `distribution` is null pre-decision). */
   pointsTotal?: number | null;

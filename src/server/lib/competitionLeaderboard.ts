@@ -299,6 +299,38 @@ export function reconcileConvention(
 }
 
 /**
+ * A WHAT-IF, for a preview that must say what a change would do to the board
+ * without writing it (PR 8c's re-credit). Each named game's TEAM rows are
+ * replaced by the given ones before anything is computed, so the answer comes
+ * from this function — the board's own maths — and not from a second copy of
+ * it that could drift (CLAUDE.md #8: never write a second rollup).
+ *
+ * Absent (every other caller), the board is computed exactly as before.
+ */
+export interface LeaderboardOptions {
+  teamRowsOverride?: ReadonlyMap<string, readonly { entity_id: string; position: number | null; raw_score: number | null }[]>;
+}
+
+type ResultRow = { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null };
+
+export function withTeamRowsOverride<R extends ResultRow>(
+  rows: R[],
+  override: LeaderboardOptions["teamRowsOverride"]
+): R[] {
+  if (!override || override.size === 0) return rows;
+  const kept = rows.filter((r) => !(r.entity_type === "team" && override.has(r.game_id)));
+  const added = [...override.entries()].flatMap(([gameId, teamRows]) =>
+    teamRows.map((t) => ({
+      game_id: gameId, entity_id: t.entity_id, entity_type: "team",
+      position: t.position, raw_score: t.raw_score,
+      // The declaration every team writer stamps (migration 191).
+      value_kind: "rank", credited_team_id: t.entity_id,
+    }) as R)
+  );
+  return [...kept, ...added];
+}
+
+/**
  * Server roll-up wrapper (Slice D1 §5/§6). The DB-read half of the CLAUDE.md #8
  * split: it gathers live games + team standings, then defers ALL math to the
  * client-safe pure `rollUp` — so the leaderboard the crew sees and any persisted
@@ -316,7 +348,8 @@ export function reconcileConvention(
  */
 export async function computeCompetitionLeaderboard(
   supabase: SupabaseClient,
-  competitionId: string
+  competitionId: string,
+  opts: LeaderboardOptions = {}
 ) {
   // These reads are independent — run them in parallel (one round-trip's worth
   // of latency instead of stacked). `game_results` + the match counts alone
@@ -446,7 +479,7 @@ export async function computeCompetitionLeaderboard(
           // being credited twice (as themselves AND through their team).
           .in("entity_type", teamless ? ["team", "entrant", "user"] : ["team", "entrant"])
       : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[], error: null }),
-    readBoardInputs(supabase, allGames, "cup's"),
+    readBoardInputs(supabase, allGames, "cup's", (comp?.trip_id as string | null) ?? null),
     // The race's PLAYERS (teamless only): a person is a unit from the first game
     // they are IN, before they have a result — "no points yet" (ruling 22).
     teamless && gameIds.length
@@ -479,7 +512,7 @@ export async function computeCompetitionLeaderboard(
    * FIRST load shows "Couldn't load the leaderboard", never an empty board); the
    * clinch check records `threw`; `reconcileClinchClaim` leaves the claim alone.
    */
-  const results = rowsOrThrow(resultsRes, "cup's results");
+  const results = withTeamRowsOverride(rowsOrThrow(resultsRes, "cup's results"), opts.teamRowsOverride);
   /**
    * ── THE UNITS ──────────────────────────────────────────────────────────────
    *
