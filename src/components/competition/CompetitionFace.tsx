@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { SurfaceVisibility } from "@/lib/surfaceVisibility";
@@ -11,6 +11,8 @@ import { SideGamesBoard } from "./SideGamesBoard";
 import { CompetitionSetupPanel } from "./CompetitionSetupPanel";
 import { CompetitionSettingsModal } from "./CompetitionSettingsModal";
 import { RostersOverlay } from "./RostersOverlay";
+import { RosterChangeGateProvider } from "./RosterChangeGate";
+import { openGamePanel } from "./GameRow";
 import { TeamSheet, type Team } from "./TeamsPanel";
 import { GameSheet } from "./CompetitionGamesPanel";
 import { GAME_TYPES } from "@/lib/gameTypes";
@@ -101,6 +103,7 @@ export function CompetitionFace({
   const openSettings = () => setSettingsOpen(true);
   const [addingGame, setAddingGame] = useState(false);
   const [rostersOpen, setRostersOpen] = useState(false);
+  const pathname = usePathname();
   // Leaderboard team-name tap → a STANDALONE identity editor (owner / captain-of-
   // that-team), NOT the overlay; non-permitted taps fall to the read-only overlay.
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
@@ -274,6 +277,22 @@ export function CompetitionFace({
      * `lg:` ones), so opening a game reflows rather than remounting the board —
      * still the whole point of the panel idiom.
      */
+    // The roster-change gate (PR 8b-2): every roster surface below — the
+    // Rosters overlay's TeamsPanel and the Edit Team sheet — routes a staff
+    // move or removal through it once the cup has results.
+    <RosterChangeGateProvider
+      tripId={tripId}
+      competitionId={competition?.id ?? null}
+      // A change blocked by an unfinished game routes to it: close every roster
+      // overlay (they are plain state here, with no history entries), then open
+      // the game as a panel the way the board does.
+      onOpenGame={(gameId) => {
+        setEditingTeam(null);
+        setRostersOpen(false);
+        setSettingsOpen(false);
+        openGamePanel(pathname, gameId, false);
+      }}
+    >
     <div
       /**
        * THE STAGE. A clip box holding the one column; it never scrolls (the
@@ -673,5 +692,6 @@ export function CompetitionFace({
         />
       )}
     </div>
+    </RosterChangeGateProvider>
   );
 }

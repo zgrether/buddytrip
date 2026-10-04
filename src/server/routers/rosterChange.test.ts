@@ -155,11 +155,21 @@ describe("before results — the working flow, untouched", () => {
 });
 
 describe("after results — a move or removal is reviewed first", () => {
-  it("a pure ADD still goes straight through", async () => {
-    const { tripId, competitionId, teamA } = await cupWithResults("add");
-    expect(await teamOf(competitionId, plannerId)).toBeNull(); // premise
-    const added = await ctx.caller().teamAssignments.assign({ tripId, competitionId, userId: plannerId, teamId: teamA });
-    expect(added.team_id).toBe(teamA);
+  it("an ADD is reviewed too (ruling 20): refused without the preview, through with it", async () => {
+    // 8b-1 let adds through unreviewed; the 8b-2 look ruled that an add changes
+    // what the person's unfinished games count for, so it is previewed like a move.
+    const cup = await cupWithResults("add");
+    expect(await teamOf(cup.competitionId, plannerId)).toBeNull(); // premise
+    await expect(
+      ctx.caller().teamAssignments.assign({ tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId, teamId: cup.teamA })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: PREVIEW_REQUIRED_MESSAGE });
+    expect(await teamOf(cup.competitionId, plannerId)).toBeNull();
+
+    const fp = await fingerprintFor(cup, plannerId);
+    const added = await ctx.caller().teamAssignments.assign({
+      tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId, teamId: cup.teamA, rosterFingerprint: fp,
+    });
+    expect(added.team_id).toBe(cup.teamA);
   });
 
   it("a move WITHOUT the preview's fingerprint is refused, and nothing moves", async () => {
@@ -182,8 +192,12 @@ describe("after results — a move or removal is reviewed first", () => {
   it("a move confirmed against a roster that changed since the preview is refused", async () => {
     const cup = await cupWithResults("move-stale");
     const fp = await fingerprintFor(cup, memberId);
-    // Another organizer changes the roster after the preview was built.
-    await ctx.caller().teamAssignments.assign({ tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId, teamId: cup.teamA });
+    // Another organizer changes the roster after the preview was built — an add,
+    // itself reviewed against the roster as it stood then.
+    const otherFp = await fingerprintFor(cup, plannerId);
+    await ctx.caller().teamAssignments.assign({
+      tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId, teamId: cup.teamA, rosterFingerprint: otherFp,
+    });
     await expect(
       ctx.caller().teamAssignments.assign({
         tripId: cup.tripId, competitionId: cup.competitionId, userId: memberId, teamId: cup.teamB, rosterFingerprint: fp,
@@ -236,6 +250,34 @@ describe("after results — a change settles the clinch the way a finalize does"
   });
 });
 
+describe("the preview's finished-games answer is about THIS person, and names no team", () => {
+  // Zach's look on #1558: the first add preview told a re-added player his
+  // finished games "stay counting for no team", reasoning from his current
+  // assignment. A finished game is credited through its stored roster (8a), so
+  // the preview carries only whether the person PLAYED in one — never a team,
+  // and never the cup's count standing in for the person's.
+  it("true for someone who played in a finished game; false for someone who did not, in the same cup", async () => {
+    const cup = await cupWithResults("finished-person");
+    const done = await insertGame(cup, { game_type_id: "gtt_stroke_play", name: "Done Round", status: "complete" });
+    await addParticipant(done, memberId);
+
+    const member = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: memberId });
+    expect(member.hasFinishedGames).toBe(true);
+
+    // The planner played in nothing — the cup HAS a finished game, which is
+    // exactly what the old cup-wide count would have reported for them.
+    const planner = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId });
+    expect(planner.hasFinishedGames).toBe(false);
+
+    // An UNFINISHED game is not a finished one: the owner is in "Locker" (active).
+    const owner = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: ownerId });
+    expect(owner.hasFinishedGames).toBe(false);
+
+    // And the payload carries no team for finished games at all.
+    expect(Object.keys(member).sort()).toEqual(["blocking", "fingerprint", "hasFinishedGames", "hasResults", "moving"]);
+  });
+});
+
 describe("after results — refused while the person is in an unfinished team-dependent game", () => {
   it("a move is refused, NAMING the game; an unfinished stroke round does not block", async () => {
     const cup = await cupWithResults("blocked");
@@ -278,8 +320,12 @@ describe("after results — refused while the person is in an unfinished team-de
     const cup = await cupWithResults("add-blocked");
     const match = await insertGame(cup, { game_type_id: "gtt_match_play", name: "Unpaired Match", status: "active" });
     await addParticipant(match, plannerId);
+    // WITH a valid fingerprint, so the refusal can only be the unfinished match.
+    const fp = await fingerprintFor(cup, plannerId);
     await expect(
-      ctx.caller().teamAssignments.assign({ tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId, teamId: cup.teamA })
+      ctx.caller().teamAssignments.assign({
+        tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId, teamId: cup.teamA, rosterFingerprint: fp,
+      })
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Unpaired Match") });
     expect(await teamOf(cup.competitionId, plannerId)).toBeNull();
   });

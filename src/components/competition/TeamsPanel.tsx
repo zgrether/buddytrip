@@ -38,6 +38,8 @@ import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { RowNumber } from "@/components/games/RowNumber";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
+import { useTripRole } from "@/hooks/useTripRole";
+import { rosterGateDecision, useRosterChangeGate } from "./RosterChangeGate";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
 import { cancelRosterWriters } from "@/lib/rosterCacheSync";
@@ -214,8 +216,58 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
     burst
   );
 
-  const assign = trpc.teamAssignments.assign.useMutation(policy.assign);
-  const remove = trpc.teamAssignments.remove.useMutation(policy.remove);
+  const rawAssign = trpc.teamAssignments.assign.useMutation(policy.assign);
+  const rawRemove = trpc.teamAssignments.remove.useMutation(policy.remove);
+
+  // ── The roster-change gate (PR 8b-2) ──────────────────────────────────────
+  // Every move and removal on every roster surface comes through here, so the
+  // after-results preview is not something each entry point has to remember.
+  // Before results, and for anyone but staff, these run exactly as they did.
+  const gate = useRosterChangeGate();
+  const { canEdit: staff } = useTripRole(tripId);
+  const { data: hasResults = false } = trpc.teamAssignments.hasResults.useQuery(queryKey, { enabled: !!competitionId });
+  const nameOf = (userId: string) =>
+    ((utils.tripMembers.list.getData({ tripId }) ?? []) as { user_id: string | null; displayName?: string }[])
+      .find((m) => m.user_id === userId)?.displayName ?? "This player";
+  const teamNameOf = (teamId: string | null | undefined) =>
+    ((utils.teams.list.getData(queryKey) ?? []) as { id: string; name: string }[]).find((t) => t.id === teamId)?.name ?? "their team";
+  const currentTeamOf = (userId: string) =>
+    ((utils.teamAssignments.list.getData(queryKey) ?? []) as Assignment[]).find((a) => a.user_id === userId)?.team_id ?? null;
+
+  type AssignVars = Parameters<typeof rawAssign.mutate>[0];
+  type RemoveVars = Parameters<typeof rawRemove.mutate>[0];
+  const assign = {
+    ...rawAssign,
+    mutate: (vars: AssignVars) => {
+      const currentTeamId = currentTeamOf(vars.userId);
+      const decision = rosterGateDecision({ staff, hasResults, kind: "assign", currentTeamId, toTeamId: vars.teamId });
+      if (decision === "direct" || !gate) return rawAssign.mutate(vars);
+      gate({
+        // No current team: an ADD (previewed after results, ruling 20).
+        kind: currentTeamId ? "move" : "add",
+        userId: vars.userId,
+        personName: nameOf(vars.userId),
+        fromTeamName: teamNameOf(currentTeamId),
+        toTeamName: teamNameOf(vars.teamId),
+        run: (rosterFingerprint) => rawAssign.mutate({ ...vars, rosterFingerprint }),
+      });
+    },
+  };
+  const remove = {
+    ...rawRemove,
+    mutate: (vars: RemoveVars) => {
+      const currentTeamId = currentTeamOf(vars.userId);
+      const decision = rosterGateDecision({ staff, hasResults, kind: "remove", currentTeamId });
+      if (decision === "direct" || !gate) return rawRemove.mutate(vars);
+      gate({
+        kind: "remove",
+        userId: vars.userId,
+        personName: nameOf(vars.userId),
+        fromTeamName: teamNameOf(currentTeamId),
+        run: (rosterFingerprint) => rawRemove.mutate({ ...vars, rosterFingerprint }),
+      });
+    },
+  };
   // reorder (Part 3): the roster lists derive display order from sort_order, so
   // the rows resequence instantly; the order survives an overlay close + reopen
   // because the settle re-resolves faceBootstrap (#10).
@@ -256,11 +308,12 @@ export function TeamsPanel({
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
-  // Roster-removal lock: once any game has a score, removals/trades/team-deletes are
-  // server-blocked (C1). Disable those controls here so the block isn't a surprise;
-  // ADDS stay enabled. (Distinct from `structureLocked`, the scoring_model
+  // Results are in (any game has one). Until PR 8b this LOCKED removals, trades
+  // and team deletes; now a staff move or removal opens a before-and-after
+  // preview (`RosterChangeGate`), and a team can be deleted once it is empty and
+  // has nothing banked. (Distinct from `structureLocked`, the scoring_model
   // team-count lock.)
-  const { data: removalsLocked = false } = trpc.teamAssignments.hasResults.useQuery(
+  const { data: hasResults = false } = trpc.teamAssignments.hasResults.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
@@ -385,15 +438,15 @@ export function TeamsPanel({
         className={`space-y-4 px-4 pb-4 ${embedded ? "" : "pt-3"}`}
         style={embedded ? undefined : { borderTop: "1px solid var(--color-bt-border)" }}
       >
-        {canManageRoster && removalsLocked && (
-          // Quiet explanation, not an alarm — the controls below are disabled, this
-          // says why. Adds stay live.
+        {canManageRoster && hasResults && (
+          // Quiet explanation, not an alarm: nothing below is disabled any more,
+          // but a move or removal now stops to show what it changes.
           <p
             className="rounded-lg px-3 py-2 text-[11px]"
             style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text-dim)", border: "1px solid var(--color-bt-border)" }}
-            data-testid="rosters-locked-note"
+            data-testid="rosters-results-note"
           >
-            Scoring has started — rosters are locked for removals. You can still add players.
+            Results are in. Adding, moving or removing a player shows what it changes first — finished games keep their points.
           </p>
         )}
         {!teamsExist && (
@@ -455,11 +508,11 @@ export function TeamsPanel({
                   rights={rosterRights({
                     staff: canManageRoster,
                     captainOfTeam: isTeamCaptain(assignmentsTyped, me?.id, team.id),
-                    locked: removalsLocked,
+                    locked: hasResults,
                     viewerId: me?.id,
                   })}
                   structureLocked={structureLocked}
-                  removalsLocked={removalsLocked}
+                  hasResults={hasResults}
                   onEdit={() => setEditingTeam(team)}
                   onDelete={() => setDeletingTeam(team)}
                   tripId={tripId}
@@ -495,7 +548,11 @@ export function TeamsPanel({
           teamName={deletingTeam.name}
           memberCount={deletingMemberCount}
           isPending={deleteTeam.isPending}
-          onCancel={() => setDeletingTeam(null)}
+          error={deleteTeam.error?.message ?? null}
+          onCancel={() => {
+            deleteTeam.reset();
+            setDeletingTeam(null);
+          }}
           onConfirm={() => deleteTeam.mutate({ tripId, teamId: deletingTeam.id })}
         />
       )}
@@ -570,7 +627,7 @@ function TeamCard({
   canEditIdentity,
   rights,
   structureLocked,
-  removalsLocked,
+  hasResults,
   onEdit,
   onDelete,
   tripId,
@@ -592,9 +649,10 @@ function TeamCard({
    *  color (PR b2). A captain edits ONLY their own team's identity. */
   canEditIdentity: boolean;
   structureLocked: boolean;
-  /** Scoring has started → removals/trades/team-delete are blocked (C1). Disables
-   *  the per-player ×, the move-drag, and the team-delete trash; adds stay live. */
-  removalsLocked: boolean;
+  /** Results are in. A team can then be deleted only once it is EMPTY and has
+   *  nothing banked (PR 8b), so the delete control is offered only when empty.
+   *  Moves and removals stay live and open the before-and-after preview. */
+  hasResults: boolean;
   onEdit: () => void;
   onDelete: () => void;
   tripId: string;
@@ -699,10 +757,11 @@ function TeamCard({
         <span className="flex-shrink-0 text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
           {teamMembers.length}
         </span>
-        {canManageRoster && !structureLocked && !removalsLocked && (
-          // Delete-team lives at the list level (W-TEAMDEL-01). Hidden once live OR
-          // once scoring starts — deleting a team is a mass removal (the locked note
-          // above explains it).
+        {canManageRoster && !structureLocked && (!hasResults || teamMembers.length === 0) && (
+          // Delete-team lives at the list level (W-TEAMDEL-01). After results only
+          // an EMPTY team offers it: one with players is emptied one reviewed
+          // change at a time. A team with banked points the server refuses, and
+          // the modal shows that sentence.
           <button
             type="button"
             onClick={onDelete}
@@ -760,7 +819,6 @@ function TeamCard({
                   ? undefined
                   : () => remove.mutate({ tripId, competitionId, userId: id, teamId: team.id })
               }
-              removeLocked={rights.remove(id) === "locked"}
               removeAriaLabel={`Remove ${m.displayName} from ${team.name}`}
               // READ-ONLY here, for everyone including the Owner.
               //
@@ -794,7 +852,6 @@ function PlayerRow({
   isCaptain,
   onDragStart,
   onRemove,
-  removeLocked = false,
   removeAriaLabel,
   onToggleCaptain,
   captainAriaLabel,
@@ -806,8 +863,6 @@ function PlayerRow({
   isCaptain: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onRemove?: () => void;
-  /** Scoring started → the × is shown DISABLED (with a why-tooltip), not hidden. */
-  removeLocked?: boolean;
   removeAriaLabel: string;
   /** Owner-only: tap the ★ to mark/unmark captain. Absent for members. */
   onToggleCaptain?: () => void;
@@ -861,11 +916,9 @@ function PlayerRow({
       {onRemove && (
         <button
           type="button"
-          onClick={removeLocked ? undefined : onRemove}
-          disabled={removeLocked}
+          onClick={onRemove}
           aria-label={removeAriaLabel}
-          title={removeLocked ? "Locked — scoring has started. You can still add players." : undefined}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
           <X size={14} />
@@ -881,12 +934,16 @@ function DeleteTeamConfirmModal({
   teamName,
   memberCount,
   isPending,
+  error = null,
   onCancel,
   onConfirm,
 }: {
   teamName: string;
   memberCount: number;
   isPending: boolean;
+  /** The server's refusal, shown rather than swallowed: a team with banked
+   *  points cannot be deleted, and the sentence says so and what to do instead. */
+  error?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -929,6 +986,15 @@ function DeleteTeamConfirmModal({
               ? `${memberCount} member${memberCount === 1 ? "" : "s"} will be unassigned. This can't be undone.`
               : "This can’t be undone."}
           </p>
+          {error && (
+            <p
+              className="mt-2 text-sm leading-relaxed"
+              style={{ color: "var(--color-bt-danger)" }}
+              data-testid="delete-team-error"
+            >
+              {error}
+            </p>
+          )}
         </div>
         <div
           className="flex flex-col-reverse gap-2 px-5 pb-5 pt-3 sm:flex-row sm:justify-end"
@@ -2041,13 +2107,13 @@ function TeamSheetRoster({
     tripId,
     competitionId
   );
-  // Removals are server-blocked once scoring starts (C1) — disable the × so it
-  // isn't a surprise. Adds + reorder stay live (reorder orphans no one).
-  const { data: removalsLocked = false } = trpc.teamAssignments.hasResults.useQuery(
+  // Results are in: a captain loses roster rights (ruling 29), and a staff
+  // removal opens the before-and-after preview (PR 8b) rather than locking.
+  const { data: hasResults = false } = trpc.teamAssignments.hasResults.useQuery(
     { tripId, competitionId },
     { enabled: !!competitionId }
   );
-  const rights = rosterRights({ staff, captainOfTeam, locked: removalsLocked, viewerId });
+  const rights = rosterRights({ staff, captainOfTeam, locked: hasResults, viewerId });
 
   const memberById = useMemo(() => {
     const map = new Map<string, Member>();
@@ -2247,15 +2313,15 @@ function TeamSheetRoster({
         />
       )}
 
-      {/* Removal lock is KEPT (owner decision) — say why, so the disabled × reads
-          as intentional, not broken. Adds stay enabled. */}
-      {staff && removalsLocked && (
+      {/* After results a staff move or removal stops to show what it changes
+          (PR 8b) — say so here too, so the sheet does not read as a surprise. */}
+      {staff && hasResults && (
         <p
           className="mt-3 text-[11px]"
           style={{ color: "var(--color-bt-text-dim)" }}
           data-testid="teamsheet-locked-note"
         >
-          Rosters are locked once scoring starts.
+          Results are in. Adding or removing a player shows what it changes first.
         </p>
       )}
       {rights.captainLocked && (
@@ -2498,16 +2564,15 @@ function rosterRowContent({
           PointerSensor covers touch and KeyboardSensor covers the non-pointer
           path (verified in #713), so the fallback had no remaining job. */}
 
-      {/* Remove × — per row (`rosterRights`): staff see it disabled once
-          scoring locks removals; a captain has none on their own row. */}
+      {/* Remove × — per row (`rosterRights`). After results a staff removal
+          opens the preview (PR 8b) instead of being locked; a captain has none
+          on their own row. */}
       {remove !== "hidden" && (
         <button
           type="button"
-          onClick={remove === "locked" ? undefined : onRemove}
-          disabled={remove === "locked"}
+          onClick={onRemove}
           aria-label={removeAriaLabel}
-          title={remove === "locked" ? "Locked — scoring has started. You can still add players." : undefined}
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg"
           style={{ color: "var(--color-bt-text-dim)", WebkitTapHighlightColor: "transparent" }}
         >
           <X size={14} />
