@@ -76,12 +76,15 @@ describe("RecreditSheet", () => {
     const html = render();
     expect(textOf(html, "recredit-title")).toBe("Re-credit Bill’s games");
     expect(textOf(html, "recredit-intro")).toBe("For a game that counted Bill for the wrong team. Each game you tick will count for Blue.");
-    expect(textOf(html, "recredit-game-now")).toBe("Counts for Red now");
-    expect(textOf(html, "recredit-game-change")).toBe("Red 10 → 4 · Blue 4 → 10");
+    // From → to, never "counts for Red now", which read both ways.
+    expect(textOf(html, "recredit-game-direction")).toBe("Red → Blue");
+    expect(html).not.toMatch(/ now</);
+    expect(textOf(html, "recredit-game-change")).toBe("Points in this game: Red 10 → 4 · Blue 4 → 10");
   });
 
   it("to NO team, it says so plainly (Zach's ruling 3)", () => {
     const html = render({ state: { phase: "ready", preview: preview({ toTeamId: null, toTeamName: null }) } });
+    expect(textOf(html, "recredit-game-direction")).toBe("Red → No team");
     expect(textOf(html, "recredit-intro")).toBe(
       "For a game that shouldn't have counted Bill for any team. Each game you tick will count for no team — Bill's own result stays, but no team scores it."
     );

@@ -153,11 +153,17 @@ export function RecreditSheet({
                             <span className="block text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                               {g.name}
                             </span>
-                            <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="recredit-game-now">
-                              Counts for {g.fromTeamName ?? "no team"} now
+                            <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="recredit-game-direction">
+                              {/* The DIRECTION, explicitly (Zach, on the 8c look): "counts for X now"
+                                  read either as where it counts today or where it will
+                                  after the tick. */}
+                              {g.fromTeamName ?? "No team"} → {destination ?? "No team"}
                             </span>
                             <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="recredit-game-change">
-                              {change ?? "No points change in this game."}
+                              {/* The line that warns before a re-credit HURTS the team someone
+                                  joins: a stroke team total is a sum, so an extra player adds
+                                  strokes and can lose the game for them. */}
+                              {change ? `Points in this game: ${change}` : "No points change in this game."}
                             </span>
                           </span>
                         </button>
