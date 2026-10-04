@@ -250,6 +250,34 @@ describe("after results — a change settles the clinch the way a finalize does"
   });
 });
 
+describe("the preview's finished-games answer is about THIS person, and names no team", () => {
+  // Zach's look on #1558: the first add preview told a re-added player his
+  // finished games "stay counting for no team", reasoning from his current
+  // assignment. A finished game is credited through its stored roster (8a), so
+  // the preview carries only whether the person PLAYED in one — never a team,
+  // and never the cup's count standing in for the person's.
+  it("true for someone who played in a finished game; false for someone who did not, in the same cup", async () => {
+    const cup = await cupWithResults("finished-person");
+    const done = await insertGame(cup, { game_type_id: "gtt_stroke_play", name: "Done Round", status: "complete" });
+    await addParticipant(done, memberId);
+
+    const member = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: memberId });
+    expect(member.hasFinishedGames).toBe(true);
+
+    // The planner played in nothing — the cup HAS a finished game, which is
+    // exactly what the old cup-wide count would have reported for them.
+    const planner = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId });
+    expect(planner.hasFinishedGames).toBe(false);
+
+    // An UNFINISHED game is not a finished one: the owner is in "Locker" (active).
+    const owner = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: ownerId });
+    expect(owner.hasFinishedGames).toBe(false);
+
+    // And the payload carries no team for finished games at all.
+    expect(Object.keys(member).sort()).toEqual(["blocking", "fingerprint", "hasFinishedGames", "hasResults", "moving"]);
+  });
+});
+
 describe("after results — refused while the person is in an unfinished team-dependent game", () => {
   it("a move is refused, NAMING the game; an unfinished stroke round does not block", async () => {
     const cup = await cupWithResults("blocked");
