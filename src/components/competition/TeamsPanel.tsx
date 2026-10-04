@@ -212,6 +212,12 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         // which the app bar reads on every tab — cached with staleTime: Infinity,
         // so it only refreshes if invalidated here.
         u.competitions.myTeamColor.invalidate({ tripId: queryKey.tripId });
+        // Who the Owner could re-credit (PR 8c) is "credited somewhere other
+        // than where they are NOW" — so a move, add or removal changes it.
+        // Found on the 8c fixture build: Bob moved to Spartans and his
+        // "Re-credit" button only appeared after a reload. (A no-op for anyone
+        // but the Owner: the query is never enabled for them.)
+        if (leaderboard) u.recredits.candidates.invalidate({ tripId: queryKey.tripId, competitionId: queryKey.competitionId });
       },
     },
     burst
