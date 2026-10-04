@@ -1164,6 +1164,56 @@ verified with a Realtime probe 2026-10-02).
 credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize
 that team's members would credit nowhere. Lifting the lock for team delete has to decide this.
 
+**8b's checklist, closed 2026-10-04:** after #1557 put trades live, the zero-check read **0 of
+50** finished cup games without a stored roster — the same query found 11 among unfinished
+games, so it can see a gap. Nothing needed re-backfilling.
+
+### 8c — re-credit, ruled 2026-10-04 (migration 204)
+
+**Verify-first findings that changed the plan's wording:**
+- **Stroke play and skins live only in points races** (`allowedContainers: ["points_race"]`,
+  refused by `games.create`). So "a correction on a head-to-head game is refused" cannot occur
+  as written; the must-fail test is **any team-dependent format is refused**. The clinch push is
+  head-to-head only, so a re-credit settles no clinch.
+- **Points are derived at read** from the team rows' `position` — rewriting those rows is the
+  whole change, and the board picks it up.
+- **The stored roster must move with the rows**: a re-finalize credits through
+  `credited_roster`, so rows changed alone would be put back by the next score correction.
+- Production: five finished stroke/skins games, four in teamed cups — all in BBMI 2024 / 2025,
+  real history, so the look uses a test cup.
+
+**Ruled (Zach):**
+1. **"Re-credit" throughout**, never "correction" — that is the score-edit flow, and its In
+   review badge sits on the same row. Glossary row in CLAUDE.md.
+2. **A separate Owner-only act, per game.** Each eligible finished game is a checkbox,
+   **all unchecked**: re-credit fixes MISTAKES, and a deliberate trade leaves the rounds before
+   it where they were earned (Day 1 fixed, Day 2 left). Team-dependent games the person played
+   are listed greyed, "stands as played". Entry: Edit Team for someone on a team; the
+   Unassigned Crew list for someone on none.
+3. **Re-credit to no team is allowed**, and the sheet says the points will count for no team.
+4. **`game_recredits`**, one row per game (batch id per confirm), readable by every trip
+   member, written only by `recredit_games`. Its grants ship in 204 (#1440's rule — narrower
+   than the default ACL: members SELECT, `anon` nothing). The merge re-keys `user_id` and
+   `recredited_by` in 204; TRACKER's escape clause lists the table.
+5. **One database transaction**: stored roster, team rows and record together. New team rows
+   come from the app (`computeStrokeTeamStandings`, the writers' own function); the database
+   keeps its own eligible-format list, pinned to `teamDependent` by `recredit.guard.test.ts`.
+6. **Stale previews**: the preview carries a per-game fingerprint (results + stored roster) and
+   the person's team; confirm refuses if either moved and records what it actually did.
+   Before/after come from the board's own `computeCompetitionLeaderboard` via a team-rows
+   what-if — per game only; no claim is made that a cup total moves by their sum.
+
+**Decided in the build, worth knowing:**
+- A scoring reset deletes the game's re-credits: the replayed game is credited afresh, and a
+  "Re-credited by" note would describe a result that no longer exists.
+- A game open for score edits is refused ("finish the review, then re-credit it").
+- **The stale refusals raise 55000, not 40001.** PostgREST retries `serialization_failure`, so
+  a deterministic refusal replayed until the gateway's 60s timeout (three 504s on the first run).
+- **Manual and bracket finishes record no `credited_roster`** — their rows credit teams
+  directly, so nothing re-credits through one. Harmless to crediting, but the 8b zero-check
+  query would count such games as gaps once one finishes; scope it to roster-reading formats if
+  it is run again.
+
 ---
 
 ## PR 9 — Display

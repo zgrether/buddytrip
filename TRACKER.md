@@ -189,7 +189,10 @@ R1's shape has changed under it — see §2. What remains:
   placeholder's. It has to block reconnection too, or it undoes itself: the email auto-link
   (`handle_new_user` / `ghostCrew.update`'s link) must not reattach them to that placeholder, and
   any invite they hold is revoked. **Becomes live when:** someone asks to be fully removed from a
-  crew's record, not just their list.
+  crew's record, not just their list. **Tables a disconnection must cover beyond the merge's
+  list:** `game_recredits` (migration 204) names the person twice — `user_id`, whose credit
+  moved, and `recredited_by`, the Owner who moved it — and its board note ("Re-credited by …")
+  renders the second by name.
 - **Money / gambling** — killer feature *only if* UI/UX nailed. **The "no vision yet" half is spent:** the
   side-bets handoff is the vision, and it is BUILT on Quick Play — bets as objects with a start hole
   (`src/lib/sideBets.ts`), presses derived rather than recorded, Nassau in one action, carryovers, the ☠️
