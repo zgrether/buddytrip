@@ -55,6 +55,10 @@ describe("preview and confirm", () => {
     // After: Alpha 5, Bravo 14 → Alpha 10, Bravo 4. From the board's own maths.
     expect(pts(g.before)).toEqual({ [c.alpha]: 4, [c.bravo]: 10 });
     expect(pts(g.after)).toEqual({ [c.alpha]: 10, [c.bravo]: 4 });
+    // The sentence that explains why moving him TO Bravo loses Bravo the game.
+    expect(g.unequalTeams).toBe(
+      "Bravo would have three players counting in Recredit moves round, Alpha one — in stroke play a team's total is its players' strokes added up, so the bigger team is at a disadvantage."
+    );
 
     const res = await ctx.caller().recredits.confirm({
       tripId: c.tripId, competitionId: c.competitionId, userId: f.planner, expectedTeamId: c.bravo,

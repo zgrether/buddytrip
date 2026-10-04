@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import {
-  isRecreditEligible, recreditTeamRows, recreditedRoster, TEAM_SCORING,
+  finishersByTeam, isRecreditEligible, recreditTeamRows, recreditedRoster, TEAM_SCORING, unequalTeamsNote,
   type RecreditPreview, type StandingGame, type TeamPoints, type TeamResultRow,
 } from "@/lib/recredit";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
@@ -169,7 +169,7 @@ interface Plan {
   personName: string;
   toTeamId: string | null;
   toTeamName: string | null;
-  eligible: { game: FinishedGame; fromTeamId: string | null; teamRows: TeamResultRow[] }[];
+  eligible: { game: FinishedGame; fromTeamId: string | null; teamRows: TeamResultRow[]; unequalTeams: string | null }[];
   standing: StandingGame[];
 }
 
@@ -215,7 +215,22 @@ async function plan(
       out.standing.push({ gameId: g.id, name: g.name, reason: "in_review" });
       continue;
     }
-    out.eligible.push({ game: g, fromTeamId, teamRows: teamRowsAfter(g, rows.get(g.id) ?? [], input.userId, toTeamId) });
+    const gameRows = rows.get(g.id) ?? [];
+    out.eligible.push({
+      game: g,
+      fromTeamId,
+      teamRows: teamRowsAfter(g, gameRows, input.userId, toTeamId),
+      // #1561's ruling: warn, never block. Said of the round AFTER the move,
+      // because that is the state the Owner is choosing — and the one that
+      // explains a result that looks backwards.
+      unequalTeams: unequalTeamsNote({
+        gameName: g.name,
+        scoring: TEAM_SCORING[g.game_type_id as string](g.config),
+        counts: finishersByTeam(gameRows, recreditedRoster(g.roster, input.userId, toTeamId)),
+        teams: [...teamName].map(([teamId, name]) => ({ teamId, teamName: name })),
+        mood: "would",
+      }),
+    });
   }
   return out;
 }
@@ -265,6 +280,7 @@ export async function previewRecredit(
       before: points.before.get(e.game.id) ?? [],
       after: points.after.get(e.game.id) ?? [],
       fingerprint: prints.get(e.game.id) ?? "",
+      unequalTeams: e.unequalTeams,
     })),
     standing: p.standing,
   };

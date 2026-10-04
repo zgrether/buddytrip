@@ -1,5 +1,5 @@
 import { GAME_TYPE_DEFINITIONS } from "./gameTypes";
-import { computeStrokeTeamStandings } from "./strokePlay";
+import { computeStrokeTeamStandings, rankingDirection } from "./strokePlay";
 import { scoringOf, type ScoringType } from "./stableford";
 
 /**
@@ -108,6 +108,74 @@ export function recreditedRoster(
   return next;
 }
 
+/**
+ * UNEQUAL TEAMS (Zach's ruling on #1561, 2026-10-04): a stroke or skins team
+ * total is the SUM of its finishers, so a team with more players counting posts
+ * a bigger number. Keep the sum; WARN, never block — unequal teams are the
+ * organizer's choice, and the app's job is to make the consequence visible.
+ *
+ * The direction is the point of the warning, and it comes from the ONE place
+ * that says which way a scoring type ranks (`rankingDirection`):
+ *   - low wins (traditional stroke): a bigger total is WORSE, so the bigger team
+ *     is at a disadvantage — why re-crediting someone TO a team can lose it the
+ *     game;
+ *   - high wins (Stableford, skins): a bigger total is better — an advantage.
+ *
+ * One sentence, shared by every surface that warns (the re-credit sheet now;
+ * game setup and the trade preview next), so they cannot word it two ways.
+ */
+
+/** People with a result in the game, per team, through `roster`. A finisher on
+ *  no team counts for no team, as the team total leaves them out. */
+export function finishersByTeam(
+  personRows: readonly PersonResultRow[],
+  roster: Record<string, string>
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of personRows) {
+    if (r.raw_score === null || r.position === null) continue;
+    const team = roster[r.entity_id];
+    if (team) out.set(team, (out.get(team) ?? 0) + 1);
+  }
+  return out;
+}
+
+const NUMBER_WORDS = ["none", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const numberWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
+const playersWord = (n: number) => `${numberWord(n)} player${n === 1 ? "" : "s"}`;
+
+/**
+ * "Spartans would have three players counting in Day 1 Stroke, Centurions two —
+ * in stroke play a team's total is its players' strokes added up, so the bigger
+ * team is at a disadvantage." Null when every team counts the same number.
+ *
+ * `teams` is every team of the cup: a team with nobody counting is named with
+ * none, because a team scoring nothing is the most unequal case of all.
+ */
+export function unequalTeamsNote(input: {
+  gameName: string;
+  scoring: ScoringType;
+  counts: ReadonlyMap<string, number>;
+  teams: readonly { teamId: string; teamName: string }[];
+  /** "would" previews a change; "has" describes the state as it is. */
+  mood: "would" | "has";
+}): string | null {
+  const rows = input.teams
+    .map((t) => ({ name: t.teamName, n: input.counts.get(t.teamId) ?? 0 }))
+    .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  if (rows.length < 2 || rows.every((r) => r.n === rows[0].n)) return null;
+  const [first, ...rest] = rows;
+  const verb = input.mood === "would" ? "would have" : "has";
+  const others = rest.map((r) => `${r.name} ${numberWord(r.n)}`).join(", ");
+  const format = input.scoring === "skins" ? "skins" : input.scoring === "stableford" ? "Stableford" : "stroke play";
+  const unit = input.scoring === "skins" ? "skins" : input.scoring === "stableford" ? "points" : "strokes";
+  const effect = rankingDirection(input.scoring) === "low_wins" ? "at a disadvantage" : "at an advantage";
+  return (
+    `${first.name} ${verb} ${playersWord(first.n)} counting in ${input.gameName}, ${others} — ` +
+    `in ${format} a team's total is its players' ${unit} added up, so the bigger team is ${effect}.`
+  );
+}
+
 // ── What a preview carries (the server builds it, the sheet renders it) ──
 
 export interface TeamPoints {
@@ -126,6 +194,8 @@ export interface RecreditGame {
   /** Per team, this game's place and points as the board computes them. */
   before: TeamPoints[];
   after: TeamPoints[];
+  /** The unequal-teams warning after the move (#1561's ruling), or null. */
+  unequalTeams: string | null;
   /** What confirm checks the game against (`_game_credit_fingerprint`). */
   fingerprint: string;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { recreditTeamRows, recreditedRoster, TEAM_SCORING } from "./recredit";
+import { finishersByTeam, recreditTeamRows, recreditedRoster, TEAM_SCORING, unequalTeamsNote } from "./recredit";
 
 const ids = () => {
   let n = 0;
@@ -62,5 +62,42 @@ describe("recreditTeamRows — the team rows a finalize through the new roster w
       ids()
     );
     expect(rows.find((r) => r.entity_id === "blue")?.raw_score).toBe(71);
+  });
+});
+
+describe("unequalTeamsNote — the direction is the point (#1561's ruling)", () => {
+  const TEAMS = [{ teamId: "red", teamName: "Centurions" }, { teamId: "blue", teamName: "Spartans" }];
+  const counts = (red: number, blue: number) => new Map([["red", red], ["blue", blue]]);
+
+  it("traditional stroke: the bigger team is at a DISADVANTAGE", () => {
+    expect(unequalTeamsNote({ gameName: "Day 1 Stroke", scoring: "traditional", counts: counts(2, 3), teams: TEAMS, mood: "would" })).toBe(
+      "Spartans would have three players counting in Day 1 Stroke, Centurions two — in stroke play a team's total is its players' strokes added up, so the bigger team is at a disadvantage."
+    );
+  });
+
+  it("Stableford: the bigger team is at an ADVANTAGE", () => {
+    expect(unequalTeamsNote({ gameName: "Stableford", scoring: "stableford", counts: counts(2, 3), teams: TEAMS, mood: "has" })).toBe(
+      "Spartans has three players counting in Stableford, Centurions two — in Stableford a team's total is its players' points added up, so the bigger team is at an advantage."
+    );
+  });
+
+  it("skins: an advantage, counted in skins", () => {
+    expect(unequalTeamsNote({ gameName: "Skins", scoring: "skins", counts: counts(3, 1), teams: TEAMS, mood: "would" })).toBe(
+      "Centurions would have three players counting in Skins, Spartans one — in skins a team's total is its players' skins added up, so the bigger team is at an advantage."
+    );
+  });
+
+  it("equal teams: nothing to say", () => {
+    expect(unequalTeamsNote({ gameName: "G", scoring: "traditional", counts: counts(2, 2), teams: TEAMS, mood: "would" })).toBeNull();
+  });
+
+  it("a team with nobody counting is named with none — the most unequal case", () => {
+    expect(unequalTeamsNote({ gameName: "G", scoring: "traditional", counts: new Map([["red", 2]]), teams: TEAMS, mood: "would" }))
+      .toMatch(/^Centurions would have two players counting in G, Spartans none — /);
+  });
+
+  it("finishersByTeam counts only people with a result, through the given roster", () => {
+    const rows = [...PEOPLE, { entity_id: "dan", raw_score: null, position: null }, { entity_id: "eve", raw_score: 80, position: 4 }];
+    expect(finishersByTeam(rows, { ...ROSTER, dan: "blue" })).toEqual(new Map([["red", 2], ["blue", 1]]));
   });
 });

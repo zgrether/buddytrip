@@ -165,6 +165,13 @@ export function RecreditSheet({
                                   strokes and can lose the game for them. */}
                               {change ? `Points in this game: ${change}` : "No points change in this game."}
                             </span>
+                            {/* #1561's ruling: warn, never block. The sentence that explains a
+                                result that looks backwards — and says which way it cuts. */}
+                            {g.unequalTeams && (
+                              <span className="mt-1 block text-[12px]" style={{ color: "var(--color-bt-warning)" }} data-testid="recredit-game-unequal">
+                                {g.unequalTeams}
+                              </span>
+                            )}
                           </span>
                         </button>
                       </li>

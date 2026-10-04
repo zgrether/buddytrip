@@ -33,7 +33,7 @@ const preview = (over: Partial<RecreditPreview> = {}): RecreditPreview => ({
   toTeamName: "Blue",
   eligible: [
     {
-      gameId: "d1", name: "Day 1 Stroke", fromTeamId: "red", fromTeamName: "Red", fingerprint: "f1",
+      gameId: "d1", name: "Day 1 Stroke", fromTeamId: "red", fromTeamName: "Red", fingerprint: "f1", unequalTeams: null,
       before: [{ ...RED, place: 1, points: 10 }, { ...BLUE, place: 2, points: 4 }],
       after: [{ ...RED, place: 2, points: 4 }, { ...BLUE, place: 1, points: 10 }],
     },
@@ -147,5 +147,21 @@ describe("the board's note", () => {
     const html = renderToStaticMarkup(<RecreditedNote recredited={{ byName: "Zach", at: "2026-10-04T12:00:00Z" }} />);
     expect(textOf(html, "recredited-note")).toBe("Re-credited by Zach · Oct 4");
     expect(html).not.toMatch(/correct/i);
+  });
+});
+
+describe("the unequal-teams warning (#1561: warn, never block)", () => {
+  const note = "Blue would have three players counting in Day 1 Stroke, Red one — in stroke play a team's total is its players' strokes added up, so the bigger team is at a disadvantage.";
+
+  it("shows the server's sentence under the game it is about", () => {
+    const base = preview();
+    const html = render({ state: { phase: "ready", preview: { ...base, eligible: [{ ...base.eligible[0], unequalTeams: note }] } } });
+    expect(textOf(html, "recredit-game-unequal")).toBe(note);
+  });
+
+  it("says nothing when the round stays even — and the game can still be ticked", () => {
+    const html = render();
+    expect(html).not.toContain('data-testid="recredit-game-unequal"');
+    expect(html.match(/role="checkbox"/g)).toHaveLength(1);
   });
 });
