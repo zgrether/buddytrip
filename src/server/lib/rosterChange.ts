@@ -131,8 +131,17 @@ export interface RosterChangePreview {
   fingerprint: string;
   /** False: no preview needed, the change goes straight through (pre-results). */
   hasResults: boolean;
-  /** Finished games in the cup: none of their points move. */
-  finishedGames: number;
+  /**
+   * Has THIS person played in a finished game of the cup? Deliberately a yes/no
+   * with no team in it. A finished game is credited through the roster it
+   * finalized with (8a, `games.credited_roster`) — not through the person's
+   * current team, and not "no team" for someone who is on none today. The first
+   * add preview reasoned from the current assignment and told a re-added player
+   * his finished games "stay counting for no team", which in a head-to-head cup
+   * can never be true: the bug 8a fixed in the writers, recurring in the screen
+   * (Zach's look, 2026-10-04). So the preview says only that those results stand.
+   */
+  hasFinishedGames: boolean;
   /** Unfinished team-independent games that will count for the new team (or none). */
   moving: RosterGame[];
   /** Non-empty means the change will be refused — shown, not offered. */
@@ -146,17 +155,18 @@ export async function previewRosterChange(
   const [fingerprint, hasResults, finished, games] = await Promise.all([
     readRosterFingerprint(supabase, input.tripId, input.competitionId),
     competitionHasResults(supabase, input.competitionId),
-    supabase
-      .from("games")
-      .select("id", { count: "exact", head: true })
-      .eq("competition_id", input.competitionId)
-      .eq("status", "complete"),
+    supabase.from("games").select("id").eq("competition_id", input.competitionId).eq("status", "complete"),
     personUnfinishedGames(supabase, input.competitionId, input.userId),
   ]);
+  // The SAME reading of "is this person in this game" the refusal uses
+  // (`readPersonParticipation`): participant rows, 2v2 groups, pick'em sheets
+  // and bracket entrants.
+  const finishedIds = rowsOrThrow(finished, "cup's finished games").map((g) => g.id as string);
+  const played = await readPersonParticipation(supabase, finishedIds, input.userId);
   return {
     fingerprint,
     hasResults,
-    finishedGames: countOrThrow(finished, "cup's finished games"),
+    hasFinishedGames: finishedIds.some((id) => played.gameIds.has(id) || played.entrantGameIds.has(id)),
     moving: games.moving,
     blocking: games.blocking,
   };

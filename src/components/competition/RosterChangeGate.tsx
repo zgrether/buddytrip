@@ -67,7 +67,8 @@ export interface RosterGame {
 export interface RosterPreview {
   fingerprint: string;
   hasResults: boolean;
-  finishedGames: number;
+  /** This person played in a finished game. No team: see `RosterChangePreview`. */
+  hasFinishedGames: boolean;
   moving: RosterGame[];
   blocking: RosterGame[];
 }
@@ -194,20 +195,23 @@ export function RosterChangeSheet({
                     {personName} stays on the trip — this only takes them off {fromTeamName}.
                   </li>
                 )}
-                <li data-testid="roster-change-no-points">
-                  {state.preview.finishedGames === 0
-                    ? "No points move. Nothing has finished yet."
-                    : kind === "add"
-                      ? `No points move. Games ${personName} already finished stay counting for no team.`
-                      : "No points move. Finished games stay with the team they were played for."}
-                </li>
+                {/* FINISHED games: that they stand, and nothing about which team.
+                    Their credit is the roster each game finalized with (8a), so
+                    any team named here — including "no team" — would be the
+                    preview re-deriving from today's roster, which is the bug
+                    8a fixed in the writers (Zach's look). A per-team breakdown
+                    would grow into a history across trades nobody asked for.
+                    No line at all when they played in none. */}
+                {state.preview.hasFinishedGames && (
+                  <li data-testid="roster-change-finished">
+                    {personName} has played in some earlier games — those results will stand.
+                  </li>
+                )}
                 {state.preview.moving.map((g) => (
                   <li key={g.gameId} data-testid="roster-change-moving">
-                    {g.name} isn&rsquo;t finished — {personName}&rsquo;s result in it will count for{" "}
-                    {destination ?? "no team"} when it is.
+                    {g.name} will count for {destination ?? "no team"} when it finishes.
                   </li>
                 ))}
-                <li data-testid="roster-change-projections">Live projections update straight away.</li>
               </ul>
             )}
           </div>
