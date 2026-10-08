@@ -72,7 +72,7 @@ export async function readCreditRoster(
   competitionId: string
 ): Promise<CreditRoster> {
   const game = rowOrThrow(
-    await supabase.from("games").select("credited_roster").eq("id", gameId).maybeSingle(),
+    await supabase.from("games").select("credited_roster, trip_id, created_at").eq("id", gameId).maybeSingle(),
     { code: "NOT_FOUND", message: "Game not found" },
     "game's credited roster"
   );
@@ -95,5 +95,58 @@ export async function readCreditRoster(
   const rows = assigns.map((a) => ({ user_id: a.user_id as string, team_id: a.team_id as string }));
   const record: Record<string, string> = {};
   for (const r of rows) record[r.user_id] = r.team_id;
+
+  for (const d of await departedTeams(supabase, game.trip_id as string, game.created_at as string, record)) {
+    rows.push(d);
+    record[d.user_id] = d.team_id;
+  }
   return { rows, record, fromSnapshot: false };
+}
+
+/**
+ * ── A departed person's team (migration 207, ruling 7) ─────────────────────
+ *
+ * A match decided before someone left is history: it keeps its seats, and it
+ * pays the team they were on. Their assignment went with them, so the archive
+ * records that team on their departure, and this is where it is read back —
+ * ONE fallback in the ONE roster reader, so every writer gets it without a path
+ * of its own.
+ *
+ * Only for the roster built from TODAY's assignments. A stored roster is never
+ * touched: once a game has finalized it is authoritative, and anyone missing
+ * from it was on no team then.
+ *
+ * For a game that existed when they left — whether or not they have rejoined
+ * since (Zach, 2026-10-08). The case that decides it: someone wins a match,
+ * leaves before the game finalizes, then rejoins. 8b refuses to put them back
+ * on a team while they are in an unfinished team-dependent game, and their
+ * decided match keeps their seat, so they ARE — they stay teamless until it
+ * finalizes. Ignoring the departure for a rejoined member would make that win
+ * pay nobody, the silent loss ruling 7 rules out. The old worry, a stale
+ * departure team overriding a FRESH assignment, cannot arise: a fresh
+ * assignment is in today's roster, and today's roster always wins.
+ *
+ * Not for a game created AFTER they left: they were not in it as the person
+ * the record describes, and a rejoined member's team there is today's.
+ *
+ * Every read here fails closed (`rowsOrThrow`): a failed read is never data to
+ * a writer, and these feed finalize.
+ */
+async function departedTeams(
+  supabase: SupabaseClient,
+  tripId: string,
+  gameCreatedAt: string,
+  current: Record<string, string>
+): Promise<CreditRosterRow[]> {
+  const gameBorn = new Date(gameCreatedAt).getTime();
+
+  // One cup per trip (`competitions_one_per_trip`), so a recorded team is this
+  // cup's; a team deleted since is NULL (ON DELETE SET NULL) and skipped.
+  return rowsOrThrow(
+    await supabase.from("trip_departures").select("user_id, team_id, left_at").eq("trip_id", tripId),
+    "trip's departures"
+  )
+    .filter((d) => d.team_id != null && !(d.user_id in current))
+    .filter((d) => new Date(d.left_at as string).getTime() > gameBorn)
+    .map((d) => ({ user_id: d.user_id as string, team_id: d.team_id as string }));
 }

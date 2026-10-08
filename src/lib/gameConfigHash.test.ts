@@ -137,7 +137,9 @@ function writesHashedState(body: string): boolean {
   // The guest merge (`merge_guest_to_real_user`) repoints game_participants,
   // game_matches sides and game_delegates. Two RPCs reach it: an owner linking a
   // placeholder to an account, and a holder claiming an invite (#1507).
-  const writesViaRpc = /\.rpc\("(set_pickem|save_pickem|reset_|apply_|link_guest_to_account|claim_placeholder_by_invite)/.test(body);
+  // `archive_trip_member` (PR 8d) vacates seats and participation in the trip's
+  // unfinished games, inside SQL where a router scan cannot see it.
+  const writesViaRpc = /\.rpc\("(set_pickem|save_pickem|reset_|apply_|link_guest_to_account|claim_placeholder_by_invite|archive_trip_member)/.test(body);
   return writesGameRow || writesHashedTable || writesViaRpc;
 }
 
@@ -157,7 +159,7 @@ function libFunctions(source: string): Array<[string, string]> {
 /**
  * `src/server/lib` functions that write hashed state — directly, or by calling
  * another one (closed to a fixpoint). #1507: `tripMembers.remove` moves the hash
- * through `clearTripParticipation` → `vacateTripGameSeats`, two calls deep, and
+ * through shared server code (since PR 8d, the `archive_trip_member` RPC), and
  * a scan of router bodies alone could not see it.
  */
 function hashWritingLibFunctions(): Set<string> {
@@ -276,8 +278,9 @@ describe("every client writer of hashed state refreshes games.configHash", () =>
     expect(movers.has("matches.setPairings")).toBe(true);
     // #1507: writes reached through SHARED SERVER CODE or the guest merge. Each
     // was invisible to a scan of router bodies. Removing a member vacates their
-    // seats two calls deep (clearTripParticipation -> vacateTripGameSeats).
+    // seats — since PR 8d through `archive_trip_member`, inside SQL.
     expect(movers.has("tripMembers.remove")).toBe(true);
+    expect(movers.has("tripMembers.leave")).toBe(true);
     expect(movers.has("ghostCrew.remove")).toBe(true);
     expect(movers.has("ghostCrew.update")).toBe(true);
     expect(movers.has("invites.claim")).toBe(true);

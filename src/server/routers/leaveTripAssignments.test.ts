@@ -114,8 +114,12 @@ describe("removing a member clears their cup team assignment", () => {
  * `trip_members` row and forgets the assignments re-opens exactly this bug, and
  * no behavioural test can fail for code that hasn't been added.
  */
-describe("every trip_members deletion in the app clears assignments too", () => {
-  it("no server file deletes a membership row without calling the helper", async () => {
+describe("the archive is the only way the app ends a membership", () => {
+  // PR 8d: `archive_trip_member` is the one path for leaving and removal, and it
+  // clears assignments, seats, sheets and grants in the same transaction. So the
+  // rule is no longer "a delete must call the clean-up helper" — there is no
+  // helper any more — but "no server file deletes a membership row at all".
+  it("no server file deletes a membership row directly", async () => {
     const fs = await import("node:fs/promises");
     const path = await import("node:path");
     const root = path.resolve(__dirname, "..");
@@ -131,19 +135,23 @@ describe("every trip_members deletion in the app clears assignments too", () => 
       return out;
     }
 
+    // `.from("trip_members")` followed by a `.delete(` within a few lines.
+    const DELETES_MEMBERSHIP = /\.from\(\s*["']trip_members["']\s*\)[\s\S]{0,200}?\.delete\(/;
     const offenders: string[] = [];
+    let scanned = 0;
     for (const file of await walk(root)) {
+      scanned++;
       const src = await fs.readFile(file, "utf8");
-      // `.from("trip_members")` followed by a `.delete(` within a few lines.
-      const deletesMembership = /\.from\(\s*["']trip_members["']\s*\)[\s\S]{0,200}?\.delete\(/.test(src);
-      // The UMBRELLA, not either half of it. A path that called only
-      // `clearTripTeamAssignments` would satisfy the old form of this check and
-      // still leave the match seat behind — which is exactly what both removal
-      // paths did until #1016.
-      if (deletesMembership && !src.includes("clearTripParticipation")) {
-        offenders.push(path.relative(root, file));
-      }
+      const deletesMembership = DELETES_MEMBERSHIP.test(src);
+      if (deletesMembership) offenders.push(path.relative(root, file));
     }
+
+    // Positive control: the walk saw the routers (so an empty list is not an
+    // empty search), and the pattern catches the shape it exists to catch —
+    // the removal both routers used to perform before PR 8d.
+    expect(scanned).toBeGreaterThan(10);
+    const oldRemoval = 'await ctx.supabase\n        .from("trip_members")\n        .delete()\n        .eq("trip_id", ctx.tripId)';
+    expect(DELETES_MEMBERSHIP.test(oldRemoval)).toBe(true);
 
     // `merge_guest_to_real_user` is not in this set because it lives in SQL, and
     // it is exempt on purpose: it deletes a membership row as PK-collision

@@ -526,7 +526,8 @@ describe("projectGame — no matches paired", () => {
       {
         schema: null,
         modifiers: null,
-        // result kept, sides nulled — what vacateTripGameSeats leaves behind
+        // result kept, sides nulled — what removal left behind before PR 8d
+        // (migration 207 now keeps a decided match's seats); still a readable state
         matches: [{ id: "m1", side_a: null, side_b: null, result: "a_win" }],
         parts: [],
         playGroups: [],

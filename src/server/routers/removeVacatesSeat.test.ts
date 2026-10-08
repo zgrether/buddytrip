@@ -130,24 +130,24 @@ afterAll(async () => {
 }, 60_000);
 
 describe("removing a crew member vacates their match seat", () => {
-  it("REFUSES while they have scores, then vacates once the scores are cleared", async () => {
-    // The reported sequence end to end. Both halves are in one test on purpose:
-    // the refusal is only meaningful as the step the vacate happens AFTER.
-    const cup = await vacateCup("cleared");
+  it("a match still being PLAYED: the seat empties even with a score in it, and the score stays", async () => {
+    // PR 8d (ruling 7): someone leaving mid-round really has left, so an
+    // UNDECIDED match loses their seat even once it has scores. Until 8d this
+    // refused ("can't be removed") until the scores were reset. The score row is
+    // history and stays; only a DECIDED match keeps its seat (migration 207,
+    // pinned in tripArchiveDecidedMatches.db.test.ts).
+    const cup = await vacateCup("underway");
     const { tripId } = cup;
-    const { gameId, m1, m2 } = await pairedGame(cup, "Cleared Then Removed");
+    const { gameId, m1, m2 } = await pairedGame(cup, "Removed Mid-Round");
     await ctx.caller().matches.enableScoring({ tripId, gameId });
     await ctx.caller().scores.upsertEntry({
       tripId, gameId, participantId: member, unitLabel: "1", value: 4,
     });
 
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: member })
-    ).rejects.toThrow(/can't be removed/i);
-    expect((await seats(gameId))[m1].side_b?.id).toBe(member); // still seated
-
-    await ctx.caller().games.resetScoring({ tripId, gameId });
     await ctx.caller().tripMembers.remove({ tripId, userId: member });
+    const { count: kept } = await ctx.admin.from("score_entries")
+      .select("id", { count: "exact", head: true }).eq("game_id", gameId).eq("participant_id", member);
+    expect(kept).toBe(1);
 
     const after = await seats(gameId);
     expect(after[m1].side_b).toBeNull();                 // the seat is empty, not a person
@@ -242,7 +242,7 @@ describe("removing a crew member vacates their match seat", () => {
 });
 
 describe("the guard sees the score in both of its storage shapes", () => {
-  it("BLOCKS on recorded hole outcomes, which are not score_entries", async () => {
+  it("SEES recorded hole outcomes, which are not score_entries (the remove panel's warning)", async () => {
     // `entry_mode='outcome'` stores the score in `match_hole_outcomes`, and
     // `matchOutcomes.upsertOutcome` deliberately runs no recompute — so until
     // `games.finish` there is no `game_results` row and no decided match either.
@@ -266,10 +266,9 @@ describe("the guard sees the score in both of its storage shapes", () => {
     const blockers = await findContributionBlockers(ctx.admin, tripId, member);
     const game = blockers.games.find((g) => g.gameId === gameId);
     expect(game?.reasons).toContain("played-game");
-
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: member })
-    ).rejects.toThrow(/can't be removed/i);
+    // Since PR 8d the predicate drives a warning, not a refusal: removal goes
+    // through (what it does to the seat is the case at the top of this file).
+    await expect(ctx.caller().tripMembers.remove({ tripId, userId: member })).resolves.toMatchObject({ success: true });
   }, 120_000);
 
   it("does NOT block a game nobody has played (a plan stays removable)", async () => {

@@ -136,7 +136,7 @@ describe("delete_orphan_guest_user sees the JSONB match seat (migration 142)", (
   });
 
   it("CONTROL: a vacated seat releases the guest — the removal path's own sequence", async () => {
-    // `ghostCrew.remove` vacates via clearTripParticipation and THEN calls this.
+    // `ghostCrew.remove` vacates via `archive_trip_member` and THEN calls this.
     // Once the seat is NULL the guard must stop holding the row, or removal
     // would never free an email again.
     const guest = await createBareGuest("vacated-guest");
