@@ -1227,6 +1227,21 @@ column is #1568, after PR 9.
 #28), and the archive ends every grant the person holds on the trip's games, finished or not — a
 grant is a right, not history.
 
+**Swept before 8d-2 builds on it (Zach, 2026-10-08):** "any policy that grants access through a
+relationship row — a delegation, a captaincy, an invite — should also require current membership."
+Every policy and every definer helper that reads a relationship row was checked against that:
+- **Captaincy:** `is_team_captain` now requires membership too (migration 206).
+- **Scoring through participation** (`can_score_unit`, `can_score_match`,
+  `can_score_skins_grouping`): already AND'd with `is_trip_member` in every policy that calls them,
+  and each answers only about the caller.
+- **Pick'em proxy, invite claim, competition roles, guest admin:** already check the caller's
+  membership or trip role.
+- **Own votes** (`date_poll_votes`, `idea_votes` update/delete): the SELECT policies require
+  membership, which also bounds the UPDATE/DELETE (CLAUDE.md #26). Probed for date-poll votes in a
+  rolled-back transaction (a member's update admitted; the same person off the trip updates and
+  deletes 0 rows); `idea_votes` has the same shape and was not probed. Correct today, though only
+  through that coupling.
+
 **Carried to 8b:** a team deleted after a game finalized can still be named in that game's
 credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize
 that team's members would credit nowhere. Lifting the lock for team delete has to decide this.
