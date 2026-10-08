@@ -12,8 +12,11 @@ import { readCreditRoster } from "./creditRoster";
  *     "still pays A" below could be a fixture that pays A regardless.
  *   - the winner leaves before finalize: team A is still paid, and the roster
  *     recorded at the first finalize names them on A.
- *   - someone who left and CAME BACK with no team is on no team: the old record
- *     does not resurrect it.
+ *   - they win, leave and REJOIN teamless (8b will not reassign them while the
+ *     game is unfinished): the win still pays A — the departure applies to any
+ *     game that existed when they left, rejoined or not;
+ *   - a game created AFTER they left does not take the departure's team;
+ *   - a fresh assignment always beats the departure's team.
  *
  * Each case builds its own cup (destructive writes, CLAUDE.md).
  */
@@ -106,20 +109,54 @@ describe("a decided match pays the team the leaver was on", () => {
     expect((g?.credited_roster as Record<string, string>)[planner]).toBe(c.teamA);
   });
 
-  it("someone who left and came back with no team is on no team", async () => {
+  it("wins, leaves, REJOINS with no team: the win still pays A at finalize", async () => {
+    // The case two features meet in. 8b will not put them back on a team while
+    // they sit in an unfinished team-dependent game, and the decided match
+    // keeps their seat — so they are back on the trip and teamless until the
+    // game finalizes. Ignoring the departure for a rejoined member would make
+    // the win pay nobody (ruling 7).
     const c = await decidedMatch("rejoined");
     expect((await ctx.authedClient("owner").rpc("archive_trip_member", { p_trip_id: c.tripId, p_user_id: planner })).error).toBeNull();
-    // Premise: the departure holds their old team.
-    const { data: dep } = await ctx.admin.from("trip_departures").select("team_id").eq("trip_id", c.tripId).eq("user_id", planner).single();
-    expect(dep?.team_id).toBe(c.teamA);
-
     const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: c.tripId, user_id: planner, role: "Member", status: "in" });
     if (back.error) throw back.error;
+    // Premise: on the trip again, and on no team.
+    const { count } = await ctx.admin.from("team_assignments")
+      .select("user_id", { count: "exact", head: true }).eq("competition_id", c.competitionId).eq("user_id", planner);
+    expect(count).toBe(0);
+
+    await ctx.caller().games.finish({ tripId: c.tripId, gameId: c.gameId });
+
+    const pts = await teamPoints(c.gameId);
+    expect(pts[c.teamA]).toBeGreaterThan(pts[c.teamB] ?? 0);
+    const { data: g } = await ctx.admin.from("games").select("credited_roster").eq("id", c.gameId).single();
+    expect((g?.credited_roster as Record<string, string>)[planner]).toBe(c.teamA);
+  });
+
+  it("a game created AFTER they left does not take the departure's team", async () => {
+    const c = await decidedMatch("later game");
+    expect((await ctx.authedClient("owner").rpc("archive_trip_member", { p_trip_id: c.tripId, p_user_id: planner })).error).toBeNull();
+    const later = (await ctx.caller().games.create({
+      tripId: c.tripId, gameTypeId: MATCH_PLAY, name: "Created later", competitionId: c.competitionId,
+      pointsDistribution: { type: "per_match", value: 1 },
+    })) as { id: string };
+
+    expect((await readCreditRoster(ctx.admin, later.id, c.competitionId)).record[planner]).toBeUndefined();
+    // Control in the same breath: the game that existed when they left does.
+    expect((await readCreditRoster(ctx.admin, c.gameId, c.competitionId)).record[planner]).toBe(c.teamA);
+  });
+
+  it("a FRESH assignment always beats the departure's team", async () => {
+    const c = await decidedMatch("fresh team");
+    expect((await ctx.authedClient("owner").rpc("archive_trip_member", { p_trip_id: c.tripId, p_user_id: planner })).error).toBeNull();
+    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: c.tripId, user_id: planner, role: "Member", status: "in" });
+    if (back.error) throw back.error;
+    // Written directly: 8b refuses this through the app while the game is
+    // unfinished, which is exactly why the departure team is safe to use. This
+    // pins the precedence for the day that is no longer true.
+    await ctx.assignTeam(c.competitionId, c.teamB, [planner]);
 
     const roster = await readCreditRoster(ctx.admin, c.gameId, c.competitionId);
     expect(roster.fromSnapshot).toBe(false);
-    expect(roster.record[planner]).toBeUndefined();
-    // Control in the same read: a current assignment is still there.
-    expect(roster.record[owner]).toBe(c.teamA);
+    expect(roster.record[planner]).toBe(c.teamB);
   });
 });

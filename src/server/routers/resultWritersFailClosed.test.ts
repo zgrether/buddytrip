@@ -136,7 +136,7 @@ describe("golf match play — games.finish", () => {
     // the credited roster's — and with THAT failing, Alpha keeps its 3.
     await failingFinish(gameId, ...read);
     expect(await teamRows(gameId)).toEqual({ [alpha]: 3, [bravo]: 0 });
-    await expect(failingFinish(gameId, "games", "credited_roster, trip_id")).rejects.toThrow(SENTENCE("game's credited roster"));
+    await expect(failingFinish(gameId, "games", "credited_roster, trip_id, created_at")).rejects.toThrow(SENTENCE("game's credited roster"));
     expect(await teamRows(gameId)).toEqual({ [alpha]: 3, [bravo]: 0 });
   }, 180_000);
 
@@ -201,7 +201,7 @@ describe("the SETUP path — a pairing edit on a finished game", () => {
     // read failing it used to write Alpha 0, Bravo 0 over a finished result. A
     // finished game now reads its CREDITED roster instead of the live one (203),
     // so that is the read failed here.
-    const failing = callerFailingRead(ctx, "owner", { table: "games", columns: "credited_roster, trip_id" });
+    const failing = callerFailingRead(ctx, "owner", { table: "games", columns: "credited_roster, trip_id, created_at" });
     await expect(failing.matches.setPointValue({ tripId, gameId, matchId, value: 5 })).resolves.toEqual({ ok: true });
     expect(await teamRows(gameId)).toEqual({ [alpha]: 3, [bravo]: 0 });
 
