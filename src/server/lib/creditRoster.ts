@@ -72,7 +72,7 @@ export async function readCreditRoster(
   competitionId: string
 ): Promise<CreditRoster> {
   const game = rowOrThrow(
-    await supabase.from("games").select("credited_roster").eq("id", gameId).maybeSingle(),
+    await supabase.from("games").select("credited_roster, trip_id").eq("id", gameId).maybeSingle(),
     { code: "NOT_FOUND", message: "Game not found" },
     "game's credited roster"
   );
@@ -95,5 +95,62 @@ export async function readCreditRoster(
   const rows = assigns.map((a) => ({ user_id: a.user_id as string, team_id: a.team_id as string }));
   const record: Record<string, string> = {};
   for (const r of rows) record[r.user_id] = r.team_id;
+
+  for (const d of await departedTeams(supabase, game.trip_id as string, record)) {
+    rows.push(d);
+    record[d.user_id] = d.team_id;
+  }
   return { rows, record, fromSnapshot: false };
+}
+
+/**
+ * ── A departed person's team (migration 207, ruling 7) ─────────────────────
+ *
+ * A match decided before someone left is history: it keeps its seats, and it
+ * pays the team they were on. Their assignment went with them, so the archive
+ * records that team on their departure, and this is where it is read back —
+ * ONE fallback in the ONE roster reader, so every writer gets it without a path
+ * of its own.
+ *
+ * Only for the roster built from TODAY's assignments. A stored roster is never
+ * touched: once a game has finalized it is authoritative, and anyone missing
+ * from it was on no team then.
+ *
+ * Only for people who are NOT on the trip now. Someone who left and came back
+ * is a member again, and their team is whatever today's roster says — on no
+ * team if they have not been assigned since. The old record must not
+ * resurrect a team they no longer hold. A person in today's roster is never
+ * overridden either.
+ *
+ * Every read here fails closed (`rowsOrThrow`): a failed read is never data to
+ * a writer, and these feed finalize.
+ */
+async function departedTeams(
+  supabase: SupabaseClient,
+  tripId: string,
+  current: Record<string, string>
+): Promise<CreditRosterRow[]> {
+
+  // One cup per trip (`competitions_one_per_trip`), so a recorded team is this
+  // cup's; a team deleted since is NULL (ON DELETE SET NULL) and skipped.
+  const departed = rowsOrThrow(
+    await supabase.from("trip_departures").select("user_id, team_id").eq("trip_id", tripId),
+    "trip's departures"
+  ).filter((d) => d.team_id != null && !(d.user_id in current));
+  if (departed.length === 0) return [];
+
+  const back = new Set(
+    rowsOrThrow(
+      await supabase
+        .from("trip_members")
+        .select("user_id")
+        .eq("trip_id", tripId)
+        .in("user_id", departed.map((d) => d.user_id as string)),
+      "departed people still on the trip"
+    ).map((m) => m.user_id as string)
+  );
+
+  return departed
+    .filter((d) => !back.has(d.user_id as string))
+    .map((d) => ({ user_id: d.user_id as string, team_id: d.team_id as string }));
 }

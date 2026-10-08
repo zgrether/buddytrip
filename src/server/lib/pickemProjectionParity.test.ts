@@ -49,6 +49,8 @@ function db(scoringModel: "match_play" | "points", distribution: unknown, extra:
       { id: RED, name: "Red", short_name: "RED", color: "#ef4444", competition_id: COMP },
     ],
     competitions: [{ id: COMP, defending_team_id: null, scoring_model: scoringModel }],
+    // Nobody has left this trip. The roster reader asks (ruling 7, migration 207).
+    trip_departures: [],
     games: [{
       id: GAME, name: "Pick'em", competition_id: COMP, points_distribution: distribution,
       points_total: 8, status: "active", game_type_id: "gtt_pickem",
