@@ -14,7 +14,7 @@ import { usesScoringLifecycle } from "@/lib/formatSurface";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { CannotProjectReason } from "@/lib/gameProjection";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
-import { EYEBROW } from "@/lib/typeScale";
+import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
 
 export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
 
@@ -771,6 +771,30 @@ export function GridColumnHeader({ teams }: { teams: LBTeam[] }) {
  *                already gives points cups the full per-game team-column grid,
  *                so this compact row isn't duplicating that.
  */
+/** "Re-credited by Zach · Oct 4". */
+export function recreditedNoteText(r: { byName: string; at: string }): string {
+  const day = new Date(r.at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `Re-credited by ${r.byName} · ${day}`;
+}
+
+/**
+ * The visible half of a re-credit (PR 8c). It changes standings after the fact,
+ * and a silent one breeds suspicion, so every member sees who did it and when.
+ * Under the game's NAME rather than beside its result: the result is still the
+ * current one, and the IN REVIEW badge owns that slot for a different act.
+ */
+export function RecreditedNote({ recredited }: { recredited: { byName: string; at: string } }) {
+  return (
+    <span
+      className="block truncate"
+      style={{ fontSize: TYPE_SCALE.caption, color: "var(--color-bt-text-dim)" }}
+      data-testid="recredited-note"
+    >
+      {recreditedNoteText(recredited)}
+    </span>
+  );
+}
+
 export function CompletedRow({
   game,
   teams,
@@ -813,11 +837,14 @@ export function CompletedRow({
         className: "shrink-0",
         style: { color: "var(--color-bt-text-dim)" },
       })}
-      <span
-        className="min-w-0 flex-1 truncate text-[13px] font-medium"
-        style={{ color: "var(--color-bt-text)" }}
-      >
-        {game.name}
+      <span className="min-w-0 flex-1">
+        <span
+          className="block truncate text-[13px] font-medium"
+          style={{ color: "var(--color-bt-text)" }}
+        >
+          {game.name}
+        </span>
+        {game.recredited && <RecreditedNote recredited={game.recredited} />}
       </span>
       {/* IN REVIEW REPLACES the result — it does not sit beside it, and the
           numbers are not dimmed behind it. A game re-opened for a correction has

@@ -1170,6 +1170,12 @@ games, so it can see a gap. Nothing needed re-backfilling.
 
 ### 8c — re-credit, ruled 2026-10-04 (migration 204)
 
+**Migration 204 is in production (2026-10-04)**, from #1560, pushed from clean `main` after a
+dry run. Verified there: the version is recorded; the four functions are present; the table
+grants `authenticated` SELECT only, with RLS on and one policy; `anon` holds no table privilege
+and cannot execute the re-credit functions; the stale refusals raise 55000 (zero 40001
+clauses); reset and merge carry their new lines. No rows yet.
+
 **Verify-first findings that changed the plan's wording:**
 - **Stroke play and skins live only in points races** (`allowedContainers: ["points_race"]`,
   refused by `games.create`). So "a correction on a head-to-head game is refused" cannot occur
@@ -1202,6 +1208,19 @@ games, so it can see a gap. Nothing needed re-backfilling.
    the person's team; confirm refuses if either moved and records what it actually did.
    Before/after come from the board's own `computeCompetitionLeaderboard` via a team-rows
    what-if — per game only; no claim is made that a cup total moves by their sum.
+
+**From the look (2026-10-04):**
+- The sheet names the direction, "Centurions → Spartans" — "counts for Centurions now" read
+  both ways — and labels its points line, which is the Owner's only warning before a re-credit
+  that hurts the team someone joins.
+- **The stroke/skins team total is a SUM** (#1561, flagged latent in Phase 0), so team size
+  decides results — and 8b's trades and 8c's re-credits make unequal teams routine. **Zach's
+  ruling: keep the sum, warn — never block**, with the direction in the copy (traditional: the
+  bigger team is at a disadvantage; Stableford and skins: an advantage). The re-credit sheet
+  warns in 8c (`unequalTeamsNote`); game setup and the trade preview are #1562, **before PR 9**,
+  whose standings and projections sit on this rule; optional best-N per game is #1563, after.
+  All four finished BBMI stroke/skins games had equal finishers per team, so no recorded
+  standing was skewed.
 
 **Decided in the build, worth knowing:**
 - A scoring reset deletes the game's re-credits: the replayed game is credited afresh, and a

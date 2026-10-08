@@ -39,6 +39,7 @@ import { Avatar } from "@/components/Avatar";
 import { RowNumber } from "@/components/games/RowNumber";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 import { useTripRole } from "@/hooks/useTripRole";
+import { RecreditButton, useRecreditCandidates } from "./Recredit";
 import { rosterGateDecision, useRosterChangeGate } from "./RosterChangeGate";
 import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
@@ -211,6 +212,12 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         // which the app bar reads on every tab — cached with staleTime: Infinity,
         // so it only refreshes if invalidated here.
         u.competitions.myTeamColor.invalidate({ tripId: queryKey.tripId });
+        // Who the Owner could re-credit (PR 8c) is "credited somewhere other
+        // than where they are NOW" — so a move, add or removal changes it.
+        // Found on the 8c fixture build: Bob moved to Spartans and his
+        // "Re-credit" button only appeared after a reload. (A no-op for anyone
+        // but the Owner: the query is never enabled for them.)
+        if (leaderboard) u.recredits.candidates.invalidate({ tripId: queryKey.tripId, competitionId: queryKey.competitionId });
       },
     },
     burst
@@ -1066,6 +1073,25 @@ function CrewRoster({
     (m) => !assignmentByUser.has(m.user_id ?? m.memberId)
   );
 
+  // Re-credit (PR 8c) for someone on NO team: a finished game can still count
+  // them for a team they have since left, and the Owner may decide it should
+  // count for none. Their row lives here, not in any Edit Team sheet.
+  const recreditCandidates = useRecreditCandidates(tripId, competitionId);
+  const unassignedRecredits = unassigned.filter((m) => !!m.user_id && recreditCandidates.has(m.user_id));
+  const recreditBlock = unassignedRecredits.length > 0 && (
+    <div className="mt-2 space-y-1.5" data-testid="crew-recredit">
+      {unassignedRecredits.map((m) => (
+        <RecreditButton
+          key={m.user_id as string}
+          tripId={tripId}
+          competitionId={competitionId}
+          userId={m.user_id as string}
+          personName={m.displayName}
+        />
+      ))}
+    </div>
+  );
+
   const { assign, remove } = useTeamAssignmentMutations(tripId, competitionId);
   const [dragOver, setDragOver] = useState(false);
 
@@ -1202,6 +1228,7 @@ function CrewRoster({
           </div>
         )}
         </div>
+        {recreditBlock}
       </section>
 
       {/* ── Mobile fallback: unassigned members only, with team picker.
@@ -1286,6 +1313,7 @@ function CrewRoster({
             })}
           </div>
         )}
+        {recreditBlock}
       </div>
     </>
   );
@@ -2171,6 +2199,8 @@ function TeamSheetRoster({
     setActiveId(null);
   };
   const handleDragCancel = () => setActiveId(null);
+  const recreditCandidates = useRecreditCandidates(tripId, competitionId);
+  const recreditable = roster.filter((a) => recreditCandidates.has(a.user_id));
   const activeAssignment = activeId ? roster.find((a) => a.user_id === activeId) : null;
   const activeMember = activeAssignment ? memberById.get(activeAssignment.user_id) : null;
   const activeIndex = activeId ? orderedIds.indexOf(activeId) : -1;
@@ -2332,6 +2362,23 @@ function TeamSheetRoster({
         >
           {CAPTAIN_LOCKED_NOTE}
         </p>
+      )}
+
+      {/* Re-credit (PR 8c, Owner only): a player whose finished game counted
+          them for the wrong team. Shown only for someone with a game to fix —
+          the candidates query is never sent for anyone but the Owner. */}
+      {recreditable.length > 0 && (
+        <div className="mt-3 space-y-1.5" data-testid="teamsheet-recredit">
+          {recreditable.map((a) => (
+            <RecreditButton
+              key={a.user_id}
+              tripId={tripId}
+              competitionId={competitionId}
+              userId={a.user_id}
+              personName={memberById.get(a.user_id)?.displayName ?? "This player"}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

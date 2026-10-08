@@ -3,6 +3,7 @@ import { rowsOrThrow } from "@/server/lib/rowOrThrow";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { isBracketGame } from "@/lib/resultStrategy";
 import { isConfigured, isNew, ROSTER_TYPES } from "@/server/lib/gameReadiness";
+import { tripDisplayNames } from "@/server/lib/tripDisplayNames";
 
 /**
  * ONE derivation of a game's board row — its lifecycle section, readiness and
@@ -35,6 +36,9 @@ export interface BoardInputs {
   entrantCountByGame: Map<string, number>;
   /** Games that have begun producing results (`game_started`, migration 161). */
   startedByGame: Set<string>;
+  /** The latest re-credit of each finished game (PR 8c): who, by their trip
+   *  name, and when. Empty on the side board — a side game has no teams. */
+  recreditByGame: Map<string, { byName: string; at: string }>;
 }
 
 type GameRow = Record<string, unknown> & { id: unknown; game_type_id: unknown; competition_format?: unknown };
@@ -52,7 +56,10 @@ type GameRow = Record<string, unknown> & { id: unknown; game_type_id: unknown; c
 export async function readBoardInputs(
   supabase: SupabaseClient,
   games: GameRow[],
-  owner: "cup's" | "trip's"
+  owner: "cup's" | "trip's",
+  /** The trip whose names a re-credit note uses. Null skips the read (the side
+   *  board: no competition, so nothing can have been re-credited). */
+  recreditsTripId: string | null = null
 ): Promise<BoardInputs> {
   const gameIds = games.map((g) => g.id as string);
   // A game's bracket-ness is resolved the way `games.finish` resolves it, so the
@@ -115,7 +122,49 @@ export async function readBoardInputs(
     totalMatchRowsByGame,
     entrantCountByGame,
     startedByGame,
+    recreditByGame: await readRecredits(supabase, games, owner, recreditsTripId),
   };
+}
+
+/**
+ * "Re-credited by Zach · Oct 4" (PR 8c). A re-credit changes standings after
+ * the fact; a silent one breeds suspicion, so every member sees who moved a
+ * finished game's credit and when. The before-and-after detail stays in
+ * `game_recredits` for anyone investigating — the row says only who and when.
+ *
+ * Only FINISHED games can carry one, so only they are read. The name is the
+ * one the crew knows the Owner by (`tripDisplayNames`), like every other
+ * person named on the board.
+ */
+async function readRecredits(
+  supabase: SupabaseClient,
+  games: GameRow[],
+  owner: "cup's" | "trip's",
+  tripId: string | null
+): Promise<Map<string, { byName: string; at: string }>> {
+  const out = new Map<string, { byName: string; at: string }>();
+  const finished = games.filter((g) => g.status === "complete").map((g) => g.id as string);
+  if (!tripId || finished.length === 0) return out;
+  const rows = rowsOrThrow(
+    await supabase
+      .from("game_recredits")
+      .select("game_id, recredited_by, recredited_at")
+      .in("game_id", finished)
+      .order("recredited_at", { ascending: false }),
+    `${owner} re-credits`
+  ) as { game_id: string; recredited_by: string | null; recredited_at: string }[];
+  if (rows.length === 0) return out;
+  const latest = new Map<string, { by: string | null; at: string }>();
+  for (const r of rows) if (!latest.has(r.game_id)) latest.set(r.game_id, { by: r.recredited_by, at: r.recredited_at });
+  const names = await tripDisplayNames(
+    supabase,
+    tripId,
+    [...latest.values()].map((l) => l.by).filter((b): b is string => !!b)
+  );
+  for (const [gameId, l] of latest) {
+    out.set(gameId, { byName: (l.by && names.get(l.by)) || "Someone", at: l.at });
+  }
+  return out;
 }
 
 /**
@@ -169,6 +218,9 @@ export function boardRow(g: GameRow, inputs: BoardInputs, pointsTotal: number | 
     // Re-opened for a score correction; only meaningful once `status` is
     // "complete". Not role-gated: members correct their own scores in it.
     correctionsOpen: g.corrections_open === true,
+    // The latest re-credit (PR 8c) — who and when, for the finished row's note.
+    // A different act from a correction above, and named apart from it.
+    recredited: inputs.recreditByGame.get(gid) ?? null,
     // Points in play (§A5 outer column).
     pointsTotal,
     // The trip's ONE game order (PR 6b) — what lets the games page merge the

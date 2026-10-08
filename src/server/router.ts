@@ -12,6 +12,7 @@ import { quickInfoTilesRouter } from "./routers/quickInfoTiles";
 import { competitionsRouter } from "./routers/competitions";
 import { teamsRouter } from "./routers/teams";
 import { teamAssignmentsRouter } from "./routers/teamAssignments";
+import { recreditsRouter } from "./routers/recredits";
 import { logisticsRouter } from "./routers/logistics";
 import { scheduleRouter } from "./routers/schedule";
 import { golfCoursesRouter } from "./routers/golfCourses";
@@ -43,6 +44,7 @@ export const appRouter = router({
   competitions: competitionsRouter,
   teams: teamsRouter,
   teamAssignments: teamAssignmentsRouter,
+  recredits: recreditsRouter,
   logistics: logisticsRouter,
   schedule: scheduleRouter,
   golfCourses: golfCoursesRouter,

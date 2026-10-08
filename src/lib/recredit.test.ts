@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { recreditTeamRows, recreditedRoster, TEAM_SCORING } from "./recredit";
+import { finishersByTeam, recreditTeamRows, recreditedRoster, TEAM_SCORING, unevenTeams, unevenTeamsExplanation } from "./recredit";
 
 const ids = () => {
   let n = 0;
@@ -62,5 +62,47 @@ describe("recreditTeamRows — the team rows a finalize through the new roster w
       ids()
     );
     expect(rows.find((r) => r.entity_id === "blue")?.raw_score).toBe(71);
+  });
+});
+
+describe("unevenTeams — a short tag, and the explanation in the right direction (#1561's ruling)", () => {
+  const TEAMS = [{ teamId: "red", teamName: "Centurions" }, { teamId: "blue", teamName: "Spartans" }];
+  const counts = (red: number, blue: number) => new Map([["red", red], ["blue", blue]]);
+
+  it("the tag: biggest team first, as digits", () => {
+    expect(unevenTeams({ scoring: "traditional", counts: counts(1, 2), teams: TEAMS })?.tag).toBe("Uneven teams: Spartans 2, Centurions 1");
+  });
+
+  it("traditional stroke: the bigger team is at a DISADVANTAGE", () => {
+    expect(unevenTeams({ scoring: "traditional", counts: counts(1, 2), teams: TEAMS })?.explanation).toBe(
+      "In stroke play a team's total adds up its players' strokes, so the bigger team is at a disadvantage."
+    );
+  });
+
+  it("Stableford: the bigger team is at an ADVANTAGE", () => {
+    expect(unevenTeamsExplanation("stableford")).toBe(
+      "In Stableford a team's total adds up its players' points, so the bigger team is at an advantage."
+    );
+  });
+
+  it("skins: an advantage, counted in skins", () => {
+    expect(unevenTeamsExplanation(TEAM_SCORING.gtt_skins(null))).toBe(
+      "In skins a team's total adds up its players' skins, so the bigger team is at an advantage."
+    );
+  });
+
+  it("even teams: nothing to say", () => {
+    expect(unevenTeams({ scoring: "traditional", counts: counts(2, 2), teams: TEAMS })).toBeNull();
+  });
+
+  it("a team with nobody counting is listed at 0 — the most uneven case", () => {
+    expect(unevenTeams({ scoring: "traditional", counts: new Map([["red", 2]]), teams: TEAMS })?.tag).toBe(
+      "Uneven teams: Centurions 2, Spartans 0"
+    );
+  });
+
+  it("finishersByTeam counts only people with a result, through the given roster", () => {
+    const rows = [...PEOPLE, { entity_id: "dan", raw_score: null, position: null }, { entity_id: "eve", raw_score: 80, position: 4 }];
+    expect(finishersByTeam(rows, { ...ROSTER, dan: "blue" })).toEqual(new Map([["red", 2], ["blue", 1]]));
   });
 });
