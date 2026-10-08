@@ -73,6 +73,13 @@ R1's shape has changed under it — see §2. What remains:
 
 ### Composable competitions — carried notes (the build plan lives outside the repo)
 
+- **Revisit "re-credit" as DISPLAY copy (Zach, 2026-10-08).** It ships as the screen word for
+  now (PR 8c: "Re-credit Bob's games", "Re-credited by …"), and the code and DB names
+  (`game_recredits`, `recredits.*`) stay whatever the copy becomes. Whatever replaces it must
+  not be "recalculate" or similar: re-crediting moves a finished game's credit between teams
+  and leaves every score untouched, and a word implying the scores changed would be the
+  reading the board's note exists to prevent.
+
 - **One competition per trip is a DATABASE rule, and lifting it is a deliberate decision.**
   `competitions_one_per_trip` (UNIQUE (trip_id), migration 195, PR 6a — ruled 2026-09-22).
   Before 195 it was a read-first `if` in `competitions.create`, whose comment called the
