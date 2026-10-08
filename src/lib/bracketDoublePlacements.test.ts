@@ -196,3 +196,42 @@ describe("roll-up — verified against the single-elim path, not only itself", (
     expect(points.get("B")).toBe(6);
   });
 });
+
+describe.each([4, 8])("the grand-final reset is still owed at %i entrants (#1417)", (n) => {
+  /** Play until the next playable match is the RESET, then stop. */
+  function upToReset() {
+    const draw = buildDoubleDraw(n);
+    const winners: WinnerBySeed = {};
+    const choose = comebackStrategy();
+    for (let i = 0; i < draw.length + 5; i++) {
+      const resolved = resolveDoubleDraw(draw, winners);
+      const next = resolved.find((m) => m.playable);
+      if (!next) throw new Error("settled before the reset — the fixture never reached it");
+      if (next.bracket === "final" && next.round === 2) return { draw, winners, resolved, reset: next };
+      winners[matchKey(next)] = choose(next);
+    }
+    throw new Error("never reached the reset");
+  }
+
+  it("places NOBODY while the reset is owed — the first final's winner is not yet champion", () => {
+    const { resolved } = upToReset();
+    // Premise, asserted: the first final HAS a winner (the lower-bracket
+    // survivor, seed 1), and the other finalist still holds a life. That is
+    // exactly the state `decidedFinal` used to read as a finished bracket.
+    const first = resolved.find((m) => m.bracket === "final" && m.round === 1)!;
+    expect(first.winnerSeed).toBe(1);
+    const other = first.aSeed === 1 ? first.bSeed! : first.aSeed!;
+    expect(livesOf(lossesBySeed(resolved), other)).toBe(1);
+
+    expect(doubleBracketPlacements(resolved)).toEqual([]);
+  });
+
+  it("CONTROL: once the reset is played, everyone is placed — the gate is the draw, not the function", () => {
+    const { draw, winners, reset } = upToReset();
+    winners[matchKey(reset)] = 1;
+    const done = resolveDoubleDraw(draw, winners);
+    const places = doubleBracketPlacements(done);
+    expect(places).toHaveLength(n);
+    expect(places.find((p) => p.position === 1)?.seed).toBe(1);
+  });
+});

@@ -23,7 +23,7 @@
  * in this file. Length is the payout's business, never the record's.
  */
 
-import { type ResolvedMatch } from "./bracketAdvance";
+import { drawComplete, type ResolvedMatch } from "./bracketAdvance";
 
 export interface EntrantPlacement {
   seed: number;
@@ -49,14 +49,18 @@ export interface EntrantPlacement {
  * The CONSOLATION match, when present and decided, splits what would otherwise
  * be a tie for 3rd into a real 3rd and 4th. That is the whole reason it exists:
  * it does not change what the bracket PAYS (the distribution does that), it
- * changes what the bracket can TELL APART. Undecided, the tie stands — an
- * unplayed play-off cannot separate anyone.
+ * changes what the bracket can TELL APART. While it is still owed the draw is
+ * not finished, so nobody is placed at all (#1417) — not a provisional tie.
  *
  * Returns `[]` for an unfinished draw. Callers gate on `drawComplete` and refuse
  * rather than posting a partial result; returning nothing here means a caller
  * that forgets cannot silently record half a bracket.
  */
 export function bracketPlacements(resolved: ResolvedMatch[]): EntrantPlacement[] {
+  // The contract above, made true here (#1417's single-elim analogue): with the
+  // final decided and the CONSOLATION still to play, this used to return full
+  // placements — a 3rd-place tie the play-off had not yet been allowed to split.
+  if (!drawComplete(resolved)) return [];
   const main = resolved.filter((m) => m.bracket === "main");
   if (main.length === 0) return [];
   const lastRound = main.reduce((max, m) => Math.max(max, m.round), 0);

@@ -29,7 +29,7 @@
  * tie group. Nothing here reads "4".
  */
 
-import type { ResolvedMatch } from "./bracketAdvance";
+import { drawComplete, type ResolvedMatch } from "./bracketAdvance";
 import type { EntrantPlacement } from "./bracketPlacements";
 
 /** The loser of a decided, actually-contested match. Null for a bye or an
@@ -65,6 +65,13 @@ function decidedFinal(resolved: ResolvedMatch[]): ResolvedMatch | null {
  * cannot silently record half a bracket. (Same contract as `bracketPlacements`.)
  */
 export function doubleBracketPlacements(resolved: ResolvedMatch[]): EntrantPlacement[] {
+  // The contract above, made true HERE rather than left to callers (#1417).
+  // `decidedFinal` takes any grand final with a winner, so while the RESET is
+  // still owed it read the first final and crowned the lower-bracket survivor,
+  // with the upper-bracket side still holding a life — and the reset is exactly
+  // the match that decides it. The server gated on `drawComplete`; the preview
+  // did not. Gating here means no caller can forget.
+  if (!drawComplete(resolved)) return [];
   const final = decidedFinal(resolved);
   if (!final || final.winnerSeed === null) return [];
 

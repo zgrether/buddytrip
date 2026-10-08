@@ -101,13 +101,17 @@ describe("the consolation match separates 3rd from 4th", () => {
     expect(p.find((x) => x.seed === 4)!.position).toBe(4);
   });
 
-  it("leaves the tie standing while UNDECIDED — an unplayed play-off separates nobody", () => {
+  it("places NOBODY while the play-off is still owed — the draw is not finished (#1417)", () => {
+    // Was "leaves the tie standing while UNDECIDED", asserting a 3rd-place tie
+    // with the play-off unplayed. That contradicted the function's own contract
+    // ("returns [] for an unfinished draw"): the play-off is `playable`, so
+    // `drawComplete` is false and finalize refuses — and the preview, which
+    // did not gate, showed a result finalize would never write.
     let w: WinnerBySeed = {};
     w = win(w, 1, 1, 1);
     w = win(w, 1, 2, 2);
     w = win(w, 2, 1, 1);
-    const p = placementsOf(4, w, { consolation: true });
-    expect(p.filter((x) => x.position === 3).map((x) => x.seed).sort()).toEqual([3, 4]);
+    expect(placementsOf(4, w, { consolation: true })).toEqual([]);
   });
 });
 
