@@ -125,7 +125,8 @@ export function payingSchedule(schedule: readonly number[] | null | undefined): 
  * refreshes when someone opens settings and hits Save.
  *
  * ── The bug this exists for ────────────────────────────────────────────────
- * A seat vacate (`vacateTripGameSeats`) nulls a match's `side_a`/`side_b` — no
+ * A seat vacate (`archive_trip_member`, when someone leaves) nulls a match's
+ * `side_a`/`side_b` — no
  * settings Save involved — dropping it out of the divisor immediately. Before
  * this helper, `computeMatchPlayResults` read the stale snapshot straight off
  * `games.points_distribution.value` and wrote the WRONG number into

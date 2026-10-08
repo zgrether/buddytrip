@@ -156,14 +156,14 @@ async function restore(userId: string) {
 }
 
 /**
- * The refusal, asserted at the MECHANISM.
+ * The warning, asserted at the MECHANISM (it was a refusal until PR 8d).
  *
  * `blocked === true` alone would pass against a guard refusing for an unrelated
  * reason — an expense, a stray bracket row, or a guard that refuses everyone.
  * So this pins the blocker to THIS game by id and to the reason the pick'em
  * path is supposed to produce.
  */
-async function expectBlockedBy(userId: string, gameId: string, gameName: string) {
+async function expectWarnedAbout(userId: string, gameId: string, gameName: string) {
   const info = (await ctx.caller().tripMembers.removalBlockers({ tripId, userId })) as {
     blocked: boolean;
     blockers: { games: { gameId: string; gameName: string; reasons: string[] }[] };
@@ -177,18 +177,23 @@ async function expectBlockedBy(userId: string, gameId: string, gameName: string)
   expect(hit!.reasons).toContain("played-game");
   expect(info.message).toContain(gameName);
 
-  // The mutation is the authority — the courtesy query agreeing is not enough.
+  // PR 8d: the mutation no longer refuses (ruling 2) — it ARCHIVES. What the
+  // predicate now drives is the remove panel's warning (until 8d-3). So the
+  // removal goes through and ends the membership; what happens to the sheet in
+  // an unfinished pick'em that already has results is an open ruling (ruling 6
+  // clears it, ruling 7 calls a decided unit history), so it is not pinned here.
   await expect(
     ctx.caller().tripMembers.remove({ tripId, userId })
-  ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  ).resolves.toMatchObject({ success: true });
 
   const { data: tm } = await ctx.admin
     .from("trip_members").select("user_id")
     .eq("trip_id", tripId).eq("user_id", userId).maybeSingle();
-  expect(tm, "a refusal must not half-apply").toMatchObject({ user_id: userId });
+  expect(tm, "the removal ended the membership").toBeNull();
+  await restore(userId);
 }
 
-describe("#1151/#1018 — removal guards can see a pick'em", () => {
+describe("#1151/#1018 — the removal warning can see a pick'em", () => {
   beforeAll(async () => {
     ctx = await TestContext.create();
     tripId = await ctx.createTrip("Pick'em Removal Guard Trip");
@@ -200,7 +205,7 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
     await ctx.cleanup();
   }, 60_000);
 
-  it("1 · REFUSES a PAIRED head-to-head player once a result is recorded", async () => {
+  it("1 · WARNS about a PAIRED head-to-head player once a result is recorded", async () => {
     const target = ctx.getUser("member").id;
     const other = ctx.getUser("outsider").id;
     const { gameId } = await makePickem({
@@ -222,11 +227,11 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
       .from("score_entries").select("id", { count: "exact", head: true }).eq("game_id", gameId);
     expect(se ?? 0).toBe(0);
 
-    await expectBlockedBy(target, gameId, "NFL Week 1");
+    await expectWarnedAbout(target, gameId, "NFL Week 1");
     await dropPickem(gameId);
   }, 60_000);
 
-  it("2 · REFUSES in POINTS mode, where NOBODY has a participant row", async () => {
+  it("2 · WARNS in POINTS mode, where NOBODY has a participant row", async () => {
     /**
      * The case that fails a `game_started`-only build. A points-mode pick'em has
      * no matches, so `save_pickem_matches` never runs and `myGameIds` is empty
@@ -247,11 +252,11 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
       .from("game_matches").select("id").eq("game_id", gameId);
     expect(gm ?? []).toHaveLength(0);
 
-    await expectBlockedBy(target, gameId, "Points Slate");
+    await expectWarnedAbout(target, gameId, "Points Slate");
     await dropPickem(gameId);
   }, 60_000);
 
-  it("3 · REFUSES an UNPAIRED sheet-holder in a head-to-head game", async () => {
+  it("3 · WARNS about an UNPAIRED sheet-holder in a head-to-head game", async () => {
     /**
      * The sheet deliberately survives unpairing (`save_pickem_matches`: "their
      * SHEET is untouched … a person left out of this round's matches may be
@@ -279,11 +284,11 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
       .from("pickem_picks").select("id").eq("game_id", gameId).eq("user_id", target);
     expect((pk ?? []).length, "but their sheet must survive").toBeGreaterThan(0);
 
-    await expectBlockedBy(target, gameId, "Unpaired Slate");
+    await expectWarnedAbout(target, gameId, "Unpaired Slate");
     await dropPickem(gameId);
   }, 60_000);
 
-  it("4 · REFUSES on a FINALIZED pick'em that has already paid the cup", async () => {
+  it("4 · WARNS on a FINALIZED pick'em that has already paid the cup", async () => {
     /**
      * The stage revision 1 did not know was broken. Pick'em's finalize writes
      * `game_results` rows keyed `entity_type: 'team'` and never touches
@@ -324,7 +329,7 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
     expect((gr ?? []).length).toBeGreaterThan(0);
     expect((gr ?? []).map((r) => r.entity_id)).not.toContain(target);
 
-    await expectBlockedBy(target, gameId, "Finalized Slate");
+    await expectWarnedAbout(target, gameId, "Finalized Slate");
     await dropPickem(gameId);
   }, 90_000);
 
@@ -359,9 +364,9 @@ describe("#1151/#1018 — removal guards can see a pick'em", () => {
       .eq("trip_id", tripId).eq("user_id", bystander).maybeSingle();
     expect(data).toBeNull();
 
-    // And the person who IS in it is still refused, from the same fixture —
-    // so case 5 cannot pass by the guard having been switched off entirely.
-    await expectBlockedBy(inIt, gameId, "Not Their Game");
+    // And the person who IS in it is still warned about, from the same
+    // fixture — so case 5 cannot pass by the predicate being switched off.
+    await expectWarnedAbout(inIt, gameId, "Not Their Game");
 
     await dropPickem(gameId);
     await restore(bystander);

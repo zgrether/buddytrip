@@ -6,7 +6,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { joinNoticeText } from "@/lib/joinMessage";
-import { clearTripParticipation } from "../lib/leaveTrip";
+import { archiveTripMember } from "../lib/archiveMember";
 import {
   findContributionBlockers,
   contributionRefusalMessage,
@@ -396,8 +396,8 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // remove — Owner only, removes a real member (not self)
-  // To remove ghost crew, use ghostCrew.remove instead.
+  // remove — Owner or Organizer removes someone else (Organizers: Members
+  // only). An ARCHIVE since PR 8d. To remove ghost crew, use ghostCrew.remove.
   // -----------------------------------------------------------------------
   remove: authedProcedure
     .input(
@@ -415,69 +415,41 @@ export const tripMembersRouter = router({
       if (input.userId === ctx.user!.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Cannot remove yourself",
+          // Not "use Leave trip": that button arrives with 8d-3, and a refusal
+          // must name an action the reader can actually take.
+          message: "You can't remove yourself from a trip.",
         });
       }
 
-      // The readable half of migration 123. `updateRole` is Owner-only because
-      // only the Owner changes who is trusted (PERMISSIONS.md:186), and removal
-      // is a stronger form of the same act — without this an Organizer couldn't
-      // demote a peer but could delete them. The trigger is the authority and
-      // refuses it regardless; this exists so the normal path gets a sentence
-      // naming the way forward instead of a raw database error.
-      if (ctx.tripRole !== "Owner") {
-        const { data: target } = await ctx.supabase
-          .from("trip_members")
-          .select("role")
-          .eq("trip_id", ctx.tripId)
-          .eq("user_id", input.userId)
-          .maybeSingle();
+      // PR 8d: removal is an ARCHIVE (ruling 19), through the one path leaving
+      // also takes. `archive_trip_member` applies the roster rules the old
+      // pre-check and the role-guard trigger did (Organizers remove Members;
+      // only the Owner removes an Organizer; nobody removes the Owner), keeps
+      // finished games and decided matches exactly as they are, vacates the
+      // rest, writes the departure, and ends the membership — in one
+      // transaction, so a removal can no longer half-happen.
+      //
+      // It no longer REFUSES someone with history (#951's guard). History is
+      // what the archive keeps; refusing made removal impossible on any trip
+      // that had been played (ruling 2: warn, never block). `removalBlockers`
+      // still answers for the UI until 8d-3 replaces that panel.
+      await archiveTripMember(ctx.supabase, ctx.tripId!, input.userId);
 
-        if (target && target.role !== "Member") {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message:
-              `Only the trip owner can remove ${target.role === "Owner" ? "the owner" : "an organizer"}. ` +
-              `Ask the owner to remove them, or to change their role to Member first.`,
-          });
-        }
-      }
+      return { success: true };
+    }),
 
-      // #951 — REFUSE rather than orphan. A removal deletes trip_members and
-      // nothing else: every scoring table keys to `users`, so nothing cascades
-      // and nothing errors, and the participation is silently left behind. The
-      // shared predicate is the same one `ghostCrew.remove` runs — the sibling
-      // gap #957 was exactly a guard present in one procedure and missing from
-      // its twin.
-      const blockers = await findContributionBlockers(ctx.supabase, ctx.tripId!, input.userId);
-      if (hasContributions(blockers)) {
-        const name = await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId);
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: contributionRefusalMessage(name, blockers),
-        });
-      }
-
-      const { error } = await ctx.supabase
-        .from("trip_members")
-        .delete()
-        .eq("trip_id", ctx.tripId)
-        .eq("user_id", input.userId);
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to remove member",
-        });
-      }
-
-      // Leaving the trip means leaving its cups AND its games. Without this the
-      // member keeps a `team_assignments` row for a trip they are no longer on
-      // (surfaces reading assignments directly go on counting them while the ones
-      // that intersect with the crew do not) and keeps their match seat, which
-      // renders as an unactionable "Player" — see `clearTripParticipation`.
-      await clearTripParticipation(ctx.supabase, ctx.tripId, input.userId);
-
+  // -----------------------------------------------------------------------
+  // leave — any member leaves the trip themselves (PR 8d, ruling 3). The same
+  // archive as removal, with the caller as the person: the trip leaves their
+  // list, their finished results stay attached to them, and seats in unfinished
+  // games empty. The Owner cannot leave — a trip with no Owner has nobody who
+  // can run it — and is told to transfer ownership first.
+  // -----------------------------------------------------------------------
+  leave: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .mutation(async ({ ctx }) => {
+      await archiveTripMember(ctx.supabase, ctx.tripId!, ctx.user!.id);
       return { success: true };
     }),
 

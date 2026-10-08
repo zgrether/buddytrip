@@ -92,8 +92,8 @@ export type TripGameStateUtils = {
  * The refresh owed by a write that moves the hash of games it CANNOT NAME (#1507).
  *
  * Removing a trip member (or a placeholder) vacates their seats in every game of
- * the trip — `clearTripParticipation` → `vacateTripGameSeats`, in shared server
- * code — and the guest merge (linking a placeholder to an account, or claiming
+ * the trip's unfinished games — `archive_trip_member` (migration 205), the one
+ * path leaving and removal take — and the guest merge (linking a placeholder to an account, or claiming
  * an invite) repoints `game_participants`, match sides and delegates. Each of
  * those moves `readGameConfigHash` for some set of games the client does not
  * know, so it resets the fingerprint for ALL of them (the prefix, no input) and

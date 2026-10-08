@@ -144,8 +144,8 @@ describe("#1031 — the divisor is the LIVE assigned-match count, recomputed on 
     // does not need to re-pass it, only `finish` does.
     await ctx.caller().games.enableScoring({ tripId, gameId });
 
-    // `member` has no contributions yet (no scores) — findContributionBlockers
-    // passes and the removal proceeds to clearTripParticipation → vacateTripGameSeats,
+    // `member` has no scores and the match is undecided, so the removal's
+    // archive (`archive_trip_member`, PR 8d) vacates the seat,
     // nulling match 1's side_b with NO settings Save.
     await ctx.caller().tripMembers.remove({ tripId, userId: member });
 

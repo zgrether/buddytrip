@@ -2,41 +2,55 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 
 /**
- * #951/#997 — removing a member must not destroy a RESULT.
+ * Removing someone with history (#951/#997, revised by PR 8d).
  *
- * THE RULE (corrected in #997): participation without a result is a PLAN;
- * participation with a result is HISTORY. Plans are removable, history is not.
- * Being slotted into a game nobody has scored, or drawn into a bracket nobody
- * has played, is a plan — remove them and the slot becomes a bye. The earlier
- * version of this guard blocked on a bare `game_participants` row, which was
- * stricter than the rule it was trying to enforce.
+ * #951 made removal REFUSE anyone with history, because removal used to delete
+ * the membership and leave every scoring row behind with nothing to name it.
+ * PR 8d replaced that with an ARCHIVE (ruling 19): history is kept, the person
+ * leaves, and a departure record carries the name the crew saw. Refusing made
+ * removal impossible on any trip that had been played, so it stopped (ruling 2:
+ * warn, never block).
  *
- * Before this guard the removal was a SILENT SUCCESS: `trip_members` went, and
- * every scoring row stayed, because those tables key to `users` rather than to
- * `trip_members` so nothing cascades and nothing errors. It surfaced later as a
- * scorecard row reading "Player".
+ * So every case below now asserts TWO things:
+ *   - the PREDICATE (`findContributionBlockers`, via `removalBlockers`) still
+ *     gives the verdict it gave before. It drives the remove panel's warning,
+ *     which 8d-3 replaces; until then the UI still holds the button for these.
+ *   - removal SUCCEEDS, and the specific history row the case is about is
+ *     still there afterwards — the mechanism, not just "it didn't throw".
  *
- * The two cases are deliberately separated, because ~40% of a real roster is in
- * the second one and the common case must stay clean and silent:
- *   no participation  -> removal succeeds, unchanged behaviour
- *   participation     -> refused, NOTHING deleted
+ * THE PLAN/RESULT RULE the predicate encodes (#997) is unchanged: participation
+ * without a result is a PLAN; with a result it is HISTORY.
  *
- * Both removal paths are covered. #957 was exactly a guard present in one
- * procedure and missing from its sibling, and `ghostCrew.remove` is this one's
- * sibling.
+ * Each case builds its own trip: removal is a destructive write (CLAUDE.md).
  */
 
 const STROKE = "gtt_stroke_play";
 let ctx: TestContext;
-let tripId: string;
+let member: string;
+let outsider: string;
 
-async function makeGameWith(userId: string, opts: { withScore: boolean; name: string }) {
+beforeAll(async () => {
+  ctx = await TestContext.create();
+  member = ctx.getUser("member").id;
+  outsider = ctx.getUser("outsider").id;
+}, 90_000);
+
+afterAll(async () => {
+  await ctx.cleanup();
+}, 60_000);
+
+async function trip(label: string): Promise<string> {
+  const tripId = await ctx.createTrip(`Removal ${label}`);
+  await ctx.addTripMember(tripId, "member", "Member");
+  await ctx.addTripMember(tripId, "outsider", "Member");
+  return tripId;
+}
+
+async function makeGameWith(tripId: string, userId: string, opts: { withScore: boolean; name: string }) {
   const g = (await ctx.caller().games.create({ tripId, gameTypeId: STROKE, name: opts.name })) as { id: string };
-  await ctx.admin.from("game_participants").insert({
-    id: crypto.randomUUID(), game_id: g.id, user_id: userId,
-  });
+  await seed("game_participants", { id: crypto.randomUUID(), game_id: g.id, user_id: userId });
   if (opts.withScore) {
-    await ctx.admin.from("score_entries").insert({
+    await seed("score_entries", {
       id: crypto.randomUUID(), game_id: g.id, participant_id: userId,
       participant_type: "user", unit_label: "1", value: 4, submitted_by: userId,
     });
@@ -45,362 +59,243 @@ async function makeGameWith(userId: string, opts: { withScore: boolean; name: st
 }
 
 /**
- * Insert a fixture row, failing LOUDLY.
- *
- * A guard test whose fixture silently fails to insert PASSES BY ABSENCE: it
- * asserts a refusal that never had anything to refuse, or — worse — asserts a
- * clean removal that was only clean because the blocking row was never created.
- * This file shipped exactly that bug: `result: "a"` violates
- * `game_matches_result_check` (a_win | b_win | halve), the insert failed
- * unchecked, and the guard was blamed for the fixture's mistake.
+ * Insert a fixture row, failing LOUDLY. A fixture that silently fails to insert
+ * passes by absence — this file once blamed the guard for `result: "a"`, which
+ * violates `game_matches_result_check` and never inserted at all.
  */
 async function seed(table: string, rows: Record<string, unknown> | Record<string, unknown>[]) {
   const { error } = await ctx.admin.from(table).insert(rows as never);
   if (error) throw new Error(`fixture insert into ${table} failed: ${error.message}`);
 }
 
-describe("#951 — removal refuses rather than orphaning participation", () => {
-  beforeAll(async () => {
-    ctx = await TestContext.create();
-    tripId = await ctx.createTrip("Removal Guard Trip");
-    await ctx.addTripMember(tripId, "member", "Member");
-    await ctx.addTripMember(tripId, "outsider", "Member");
-  }, 90_000);
+async function isMember(tripId: string, userId: string) {
+  const { count, error } = await ctx.admin.from("trip_members")
+    .select("user_id", { count: "exact", head: true }).eq("trip_id", tripId).eq("user_id", userId);
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
 
-  afterAll(async () => {
-    await ctx.cleanup();
-  }, 60_000);
+async function rowCount(table: string, filters: Record<string, string>) {
+  let q = ctx.admin.from(table).select("*", { count: "exact", head: true });
+  for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count ?? 0;
+}
 
-  it("ALLOWS removing a member with no participation (the common case)", async () => {
-    const target = ctx.getUser("outsider").id;
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: target })
-    ).resolves.toMatchObject({ success: true });
+/** Remove through the router; assert it succeeded and the membership ended. */
+async function removeOk(tripId: string, userId: string) {
+  await expect(ctx.caller().tripMembers.remove({ tripId, userId })).resolves.toMatchObject({ success: true });
+  expect(await isMember(tripId, userId)).toBe(false);
+}
 
-    const { data } = await ctx.admin
-      .from("trip_members").select("user_id")
-      .eq("trip_id", tripId).eq("user_id", target).maybeSingle();
-    expect(data).toBeNull();
+describe("removal archives instead of refusing", () => {
+  it("no participation: nothing to warn about, and the removal goes through (the common case)", async () => {
+    const tripId = await trip("plain");
+    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: outsider });
+    expect(info.blocked).toBe(false);
+    expect(info.message).toBeNull();
+    await removeOk(tripId, outsider);
+  });
 
-    await ctx.admin.from("trip_members")
-      .insert({ trip_id: tripId, user_id: target, role: "Member", status: "in" });
-  }, 60_000);
+  it("scores in a game: the panel still says so; removal goes through and the SCORES STAY", async () => {
+    const tripId = await trip("scores");
+    const gameId = await makeGameWith(tripId, member, { withScore: true, name: "Saturday Stroke" });
+    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
 
-  it("REFUSES removing a member who has scores, and deletes NOTHING", async () => {
-    const target = ctx.getUser("member").id;
-    const gameId = await makeGameWith(target, { withScore: true, name: "Saturday Stroke" });
+    await removeOk(tripId, member);
+    expect(await rowCount("score_entries", { game_id: gameId, participant_id: member })).toBe(1);
+  });
 
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: target })
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  it("only SLOTTED INTO a game nobody has scored: a plan, so no warning", async () => {
+    const tripId = await trip("slotted");
+    await makeGameWith(tripId, member, { withScore: false, name: "Not Started Yet" });
+    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(false);
+    await removeOk(tripId, member);
+  });
 
-    // The membership survives — a refusal must not half-apply.
-    const { data: tm } = await ctx.admin
-      .from("trip_members").select("user_id")
-      .eq("trip_id", tripId).eq("user_id", target).maybeSingle();
-    expect(tm).toMatchObject({ user_id: target });
-
-    const { data: gp } = await ctx.admin
-      .from("game_participants").select("user_id").eq("game_id", gameId);
-    expect(gp).toHaveLength(1);
-
-    await ctx.admin.from("score_entries").delete().eq("game_id", gameId);
-    await ctx.admin.from("game_participants").delete().eq("game_id", gameId);
-    await ctx.admin.from("games").delete().eq("id", gameId);
-  }, 60_000);
-
-  it("ALLOWS removal when they are only SLOTTED INTO a game nobody has scored", async () => {
-    // INVERTED in #997, and this is the correction rather than a relaxation.
-    // A participant row in an unplayed game is a PLAN: nothing has happened, so
-    // nothing is destroyed by removing them. The previous version refused here,
-    // which made tidying a roster before the trip needlessly hard.
-    const target = ctx.getUser("member").id;
-    const gameId = await makeGameWith(target, { withScore: false, name: "Not Started Yet" });
-
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: target })
-    ).resolves.toMatchObject({ success: true });
-
-    await ctx.admin.from("game_participants").delete().eq("game_id", gameId);
-    await ctx.admin.from("games").delete().eq("id", gameId);
-    await ctx.admin.from("trip_members")
-      .insert({ trip_id: tripId, user_id: target, role: "Member", status: "in" });
-  }, 60_000);
-
-  it("REFUSES once SOMEBODY has scored that game — the same slot becomes history", async () => {
-    // The plan/result boundary, from the other side: the participant row is
-    // identical; what changed is that the game has been played.
-    const target = ctx.getUser("member").id;
-    const other = ctx.getUser("outsider").id;
-    const gameId = await makeGameWith(target, { withScore: false, name: "Now Underway" });
-    await ctx.admin.from("score_entries").insert({
-      id: crypto.randomUUID(), game_id: gameId, participant_id: other,
-      participant_type: "user", unit_label: "1", value: 5, submitted_by: other,
+  it("once SOMEBODY has scored that game, the same slot is history: warned, and the other's score stays", async () => {
+    const tripId = await trip("underway");
+    const gameId = await makeGameWith(tripId, member, { withScore: false, name: "Now Underway" });
+    await seed("score_entries", {
+      id: crypto.randomUUID(), game_id: gameId, participant_id: outsider,
+      participant_type: "user", unit_label: "1", value: 5, submitted_by: outsider,
     });
+    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
 
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: target })
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await removeOk(tripId, member);
+    expect(await rowCount("score_entries", { game_id: gameId, participant_id: outsider })).toBe(1);
+  });
 
-    await ctx.admin.from("score_entries").delete().eq("game_id", gameId);
-    await ctx.admin.from("game_participants").delete().eq("game_id", gameId);
-    await ctx.admin.from("games").delete().eq("id", gameId);
-  }, 60_000);
+  it("the panel's message NAMES the games and points at the documented workaround", async () => {
+    const tripId = await trip("message");
+    await makeGameWith(tripId, member, { withScore: true, name: "Sunday Scramble" });
+    const { message } = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
+    expect(message).toContain("Sunday Scramble");
+    expect(message).toMatch(/enter a score/i);
+    expect(message).toMatch(/rename them/i);
+  });
 
-  it("the message NAMES the games and points at the documented workaround", async () => {
-    const target = ctx.getUser("member").id;
-    const gameId = await makeGameWith(target, { withScore: true, name: "Sunday Scramble" });
-
-    let msg = "";
-    try {
-      await ctx.caller().tripMembers.remove({ tripId, userId: target });
-    } catch (e) {
-      msg = (e as Error).message;
-    }
-    // ~40% of a real roster hits this, so "no" on its own would be infuriating.
-    expect(msg).toContain("Sunday Scramble");
-    expect(msg).toMatch(/enter a score/i);
-    expect(msg).toMatch(/rename them/i);
-
-    await ctx.admin.from("score_entries").delete().eq("game_id", gameId);
-    await ctx.admin.from("game_participants").delete().eq("game_id", gameId);
-    await ctx.admin.from("games").delete().eq("id", gameId);
-  }, 60_000);
-
-  it("the count in the message matches the list under it (mixed case)", async () => {
+  it("the count in the panel's message matches the list under it (mixed case)", async () => {
     // Regression: an earlier message said "has scores in 1 game" and then named
     // TWO, because the count came from the scored subset while the list came
     // from all blockers. Found by looking at the rendered panel, not by a test.
-    // Rebuilt for #997: the old fixture used an UNSCORED game as the second
-    // blocker, which is now a plan and correctly no longer blocks. A genuine
-    // mixed case needs two RESULTS of different kinds — scores in one game, a
-    // recorded result in another.
-    const target = ctx.getUser("member").id;
-    const scoredGame = await makeGameWith(target, { withScore: true, name: "Has Scores" });
-    const resultGame = await makeGameWith(target, { withScore: false, name: "Has A Result" });
+    const tripId = await trip("mixed");
+    await makeGameWith(tripId, member, { withScore: true, name: "Has Scores" });
+    const resultGame = await makeGameWith(tripId, member, { withScore: false, name: "Has A Result" });
     await seed("game_results", {
-      id: crypto.randomUUID(), game_id: resultGame, entity_id: target,
+      id: crypto.randomUUID(), game_id: resultGame, entity_id: member,
       entity_type: "user", value_kind: "rank", position: 1,
     });
 
-    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: target });
+    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
     expect(info.blockers.games).toHaveLength(2);
-    // Names BOTH, and does NOT claim both are scored.
     expect(info.message).toContain("Has Scores");
     expect(info.message).toContain("Has A Result");
     expect(info.message).toMatch(/results in 2 games, with scores in 1/);
     expect(info.message).not.toMatch(/has scores in 2 games/);
+  });
 
-    await ctx.admin.from("game_results").delete().eq("game_id", resultGame);
-    for (const id of [scoredGame, resultGame]) {
-      await ctx.admin.from("score_entries").delete().eq("game_id", id);
-      await ctx.admin.from("game_participants").delete().eq("game_id", id);
-      await ctx.admin.from("games").delete().eq("id", id);
-    }
-  }, 60_000);
+  it("ghostCrew.remove takes the SAME path: a placeholder who has played is removed and KEPT, with their scores", async () => {
+    const tripId = await trip("ghost played");
+    const ghost = (await ctx.caller().ghostCrew.create({ tripId, name: "Playing Placeholder" })) as { id: string };
+    const gameId = await makeGameWith(tripId, ghost.id, { withScore: true, name: "Ghost's Round" });
+    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: ghost.id })).blocked).toBe(true);
 
-  it("ghostCrew.remove obeys the SAME rule — the sibling gap #957 warned about", async () => {
-    const ghost = await ctx.caller().ghostCrew.create({ tripId, name: "Playing Placeholder" });
-    const gameId = await makeGameWith(ghost.id, { withScore: true, name: "Ghost's Round" });
+    await expect(ctx.caller().ghostCrew.remove({ tripId, guestUserId: ghost.id })).resolves.toMatchObject({ success: true });
+    expect(await isMember(tripId, ghost.id)).toBe(false);
+    expect(await rowCount("score_entries", { game_id: gameId, participant_id: ghost.id })).toBe(1);
+    // History, so the departure exists and the users row survives the
+    // orphan-guest delete that runs after the archive.
+    expect(await rowCount("trip_departures", { trip_id: tripId, user_id: ghost.id })).toBe(1);
+    expect(await rowCount("users", { id: ghost.id })).toBe(1);
+  });
 
-    await expect(
-      ctx.caller().ghostCrew.remove({ tripId, guestUserId: ghost.id })
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  it("ghostCrew.remove: a placeholder who has NOT played leaves no record and is deleted, as before", async () => {
+    const tripId = await trip("ghost unplayed");
+    const ghost = (await ctx.caller().ghostCrew.create({ tripId, name: "Never Played" })) as { id: string };
+    await expect(ctx.caller().ghostCrew.remove({ tripId, guestUserId: ghost.id })).resolves.toMatchObject({ success: true });
+    expect(await rowCount("trip_departures", { trip_id: tripId, user_id: ghost.id })).toBe(0);
+    expect(await rowCount("users", { id: ghost.id })).toBe(0);
+  });
 
-    const { data: tm } = await ctx.admin
-      .from("trip_members").select("user_id")
-      .eq("trip_id", tripId).eq("user_id", ghost.id).maybeSingle();
-    expect(tm).toMatchObject({ user_id: ghost.id });
-
-    await ctx.admin.from("score_entries").delete().eq("game_id", gameId);
-    await ctx.admin.from("game_participants").delete().eq("game_id", gameId);
-    await ctx.admin.from("games").delete().eq("id", gameId);
-    await ctx.admin.from("trip_members").delete().eq("trip_id", tripId).eq("user_id", ghost.id);
-    await ctx.admin.from("users").delete().eq("id", ghost.id);
-  }, 60_000);
-
-  it("ghostCrew.remove still removes a placeholder who has NOT played", async () => {
-    const ghost = await ctx.caller().ghostCrew.create({ tripId, name: "Never Played" });
-    await expect(
-      ctx.caller().ghostCrew.remove({ tripId, guestUserId: ghost.id })
-    ).resolves.toMatchObject({ success: true });
-    await ctx.admin.from("users").delete().eq("id", ghost.id);
-  }, 60_000);
-
-  it("removalBlockers reports the same verdict the mutation enforces", async () => {
-    const target = ctx.getUser("member").id;
-    const clean = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: target });
+  it("removalBlockers: clean before history exists, and names the game once it does", async () => {
+    const tripId = await trip("verdict");
+    const clean = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
     expect(clean.blocked).toBe(false);
     expect(clean.blockers.games).toEqual([]);
     expect(clean.message).toBeNull();
 
-    const gameId = await makeGameWith(target, { withScore: true, name: "Blocker Probe" });
-    const blocked = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: target });
+    await makeGameWith(tripId, member, { withScore: true, name: "Blocker Probe" });
+    const blocked = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
     expect(blocked.blocked).toBe(true);
     expect(blocked.blockers.games).toHaveLength(1);
     expect(blocked.blockers.games[0]).toMatchObject({ gameName: "Blocker Probe", hasScores: true });
     expect(blocked.message).toContain("Blocker Probe");
+  });
 
-    await ctx.admin.from("score_entries").delete().eq("game_id", gameId);
-    await ctx.admin.from("game_participants").delete().eq("game_id", gameId);
-    await ctx.admin.from("games").delete().eq("id", gameId);
-  }, 60_000);
   // ── #997 — the plan/result boundary in the bracket, and receipts ─────────
 
-  it("ALLOWS removal when they are only DRAWN INTO a bracket nobody has played", async () => {
-    // The case that motivated the corrected rule. An entrant in an undecided
-    // draw is a plan: remove them and the slot becomes a bye, which the tree
-    // builder already handles at every entrant count.
-    const target = ctx.getUser("member").id;
-    const g = (await ctx.caller().games.create({
-      tripId, gameTypeId: STROKE, name: "Undecided Draw",
-    })) as { id: string };
+  it("only DRAWN INTO a bracket nobody has played: a plan, so no warning", async () => {
+    const tripId = await trip("draw");
+    const g = (await ctx.caller().games.create({ tripId, gameTypeId: STROKE, name: "Undecided Draw" })) as { id: string };
     const entrantId = crypto.randomUUID();
     await seed("bracket_entrants", { id: entrantId, game_id: g.id, seed: 1 });
-    await seed("bracket_entrant_members", { entrant_id: entrantId, user_id: target });
+    await seed("bracket_entrant_members", { entrant_id: entrantId, user_id: member });
     await seed("bracket_matches", {
       id: crypto.randomUUID(), game_id: g.id, bracket: "main", round: 1, slot: 1,
       entrant_a_id: entrantId, winner_entrant_id: null,
     });
+    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(false);
+    await removeOk(tripId, member);
+  });
 
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: target })
-    ).resolves.toMatchObject({ success: true });
-
-    await ctx.admin.from("bracket_matches").delete().eq("game_id", g.id);
-    await ctx.admin.from("bracket_entrant_members").delete().eq("entrant_id", entrantId);
-    await ctx.admin.from("bracket_entrants").delete().eq("id", entrantId);
-    await ctx.admin.from("games").delete().eq("id", g.id);
-    await ctx.admin.from("trip_members")
-      .insert({ trip_id: tripId, user_id: target, role: "Member", status: "in" });
-  }, 60_000);
-
-  it("REFUSES once that bracket match has a WINNER — the draw became a result", async () => {
-    // Same rows as the test above plus one: winner_entrant_id. That single
-    // column is the whole plan/result boundary for a bracket. Note the guard
-    // never reads `bracket_matches.bracket`, so the double-elim structure work
-    // cannot change this verdict.
-    const target = ctx.getUser("member").id;
-    const g = (await ctx.caller().games.create({
-      tripId, gameTypeId: STROKE, name: "Decided Semi",
-    })) as { id: string };
+  it("once that bracket match has a WINNER it is history: warned, and the decided match stays exactly as it was", async () => {
+    // The archive does not touch brackets yet (8d-2's bracket withdrawal is its
+    // own PR), so the draw and its winner survive untouched.
+    const tripId = await trip("decided semi");
+    const g = (await ctx.caller().games.create({ tripId, gameTypeId: STROKE, name: "Decided Semi" })) as { id: string };
     const a = crypto.randomUUID();
     const b = crypto.randomUUID();
-    await seed("bracket_entrants", [
-      { id: a, game_id: g.id, seed: 1 }, { id: b, game_id: g.id, seed: 2 },
-    ]);
-    await seed("bracket_entrant_members", { entrant_id: a, user_id: target });
+    await seed("bracket_entrants", [{ id: a, game_id: g.id, seed: 1 }, { id: b, game_id: g.id, seed: 2 }]);
+    await seed("bracket_entrant_members", { entrant_id: a, user_id: member });
+    const matchId = crypto.randomUUID();
     await seed("bracket_matches", {
-      id: crypto.randomUUID(), game_id: g.id, bracket: "main", round: 1, slot: 1,
+      id: matchId, game_id: g.id, bracket: "main", round: 1, slot: 1,
       entrant_a_id: a, entrant_b_id: b, winner_entrant_id: b,
     });
+    // Warned even though they LOST — a decided match is history either way.
+    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
 
-    // Blocked even though they LOST — a decided match involving them is history
-    // whichever way it went.
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: target })
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await removeOk(tripId, member);
+    const { data: m } = await ctx.admin.from("bracket_matches").select("entrant_a_id, winner_entrant_id").eq("id", matchId).single();
+    expect(m).toEqual({ entrant_a_id: a, winner_entrant_id: b });
+    expect(await rowCount("bracket_entrant_members", { entrant_id: a, user_id: member })).toBe(1);
+  });
 
-    await ctx.admin.from("bracket_matches").delete().eq("game_id", g.id);
-    await ctx.admin.from("bracket_entrant_members").delete().in("entrant_id", [a, b]);
-    await ctx.admin.from("bracket_entrants").delete().in("id", [a, b]);
-    await ctx.admin.from("games").delete().eq("id", g.id);
-  }, 60_000);
-
-  it("REFUSES on a DECIDED match they were a side of (the JSONB no FK can see)", async () => {
-    const target = ctx.getUser("member").id;
-    const g = (await ctx.caller().games.create({
-      tripId, gameTypeId: STROKE, name: "Settled Match",
-    })) as { id: string };
+  it("a DECIDED match they were a side of (the JSONB no FK can see): warned, and the seat is KEPT (migration 207)", async () => {
+    const tripId = await trip("settled match");
+    const g = (await ctx.caller().games.create({ tripId, gameTypeId: STROKE, name: "Settled Match" })) as { id: string };
+    const matchId = crypto.randomUUID();
     await seed("game_matches", {
-      id: crypto.randomUUID(), game_id: g.id, match_number: 1,
-      side_a: { type: "user", id: target }, side_b: { type: "user", id: ctx.getUser("outsider").id },
+      id: matchId, game_id: g.id, match_number: 1,
+      side_a: { type: "user", id: member }, side_b: { type: "user", id: outsider },
       result: "a_win", status: "complete",
     });
+    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
 
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: target })
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await removeOk(tripId, member);
+    const { data: m } = await ctx.admin.from("game_matches").select("side_a, result").eq("id", matchId).single();
+    expect(m).toEqual({ side_a: { type: "user", id: member }, result: "a_win" });
+  });
 
-    await ctx.admin.from("game_matches").delete().eq("game_id", g.id);
-    await ctx.admin.from("games").delete().eq("id", g.id);
-  }, 60_000);
-
-  it("REFUSES when they PAID for an expense", async () => {
-    const target = ctx.getUser("member").id;
+  it("they PAID for an expense: warned, and the expense stays theirs (money warns, never blocks)", async () => {
+    const tripId = await trip("paid");
     const expenseId = crypto.randomUUID();
-    await seed("expenses", {
-      id: expenseId, trip_id: tripId, title: "Green fees", amount: 400, paid_by_user_id: target,
-    });
+    await seed("expenses", { id: expenseId, trip_id: tripId, title: "Green fees", amount: 400, paid_by_user_id: member });
+    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
 
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: target })
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await removeOk(tripId, member);
+    expect(await rowCount("expenses", { id: expenseId, paid_by_user_id: member })).toBe(1);
+  });
 
-    await ctx.admin.from("expenses").delete().eq("id", expenseId);
-  }, 60_000);
-
-  it("REFUSES when they are SPLIT INTO someone else's expense", async () => {
-    // The least obvious category, and the one an owner's mental model misses:
-    // "Charlie hasn't done anything" is true right up until you notice that
-    // removing him changes what everyone else owes, because the total no longer
-    // reconciles.
-    const target = ctx.getUser("member").id;
-    const payer = ctx.getUser("outsider").id;
+  it("they are SPLIT INTO someone else's expense: warned with the count, and the split stays", async () => {
+    // The least obvious category: "Charlie hasn't done anything" is true right
+    // up until you notice removing him would change what everyone else owes.
+    const tripId = await trip("split");
     const expenseId = crypto.randomUUID();
-    await seed("expenses", {
-      id: expenseId, trip_id: tripId, title: "Dinner", amount: 300, paid_by_user_id: payer,
-    });
+    await seed("expenses", { id: expenseId, trip_id: tripId, title: "Dinner", amount: 300, paid_by_user_id: outsider });
     await seed("expense_splits", [
-      { expense_id: expenseId, user_id: payer, amount: 150 },
-      { expense_id: expenseId, user_id: target, amount: 150 },
+      { expense_id: expenseId, user_id: outsider, amount: 150 },
+      { expense_id: expenseId, user_id: member, amount: 150 },
     ]);
 
-    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: target });
+    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
     expect(info.blocked).toBe(true);
     expect(info.blockers.expenseSplits).toBe(1);
     expect(info.blockers.expensesPaid).toBe(0);
     expect(info.message).toMatch(/split into 1 expense/i);
 
-    await expect(
-      ctx.caller().tripMembers.remove({ tripId, userId: target })
-    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await removeOk(tripId, member);
+    expect(await rowCount("expense_splits", { expense_id: expenseId, user_id: member })).toBe(1);
+  });
 
-    await ctx.admin.from("expense_splits").delete().eq("expense_id", expenseId);
-    await ctx.admin.from("expenses").delete().eq("id", expenseId);
-  }, 60_000);
-
-  it("lists EVERY category with correct counts when several apply at once", async () => {
-    const target = ctx.getUser("member").id;
-    const payer = ctx.getUser("outsider").id;
-    const gameId = await makeGameWith(target, { withScore: true, name: "Multi Round" });
-
-    const paidId = crypto.randomUUID();
-    await seed("expenses", {
-      id: paidId, trip_id: tripId, title: "Cart hire", amount: 90, paid_by_user_id: target,
-    });
-    const splitIds = [crypto.randomUUID(), crypto.randomUUID()];
-    for (const id of splitIds) {
-      await seed("expenses", {
-        id, trip_id: tripId, title: "Shared", amount: 60, paid_by_user_id: payer,
-      });
-      await seed("expense_splits", { expense_id: id, user_id: target, amount: 30 });
+  it("the panel lists EVERY category with correct counts when several apply at once", async () => {
+    const tripId = await trip("every category");
+    await makeGameWith(tripId, member, { withScore: true, name: "Multi Round" });
+    await seed("expenses", { id: crypto.randomUUID(), trip_id: tripId, title: "Cart hire", amount: 90, paid_by_user_id: member });
+    for (let i = 0; i < 2; i++) {
+      const id = crypto.randomUUID();
+      await seed("expenses", { id, trip_id: tripId, title: "Shared", amount: 60, paid_by_user_id: outsider });
+      await seed("expense_splits", { expense_id: id, user_id: member, amount: 30 });
     }
 
-    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: target });
+    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
     expect(info.blockers.games).toHaveLength(1);
     expect(info.blockers.expensesPaid).toBe(1);
     expect(info.blockers.expenseSplits).toBe(2);
-    // All three categories present, with their own counts — a single generic
-    // refusal is what this message exists not to be.
     expect(info.message).toContain("Multi Round");
     expect(info.message).toMatch(/paid for 1 expense/i);
     expect(info.message).toMatch(/split into 2 more/i);
-
-    await ctx.admin.from("expense_splits").delete().in("expense_id", splitIds);
-    await ctx.admin.from("expenses").delete().in("id", [paidId, ...splitIds]);
-    await ctx.admin.from("score_entries").delete().eq("game_id", gameId);
-    await ctx.admin.from("game_participants").delete().eq("game_id", gameId);
-    await ctx.admin.from("games").delete().eq("id", gameId);
-  }, 60_000);
+  });
 });

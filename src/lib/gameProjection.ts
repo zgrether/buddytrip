@@ -36,7 +36,7 @@ import { awardMatches, type MatchAwardResult } from "./gameAward";
  *    pick'em individual matches (clearing pairings deletes the rows, and a
  *    result can precede the draw), and on golf / Matches never drawn.
  *  - `seats_vacated` — match rows EXIST and none has both sides: players left
- *    (`leaveTrip` / `matches.ts` null a side and keep the row, and the game
+ *    (`archive_trip_member` / `matches.ts` null a side and keep the row, and the game
  *    stays started). A real problem, with a fix — re-pair. The data separates
  *    the two, and they lead a reader to different actions, so they are two
  *    reasons, not one with two meanings (the empty-vs-unknown rule).
