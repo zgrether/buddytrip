@@ -15,6 +15,7 @@ import { PickemGameCard, PickemSegments, segmentStyle } from "./PickemGameCard";
  */
 export { segmentStyle };
 import { resolvedCount, type SlateResult, type ScoredSlateGame } from "@/lib/pickemScoring";
+import { SLATE_RESULT_WORD } from "@/lib/pickemResultWords";
 
 /**
  * Screen E — the runner enters each slate game's outcome as it finishes.
@@ -115,7 +116,7 @@ export const RESULT_LABEL: Record<SlateResult, string> = {
   away: "Final",
   home: "Final",
   push: "Pushed",
-  cancelled: "Canceled",
+  cancelled: SLATE_RESULT_WORD.cancelled,
 };
 
 /**
@@ -302,7 +303,7 @@ export function PickemRunView({
                 disagreeing about what the reader is looking for, which is the
                 refusal rule's failure mode in an ordinary sentence. */}
             Mark the winner of the game, or if it resulted in a push. If a game
-            needs to be removed from the scoring, mark it as canceled.
+            needs to be removed from the scoring, mark it as {SLATE_RESULT_WORD.cancelled.toLowerCase()}.
           </span>
         )}
       </div>
