@@ -1242,6 +1242,31 @@ Every policy and every definer helper that reads a relationship row was checked 
   deletes 0 rows); `idea_votes` has the same shape and was not probed. Correct today, though only
   through that coupling.
 
+**Ruled on 8d-2's two open questions (Zach, 2026-10-08):**
+7. **A decided match is history**, even in a game not yet finalized: the rule that keeps finished
+   games, applied at the smallest unit that can be decided. A won or halved match keeps both seats
+   and pays the team the leaver was on when it was decided; leaving voiding it would make a real
+   result vanish from the standings with nothing to say why. Undecided matches are unchanged: the
+   seat empties.
+   - **Mechanism (migration 207 plus the reader):** the departure records the leaver's cup team
+     (`trip_departures.team_id`; one cup per trip, one team per person per cup, so one value
+     covers all their unfinished games), and 8a's `readCreditRoster` grows ONE fallback: today's
+     roster, plus a departed non-member's recorded team. One helper, not a path through every
+     writer.
+   - **The trap avoided:** no partial `credited_roster` written into an unfinished game. A stored
+     roster is authoritative once it exists, so a map holding only the leaver would credit
+     everyone else to nobody (empty is not unknown).
+8. **Brackets: a withdrawn entrant**, marked, and treated like a bye by both resolvers — derived,
+   no repeated forfeits in double elimination, nothing recorded deleted. Withdrawn means
+   eliminated outright and placed in the round they withdrew; wins already recorded stay; entrant
+   rows are never deleted; a bracket reopened for corrections counts as finished; one path whether
+   or not a match is decided yet. **Partnerships: the partner plays on**, as a doubles seat does in
+   golf; the entrant withdraws only when its last member leaves. The guest-merge comment that
+   argues the opposite (migration 112) is corrected in the same PR.
+
+**Order:** 207 (the archive) → the wiring (leave/remove onto the archive, the reader fallback) →
+the bracket withdrawal → after deploy, drop `trip_members_delete`.
+
 **Carried to 8b:** a team deleted after a game finalized can still be named in that game's
 credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize
 that team's members would credit nowhere. Lifting the lock for team delete has to decide this.
