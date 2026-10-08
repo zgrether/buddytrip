@@ -1160,6 +1160,73 @@ including every future one, must remember to exclude archived members, and one t
 leaks (chat delivery among them: today's cut-off on removal depends on the row being gone,
 verified with a Realtime probe 2026-10-02).
 
+### 8d — verify-first done and ruled, 2026-10-08
+
+**What the verify-first found.** Nobody could leave a trip on their own (no procedure, no UI);
+Organizers removed people, and any result, receipt or expense split refused the removal. In
+production (10 trips, 97 memberships) no participant or result belonged to a non-member, and 3
+chat authors were former members. **A live hole:** `trip_members_delete` admitted
+`user_id = auth.uid()`, so any member could delete their own row through the API and skip every
+clean-up and guard.
+
+The flag's cost turned out narrower than this plan claimed — about 115 of 135 policies route
+through seven helpers — but it opened three holes that settle it: a member could flip their own
+flag back (they may UPDATE their own row), an archive by UPDATE skips the role guard (it exits
+early when `role` is unchanged), and the one-row-per-person key would need new rules in add,
+invite, claim, merge and orphan-guest clean-up.
+
+**Ruled (Zach):**
+1. **Design A — delete the row — with a departures record** (`trip_departures`: the name the crew
+   saw, readable by the trip's current members only). In the merge, and on TRACKER's escape-clause
+   list: whether a disconnected person's name stays in the trip's history is that clause's to
+   answer deliberately.
+2. **Money: archive, warn, never block.** An expense ledger is history, like results; blocking
+   would make leaving impossible on any real trip. At the moment of leaving: "You have expenses on
+   this trip — you won't be able to see them after you leave."
+3. **Leave trip is in scope.** The Owner cannot leave without handing ownership over first; if
+   that does not exist yet, the Owner cannot leave and the message says why.
+4. **Re-finalize pushes go to current members only** — noise for someone who left, worse for
+   someone removed.
+
+Also: close the direct self-delete EARLY; a removed person's open app leaves the trip with "You're
+no longer a member of this trip." instead of a refetch error; the unused `trip_members.status`
+column is #1568, after PR 9.
+
+**Split:**
+- **8d-1 — migration 205** (lands first): `trip_departures`; `archive_trip_member`, ONE path for
+  leaving and removal — writes the departure, clears cup assignments, vacates seats only in
+  UNFINISHED games and keeps finished ones exactly as they are, then ends the membership; the role
+  guard admits the archive's own delete through a transaction-local marker (an Organizer can
+  leave; a direct delete is still refused); the self-delete closed (`trip_members_delete` narrowed
+  to Owners/Organizers); `delete_orphan_guest_user` keeps a departed placeholder (its record names
+  them beside history no foreign key protects); the merge re-keys departures.
+- **8d-2 — server:** leave/remove procedures call the archive; `findContributionBlockers` stops
+  refusing (money warns instead); name resolution falls back to the departure; re-finalize and
+  clinch pushes filter to current members; post-results roster changes settle the clinch as 8b's
+  do. Then a follow-up migration drops `trip_members_delete` entirely, so the archive is the only
+  way a membership ends.
+- **8d-3 — surfaces (look-gated):** Leave trip with its warnings; the removed person's exit message.
+
+**Ruled on 8d-1's two open choices (Zach, 2026-10-08), and built into 205 before it merged:**
+5. **Placeholders split on history.** "No history, delete as before; any history, archive. A
+   departure record then exists only when there's something for the name to stand beside." Applied
+   to everyone, not only placeholders: the record is written only when, AFTER the archive's own
+   clean-up, something in the trip still names the person (`_trip_history_names`). Asked after the
+   clean-up on purpose — a seat in an unfinished game is gone by then and is not history. A
+   placeholder with no history therefore leaves no record and `delete_orphan_guest_user` deletes
+   it, as before; one with history is kept. A drift guard classifies every person-referencing
+   column as history or not, so a new table cannot fall out of the predicate silently.
+6. **Pick'em sheets and bracket entries follow the seat rule** — leaving vacates participation in
+   unfinished games. 205 clears the person's OWN pick'em sheet in unfinished games (a sheet they
+   entered for someone else is that person's). **Brackets are 8d-2's verify-first, starting from
+   "same as seats" rather than "leave it alone"**: a vacated entrant probably forfeits its
+   remaining matches and the opponent advances, which needs real design. Until then a bracket entry
+   stands and counts as history. Nothing calls the archive before 8d-2, so there is no interim.
+
+**Also in 205:** a game delegate's rights now require trip membership (`is_game_delegate`, CLAUDE.md
+#28), and the archive ends every grant the person holds on the trip's games, finished or not — a
+grant is a right, not history.
+
 **Carried to 8b:** a team deleted after a game finalized can still be named in that game's
 credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize
 that team's members would credit nowhere. Lifting the lock for team delete has to decide this.
