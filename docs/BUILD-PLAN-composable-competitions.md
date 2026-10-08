@@ -1207,10 +1207,25 @@ column is #1568, after PR 9.
   way a membership ends.
 - **8d-3 — surfaces (look-gated):** Leave trip with its warnings; the removed person's exit message.
 
-**Decided in 8d-1, for the record:** a departed placeholder is never hard-deleted, so one added by
-mistake and removed with no history persists as an unlisted row (a later signup with its email
-still merges into it as designed). Pick'em sheets and bracket entrants in unfinished games are not
-cleared — the app-side clean-up never cleared them either — and remain an open question for 8d-2.
+**Ruled on 8d-1's two open choices (Zach, 2026-10-08), and built into 205 before it merged:**
+5. **Placeholders split on history.** "No history, delete as before; any history, archive. A
+   departure record then exists only when there's something for the name to stand beside." Applied
+   to everyone, not only placeholders: the record is written only when, AFTER the archive's own
+   clean-up, something in the trip still names the person (`_trip_history_names`). Asked after the
+   clean-up on purpose — a seat in an unfinished game is gone by then and is not history. A
+   placeholder with no history therefore leaves no record and `delete_orphan_guest_user` deletes
+   it, as before; one with history is kept. A drift guard classifies every person-referencing
+   column as history or not, so a new table cannot fall out of the predicate silently.
+6. **Pick'em sheets and bracket entries follow the seat rule** — leaving vacates participation in
+   unfinished games. 205 clears the person's OWN pick'em sheet in unfinished games (a sheet they
+   entered for someone else is that person's). **Brackets are 8d-2's verify-first, starting from
+   "same as seats" rather than "leave it alone"**: a vacated entrant probably forfeits its
+   remaining matches and the opponent advances, which needs real design. Until then a bracket entry
+   stands and counts as history. Nothing calls the archive before 8d-2, so there is no interim.
+
+**Also in 205:** a game delegate's rights now require trip membership (`is_game_delegate`, CLAUDE.md
+#28), and the archive ends every grant the person holds on the trip's games, finished or not — a
+grant is a right, not history.
 
 **Carried to 8b:** a team deleted after a game finalized can still be named in that game's
 credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize

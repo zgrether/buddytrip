@@ -10,10 +10,13 @@
 --   - `trip_departures`: the name the crew SAW (trip nickname, else account
 --     name), so a departed person's results, chat and expenses keep a name.
 --     Read narrowly: trip members only, display name only, nothing about why.
+--     Written ONLY when something in the trip still names them (Zach: "no
+--     history, delete as before; any history, archive") — so a placeholder
+--     added by mistake and removed leaves no record and is deleted as before.
 --   - `archive_trip_member`: ONE path for leaving and for removal, which keeps
---     everything in FINISHED games exactly as it is and vacates seats only in
---     unfinished ones ("for a game still in progress, someone leaving really
---     has left"). It replaces the app-side clean-up, which ran with the
+--     everything in FINISHED games exactly as it is and vacates seats and
+--     pick'em sheets only in unfinished ones ("for a game still in progress,
+--     someone leaving really has left"), and ends their delegate grants. It replaces the app-side clean-up, which ran with the
 --     caller's rights — a Member leaving on their own has none to clear seats
 --     with, and the service-role key is absent on previews.
 --
@@ -67,6 +70,88 @@ DROP POLICY IF EXISTS trip_departures_select ON public.trip_departures;
 CREATE POLICY trip_departures_select ON public.trip_departures
   FOR SELECT TO authenticated
   USING (public.is_trip_member(trip_id));
+
+-- ── 2a · Does anything in this trip still name them? ──────────────────────
+-- Zach, 2026-10-08: "no history, delete as before; any history, archive. A
+-- departure record then exists only when there's something for the name to
+-- stand beside." So the record is written only when, AFTER the archive's own
+-- clean-up, something in the trip still names the person. Asked after the
+-- clean-up on purpose: a seat in an unfinished game is gone by then and is not
+-- history; a result in a finished one survives and is.
+--
+-- The list is every person-referencing column scoped to this trip that the
+-- archive leaves standing. `tripArchiveMigration.db.test.ts` reads the live
+-- columns and fails when one appears that is neither listed here nor named
+-- there as not-history, so a new table cannot silently fall out of it.
+--
+-- Not history, deliberately: read receipts (`chat_reads`, `news_reads`),
+-- push plumbing, cup `team_assignments` and delegate grants (both cleared by
+-- the archive), and anything not scoped to a trip.
+--
+-- SECURITY INVOKER and not executable by API roles: it answers about a person
+-- the caller names (CLAUDE.md #28), so it runs only inside the definer archive.
+CREATE OR REPLACE FUNCTION public._trip_history_names(p_trip_id text, p_user_id text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path TO ''
+AS $$
+  SELECT
+       EXISTS (SELECT 1 FROM public.messages x WHERE x.trip_id = p_trip_id AND x.user_id = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.expenses x WHERE x.trip_id = p_trip_id AND (x.paid_by_user_id = p_user_id OR x.created_by = p_user_id))
+    OR EXISTS (SELECT 1 FROM public.expense_splits x JOIN public.expenses e ON e.id = x.expense_id WHERE e.trip_id = p_trip_id AND x.user_id = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.news_posts x WHERE x.trip_id = p_trip_id AND x.author_id = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.schedule_items x WHERE x.trip_id = p_trip_id AND (x.created_by = p_user_id OR x.confirmed_by = p_user_id))
+    OR EXISTS (SELECT 1 FROM public.logistics_items x WHERE x.trip_id = p_trip_id AND x.created_by = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.quick_info_tiles x WHERE x.trip_id = p_trip_id AND x.created_by = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.idea_lodging_options x WHERE x.trip_id = p_trip_id AND x.created_by = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.idea_votes x WHERE x.trip_id = p_trip_id AND x.user_id = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.date_poll_votes x JOIN public.date_windows w ON w.id = x.window_id WHERE w.trip_id = p_trip_id AND x.user_id = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.invites x WHERE x.trip_id = p_trip_id AND x.created_by = p_user_id)
+    OR EXISTS (
+      SELECT 1 FROM public.games g
+       WHERE g.trip_id = p_trip_id
+         AND (
+              EXISTS (SELECT 1 FROM public.game_participants x WHERE x.game_id = g.id AND x.user_id = p_user_id)
+           OR EXISTS (SELECT 1 FROM public.game_results x WHERE x.game_id = g.id AND x.entity_type = 'user' AND x.entity_id = p_user_id)
+           OR EXISTS (SELECT 1 FROM public.score_entries x WHERE x.game_id = g.id AND ((x.participant_type = 'user' AND x.participant_id = p_user_id) OR x.submitted_by = p_user_id))
+           OR EXISTS (SELECT 1 FROM public.match_hole_outcomes x WHERE x.game_id = g.id AND x.submitted_by = p_user_id)
+           OR EXISTS (SELECT 1 FROM public.skins_hole_outcomes x WHERE x.game_id = g.id AND (x.submitted_by = p_user_id OR x.winner_user_id = p_user_id))
+           OR EXISTS (SELECT 1 FROM public.game_matches x WHERE x.game_id = g.id
+                        AND ((x.side_a ->> 'type' = 'user' AND x.side_a ->> 'id' = p_user_id)
+                          OR (x.side_b ->> 'type' = 'user' AND x.side_b ->> 'id' = p_user_id)))
+           OR EXISTS (SELECT 1 FROM public.pickem_picks x WHERE x.game_id = g.id AND (x.user_id = p_user_id OR x.entered_by = p_user_id))
+           OR EXISTS (SELECT 1 FROM public.bracket_entrant_members x JOIN public.bracket_entrants be ON be.id = x.entrant_id WHERE be.game_id = g.id AND x.user_id = p_user_id)
+           OR EXISTS (SELECT 1 FROM public.game_recredits x WHERE x.game_id = g.id AND (x.user_id = p_user_id OR x.recredited_by = p_user_id))
+           OR EXISTS (SELECT 1 FROM public.game_delegates x WHERE x.game_id = g.id AND x.granted_by = p_user_id)
+         )
+    );
+$$;
+
+REVOKE ALL ON FUNCTION public._trip_history_names(text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public._trip_history_names(text, text) TO service_role;
+
+-- ── 2b · A delegate's rights require trip membership ──────────────────────
+-- Was (migration 061): the grant row alone. A rights helper answers no more
+-- widely than the membership checks around it (CLAUDE.md #28), and a grant
+-- belongs to someone ON the trip. Still keyed to the caller, so it says
+-- nothing about anyone else however widely it is granted; signature, volatility
+-- and ACL unchanged (CREATE OR REPLACE keeps the grants).
+
+CREATE OR REPLACE FUNCTION public.is_game_delegate(p_game_id text)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.game_delegates gd
+      JOIN public.games g ON g.id = gd.game_id
+    WHERE gd.game_id = p_game_id
+      AND gd.user_id = (auth.uid())::text
+      AND public.is_trip_member(g.trip_id)
+  );
+$function$;
 
 -- ── 2 · The archive ───────────────────────────────────────────────────────
 
@@ -127,10 +212,13 @@ BEGIN
     INTO v_name
     FROM public.users u WHERE u.id = p_user_id;
 
-  INSERT INTO public.trip_departures (trip_id, user_id, display_name, left_at)
-  VALUES (p_trip_id, p_user_id, coalesce(v_name, 'Someone'), now())
-  ON CONFLICT (trip_id, user_id)
-  DO UPDATE SET display_name = EXCLUDED.display_name, left_at = EXCLUDED.left_at;
+  -- Delegate grants on ANY of this trip's games, finished or not: a grant is a
+  -- right, not history. `is_game_delegate` requires membership too (§2b), so
+  -- this is housekeeping — a grant naming someone off the trip says nothing
+  -- true, and the delegate list should not show them.
+  DELETE FROM public.game_delegates gd
+   USING public.games g
+   WHERE g.id = gd.game_id AND g.trip_id = p_trip_id AND gd.user_id = p_user_id;
 
   -- Cup team assignments in this trip's competitions. Finished games keep
   -- their credit regardless: they credit through `games.credited_roster`
@@ -175,6 +263,27 @@ BEGIN
 
     DELETE FROM public.game_participants
      WHERE user_id = p_user_id AND game_id = ANY(v_game_ids);
+
+    -- Their pick'em sheet in an unfinished game. A sheet is participation,
+    -- the same as a seat (Zach, 2026-10-08): someone who has left has left
+    -- the contest too. Sheets in FINISHED games are history and stay. Only
+    -- their OWN sheet: one they entered for someone else is that person's.
+    DELETE FROM public.pickem_picks
+     WHERE user_id = p_user_id AND game_id = ANY(v_game_ids);
+
+    -- Bracket entries are NOT touched here. Ruled to start from the same
+    -- answer as seats, but a bracket needs design a seat does not — a
+    -- vacated entrant probably forfeits and the opponent advances — so it is
+    -- 8d-2's verify-first. Until then their entry stands and counts as
+    -- history below. Nothing calls this function before 8d-2 anyway.
+  END IF;
+
+  -- The departure, only if something left in the trip still names them.
+  IF public._trip_history_names(p_trip_id, p_user_id) THEN
+    INSERT INTO public.trip_departures (trip_id, user_id, display_name, left_at)
+    VALUES (p_trip_id, p_user_id, coalesce(v_name, 'Someone'), now())
+    ON CONFLICT (trip_id, user_id)
+    DO UPDATE SET display_name = EXCLUDED.display_name, left_at = EXCLUDED.left_at;
   END IF;
 
   -- The membership itself. The marker tells the role guard this delete is the
