@@ -184,7 +184,8 @@ an optional kickoff, an optional note and an optional multiplier.
   facts.**
   One happened and nobody covered; the other was struck from the scoring. One DB
   value (`pickem_slate_games.result = 'cancelled'`) and one display word,
-  **Cancelled** — see that row in `CLAUDE.md`'s glossary for why it stopped
+  **Canceled** (US spelling since 2026-10-08; the DB value keeps its double l; the word comes from `SLATE_RESULT_WORD` in `src/lib/pickemResultWords.ts`)
+  — see that row in `CLAUDE.md`'s glossary for why it stopped
   being two, and why the word chosen is the one a non-technical crew would
   say rather than the one a form would. (This paragraph said **Void /
   Voided** until now: the rename landed in the code and the glossary and not

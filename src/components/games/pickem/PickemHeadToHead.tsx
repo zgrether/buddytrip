@@ -15,6 +15,7 @@ import { RESULT_LABEL, resultTone } from "./PickemRunView";
 import { matchStanding, type BoardRow, type ZeroKind } from "@/lib/pickemBoard";
 import { paysOut, type SlateResult } from "@/lib/pickemScoring";
 import type { BoardSlateGame } from "./PickemBoard";
+import { SLATE_RESULT_WORD } from "@/lib/pickemResultWords";
 
 /**
  * Screen D — the head-to-head.
@@ -83,7 +84,7 @@ import type { BoardSlateGame } from "./PickemBoard";
  */
 const ZERO_SHORT: Partial<Record<ZeroKind, string>> = {
   push: "Push",
-  cancelled: "Cancelled",
+  cancelled: SLATE_RESULT_WORD.cancelled,
   // NOBODY picked — not "one of them didn't". A wrong pick against an empty
   // slot is `neither`: something was wagered and lost, and reporting the
   // quiet half of the row says nothing about the half where that happened.
