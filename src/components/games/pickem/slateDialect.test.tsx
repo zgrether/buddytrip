@@ -178,7 +178,7 @@ describe("the picks sheet draws a CANCELLED game the way the results panel does"
   it("names it in the status position, in the cancelled tone", () => {
     const html = render({ result: "cancelled" });
     expect(tag(html, "pickem-matchup-status")).toContain("--color-bt-danger");
-    expect(html).toContain("Cancelled");
+    expect(html).toContain("Canceled");
     // The kickoff is REPLACED, not joined — a settled game's date is spent.
     expect(html).not.toContain("6:10p");
   });

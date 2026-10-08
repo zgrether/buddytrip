@@ -115,7 +115,7 @@ export const RESULT_LABEL: Record<SlateResult, string> = {
   away: "Final",
   home: "Final",
   push: "Pushed",
-  cancelled: "Cancelled",
+  cancelled: "Canceled",
 };
 
 /**
@@ -302,7 +302,7 @@ export function PickemRunView({
                 disagreeing about what the reader is looking for, which is the
                 refusal rule's failure mode in an ordinary sentence. */}
             Mark the winner of the game, or if it resulted in a push. If a game
-            needs to be removed from the scoring, mark it as cancelled.
+            needs to be removed from the scoring, mark it as canceled.
           </span>
         )}
       </div>

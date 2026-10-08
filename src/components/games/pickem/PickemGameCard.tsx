@@ -422,7 +422,7 @@ export function PickemSegments<V extends SegmentValue>({
   testIdPrefix: string;
 }) {
   const label = (v: SegmentValue) =>
-    v === "away" ? awayTeam : v === "home" ? homeTeam : v === "push" ? "Push" : "Cancelled";
+    v === "away" ? awayTeam : v === "home" ? homeTeam : v === "push" ? "Push" : "Canceled";
 
   /**
    * ── THE FOUR NO LONGER SHARE A ROW, AND THAT IS THE TRUNCATION FIX ────────

@@ -52,7 +52,7 @@ describe("swingCell — played", () => {
      */
     const cases: [BoardRow["zeroKind"], string][] = [
       ["push", "Push"],
-      ["cancelled", "Cancelled"],
+      ["cancelled", "Canceled"],
       // Somebody did not pick it. Not a kind of WRONG, and NOT reachable when
       // only one side is absent — `zeroKindFor` requires that NOBODY wagered,
       // which is the case two struck names could never have expressed.

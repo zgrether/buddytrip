@@ -83,7 +83,7 @@ import type { BoardSlateGame } from "./PickemBoard";
  */
 const ZERO_SHORT: Partial<Record<ZeroKind, string>> = {
   push: "Push",
-  cancelled: "Cancelled",
+  cancelled: "Canceled",
   // NOBODY picked — not "one of them didn't". A wrong pick against an empty
   // slot is `neither`: something was wagered and lost, and reporting the
   // quiet half of the row says nothing about the half where that happened.

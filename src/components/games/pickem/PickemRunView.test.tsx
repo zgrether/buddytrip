@@ -269,7 +269,7 @@ describe("what hangs on an unmarked game", () => {
     expect(html).not.toContain("still to mark");
     expect(html).not.toContain("hang on them");
     expect(html).toContain("Mark the winner of the game");
-    expect(html).toContain("mark it as cancelled");
+    expect(html).toContain("mark it as canceled");
   });
 
   it("keeps the instructions away from a member", () => {
@@ -354,13 +354,13 @@ describe("a voided contest", () => {
   const voided = (i: number) =>
     SLATE.map((g, n) => ({ ...g, result: n === i ? ("cancelled" as const) : g.result }));
 
-  it("reads Cancelled, on a settled row in its own place", () => {
+  it("reads Canceled, on a settled row in its own place", () => {
     // Was "sits in ENTERED": there is no ENTERED section any more, so what is
     // left to assert is that the write moves the row into the SETTLED SHAPE —
     // which is the fact the old name was using the section as a proxy for.
     const html = render({ slate: voided(0) });
     expect(html).toContain('data-testid="pickem-run-entered"');
-    expect(html).toContain("Cancelled");
+    expect(html).toContain("Canceled");
   });
 
   it("does NOT claim the game was never played", () => {
@@ -388,7 +388,7 @@ describe("a voided contest", () => {
         n === 0 ? { ...g, result: "cancelled" as const } : n === 1 ? { ...g, result: "push" as const } : g
       ),
     });
-    expect(html).toContain("Cancelled");
+    expect(html).toContain("Canceled");
     expect(html).toContain("Pushed");
   });
 });
