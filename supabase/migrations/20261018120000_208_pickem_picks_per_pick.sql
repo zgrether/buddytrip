@@ -26,13 +26,16 @@
 -- the win paid nobody. A departure now replaces the recorded team only with a
 -- team; when they leave on no team, the earlier one stands.
 --
--- The residual edge, stated rather than hidden: the second departure moves
--- `left_at` forward, so a game created between the two departures — one they
--- played teamless after rejoining — would also credit A at finalize. That
--- needs a team-independent format (a team-dependent one refuses an
--- unrostered player) and a game finalized after the second departure.
--- Unconfirmed whether that should credit A or nobody; left as A, the team they
--- were last on.
+-- And the earlier departure's TIME is kept with its team (Zach, same day):
+-- "The team and the moment it was recorded are one fact — Bill was on A as of
+-- when he first left — and splitting them is what creates the odd case." The
+-- odd case, stated in the first version of this migration as unresolved: had
+-- `left_at` moved forward, a team-independent round created between the two
+-- departures and played teamless would have credited A at finalize. With the
+-- original time kept, that round is newer than the recorded team and credits
+-- nobody — exactly what it did while he was there — and every earlier game,
+-- the decided match included, still credits A. When the second departure
+-- carries a real team, the record moves wholly to it, time and team together.
 
 -- ── 1 · The archive (verbatim from 207, with the two edits marked 208) ──
 
@@ -202,10 +205,14 @@ BEGIN
     VALUES (p_trip_id, p_user_id, coalesce(v_name, 'Someone'), now(), v_team)
     ON CONFLICT (trip_id, user_id)
     -- A team replaces the recorded one; leaving on NO team keeps the earlier
-    -- one (migration 208): a winner who rejoined teamless — 8b will not
-    -- reassign them while the game is unfinished — and leaves again must not
-    -- erase the team their decided match pays.
-    DO UPDATE SET display_name = EXCLUDED.display_name, left_at = EXCLUDED.left_at,
+    -- one AND the moment it was recorded (migration 208): a winner who rejoined
+    -- teamless — 8b will not reassign them while the game is unfinished — and
+    -- leaves again must not erase the team their decided match pays. The team
+    -- and its time are one fact ("on A as of when they first left"), so a game
+    -- created between the two departures is newer than it and takes nothing.
+    DO UPDATE SET display_name = EXCLUDED.display_name,
+                  left_at = CASE WHEN EXCLUDED.team_id IS NULL AND trip_departures.team_id IS NOT NULL
+                                 THEN trip_departures.left_at ELSE EXCLUDED.left_at END,
                   team_id = coalesce(EXCLUDED.team_id, trip_departures.team_id);
   END IF;
 

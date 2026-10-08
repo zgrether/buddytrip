@@ -159,4 +159,51 @@ describe("a decided match pays the team the leaver was on", () => {
     expect(roster.fromSnapshot).toBe(false);
     expect(roster.record[planner]).toBe(c.teamB);
   });
+
+  it("wins on A, leaves, rejoins teamless, a new game is created, leaves AGAIN: the match pays A, the new game gets no team", async () => {
+    // Migration 208: a second departure on no team keeps the earlier team AND
+    // the earlier time — one fact, "on A as of when they first left". Had the
+    // time moved forward, the round created between the two departures would
+    // be older than the record and take A. Zach's example was a stroke round;
+    // a Match Play cup refuses stroke play, so the new game here is the cup's
+    // own team-independent format (Generic Game) — the rule reads only when
+    // the game was created, not what it is. And a Match Play cup will not seat
+    // an unrostered player in ANY format, so he is not seated in it here; the
+    // teamless round of Zach's example needs a points cup. Neither changes the
+    // question, which is whether this game's roster gives him A.
+    //
+    // Asserted on the ROSTER, not on the round's payout: the second departure
+    // empties his seat in that unfinished round (no decided match in it), so
+    // "the round pays him nothing" would hold whether or not the time was kept
+    // — an assertion that could not fail. The roster is where the rule lives.
+    const c = await decidedMatch("re-leave keeps time");
+    const remove = () => ctx.authedClient("owner").rpc("archive_trip_member", { p_trip_id: c.tripId, p_user_id: planner });
+    expect((await remove()).error).toBeNull();
+    const { data: first } = await ctx.admin.from("trip_departures").select("left_at, team_id").eq("trip_id", c.tripId).eq("user_id", planner).single();
+    expect(first?.team_id).toBe(c.teamA);
+
+    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: c.tripId, user_id: planner, role: "Member", status: "in" });
+    if (back.error) throw back.error;
+    await new Promise((r) => setTimeout(r, 20));
+    const round = (await ctx.caller().games.create({
+      tripId: c.tripId, gameTypeId: "gtt_manual", name: "Played teamless", competitionId: c.competitionId,
+    })) as { id: string };
+    await new Promise((r) => setTimeout(r, 20));
+    expect((await remove()).error).toBeNull();
+
+    // The record still says A, as of the FIRST departure.
+    const { data: second } = await ctx.admin.from("trip_departures").select("left_at, team_id").eq("trip_id", c.tripId).eq("user_id", planner).single();
+    expect(second?.team_id).toBe(c.teamA);
+    expect(new Date(second!.left_at as string).getTime()).toBe(new Date(first!.left_at as string).getTime());
+
+    // The new game, created after that moment, takes nothing from it.
+    expect((await readCreditRoster(ctx.admin, round.id, c.competitionId)).record[planner]).toBeUndefined();
+
+    // And the match, decided before it, still pays A — end to end.
+    await ctx.caller().games.finish({ tripId: c.tripId, gameId: c.gameId });
+    const pts = await teamPoints(c.gameId);
+    expect(pts[c.teamA]).toBeGreaterThan(pts[c.teamB] ?? 0);
+    const { data: g } = await ctx.admin.from("games").select("credited_roster").eq("id", c.gameId).single();
+    expect((g?.credited_roster as Record<string, string>)[planner]).toBe(c.teamA);
+  });
 });

@@ -1273,9 +1273,12 @@ Every policy and every definer helper that reads a relationship row was checked 
     unfinished, and the decided match keeps their seat, so they stay teamless until it finalizes;
     ignoring the departure would make the win pay nobody. Today's roster always wins over it, and
     it never applies to a game created after they left (the reader, PR 8d-2). Its database half:
-    a second departure on no team keeps the team the first recorded (208). Residual edge, stated:
-    a team-independent game created between two departures and played teamless would also credit
-    that team — unconfirmed whether it should credit it or nobody.
+    a second departure on no team keeps the team the first recorded **and the time it was
+    recorded** (208) — "the team and the moment it was recorded are one fact; splitting them is
+    what creates the odd case." The odd case, first stated as unresolved: with the time moved
+    forward, a team-independent game created between the two departures and played teamless would
+    have credited that team. With the time kept, it is newer than the record and credits nobody —
+    as it did while he was there — and every earlier game still credits the team.
 
 **Also found while wiring:** 205's history check counted a placeholder's own "joined" system line
 as history, so ruling 5 could never apply; 207 counts only messages a person wrote.
