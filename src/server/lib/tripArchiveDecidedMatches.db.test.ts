@@ -151,3 +151,35 @@ describe("a decided match is history", () => {
     expect(await departureTeam(c.tripId, planner)).toBeNull();
   });
 });
+
+describe("a line the app wrote ABOUT someone is not their history", () => {
+  async function userExists(id: string) {
+    const { count } = await ctx.admin.from("users").select("id", { count: "exact", head: true }).eq("id", id);
+    return (count ?? 0) > 0;
+  }
+
+  it("a placeholder whose only footprint is its join line leaves no record and is deleted; one who wrote a message is kept", async () => {
+    const tripId = await ctx.createTrip("Join line not history");
+    // Through the app: `ghostCrew.create` posts the "joined" system line, with
+    // the placeholder as its subject (`messages.user_id`).
+    const quiet = (await ctx.caller().ghostCrew.create({ tripId, name: "Added By Mistake" })) as { id: string };
+    const chatty = (await ctx.caller().ghostCrew.create({ tripId, name: "Said Something" })) as { id: string };
+    const { count: lines } = await ctx.admin.from("messages")
+      .select("id", { count: "exact", head: true }).eq("trip_id", tripId).eq("user_id", quiet.id).eq("message_type", "system");
+    expect(lines).toBeGreaterThan(0); // premise: the join line names them
+    const said = await ctx.admin.from("messages").insert({
+      id: crypto.randomUUID(), trip_id: tripId, user_id: chatty.id, channel: "trip", team_id: null, text: "hi",
+    });
+    if (said.error) throw said.error;
+
+    for (const id of [quiet.id, chatty.id]) {
+      expect((await archive(tripId, id)).error).toBeNull();
+      expect((await ctx.authedClient("owner").rpc("delete_orphan_guest_user", { p_user_id: id })).error).toBeNull();
+    }
+
+    expect(await departureTeam(tripId, quiet.id)).toBeUndefined();
+    expect(await userExists(quiet.id)).toBe(false);
+    expect(await departureTeam(tripId, chatty.id)).toBeNull(); // a record, on no team
+    expect(await userExists(chatty.id)).toBe(true);
+  });
+});

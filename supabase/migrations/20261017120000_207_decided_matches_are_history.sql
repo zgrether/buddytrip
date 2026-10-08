@@ -29,6 +29,18 @@
 -- unknown). The team rides on the departure instead, and the roster is still
 -- recorded only at the first finalize, whole.
 
+-- ── Also: a system line is not history ──────────────────────────────────
+-- 205's `_trip_history_names` counted ANY message naming the person. Adding a
+-- placeholder posts a "joined" system line whose `messages.user_id` is the
+-- placeholder (it is what lets one row read as a welcome to them and a notice
+-- to everyone else — `postSystemMessage`'s `subjectUserId`). So every
+-- placeholder added through the app had "history", a departure was always
+-- written, and `delete_orphan_guest_user` always kept them: ruling 5 ("no
+-- history, delete as before") could never apply. Found by the 8d-2 wiring's
+-- own test of removing a placeholder. A line the app wrote ABOUT someone is
+-- not something they did, so only non-system messages count. Nothing calls the
+-- archive in production yet, so no departure was ever written on this basis.
+
 -- ── 1 · The departure records the leaver's cup team ──────────────────────
 
 ALTER TABLE public.trip_departures
@@ -37,7 +49,52 @@ ALTER TABLE public.trip_departures
 COMMENT ON COLUMN public.trip_departures.team_id IS
   'The cup team the person was on when they left (migration 207). Read by readCreditRoster as a fallback for a departed person, so a match they had already decided still pays that team at finalize. NULL: on no team, or the team was deleted since.';
 
--- ── 2 · The archive (verbatim from 205, with the edits above marked 207) ──
+-- ── 2 · Only what a person WROTE is history, not a line written about them ──
+-- (verbatim from 205 with the messages arm narrowed to non-system rows)
+
+CREATE OR REPLACE FUNCTION public._trip_history_names(p_trip_id text, p_user_id text)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path TO ''
+AS $$
+  SELECT
+       EXISTS (SELECT 1 FROM public.messages x WHERE x.trip_id = p_trip_id AND x.user_id = p_user_id
+                 AND x.message_type <> 'system')
+    OR EXISTS (SELECT 1 FROM public.expenses x WHERE x.trip_id = p_trip_id AND (x.paid_by_user_id = p_user_id OR x.created_by = p_user_id))
+    OR EXISTS (SELECT 1 FROM public.expense_splits x JOIN public.expenses e ON e.id = x.expense_id WHERE e.trip_id = p_trip_id AND x.user_id = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.news_posts x WHERE x.trip_id = p_trip_id AND x.author_id = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.schedule_items x WHERE x.trip_id = p_trip_id AND (x.created_by = p_user_id OR x.confirmed_by = p_user_id))
+    OR EXISTS (SELECT 1 FROM public.logistics_items x WHERE x.trip_id = p_trip_id AND x.created_by = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.quick_info_tiles x WHERE x.trip_id = p_trip_id AND x.created_by = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.idea_lodging_options x WHERE x.trip_id = p_trip_id AND x.created_by = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.idea_votes x WHERE x.trip_id = p_trip_id AND x.user_id = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.date_poll_votes x JOIN public.date_windows w ON w.id = x.window_id WHERE w.trip_id = p_trip_id AND x.user_id = p_user_id)
+    OR EXISTS (SELECT 1 FROM public.invites x WHERE x.trip_id = p_trip_id AND x.created_by = p_user_id)
+    OR EXISTS (
+      SELECT 1 FROM public.games g
+       WHERE g.trip_id = p_trip_id
+         AND (
+              EXISTS (SELECT 1 FROM public.game_participants x WHERE x.game_id = g.id AND x.user_id = p_user_id)
+           OR EXISTS (SELECT 1 FROM public.game_results x WHERE x.game_id = g.id AND x.entity_type = 'user' AND x.entity_id = p_user_id)
+           OR EXISTS (SELECT 1 FROM public.score_entries x WHERE x.game_id = g.id AND ((x.participant_type = 'user' AND x.participant_id = p_user_id) OR x.submitted_by = p_user_id))
+           OR EXISTS (SELECT 1 FROM public.match_hole_outcomes x WHERE x.game_id = g.id AND x.submitted_by = p_user_id)
+           OR EXISTS (SELECT 1 FROM public.skins_hole_outcomes x WHERE x.game_id = g.id AND (x.submitted_by = p_user_id OR x.winner_user_id = p_user_id))
+           OR EXISTS (SELECT 1 FROM public.game_matches x WHERE x.game_id = g.id
+                        AND ((x.side_a ->> 'type' = 'user' AND x.side_a ->> 'id' = p_user_id)
+                          OR (x.side_b ->> 'type' = 'user' AND x.side_b ->> 'id' = p_user_id)))
+           OR EXISTS (SELECT 1 FROM public.pickem_picks x WHERE x.game_id = g.id AND (x.user_id = p_user_id OR x.entered_by = p_user_id))
+           OR EXISTS (SELECT 1 FROM public.bracket_entrant_members x JOIN public.bracket_entrants be ON be.id = x.entrant_id WHERE be.game_id = g.id AND x.user_id = p_user_id)
+           OR EXISTS (SELECT 1 FROM public.game_recredits x WHERE x.game_id = g.id AND (x.user_id = p_user_id OR x.recredited_by = p_user_id))
+           OR EXISTS (SELECT 1 FROM public.game_delegates x WHERE x.game_id = g.id AND x.granted_by = p_user_id)
+         )
+    );
+$$;
+
+REVOKE ALL ON FUNCTION public._trip_history_names(text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public._trip_history_names(text, text) TO service_role;
+
+-- ── 3 · The archive (verbatim from 205, with the edits marked 207) ──
 
 CREATE OR REPLACE FUNCTION public.archive_trip_member(p_trip_id text, p_user_id text)
 RETURNS void
