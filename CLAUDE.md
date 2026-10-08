@@ -1600,6 +1600,38 @@ These patterns have been established through prior work. Follow them exactly —
     `sideGamePaths.guard.test.ts` pins these for every side-capable view, and
     fails when a format gains `side_game` until its view is listed and checked.
 
+30. **A relationship row is never enough on its own: the caller's CURRENT
+    membership is part of every check that grants through one.** A delegation,
+    a captaincy, an invite, a participation: each is a row that names a person
+    and confers a right, and the row outlives the membership whenever the
+    clean-up that should remove it does not run — a best-effort clear that
+    failed, a removal path that never knew about the table, a row written
+    before the clean-up existed. The right has to end with the membership,
+    not with the clean-up.
+
+    Two instances, both latent only because nobody had yet left a trip while
+    holding one (Zach counts captaincy as the third of the class, 2026-10-08):
+    - **`is_game_delegate`** answered from `game_delegates` alone, and several
+      delegate write policies call nothing else, so a removed delegate kept
+      write access. Fixed in migration 205.
+    - **`is_team_captain`** answered from `team_assignments.is_captain` alone,
+      and four captain RPCs admitted a caller on it. Fixed in migration 206.
+
+    This is a different question from #28. #28 asks whether the answer depends
+    on WHO is asking; both helpers above did, and still granted too much. Ask
+    both: is it keyed to the caller, AND does it require the caller to still be
+    on the trip?
+
+    **How to apply:** a new helper or policy that grants through a relationship
+    row joins to the container and calls `is_trip_member` in the same
+    expression. Test it with two arms — the relationship row plus membership is
+    admitted, and the same row with the membership removed by a path that
+    leaves the row in place is refused. Removing membership through the
+    archive would clear the row too and test nothing. The sweep of every
+    existing helper and policy, with its results, is in the build plan's 8d
+    section. One arm there holds only through #26's coupling (own votes are
+    bounded by their SELECT policy), and `idea_votes` was read but not probed.
+
 ### Reuse targets (shared helpers — do not re-decide per site)
 
 - **`teamTextColor`** (`src/lib/teamTextColor.ts`) — computed sRGB relative
