@@ -1263,9 +1263,28 @@ Every policy and every definer helper that reads a relationship row was checked 
    or not a match is decided yet. **Partnerships: the partner plays on**, as a doubles seat does in
    golf; the entrant withdraws only when its last member leaves. The guest-merge comment that
    argues the opposite (migration 112) is corrected in the same PR.
+9. **Pick'em goes per pick** (resolving 6 against 7): in an unfinished pick'em, a leaver's pick
+   whose slate game has a result is history — kept, credited through the departure's team; a pick
+   on a game not yet played is cleared, because someone who left is no longer playing. A sheet with
+   nothing resolved ends up empty, which is ruling 6. "The same rule at a finer grain." Migration
+   208.
+10. **The departure team applies to any game that existed when they left, rejoined or not.** The
+    case that decides it: win, leave, rejoin — 8b will not reassign them while that game is
+    unfinished, and the decided match keeps their seat, so they stay teamless until it finalizes;
+    ignoring the departure would make the win pay nobody. Today's roster always wins over it, and
+    it never applies to a game created after they left (the reader, PR 8d-2). Its database half:
+    a second departure on no team keeps the team the first recorded **and the time it was
+    recorded** (208) — "the team and the moment it was recorded are one fact; splitting them is
+    what creates the odd case." The odd case, first stated as unresolved: with the time moved
+    forward, a team-independent game created between the two departures and played teamless would
+    have credited that team. With the time kept, it is newer than the record and credits nobody —
+    as it did while he was there — and every earlier game still credits the team.
+
+**Also found while wiring:** 205's history check counted a placeholder's own "joined" system line
+as history, so ruling 5 could never apply; 207 counts only messages a person wrote.
 
 **Order:** 207 (the archive) → the wiring (leave/remove onto the archive, the reader fallback) →
-the bracket withdrawal → after deploy, drop `trip_members_delete`.
+208 (per pick, the kept team) → the bracket withdrawal → after deploy, drop `trip_members_delete`.
 
 **Carried to 8b:** a team deleted after a game finalized can still be named in that game's
 credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize
