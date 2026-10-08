@@ -1160,6 +1160,58 @@ including every future one, must remember to exclude archived members, and one t
 leaks (chat delivery among them: today's cut-off on removal depends on the row being gone,
 verified with a Realtime probe 2026-10-02).
 
+### 8d — verify-first done and ruled, 2026-10-08
+
+**What the verify-first found.** Nobody could leave a trip on their own (no procedure, no UI);
+Organizers removed people, and any result, receipt or expense split refused the removal. In
+production (10 trips, 97 memberships) no participant or result belonged to a non-member, and 3
+chat authors were former members. **A live hole:** `trip_members_delete` admitted
+`user_id = auth.uid()`, so any member could delete their own row through the API and skip every
+clean-up and guard.
+
+The flag's cost turned out narrower than this plan claimed — about 115 of 135 policies route
+through seven helpers — but it opened three holes that settle it: a member could flip their own
+flag back (they may UPDATE their own row), an archive by UPDATE skips the role guard (it exits
+early when `role` is unchanged), and the one-row-per-person key would need new rules in add,
+invite, claim, merge and orphan-guest clean-up.
+
+**Ruled (Zach):**
+1. **Design A — delete the row — with a departures record** (`trip_departures`: the name the crew
+   saw, readable by the trip's current members only). In the merge, and on TRACKER's escape-clause
+   list: whether a disconnected person's name stays in the trip's history is that clause's to
+   answer deliberately.
+2. **Money: archive, warn, never block.** An expense ledger is history, like results; blocking
+   would make leaving impossible on any real trip. At the moment of leaving: "You have expenses on
+   this trip — you won't be able to see them after you leave."
+3. **Leave trip is in scope.** The Owner cannot leave without handing ownership over first; if
+   that does not exist yet, the Owner cannot leave and the message says why.
+4. **Re-finalize pushes go to current members only** — noise for someone who left, worse for
+   someone removed.
+
+Also: close the direct self-delete EARLY; a removed person's open app leaves the trip with "You're
+no longer a member of this trip." instead of a refetch error; the unused `trip_members.status`
+column is #1568, after PR 9.
+
+**Split:**
+- **8d-1 — migration 205** (lands first): `trip_departures`; `archive_trip_member`, ONE path for
+  leaving and removal — writes the departure, clears cup assignments, vacates seats only in
+  UNFINISHED games and keeps finished ones exactly as they are, then ends the membership; the role
+  guard admits the archive's own delete through a transaction-local marker (an Organizer can
+  leave; a direct delete is still refused); the self-delete closed (`trip_members_delete` narrowed
+  to Owners/Organizers); `delete_orphan_guest_user` keeps a departed placeholder (its record names
+  them beside history no foreign key protects); the merge re-keys departures.
+- **8d-2 — server:** leave/remove procedures call the archive; `findContributionBlockers` stops
+  refusing (money warns instead); name resolution falls back to the departure; re-finalize and
+  clinch pushes filter to current members; post-results roster changes settle the clinch as 8b's
+  do. Then a follow-up migration drops `trip_members_delete` entirely, so the archive is the only
+  way a membership ends.
+- **8d-3 — surfaces (look-gated):** Leave trip with its warnings; the removed person's exit message.
+
+**Decided in 8d-1, for the record:** a departed placeholder is never hard-deleted, so one added by
+mistake and removed with no history persists as an unlisted row (a later signup with its email
+still merges into it as designed). Pick'em sheets and bracket entrants in unfinished games are not
+cleared — the app-side clean-up never cleared them either — and remain an open question for 8d-2.
+
 **Carried to 8b:** a team deleted after a game finalized can still be named in that game's
 credited roster; rack and pick'em build their team list from `teams`, so on a re-finalize
 that team's members would credit nowhere. Lifting the lock for team delete has to decide this.

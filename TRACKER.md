@@ -199,7 +199,10 @@ R1's shape has changed under it — see §2. What remains:
   crew's record, not just their list. **Tables a disconnection must cover beyond the merge's
   list:** `game_recredits` (migration 204) names the person twice — `user_id`, whose credit
   moved, and `recredited_by`, the Owner who moved it — and its board note ("Re-credited by …")
-  renders the second by name.
+  renders the second by name. **`trip_departures`** (migration 205, PR 8d) holds the name the crew
+  saw for someone who left or was removed, so their results and messages keep a name. Whether that
+  name stays in the trip's history after a disconnection is a question this clause must answer
+  DELIBERATELY (Zach, 2026-10-08), not inherit from however 8d happened to leave it.
 - **Money / gambling** — killer feature *only if* UI/UX nailed. **The "no vision yet" half is spent:** the
   side-bets handoff is the vision, and it is BUILT on Quick Play — bets as objects with a start hole
   (`src/lib/sideBets.ts`), presses derived rather than recorded, Nassau in one action, carryovers, the ☠️
