@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { finishersByTeam, recreditTeamRows, recreditedRoster, TEAM_SCORING, unequalTeamsNote } from "./recredit";
+import { finishersByTeam, recreditTeamRows, recreditedRoster, TEAM_SCORING, unevenTeams, unevenTeamsExplanation } from "./recredit";
 
 const ids = () => {
   let n = 0;
@@ -65,35 +65,40 @@ describe("recreditTeamRows — the team rows a finalize through the new roster w
   });
 });
 
-describe("unequalTeamsNote — the direction is the point (#1561's ruling)", () => {
+describe("unevenTeams — a short tag, and the explanation in the right direction (#1561's ruling)", () => {
   const TEAMS = [{ teamId: "red", teamName: "Centurions" }, { teamId: "blue", teamName: "Spartans" }];
   const counts = (red: number, blue: number) => new Map([["red", red], ["blue", blue]]);
 
+  it("the tag: biggest team first, as digits", () => {
+    expect(unevenTeams({ scoring: "traditional", counts: counts(1, 2), teams: TEAMS })?.tag).toBe("Uneven teams: Spartans 2, Centurions 1");
+  });
+
   it("traditional stroke: the bigger team is at a DISADVANTAGE", () => {
-    expect(unequalTeamsNote({ gameName: "Day 1 Stroke", scoring: "traditional", counts: counts(2, 3), teams: TEAMS, mood: "would" })).toBe(
-      "Spartans would have three players counting in Day 1 Stroke, Centurions two — in stroke play a team's total is its players' strokes added up, so the bigger team is at a disadvantage."
+    expect(unevenTeams({ scoring: "traditional", counts: counts(1, 2), teams: TEAMS })?.explanation).toBe(
+      "In stroke play a team's total adds up its players' strokes, so the bigger team is at a disadvantage."
     );
   });
 
   it("Stableford: the bigger team is at an ADVANTAGE", () => {
-    expect(unequalTeamsNote({ gameName: "Stableford", scoring: "stableford", counts: counts(2, 3), teams: TEAMS, mood: "has" })).toBe(
-      "Spartans has three players counting in Stableford, Centurions two — in Stableford a team's total is its players' points added up, so the bigger team is at an advantage."
+    expect(unevenTeamsExplanation("stableford")).toBe(
+      "In Stableford a team's total adds up its players' points, so the bigger team is at an advantage."
     );
   });
 
   it("skins: an advantage, counted in skins", () => {
-    expect(unequalTeamsNote({ gameName: "Skins", scoring: "skins", counts: counts(3, 1), teams: TEAMS, mood: "would" })).toBe(
-      "Centurions would have three players counting in Skins, Spartans one — in skins a team's total is its players' skins added up, so the bigger team is at an advantage."
+    expect(unevenTeamsExplanation(TEAM_SCORING.gtt_skins(null))).toBe(
+      "In skins a team's total adds up its players' skins, so the bigger team is at an advantage."
     );
   });
 
-  it("equal teams: nothing to say", () => {
-    expect(unequalTeamsNote({ gameName: "G", scoring: "traditional", counts: counts(2, 2), teams: TEAMS, mood: "would" })).toBeNull();
+  it("even teams: nothing to say", () => {
+    expect(unevenTeams({ scoring: "traditional", counts: counts(2, 2), teams: TEAMS })).toBeNull();
   });
 
-  it("a team with nobody counting is named with none — the most unequal case", () => {
-    expect(unequalTeamsNote({ gameName: "G", scoring: "traditional", counts: new Map([["red", 2]]), teams: TEAMS, mood: "would" }))
-      .toMatch(/^Centurions would have two players counting in G, Spartans none — /);
+  it("a team with nobody counting is listed at 0 — the most uneven case", () => {
+    expect(unevenTeams({ scoring: "traditional", counts: new Map([["red", 2]]), teams: TEAMS })?.tag).toBe(
+      "Uneven teams: Centurions 2, Spartans 0"
+    );
   });
 
   it("finishersByTeam counts only people with a result, through the given roster", () => {

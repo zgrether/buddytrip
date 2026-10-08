@@ -67,6 +67,9 @@ export function RecreditSheet({
   const preview = state.phase === "ready" ? state.preview : null;
   const destination = preview?.toTeamName ?? null;
   const count = selected.size;
+  const unevenExplanations = [
+    ...new Set((preview?.eligible ?? []).flatMap((g) => (g.uneven ? [g.uneven.explanation] : []))),
+  ];
 
   return (
     <ScrollLock>
@@ -107,10 +110,11 @@ export function RecreditSheet({
 
             {preview && (
               <>
+                {/* One line (Zach's trim, 2026-10-08). The destination is not
+                    repeated here: every game row names it, "Centurions → Spartans"
+                    or "→ No team", which is also how a re-credit to no team says so. */}
                 <p className="mt-1.5 text-sm leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }} data-testid="recredit-intro">
-                  {destination
-                    ? `For a game that counted ${personName} for the wrong team. Each game you tick will count for ${destination}.`
-                    : `For a game that shouldn't have counted ${personName} for any team. Each game you tick will count for no team — ${personName}'s own result stays, but no team scores it.`}
+                  Select any game that counted {personName} for the wrong team.
                 </p>
 
                 {preview.eligible.length === 0 && (
@@ -150,26 +154,27 @@ export function RecreditSheet({
                             {on && <Check size={12} strokeWidth={3} />}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                              {g.name}
+                            {/* Title and DIRECTION on one line (Zach, on the 8c look:
+                                "counts for X now" read both ways). */}
+                            <span className="flex items-baseline justify-between gap-2">
+                              <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                                {g.name}
+                              </span>
+                              <span className="flex-shrink-0 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="recredit-game-direction">
+                                {g.fromTeamName ?? "No team"} → {destination ?? "No team"}
+                              </span>
                             </span>
-                            <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="recredit-game-direction">
-                              {/* The DIRECTION, explicitly (Zach, on the 8c look): "counts for X now"
-                                  read either as where it counts today or where it will
-                                  after the tick. */}
-                              {g.fromTeamName ?? "No team"} → {destination ?? "No team"}
-                            </span>
+                            {/* The points, before → after. The Owner's only warning before a
+                                re-credit that HURTS the team someone joins: a stroke team
+                                total is a sum, so an extra player adds strokes. */}
                             <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="recredit-game-change">
-                              {/* The line that warns before a re-credit HURTS the team someone
-                                  joins: a stroke team total is a sum, so an extra player adds
-                                  strokes and can lose the game for them. */}
-                              {change ? `Points in this game: ${change}` : "No points change in this game."}
+                              {change ?? "No points change"}
                             </span>
-                            {/* #1561's ruling: warn, never block. The sentence that explains a
-                                result that looks backwards — and says which way it cuts. */}
-                            {g.unequalTeams && (
-                              <span className="mt-1 block text-[12px]" style={{ color: "var(--color-bt-warning)" }} data-testid="recredit-game-unequal">
-                                {g.unequalTeams}
+                            {/* #1561's ruling: warn, never block. The short tag here; which
+                                way it cuts is said once, at the bottom. */}
+                            {g.uneven && (
+                              <span className="mt-1 block text-[12px]" style={{ color: "var(--color-bt-warning)" }} data-testid="recredit-game-uneven">
+                                {g.uneven.tag}
                               </span>
                             )}
                           </span>
@@ -191,13 +196,20 @@ export function RecreditSheet({
                         {g.name}
                       </span>
                       <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="recredit-standing-reason">
-                        {g.reason === "in_review"
-                          ? "Open for score edits — finish the review, then re-credit it."
-                          : "Stands as played — its result depended on who was on which team."}
+                        {g.reason === "in_review" ? "Open for score edits" : "Stands as played"}
                       </span>
                     </li>
                   ))}
                 </ul>
+
+                {/* The uneven-teams explanation ONCE, however many games carry a tag —
+                    one line per distinct format direction (a stroke round and a skins
+                    round cut opposite ways). */}
+                {unevenExplanations.map((text) => (
+                  <p key={text} className="mt-3 text-[12px]" style={{ color: "var(--color-bt-warning)" }} data-testid="recredit-uneven-explanation">
+                    {text}
+                  </p>
+                ))}
 
                 {count > 0 && (
                   <p className="mt-3 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="recredit-public">
@@ -244,7 +256,7 @@ export function RecreditSheet({
                   style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
                   data-testid="recredit-confirm"
                 >
-                  {count === 0 ? "Pick a game" : `Re-credit ${count} game${count === 1 ? "" : "s"}`}
+                  {count === 0 ? "Select a game" : `Re-credit ${count} game${count === 1 ? "" : "s"}`}
                 </button>
               )
             )}

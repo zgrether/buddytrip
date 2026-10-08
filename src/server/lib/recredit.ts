@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import {
-  finishersByTeam, isRecreditEligible, recreditTeamRows, recreditedRoster, TEAM_SCORING, unequalTeamsNote,
-  type RecreditPreview, type StandingGame, type TeamPoints, type TeamResultRow,
+  finishersByTeam, isRecreditEligible, recreditTeamRows, recreditedRoster, TEAM_SCORING, unevenTeams,
+  type RecreditPreview, type StandingGame, type TeamPoints, type TeamResultRow, type UnevenTeams,
 } from "@/lib/recredit";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { parseCreditedRoster } from "./creditRoster";
@@ -169,7 +169,7 @@ interface Plan {
   personName: string;
   toTeamId: string | null;
   toTeamName: string | null;
-  eligible: { game: FinishedGame; fromTeamId: string | null; teamRows: TeamResultRow[]; unequalTeams: string | null }[];
+  eligible: { game: FinishedGame; fromTeamId: string | null; teamRows: TeamResultRow[]; uneven: UnevenTeams | null }[];
   standing: StandingGame[];
 }
 
@@ -223,12 +223,10 @@ async function plan(
       // #1561's ruling: warn, never block. Said of the round AFTER the move,
       // because that is the state the Owner is choosing — and the one that
       // explains a result that looks backwards.
-      unequalTeams: unequalTeamsNote({
-        gameName: g.name,
+      uneven: unevenTeams({
         scoring: TEAM_SCORING[g.game_type_id as string](g.config),
         counts: finishersByTeam(gameRows, recreditedRoster(g.roster, input.userId, toTeamId)),
         teams: [...teamName].map(([teamId, name]) => ({ teamId, teamName: name })),
-        mood: "would",
       }),
     });
   }
@@ -280,7 +278,7 @@ export async function previewRecredit(
       before: points.before.get(e.game.id) ?? [],
       after: points.after.get(e.game.id) ?? [],
       fingerprint: prints.get(e.game.id) ?? "",
-      unequalTeams: e.unequalTeams,
+      uneven: e.uneven,
     })),
     standing: p.standing,
   };

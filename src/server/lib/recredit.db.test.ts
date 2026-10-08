@@ -56,9 +56,10 @@ describe("preview and confirm", () => {
     expect(pts(g.before)).toEqual({ [c.alpha]: 4, [c.bravo]: 10 });
     expect(pts(g.after)).toEqual({ [c.alpha]: 10, [c.bravo]: 4 });
     // The sentence that explains why moving him TO Bravo loses Bravo the game.
-    expect(g.unequalTeams).toBe(
-      "Bravo would have three players counting in Recredit moves round, Alpha one — in stroke play a team's total is its players' strokes added up, so the bigger team is at a disadvantage."
-    );
+    expect(g.uneven).toEqual({
+      tag: "Uneven teams: Bravo 3, Alpha 1",
+      explanation: "In stroke play a team's total adds up its players' strokes, so the bigger team is at a disadvantage.",
+    });
 
     const res = await ctx.caller().recredits.confirm({
       tripId: c.tripId, competitionId: c.competitionId, userId: f.planner, expectedTeamId: c.bravo,
