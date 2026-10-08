@@ -283,7 +283,31 @@ describe("tripMembers router", () => {
 
   it("remove — owner cannot remove self", async () => {
     const tripId = await crewTrip("remove-self");
-    await expect(ctx.caller().tripMembers.remove({ tripId, userId: ctx.user.id })).rejects.toThrow("Cannot remove yourself");
+    await expect(ctx.caller().tripMembers.remove({ tripId, userId: ctx.user.id })).rejects.toThrow("You can't remove yourself from a trip.");
+    expect(await roleOf(tripId, ctx.user.id)).toBe("Owner");
+  });
+
+  // ── leave (PR 8d, ruling 3) — the same archive as removal, as the caller ──
+  it("leave — a Member leaves, and their membership row is gone", async () => {
+    const tripId = await crewTrip("leave-member");
+    const member = ctx.getUser("member");
+    expect(await roleOf(tripId, member.id)).toBe("Member"); // premise
+    const result = await ctx.callerAs("member").tripMembers.leave({ tripId });
+    expect(result.success).toBe(true);
+    expect(await roleOf(tripId, member.id)).toBeNull();
+  });
+
+  it("leave — an Organizer can leave (removing one is Owner-only; leaving is not)", async () => {
+    const tripId = await crewTrip("leave-organizer");
+    const planner = ctx.getUser("planner");
+    expect(await roleOf(tripId, planner.id)).toBe("Organizer"); // premise
+    await ctx.callerAs("planner").tripMembers.leave({ tripId });
+    expect(await roleOf(tripId, planner.id)).toBeNull();
+  });
+
+  it("leave — the Owner is refused, told to transfer ownership first, and stays", async () => {
+    const tripId = await crewTrip("leave-owner");
+    await expect(ctx.caller().tripMembers.leave({ tripId })).rejects.toThrow(/[Tt]ransfer ownership/);
     expect(await roleOf(tripId, ctx.user.id)).toBe("Owner");
   });
 

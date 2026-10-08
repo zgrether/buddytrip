@@ -5,13 +5,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { joinNoticeText } from "@/lib/joinMessage";
-import { clearTripParticipation } from "../lib/leaveTrip";
-import { findOrphanBlockers, orphanRefusalMessage } from "../lib/ownerGuard";
-import {
-  findContributionBlockers,
-  contributionRefusalMessage,
-  hasContributions,
-} from "../lib/participationGuard";
+import { archiveTripMember } from "../lib/archiveMember";
 
 export const ghostCrewRouter = router({
   // -----------------------------------------------------------------------
@@ -515,92 +509,26 @@ export const ghostCrewRouter = router({
     // can strand the trip.
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
-      // #782 — count asserted. Removing a guest is an explicit act on a row the
-      // caller just saw in the roster, so zero rows means the id was stale or
-      // foreign, not a benign race — and the old code reported success either
-      // way, leaving the guest visibly still on the trip. This gate is one of
-      // #786's remaining ten and will widen when the trip_members role-column
-      // trigger lands, so it is checked before that rather than after.
-      // #957 — the SAME orphan guard `users.deleteMe` runs, because this
-      // procedure can reach the same end state by a different route. The
-      // delete below keys on `input.guestUserId` with no `is_guest` filter (the
-      // is_guest re-check lives in `delete_orphan_guest_user`, which gates the
-      // USERS row, not this membership row). So an Owner passing their OWN id
-      // removes their own Owner membership — bypassing `tripMembers.remove`'s
-      // "Cannot remove yourself" guard, which is in a different procedure.
-      //
-      // RLS does not stop it and should not: the policy is
-      // `user_id = auth.uid() OR has_trip_role('Owner')` and self-removal
-      // satisfies both. This is not a permission failure — the Owner IS allowed
-      // to. It is a consequence failure, so the guard keys on the consequence.
-      const blockers = await findOrphanBlockers(ctx.supabase, input.guestUserId, {
-        tripId: ctx.tripId,
-      });
-      if (blockers.length > 0) {
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: orphanRefusalMessage(blockers, "leave-trip"),
-        });
-      }
+      // PR 8d: removal is an ARCHIVE, through the same path as removing a real
+      // member and as leaving (`archiveTripMember`). It replaces three things
+      // this procedure used to do itself, each now inside one transaction:
+      //   - #957's orphan guard: the archive refuses removing an Owner, and an
+      //     Owner passing their OWN id here is LEAVING, which the archive
+      //     refuses with the transfer-first message;
+      //   - #951's participation refusal: history is what the archive keeps
+      //     (ruling 2: warn, never block), so it no longer refuses;
+      //   - the delete plus the best-effort clean-up, which could half-happen.
+      // A stale or foreign id is refused as not-a-member (#782's count check).
+      await archiveTripMember(ctx.supabase, ctx.tripId!, input.guestUserId);
 
-      // #951 — the SAME participation guard `tripMembers.remove` runs. A ghost
-      // that has played is exactly as orphanable as a real member: the scoring
-      // tables key to `users`, and a placeholder has a users row like anyone
-      // else. `delete_orphan_guest_user` below no-ops for a guest with score
-      // history (ON DELETE RESTRICT), which preserves the USERS row but does
-      // nothing about the membership — so without this the ghost still drops
-      // off the roster and their scorecard row still reads "Player".
-      const partBlockers = await findContributionBlockers(ctx.supabase, ctx.tripId!, input.guestUserId);
-      if (hasContributions(partBlockers)) {
-        const { data: gu } = await ctx.supabase
-          .from("users").select("name").eq("id", input.guestUserId).maybeSingle();
-        throw new TRPCError({
-          code: "PRECONDITION_FAILED",
-          message: contributionRefusalMessage((gu?.name as string) ?? "That crew member", partBlockers),
-        });
-      }
-
-      const { error, count } = await ctx.supabase
-        .from("trip_members")
-        .delete({ count: "exact" })
-        .eq("trip_id", ctx.tripId)
-        .eq("user_id", input.guestUserId);
-
-      if (!error && count === 0) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "That crew member is not on this trip",
-        });
-      }
-
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to remove guest",
-        });
-      }
-
-      // Leaving the trip means leaving its cups and its games — the SAME helper
-      // the real-member path calls, so the two removals cannot clear different
-      // things.
-      //
-      // Not redundant with the hard-delete below, which is what one might assume:
-      // `team_assignments.user_id` and `game_participants.user_id` are both ON
-      // DELETE CASCADE, so deleting the guest WOULD take those rows with it — but
-      // `delete_orphan_guest_user` is a no-op for any guest still referenced under
-      // RESTRICT (it swallows the foreign_key_violation), and those are exactly
-      // the guests with history worth keeping. Every production orphan found was
-      // of that kind: a guest who survived the delete and kept an assignment to a
-      // trip they had left. The match SEAT is not covered by the cascade at all in
-      // either case — a `{type,id}` inside JSONB is invisible to every FK.
-      await clearTripParticipation(ctx.supabase, ctx.tripId, input.guestUserId);
-
-      // Free the email: if this guest is now on no trip, hard-delete the
-      // users row. RLS blocks the user-scoped client from deleting users, so
-      // this runs through a SECURITY DEFINER function that re-checks is_guest
-      // and the orphan condition atomically, and no-ops for guests with
-      // expense/score history (ON DELETE RESTRICT). Best-effort — a failure
-      // here must not fail the removal the owner already saw succeed.
+      // Free the email: if this guest is now on no trip, hard-delete the users
+      // row. `delete_orphan_guest_user` re-checks is_guest and the orphan
+      // condition atomically, and keeps anyone with history — a departure
+      // record (written only when something in the trip still names them,
+      // migration 205), a match seat, or a row a foreign key protects. So a
+      // placeholder added by mistake is deleted as before, and one with history
+      // survives beside it. Best-effort, after the archive committed: a failure
+      // here must not report the removal as failed (CLAUDE.md, post-commit work).
       await ctx.supabase.rpc("delete_orphan_guest_user", {
         p_user_id: input.guestUserId,
       });
