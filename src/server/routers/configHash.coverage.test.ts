@@ -50,7 +50,13 @@ const NOT_HASHED: Record<keyof typeof HASH_COLS, string[]> = {
   // `id` is deterministic here (`<game_id>:e<seed>`, migration 115) rather than
   // minted, so excluding it is about REDUNDANCY, not churn — `seed` already carries
   // everything the id encodes.
-  bracket_entrants: ["id", "game_id", "created_at"],
+  //
+  // `withdrawn_at` (migration 209) is STATE a departure produces, not a setting:
+  // the same category as a result. Hashing it would fail a concurrent settings save
+  // on a bracket whose entrant left mid-edit, for a change no setting made. It
+  // reaches other devices with the draw read (`games.bracketDraw`), which carries
+  // it per row.
+  bracket_entrants: ["id", "game_id", "created_at", "withdrawn_at"],
   // `entrant_id` is the parent link this row is read THROUGH (an embedded select
   // under bracket_entrants), not content of its own.
   bracket_entrant_members: ["entrant_id"],
