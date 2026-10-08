@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import type { BracketDrawMatch } from "@/lib/bracket";
-import { matchKey, drawComplete, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
 import { resolveAnyDraw, placementsForDraw } from "@/lib/bracketFormat";
 import { readBracketDraw } from "./bracketDraw";
 
@@ -37,14 +37,16 @@ export interface BracketPlacementRow {
  * Where every entrant finished, ready to commit.
  *
  * ── Refuses rather than posting half a bracket ──────────────────────────────
- * `drawComplete` is the gate, and it is the same predicate the play surface uses
- * to decide whether to offer the finalize CTA. It asks "is every match that CAN
- * be decided decided?", which is not the same as "does the final have a winner":
- * a draw carrying a consolation match is not finished while the play-off is
- * open, and posting there would record two tied thirds for a game that is about
- * to separate them.
+ * The gate is the placement functions themselves: no placements, no post
+ * (`bracketResultReady`, the same answer the play surface's Finish CTA reads).
+ * They return nothing until every match that CAN be decided is decided — which
+ * is not "the final has a winner": a consolation still open, or a grand-final
+ * reset still owed, is an unfinished draw (#1417). This used to be a separate
+ * `drawComplete` gate here, and a second "no placements" refusal below it, while
+ * the preview read the placements: three answers to one question, and they
+ * disagreed exactly where #1417 lived.
  *
- * An empty draw fails the same gate — `drawComplete([])` is false — so a bracket
+ * An empty draw places nobody either, so a bracket
  * whose field was never built cannot be finalized into an empty result. That is
  * the read-side counterpart of migration 117's go-live gate rather than a
  * duplicate of it: 117 stops such a game going live, this stops one that somehow
@@ -80,23 +82,20 @@ export async function deriveBracketPlacements(
   // with 4 of 15 matches undecided. Both dispatches now read the DRAW; see
   // `bracketFormat.ts` for why the draw decides and not the config.
   const resolved = resolveAnyDraw(draw, winners);
-  if (!drawComplete(resolved)) {
-    throw new TRPCError({
-      code: "PRECONDITION_FAILED",
-      message: "This bracket still has matches to decide — record every result before posting it.",
-    });
-  }
 
+  // ONE decision: the placements. Empty means not postable — refused rather than
+  // written, which keeps the game finishable (status stays non-complete, the
+  // compute is idempotent, tapping Finish again recovers) instead of locking it
+  // with nothing recorded. Which SENTENCE to show is a separate question with an
+  // honest answer: if a match is still playable, recording it is the action the
+  // reader can take; otherwise there is nothing they can do here.
   const placements = placementsForDraw(draw, resolved);
-  // `drawComplete` and a placeable draw are not quite the same claim: the pure
-  // rule returns [] when there is no decided final to place anyone against.
-  // Refusing here rather than writing an empty result keeps the game finishable
-  // (status stays non-complete, the compute is idempotent, tapping Finish again
-  // recovers) instead of locking it with nothing recorded.
   if (placements.length === 0) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
-      message: "This bracket has no result to post yet.",
+      message: resolved.some((m) => m.playable)
+        ? "This bracket still has matches to decide — record every result before posting it."
+        : "This bracket has no result to post yet.",
     });
   }
 
