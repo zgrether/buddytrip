@@ -48,6 +48,9 @@ export function computeSplitDisplay(
 
 interface SplitPanelProps {
   members: ExpenseMember[];
+  /** Names of people who have LEFT the trip (PR 8d), for an existing expense split
+   *  with them. Lookup only — `members` still decides who can be split in. */
+  departedNames?: ReadonlyMap<string, string>;
   totalAmount: number;
   includedIds: string[];
   overrides: Record<string, string>;
@@ -64,6 +67,7 @@ interface SplitPanelProps {
 
 export function SplitPanel({
   members,
+  departedNames,
   totalAmount,
   includedIds,
   overrides,
@@ -89,7 +93,7 @@ export function SplitPanel({
     // m.user.name directly, which surfaced the original users.name
     // even after a rename (e.g. "Tak" lingering after editing to "Taj").
     const name =
-      m?.displayName ?? m?.user?.name ?? m?.user?.email ?? uid.slice(0, 6);
+      m?.displayName ?? m?.user?.name ?? m?.user?.email ?? departedNames?.get(uid) ?? uid.slice(0, 6);
     return uid === currentUser?.id ? `${name} (you)` : name;
   };
 

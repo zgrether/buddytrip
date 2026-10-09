@@ -4,6 +4,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
+import { useDepartedNames } from "@/hooks/useDepartedNames";
+import { withDeparted } from "@/lib/departedNames";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
@@ -616,10 +618,14 @@ export function PickemGameView() {
    * this person".
    */
   const membersQ = trpc.tripMembers.list.useQuery({ tripId: tripId! }, { enabled: !!tripId });
+  const departedNames = useDepartedNames(tripId);
   const nameByUser = useMemo(() => {
     const rows = (membersQ.data ?? []) as { memberId?: string; displayName?: string }[];
-    return new Map(rows.map((m) => [m.memberId ?? "", m.displayName ?? "Unknown"]));
-  }, [membersQ.data]);
+    const m = new Map(rows.map((r) => [r.memberId ?? "", r.displayName ?? "Unknown"]));
+    // Plus everyone who has LEFT, by the name the crew saw (PR 8d) — for lookup
+    // only: their finished results and seats still name them.
+    return withDeparted(m, departedNames, (n) => n);
+  }, [membersQ.data, departedNames]);
   const nameOf = useCallback(
     (userId: string) => nameByUser.get(userId) ?? "Unknown",
     [nameByUser]

@@ -161,6 +161,33 @@ export const tripMembersRouter = router({
   // than after a failed press. `remove` re-checks and is the authority; this is
   // the courtesy on top of it, never a substitute.
   // -----------------------------------------------------------------------
+  departedNames: authedProcedure
+    .input(z.object({ tripId: z.string() }))
+    .use(requireTripMember)
+    .query(async ({ ctx }) => {
+      // -----------------------------------------------------------------------
+      // departedNames — what to CALL someone who has left (PR 8d).
+      //
+      // Their membership row is gone, so every name map built from
+      // `tripMembers.list` misses them and their results, messages and expenses
+      // read "Player" / "Unknown". The departure record keeps the name the crew
+      // saw (`trip_departures`, migration 205), readable by current members only.
+      //
+      // A SEPARATE list, deliberately, and never merged into `tripMembers.list`:
+      // that list also decides membership — who can be picked, paid for, seeded,
+      // mentioned, made a delegate — and a departed person must gain a NAME, not
+      // a place. Clients merge this into their name maps for LOOKUP only.
+      // -----------------------------------------------------------------------
+      const { data, error } = await ctx.supabase
+        .from("trip_departures")
+        .select("user_id, display_name")
+        .eq("trip_id", ctx.tripId!);
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to read who has left this trip" });
+      }
+      return (data ?? []).map((d) => ({ userId: d.user_id as string, displayName: d.display_name as string }));
+    }),
+
   removalBlockers: authedProcedure
     .input(z.object({ tripId: z.string(), userId: z.string() }))
     .use(requireTripMember)

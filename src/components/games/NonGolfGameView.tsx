@@ -5,6 +5,8 @@ import { Settings } from "lucide-react";
 import {useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
+import { useDepartedNames } from "@/hooks/useDepartedNames";
+import { withDeparted } from "@/lib/departedNames";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
 import { SetupPlaceholder } from "@/components/games/SetupPlaceholder";
 import { GameSettingsPage } from "@/components/games/GameSettingsPage";
@@ -471,9 +473,18 @@ export function NonGolfGameView() {
     for (const t of pickerTeams) m.set(t.id, t.players.map((p) => p.id));
     return m;
   }, [pickerTeams]);
+  // Everyone who has LEFT, by the name the crew saw (PR 8d). `pickerTeams` needs a
+  // membership AND a cup assignment, and the archive ends both, so a departed
+  // player's decided match and bracket row would otherwise read "Player". Lookup
+  // only: `pickerTeams` itself (who can be picked) is untouched.
+  const departedNames = useDepartedNames(tripId);
   const matchesNameMap = useMemo(
-    () => new Map(pickerTeams.flatMap((t) => t.players.map((p) => [p.id, p.name] as const))),
-    [pickerTeams],
+    () => withDeparted(
+      new Map(pickerTeams.flatMap((t) => t.players.map((p) => [p.id, p.name] as const))),
+      departedNames,
+      (n) => n,
+    ),
+    [pickerTeams, departedNames],
   );
   const matchesAvatarIconMap = useMemo(
     () => new Map(pickerTeams.flatMap((t) => t.players.map((p) => [p.id, p.avatarIcon] as const))),
@@ -807,12 +818,12 @@ export function NonGolfGameView() {
       const second = e.userIds[1] ? meta.get(e.userIds[1]) : undefined;
       return {
         seed: e.seed,
-        name: first?.name ?? "Player",
-        partner: e.userIds[1] ? second?.name ?? "Player" : null,
+        name: first?.name ?? departedNames.get(e.userIds[0]) ?? "Player",
+        partner: e.userIds[1] ? second?.name ?? departedNames.get(e.userIds[1]) ?? "Player" : null,
         teamColor: first?.color ?? null,
       };
     });
-  }, [poolQ.data, pickerTeams]);
+  }, [poolQ.data, pickerTeams, departedNames]);
 
   /**
    * Seed → cup team, taken from the pool the server already returns.

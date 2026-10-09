@@ -33,6 +33,7 @@ import { AddPropertySheet, detectPlatform, extractDomain, type PropertyFormValue
 import { AddOrganizerComposer } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
 import { type Member, deriveStatus as deriveStatusIZ, CrewSection } from "@/app/trips/[tripId]/tabs/components/CrewRoster";
 import { MemberEditor } from "@/app/trips/[tripId]/tabs/components/MemberEditor";
+import { useDepartedNames } from "@/hooks/useDepartedNames";
 import { CrewEmailPanel } from "@/app/trips/[tripId]/tabs/components/CrewEmailPanel";
 import { buildPlanningInvitation } from "@/lib/invitationDefault";
 import type { CatalogIdea, TripData } from "@/app/trips/[tripId]/tabs/types";
@@ -107,6 +108,7 @@ function IdeaCard({
   onSetDestination: (idea: Idea) => void;
   onDelete: (idea: Idea) => void;
 }) {
+  const departedNames = useDepartedNames(tripId);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
   const utils = trpc.useUtils();
@@ -287,7 +289,9 @@ function IdeaCard({
               <div className="flex items-center">
                 {visible.map((voterId, idx) => {
                   const member = memberData.find((m) => m.memberId === voterId);
-                  const name = member?.displayName ?? voterId.slice(0, 8);
+                  // A vote is history, so a voter who has LEFT keeps a departure
+                  // record — named by it rather than by an id fragment (PR 8d).
+                  const name = member?.displayName ?? departedNames.get(voterId) ?? voterId.slice(0, 8);
                   return (
                     <div
                       key={voterId}

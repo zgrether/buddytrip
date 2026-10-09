@@ -6,6 +6,7 @@ import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { trpc } from "@/lib/trpc-client";
+import { useDepartedNames } from "@/hooks/useDepartedNames";
 import { SplitPanel } from "./SplitPanel";
 import { CurrencyInput, memberName as getMemberName } from "./ExpensesSection";
 import type { ExpenseItem, ExpenseMember } from "./ExpensesSection";
@@ -141,7 +142,8 @@ export function EditExpenseModal({
     },
   });
 
-  const memberName = (uid: string) => getMemberName(members, uid);
+  const departedNames = useDepartedNames(tripId);
+  const memberName = (uid: string) => getMemberName(members, uid, departedNames);
 
   function handleToggle(uid: string) {
     if (includedIds.includes(uid)) {
@@ -349,6 +351,7 @@ export function EditExpenseModal({
         {/* Split panel */}
         <SplitPanel
           members={members}
+          departedNames={departedNames}
           totalAmount={amountNum}
           includedIds={includedIds}
           overrides={overrides}

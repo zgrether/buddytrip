@@ -11,6 +11,7 @@ import { Avatar } from "@/components/Avatar";
 import { SampleHeader, SampleCard } from "@/components/SampleSection";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { trpc } from "@/lib/trpc-client";
+import { useDepartedNames } from "@/hooks/useDepartedNames";
 import { EditExpenseModal } from "./EditExpenseModal";
 import { AddExpenseModal } from "./AddExpenseModal";
 
@@ -44,10 +45,17 @@ export interface ExpenseItem {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-export function memberName(members: ExpenseMember[], userId: string | null | undefined) {
+/** A person's name on an expense. `departed` names someone who has LEFT the trip
+ *  (PR 8d) — their receipts and splits stay, and read as an id fragment without it.
+ *  Lookup only: the member list itself (who can pay, who is split in) is untouched. */
+export function memberName(
+  members: ExpenseMember[],
+  userId: string | null | undefined,
+  departed?: ReadonlyMap<string, string>,
+) {
   if (!userId) return "Unknown";
   const m = members.find((x) => x.user_id === userId);
-  return m?.displayName ?? m?.user?.name ?? m?.user?.email ?? userId.slice(0, 6);
+  return m?.displayName ?? m?.user?.name ?? m?.user?.email ?? departed?.get(userId) ?? userId.slice(0, 6);
 }
 
 function computeUserShare(expense: ExpenseItem, userId: string): number | null {
@@ -564,6 +572,7 @@ export function ExpensesSection({
   addOpen: boolean;
   onAddOpenChange: (open: boolean) => void;
 }) {
+  const departedNames = useDepartedNames(tripId);
   const currentUser = useCurrentUser();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
@@ -813,7 +822,7 @@ export function ExpensesSection({
                           <span>
                             Paid by{" "}
                             <span style={{ color: "var(--color-bt-text)" }}>
-                              {paidByYou ? "you" : memberName(members, expense.paid_by_user_id)}
+                              {paidByYou ? "you" : memberName(members, expense.paid_by_user_id, departedNames)}
                             </span>
                           </span>
                           <span aria-hidden>·</span>
