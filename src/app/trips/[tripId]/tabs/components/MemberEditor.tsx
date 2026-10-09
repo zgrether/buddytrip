@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Calendar, Check, Shield, Users, X, type LucideIcon } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
+import { DepartureWarning } from "./DepartureWarning";
 import { trpc } from "@/lib/trpc-client";
 import { resetTripGameState } from "@/lib/gameConfigHash";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
@@ -203,16 +204,15 @@ export function MemberEditor({
       onClose();
     },
   });
-  // #951 — state the blocker BEFORE the destructive button, not after a failed
-  // press. The mutation re-checks server-side and is the authority; this is the
-  // courtesy on top of it, so a stale read can never permit a removal the
-  // server would refuse.
-  const { data: removalInfo, isPending: removalPending } = trpc.tripMembers.removalBlockers.useQuery(
+  // What removing them means, stated BEFORE the press (#951; a warning rather
+  // than a refusal since PR 8d-3 — ruling 2: warn, never block). Advisory: the
+  // archive applies its own rules when the button is pressed.
+  const { data: removalInfo, isPending: removalPending } = trpc.tripMembers.departureSummary.useQuery(
     { tripId, userId: member.user_id ?? "" },
     {
       enabled: !!member.user_id,
       /**
-       * ALWAYS re-read on open (#1034b). The reported bug: delete a blocking
+       * ALWAYS re-read on open (#1034b). The reported bug: delete a listed
        * game or remove a receipt, reopen this modal, and the panel still lists
        * them — a hard refresh was the only way out. The cause is the GLOBAL
        * 60s `staleTime` (`providers.tsx`): this query took the default, so a
@@ -220,7 +220,7 @@ export function MemberEditor({
        *
        * ── Why refetch-on-mount and NOT a list of mutations to invalidate ────
        * The obvious fix is to invalidate this key from everything that can
-       * change a blocker. That list is not enumerable in advance:
+       * change what it lists. That list is not enumerable in advance:
        * `findContributionBlockers` reads TEN relations — `games`, `expenses`,
        * `expense_splits`, `game_participants`, `game_matches`,
        * `bracket_entrant_members`, `score_entries`, `game_results`,
@@ -237,19 +237,13 @@ export function MemberEditor({
        * and it is correct no matter which of the ten relations moved or
        * whether the change came from this device at all.
        *
-       * `tripMembers.remove` still re-checks server-side and remains the
-       * authority; this is the courtesy layer staying honest.
+       * The archive behind `tripMembers.remove` applies its own rules on the
+       * press; this is the courtesy layer staying honest.
        */
       staleTime: 0,
       refetchOnMount: "always",
     }
   );
-  // The server decides `blocked` — the predicate spans games plus two expense
-  // counts now, and a client re-deriving it is how the two drift apart.
-  const removalBlocked = removalInfo?.blocked ?? false;
-  const removalGames = removalInfo?.blockers.games ?? [];
-  const removalPaid = removalInfo?.blockers.expensesPaid ?? 0;
-  const removalSplits = removalInfo?.blockers.expenseSplits ?? 0;
 
   const removeGuest = trpc.ghostCrew.remove.useMutation({
     onSuccess: () => {
@@ -687,62 +681,25 @@ export function MemberEditor({
               Space above comes from the Travel group's paddingBottom. */}
           {!isOwnerRow && (
             <div style={{ borderTop: "1px solid var(--color-bt-subtle-border)", paddingTop: 18, paddingBottom: 16 }}>
-              {/* The Delete button ALWAYS renders now. When the removal is
-                  refused, the explanation rides the button's armed state
-                  instead of replacing it — same content, shown when someone is
-                  actually trying to remove them rather than to everyone who
-                  opens the modal (#1034). The majority case is a member with
-                  nothing blocking, and that case is now frictionless again.
+              {/* Removal is never refused for history any more (PR 8d-3, ruling
+                  2: warn, never block). Someone with nothing on the trip gets
+                  the plain one-line confirm — the majority case stays
+                  frictionless. Someone WITH history gets the warning when the
+                  remover arms the button, above the confirm, saying what stays
+                  and what goes — not to everyone who opens the modal (#1034).
 
-                  `removalBlocked` still comes from the SERVER (`blocked`), not
-                  re-derived here, and `tripMembers.remove` re-checks and
-                  remains the authority — this is presentation only. */}
+                  `hasHistory` comes from the SERVER, not re-derived here. */}
               <ConfirmDeleteButton
                 label="Remove from trip"
                 confirmLabel="Remove"
                 prompt="Remove this person from the trip?"
-                /* Also pends while the guard is still resolving. Without it
-                   there is a window at open where `removalBlocked` is false
-                   only because the answer hasn't arrived, so a fast tap would
-                   arm a live Remove over an unknown state — refused by the
-                   server, but as an error rather than an explanation. */
+                /* Also pends while the summary is still resolving, so a fast
+                   tap cannot arm the plain confirm for someone whose warning
+                   has not arrived yet. */
                 pending={removeMember.isPending || removeGuest.isPending || removalPending}
                 onConfirm={handleRemove}
-                blocked={
-                  !removalBlocked ? undefined : (
-                    <>
-                      <p className="text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                        Can&rsquo;t remove them yet
-                      </p>
-                      <p className="mt-1.5 text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                        {removalInfo?.message}
-                      </p>
-                      <ul className="mt-2 flex flex-col gap-1">
-                        {removalGames.map((b) => (
-                          <li key={b.gameId} className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                            <span style={{ color: "var(--color-bt-text)" }}>{b.gameName}</span>
-                            {b.hasScores ? " — has scores" : " — has a result"}
-                          </li>
-                        ))}
-                        {removalPaid > 0 && (
-                          <li className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                            <span style={{ color: "var(--color-bt-text)" }}>
-                              {removalPaid === 1 ? "1 expense" : `${removalPaid} expenses`}
-                            </span>
-                            {" — they paid"}
-                          </li>
-                        )}
-                        {removalSplits > 0 && (
-                          <li className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-                            <span style={{ color: "var(--color-bt-text)" }}>
-                              {removalSplits === 1 ? "1 expense" : `${removalSplits} expenses`}
-                            </span>
-                            {" — they're split into"}
-                          </li>
-                        )}
-                      </ul>
-                    </>
-                  )
+                warning={
+                  removalInfo?.hasHistory ? <DepartureWarning who="them" history={removalInfo.history} /> : undefined
                 }
               />
             </div>

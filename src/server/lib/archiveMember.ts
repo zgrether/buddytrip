@@ -62,16 +62,8 @@ async function refusalMessage(
       return { code: "UNAUTHORIZED", message: "Sign in to do that." };
     case "ARCHIVE_NOT_A_MEMBER":
       return { code: "NOT_FOUND", message: "That person isn't on this trip." };
-    case "ARCHIVE_OWNER_MUST_TRANSFER": {
-      const blockers = await findOrphanBlockers(supabase, userId, { tripId });
-      return {
-        code: "PRECONDITION_FAILED",
-        message:
-          blockers.length > 0
-            ? orphanRefusalMessage(blockers, "leave-trip")
-            : "You own this trip. Transfer ownership in Trip settings first, then leave.",
-      };
-    }
+    case "ARCHIVE_OWNER_MUST_TRANSFER":
+      return { code: "PRECONDITION_FAILED", message: await ownerLeaveRefusal(supabase, tripId, userId) };
     case "ARCHIVE_NOT_ALLOWED":
       return { code: "FORBIDDEN", message: "Only the trip's owner or an organizer can remove people." };
     case "ARCHIVE_CANNOT_REMOVE_OWNER":
@@ -83,6 +75,22 @@ async function refusalMessage(
           "Only the trip owner can remove an organizer. Ask the owner to remove them, or to change their role to Member first.",
       };
   }
+}
+
+/**
+ * Why the Owner cannot leave, and what to do instead — the ONE sentence for it,
+ * shown both by the refusal above and BEFORE the attempt (`tripMembers.leaveCheck`,
+ * which the Leave trip button reads), so the two can never say different things.
+ */
+export async function ownerLeaveRefusal(
+  supabase: SupabaseClient,
+  tripId: string,
+  userId: string
+): Promise<string> {
+  const blockers = await findOrphanBlockers(supabase, userId, { tripId });
+  return blockers.length > 0
+    ? orphanRefusalMessage(blockers, "leave-trip")
+    : "You own this trip. Transfer ownership in Trip settings first, then leave.";
 }
 
 /**

@@ -33,6 +33,8 @@ import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { DatesSheet } from "./components/DatesSheet";
 import { AppShell } from "@/components/shell/AppShell";
 import { useTripId } from "@/components/TripIdProvider";
+import { clearLastTripPointer } from "@/lib/lastTripPointer";
+import { isNotAMemberError } from "@/lib/tripAccessMessages";
 import { ChatView } from "@/components/shell/ChatView";
 import { LiveFaceClient } from "@/components/competition/LiveFaceClient";
 
@@ -240,21 +242,28 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     }
   }, [tripId]);
 
+  // All hooks must be called before any early returns
+  const utils = trpc.useUtils();
+
   // Stale-pointer recovery: if the trip 404s — deleted (or membership revoked)
   // while bt-last-trip-id still pointed here, which the root route blindly
   // 307s to — clear the pointer and bounce to the dashboard instead of
   // stranding the user on a dead-end "Trip not found" screen.
+  //
+  // EXCEPT when they were removed while looking at it (PR 8d-3): the trip had
+  // loaded, and the refusal is the membership gate's real "no". Bouncing them
+  // silently is what the ruling replaced — `TripMembershipGate` (trip layout)
+  // says "You're no longer a member of this trip." So hand over to it: re-read
+  // the roster it watches, which refuses them the same way.
   useEffect(() => {
     if (!error) return;
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem("bt-last-trip-id");
-      document.cookie = "bt-last-trip-id=; Max-Age=0; Path=/; SameSite=Lax";
+    if (trip && isNotAMemberError(error)) {
+      void utils.tripMembers.list.invalidate({ tripId });
+      return;
     }
+    clearLastTripPointer();
     router.replace("/dashboard");
-  }, [error, router]);
-
-  // All hooks must be called before any early returns
-  const utils = trpc.useUtils();
+  }, [error, router, trip, tripId, utils]);
 
   const lockDestination = trpc.trips.lockDestination.useMutation({
     onSuccess: () => {

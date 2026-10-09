@@ -283,7 +283,7 @@ describe("tripMembers router", () => {
 
   it("remove — owner cannot remove self", async () => {
     const tripId = await crewTrip("remove-self");
-    await expect(ctx.caller().tripMembers.remove({ tripId, userId: ctx.user.id })).rejects.toThrow("You can't remove yourself from a trip.");
+    await expect(ctx.caller().tripMembers.remove({ tripId, userId: ctx.user.id })).rejects.toThrow("You can't remove yourself from a trip. Use Leave trip on the Crew tab instead.");
     expect(await roleOf(tripId, ctx.user.id)).toBe("Owner");
   });
 
@@ -309,6 +309,32 @@ describe("tripMembers router", () => {
     const tripId = await crewTrip("leave-owner");
     await expect(ctx.caller().tripMembers.leave({ tripId })).rejects.toThrow(/[Tt]ransfer ownership/);
     expect(await roleOf(tripId, ctx.user.id)).toBe("Owner");
+  });
+
+  // ── departureSummary.ownerRefusal (PR 8d-3) — the Leave button says why
+  // BEFORE the press, and must say exactly what the press would. ────────────
+  it("departureSummary — the Owner asking about leaving gets the SAME sentence the leave refuses with", async () => {
+    const tripId = await crewTrip("summary-owner");
+    const summary = await ctx.caller().tripMembers.departureSummary({ tripId, userId: ctx.user.id });
+    const refused = await ctx.caller().tripMembers.leave({ tripId }).then(
+      () => null,
+      (e: Error) => e.message
+    );
+    expect(refused).not.toBeNull(); // premise: the leave really is refused
+    expect(summary.ownerRefusal).toBe(refused);
+  });
+
+  it("departureSummary — nobody else is told they can't leave", async () => {
+    const tripId = await crewTrip("summary-others");
+    const member = ctx.getUser("member");
+    const planner = ctx.getUser("planner");
+    // A Member and an Organizer about themselves: they CAN leave.
+    expect((await ctx.callerAs("member").tripMembers.departureSummary({ tripId, userId: member.id })).ownerRefusal).toBeNull();
+    expect((await ctx.callerAs("planner").tripMembers.departureSummary({ tripId, userId: planner.id })).ownerRefusal).toBeNull();
+    // The Owner asking about SOMEONE ELSE is not asking about leaving.
+    expect((await ctx.caller().tripMembers.departureSummary({ tripId, userId: member.id })).ownerRefusal).toBeNull();
+    // Someone else asking about the Owner is not the Owner leaving either.
+    expect((await ctx.callerAs("planner").tripMembers.departureSummary({ tripId, userId: ctx.user.id })).ownerRefusal).toBeNull();
   });
 
   it("remove — owner can remove a member, and the row is gone", async () => {

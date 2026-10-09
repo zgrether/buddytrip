@@ -12,9 +12,9 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * warn, never block).
  *
  * So every case below now asserts TWO things:
- *   - the PREDICATE (`findContributionBlockers`, via `removalBlockers`) still
- *     gives the verdict it gave before. It drives the remove panel's warning,
- *     which 8d-3 replaces; until then the UI still holds the button for these.
+ *   - the PREDICATE (`findContributionBlockers`, via `departureSummary`) still
+ *     gives the verdict it gave before. It no longer gates anything: since
+ *     PR 8d-3 it is what the remove and leave WARNINGS list.
  *   - removal SUCCEEDS, and the specific history row the case is about is
  *     still there afterwards — the mechanism, not just "it didn't throw".
  *
@@ -92,16 +92,16 @@ async function removeOk(tripId: string, userId: string) {
 describe("removal archives instead of refusing", () => {
   it("no participation: nothing to warn about, and the removal goes through (the common case)", async () => {
     const tripId = await trip("plain");
-    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: outsider });
-    expect(info.blocked).toBe(false);
-    expect(info.message).toBeNull();
+    const info = await ctx.caller().tripMembers.departureSummary({ tripId, userId: outsider });
+    expect(info.hasHistory).toBe(false);
+    expect(info.ownerRefusal).toBeNull();
     await removeOk(tripId, outsider);
   });
 
   it("scores in a game: the panel still says so; removal goes through and the SCORES STAY", async () => {
     const tripId = await trip("scores");
     const gameId = await makeGameWith(tripId, member, { withScore: true, name: "Saturday Stroke" });
-    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
+    expect((await ctx.caller().tripMembers.departureSummary({ tripId, userId: member })).hasHistory).toBe(true);
 
     await removeOk(tripId, member);
     expect(await rowCount("score_entries", { game_id: gameId, participant_id: member })).toBe(1);
@@ -110,7 +110,7 @@ describe("removal archives instead of refusing", () => {
   it("only SLOTTED INTO a game nobody has scored: a plan, so no warning", async () => {
     const tripId = await trip("slotted");
     await makeGameWith(tripId, member, { withScore: false, name: "Not Started Yet" });
-    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(false);
+    expect((await ctx.caller().tripMembers.departureSummary({ tripId, userId: member })).hasHistory).toBe(false);
     await removeOk(tripId, member);
   });
 
@@ -121,25 +121,17 @@ describe("removal archives instead of refusing", () => {
       id: crypto.randomUUID(), game_id: gameId, participant_id: outsider,
       participant_type: "user", unit_label: "1", value: 5, submitted_by: outsider,
     });
-    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
+    expect((await ctx.caller().tripMembers.departureSummary({ tripId, userId: member })).hasHistory).toBe(true);
 
     await removeOk(tripId, member);
     expect(await rowCount("score_entries", { game_id: gameId, participant_id: outsider })).toBe(1);
   });
 
-  it("the panel's message NAMES the games and points at the documented workaround", async () => {
-    const tripId = await trip("message");
-    await makeGameWith(tripId, member, { withScore: true, name: "Sunday Scramble" });
-    const { message } = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
-    expect(message).toContain("Sunday Scramble");
-    expect(message).toMatch(/enter a score/i);
-    expect(message).toMatch(/rename them/i);
-  });
-
-  it("the count in the panel's message matches the list under it (mixed case)", async () => {
-    // Regression: an earlier message said "has scores in 1 game" and then named
-    // TWO, because the count came from the scored subset while the list came
-    // from all blockers. Found by looking at the rendered panel, not by a test.
+  it("the warning lists BOTH kinds of game, each marked for what it holds (mixed case)", async () => {
+    // The panel renders this list directly, one line per game with its own
+    // marker — there is no separate count to disagree with it any more (the
+    // refusal sentence that once said "scores in 1 game" and named two is gone
+    // with the refusal, PR 8d-3).
     const tripId = await trip("mixed");
     await makeGameWith(tripId, member, { withScore: true, name: "Has Scores" });
     const resultGame = await makeGameWith(tripId, member, { withScore: false, name: "Has A Result" });
@@ -148,19 +140,16 @@ describe("removal archives instead of refusing", () => {
       entity_type: "user", value_kind: "rank", position: 1,
     });
 
-    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
-    expect(info.blockers.games).toHaveLength(2);
-    expect(info.message).toContain("Has Scores");
-    expect(info.message).toContain("Has A Result");
-    expect(info.message).toMatch(/results in 2 games, with scores in 1/);
-    expect(info.message).not.toMatch(/has scores in 2 games/);
+    const info = await ctx.caller().tripMembers.departureSummary({ tripId, userId: member });
+    const byName = Object.fromEntries(info.history.games.map((g) => [g.gameName, g.hasScores]));
+    expect(byName).toEqual({ "Has Scores": true, "Has A Result": false });
   });
 
   it("ghostCrew.remove takes the SAME path: a placeholder who has played is removed and KEPT, with their scores", async () => {
     const tripId = await trip("ghost played");
     const ghost = (await ctx.caller().ghostCrew.create({ tripId, name: "Playing Placeholder" })) as { id: string };
     const gameId = await makeGameWith(tripId, ghost.id, { withScore: true, name: "Ghost's Round" });
-    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: ghost.id })).blocked).toBe(true);
+    expect((await ctx.caller().tripMembers.departureSummary({ tripId, userId: ghost.id })).hasHistory).toBe(true);
 
     await expect(ctx.caller().ghostCrew.remove({ tripId, guestUserId: ghost.id })).resolves.toMatchObject({ success: true });
     expect(await isMember(tripId, ghost.id)).toBe(false);
@@ -179,19 +168,17 @@ describe("removal archives instead of refusing", () => {
     expect(await rowCount("users", { id: ghost.id })).toBe(0);
   });
 
-  it("removalBlockers: clean before history exists, and names the game once it does", async () => {
+  it("departureSummary: clean before history exists, and names the game once it does", async () => {
     const tripId = await trip("verdict");
-    const clean = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
-    expect(clean.blocked).toBe(false);
-    expect(clean.blockers.games).toEqual([]);
-    expect(clean.message).toBeNull();
+    const clean = await ctx.caller().tripMembers.departureSummary({ tripId, userId: member });
+    expect(clean.hasHistory).toBe(false);
+    expect(clean.history.games).toEqual([]);
 
     await makeGameWith(tripId, member, { withScore: true, name: "Blocker Probe" });
-    const blocked = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
-    expect(blocked.blocked).toBe(true);
-    expect(blocked.blockers.games).toHaveLength(1);
-    expect(blocked.blockers.games[0]).toMatchObject({ gameName: "Blocker Probe", hasScores: true });
-    expect(blocked.message).toContain("Blocker Probe");
+    const played = await ctx.caller().tripMembers.departureSummary({ tripId, userId: member });
+    expect(played.hasHistory).toBe(true);
+    expect(played.history.games).toHaveLength(1);
+    expect(played.history.games[0]).toMatchObject({ gameName: "Blocker Probe", hasScores: true });
   });
 
   // ── #997 — the plan/result boundary in the bracket, and receipts ─────────
@@ -206,7 +193,7 @@ describe("removal archives instead of refusing", () => {
       id: crypto.randomUUID(), game_id: g.id, bracket: "main", round: 1, slot: 1,
       entrant_a_id: entrantId, winner_entrant_id: null,
     });
-    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(false);
+    expect((await ctx.caller().tripMembers.departureSummary({ tripId, userId: member })).hasHistory).toBe(false);
     await removeOk(tripId, member);
   });
 
@@ -225,7 +212,7 @@ describe("removal archives instead of refusing", () => {
       entrant_a_id: a, entrant_b_id: b, winner_entrant_id: b,
     });
     // Warned even though they LOST — a decided match is history either way.
-    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
+    expect((await ctx.caller().tripMembers.departureSummary({ tripId, userId: member })).hasHistory).toBe(true);
 
     await removeOk(tripId, member);
     const { data: m } = await ctx.admin.from("bracket_matches").select("entrant_a_id, winner_entrant_id").eq("id", matchId).single();
@@ -242,7 +229,7 @@ describe("removal archives instead of refusing", () => {
       side_a: { type: "user", id: member }, side_b: { type: "user", id: outsider },
       result: "a_win", status: "complete",
     });
-    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
+    expect((await ctx.caller().tripMembers.departureSummary({ tripId, userId: member })).hasHistory).toBe(true);
 
     await removeOk(tripId, member);
     const { data: m } = await ctx.admin.from("game_matches").select("side_a, result").eq("id", matchId).single();
@@ -253,7 +240,7 @@ describe("removal archives instead of refusing", () => {
     const tripId = await trip("paid");
     const expenseId = crypto.randomUUID();
     await seed("expenses", { id: expenseId, trip_id: tripId, title: "Green fees", amount: 400, paid_by_user_id: member });
-    expect((await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member })).blocked).toBe(true);
+    expect((await ctx.caller().tripMembers.departureSummary({ tripId, userId: member })).hasHistory).toBe(true);
 
     await removeOk(tripId, member);
     expect(await rowCount("expenses", { id: expenseId, paid_by_user_id: member })).toBe(1);
@@ -270,11 +257,10 @@ describe("removal archives instead of refusing", () => {
       { expense_id: expenseId, user_id: member, amount: 150 },
     ]);
 
-    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
-    expect(info.blocked).toBe(true);
-    expect(info.blockers.expenseSplits).toBe(1);
-    expect(info.blockers.expensesPaid).toBe(0);
-    expect(info.message).toMatch(/split into 1 expense/i);
+    const info = await ctx.caller().tripMembers.departureSummary({ tripId, userId: member });
+    expect(info.hasHistory).toBe(true);
+    expect(info.history.expenseSplits).toBe(1);
+    expect(info.history.expensesPaid).toBe(0);
 
     await removeOk(tripId, member);
     expect(await rowCount("expense_splits", { expense_id: expenseId, user_id: member })).toBe(1);
@@ -290,12 +276,10 @@ describe("removal archives instead of refusing", () => {
       await seed("expense_splits", { expense_id: id, user_id: member, amount: 30 });
     }
 
-    const info = await ctx.caller().tripMembers.removalBlockers({ tripId, userId: member });
-    expect(info.blockers.games).toHaveLength(1);
-    expect(info.blockers.expensesPaid).toBe(1);
-    expect(info.blockers.expenseSplits).toBe(2);
-    expect(info.message).toContain("Multi Round");
-    expect(info.message).toMatch(/paid for 1 expense/i);
-    expect(info.message).toMatch(/split into 2 more/i);
+    const info = await ctx.caller().tripMembers.departureSummary({ tripId, userId: member });
+    expect(info.history.games).toHaveLength(1);
+    expect(info.history.expensesPaid).toBe(1);
+    expect(info.history.expenseSplits).toBe(2);
+    expect(info.history.games.map((g) => g.gameName)).toEqual(["Multi Round"]);
   });
 });
