@@ -321,7 +321,14 @@ describe("applyPick — an optimistic pick equals a fetched one", () => {
   });
 
   it("clearing patches one column, and does NOT cascade (#925)", () => {
-    const decided = applyPick(applyPick(rows, semi1, 1), { bracket: "main", round: 2, slot: 1 }, 1);
+    // BOTH semis decided before the final, as `pickWinner` requires — it refuses a
+    // pick while a seat is still waiting. This fixture used to decide only semi 1
+    // and record the final anyway, a state the app cannot produce, which the old
+    // single-elim resolver accepted (a recorded winner with one seat empty) and
+    // double elimination never did. Since the bracket-withdrawal PR both formats
+    // resolve through one rule (`settle`), which requires both seats.
+    const semi2 = { bracket: "main" as const, round: 1, slot: 2 };
+    const decided = applyPick(applyPick(applyPick(rows, semi1, 1), semi2, 2), { bracket: "main", round: 2, slot: 1 }, 1);
     const cleared = applyPick(decided, semi1, null);
     // The final's stored pick is untouched by the clear — exactly as server-side.
     expect(cleared.find((m) => m.round === 2)!.winnerSeed).toBe(1);

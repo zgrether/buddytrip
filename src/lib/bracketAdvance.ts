@@ -23,7 +23,7 @@
  * differ.
  */
 
-import { isBye, roundCount, type BracketDrawMatch, type BracketSide } from "./bracket";
+import { roundCount, type BracketDrawMatch, type BracketSide } from "./bracket";
 
 /** A match's identity within one game's draw — the same triple the schema makes
  *  UNIQUE, and the same one the config hash folds the table in by. */
@@ -92,36 +92,78 @@ export interface ResolvedMatch extends BracketDrawMatch {
    * every consumer that tried got it wrong.
    */
   neverContested: boolean;
+  /**
+   * Who FORFEITED this match by withdrawing (ruling 8, migration 209): the
+   * withdrawn seed(s) at a match NOT decided before they left. One seed is a
+   * WALKOVER — the other side advanced with no pick; two means nobody is left
+   * and the slot is empty (`neverContested`), which the next round treats as a
+   * bye. Empty for every ordinary match.
+   *
+   * A walkover is NOT a bye, and the difference is the reason this field exists:
+   * a bye has no loser, so a withdrawn entrant modelled as one would never be
+   * placed and never lose a life. A forfeiter is eliminated outright, placed in
+   * the round it withdrew, and in double elimination is never sent down.
+   */
+  forfeited: number[];
 }
 
 /**
- * Which seed leaves this match going upward.
+ * Settle one match from its two seats — THE rule for walkovers, byes and empty
+ * slots, so the three are one rule rather than three.
  *
- * A BYE advances its occupant with no pick, because nobody played — the row
- * stores no winner by design (migration 112), so reading one would mean
- * inventing a result for a game that did not happen.
+ * A seat arrives as an occupant, or as nobody: WAITING (still to be decided
+ * below) or EMPTY (`aEmpty`/`bEmpty`: nobody will ever come). A withdrawn
+ * occupant counts as nobody — but only at a match not already decided: a
+ * result recorded before the withdrawal is history and stands.
  *
- * Otherwise it is the recorded winner, but ONLY IF that seed is actually one of
- * this match's resolved occupants. A recorded winner that is neither occupant is
- * dropped, and that is deliberate rather than defensive noise: the pool can be
- * re-seeded, and `save_game_config` only refuses a rebuild once a winner EXISTS
- * (`HAS_PICKS`) — it does not, and cannot, guarantee that a winner left over
- * from some other arrangement still names someone in this match. Trusting it
- * would advance a seed that isn't playing, which is worse in every direction
- * than showing the match as undecided.
+ *   - nobody on either side     -> an empty slot (`neverContested`); the next
+ *                                  round sees an EMPTY seat
+ *   - nobody on one side, an    -> the present side advances with no pick: a
+ *     occupant on the other        BYE if the empty side never had anyone, a
+ *                                  WALKOVER if it was a withdrawn entrant
+ *   - otherwise                 -> an ordinary match, waiting or played
+ *
+ * The resolver never needs to know WHY a side is empty, which is what lets a
+ * chain of withdrawals resolve with no special case (Zach, 2026-10-08).
+ *
+ * A recorded winner counts ONLY IF that seed is one of this match's resolved
+ * occupants (moved here from the old `winnerOf`, whose reasoning still holds): the
+ * pool can be re-seeded, and `save_game_config` only refuses a rebuild once a
+ * winner EXISTS (`HAS_PICKS`) — it cannot guarantee that a winner left over from
+ * some other arrangement still names someone in this match. Trusting it would
+ * advance a seed that isn't playing, which is worse in every direction than
+ * showing the match as undecided. And a BYE stores no winner by design (migration
+ * 112): it advances its occupant with no pick, because nobody played.
  */
-function winnerOf(m: { aSeed: number | null; bSeed: number | null; bye: boolean }, recorded: number | null): number | null {
-  if (m.bye) return m.aSeed;
-  if (recorded == null) return null;
-  return recorded === m.aSeed || recorded === m.bSeed ? recorded : null;
-}
+export function settle(
+  m: BracketDrawMatch,
+  aSeed: number | null,
+  bSeed: number | null,
+  aEmpty: boolean,
+  bEmpty: boolean,
+  recorded: number | null,
+  withdrawn: ReadonlySet<number>,
+): ResolvedMatch {
+  if (aSeed !== null && bSeed !== null && (recorded === aSeed || recorded === bSeed)) {
+    return { ...m, aSeed, bSeed, winnerSeed: recorded, bye: false, playable: false, decidable: true, neverContested: false, forfeited: [] };
+  }
+  const aGone = aSeed !== null && withdrawn.has(aSeed);
+  const bGone = bSeed !== null && withdrawn.has(bSeed);
+  const aOut = aSeed === null ? aEmpty : aGone;
+  const bOut = bSeed === null ? bEmpty : bGone;
+  const forfeited = [aGone ? aSeed : null, bGone ? bSeed : null].filter((x): x is number => x !== null);
 
-/** Where a match's winner goes: up one round, into the slot that pairs it with
- *  its neighbour. Slot 1 and 2 of round R both feed slot 1 of round R+1 — the
- *  odd one into seat A, the even one into seat B. Inverse of `buildDraw`'s
- *  halving, and the one place that relationship is written down. */
-function parentOf(slot: number): { slot: number; seat: "a" | "b" } {
-  return { slot: Math.ceil(slot / 2), seat: slot % 2 === 1 ? "a" : "b" };
+  if (aOut && bOut) {
+    return { ...m, aSeed, bSeed, winnerSeed: null, bye: false, playable: false, decidable: false, neverContested: true, forfeited };
+  }
+  if (aOut && bSeed !== null) {
+    return { ...m, aSeed, bSeed, winnerSeed: bSeed, bye: !aGone, playable: false, decidable: false, neverContested: false, forfeited };
+  }
+  if (bOut && aSeed !== null) {
+    return { ...m, aSeed, bSeed, winnerSeed: aSeed, bye: !bGone, playable: false, decidable: false, neverContested: false, forfeited };
+  }
+  const both = aSeed !== null && bSeed !== null;
+  return { ...m, aSeed, bSeed, winnerSeed: null, bye: false, playable: both, decidable: both, neverContested: false, forfeited: [] };
 }
 
 /**
@@ -141,7 +183,14 @@ function parentOf(slot: number): { slot: number; seat: "a" | "b" } {
  * persisted draw is the authority once a game exists: a field edited after the
  * draw was built would otherwise resolve against a tree nobody is playing.
  */
-export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}): ResolvedMatch[] {
+/** Nobody has withdrawn — the default for every caller that has no withdrawals to pass. */
+const NO_ONE: ReadonlySet<number> = new Set<number>();
+
+export function resolveDraw(
+  draw: BracketDrawMatch[],
+  winners: WinnerBySeed = {},
+  withdrawn: ReadonlySet<number> = NO_ONE,
+): ResolvedMatch[] {
   if (draw.length === 0) return [];
 
   const main = draw.filter((m) => m.bracket === "main");
@@ -149,82 +198,52 @@ export function resolveDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}
   const lastRound = main.reduce((max, m) => Math.max(max, m.round), 0);
 
   const resolved = new Map<string, ResolvedMatch>();
-  // Occupants fed upward from the round below, filled in as each round resolves.
-  const incoming = new Map<string, { a?: number | null; b?: number | null }>();
-  /**
-   * Rows nobody will ever occupy, PROPAGATED rather than re-tested per row.
-   *
-   * Round 1 is the only place "both seats null" means it: those seats are seeded
-   * at build time, so nothing upstream can fill them later. Above round 1 a row is
-   * unreachable only when BOTH of its feeders are unreachable — a rule that has to
-   * be carried forward, which is why it is a set built during the walk rather than
-   * a predicate over one row.
-   *
-   * Single elim does not manufacture byes above round 1 (`bye = round === 1 && …`),
-   * so it never had the phantom-bye defect this field exists to fix. It fills the
-   * field anyway so `neverContested` means the same thing in both formats and a
-   * shared consumer cannot be reading a double-elim-only value.
-   */
-  const unreachable = new Set<string>();
+  const at = (round: number, slot: number) => resolved.get(matchKey({ bracket: "main", round, slot }));
 
+  // Round 1 carries its seeds (a null seat there is EMPTY: seeded at build time,
+  // nothing can arrive later). Every later round takes them from the round below:
+  // a decided feeder sends its winner, an empty slot sends nobody EVER, and an
+  // undecided one leaves the seat WAITING. `settle` turns that into walkovers,
+  // byes and empty slots — including above round 1, where the only way to get an
+  // empty seat is a chain of withdrawals.
   for (let round = 1; round <= lastRound; round++) {
     for (const m of main.filter((x) => x.round === round)) {
-      const fed = incoming.get(matchKey(m)) ?? {};
-      // Round 1 carries its seeds; every later round takes them from below.
-      const aSeed = round === 1 ? m.aSeed : (fed.a ?? null);
-      const bSeed = round === 1 ? m.bSeed : (fed.b ?? null);
-      const bye = round === 1 && isBye(m);
-      const winnerSeed = winnerOf({ aSeed, bSeed, bye }, winners[matchKey(m)] ?? null);
-
-      const neverContested =
-        round === 1
-          ? m.aSeed === null && m.bSeed === null
-          : [m.slot * 2 - 1, m.slot * 2].every((slot) =>
-              unreachable.has(matchKey({ bracket: "main", round: round - 1, slot })),
-            );
-      if (neverContested) unreachable.add(matchKey(m));
-
-      resolved.set(matchKey(m), {
-        ...m,
-        aSeed,
-        bSeed,
-        winnerSeed,
-        bye,
-        playable: aSeed !== null && bSeed !== null && winnerSeed === null,
-        decidable: aSeed !== null && bSeed !== null && !bye,
-        neverContested,
-      });
-
-      if (winnerSeed !== null && round < lastRound) {
-        const parent = parentOf(m.slot);
-        const key = matchKey({ bracket: "main", round: round + 1, slot: parent.slot });
-        incoming.set(key, { ...(incoming.get(key) ?? {}), [parent.seat]: winnerSeed });
+      const recorded = winners[matchKey(m)] ?? null;
+      if (round === 1) {
+        resolved.set(matchKey(m), settle(m, m.aSeed, m.bSeed, m.aSeed === null, m.bSeed === null, recorded, withdrawn));
+        continue;
       }
+      // Slots 2s-1 and 2s of the round below feed slot s — the odd one into seat A,
+      // the even one into seat B: the inverse of `buildDraw`'s halving.
+      const fa = at(round - 1, m.slot * 2 - 1);
+      const fb = at(round - 1, m.slot * 2);
+      resolved.set(
+        matchKey(m),
+        settle(m, fa?.winnerSeed ?? null, fb?.winnerSeed ?? null, !fa || fa.neverContested, !fb || fb.neverContested, recorded, withdrawn),
+      );
     }
   }
 
   // The 3rd-place play-off. `buildDraw` only emits one when there are semis to
-  // lose (rounds >= 2), so the lookup below always has real matches to read.
+  // lose (rounds >= 2), so the lookup below always has real matches to read. Its
+  // seats are the semis' LOSERS: a semi that is an empty slot can never produce
+  // one (EMPTY), an undecided one has not yet (WAITING), and a semi won by
+  // walkover sends its forfeiter — who, being withdrawn, gives the play-off away
+  // in turn.
   for (const m of consolation) {
-    const semis = [1, 2].map((slot) => resolved.get(matchKey({ bracket: "main", round: lastRound - 1, slot })));
-    const losers = semis.map((s) => loserOf(s));
-    const [aSeed, bSeed] = [losers[0] ?? null, losers[1] ?? null];
-    const winnerSeed = winnerOf({ aSeed, bSeed, bye: false }, winners[matchKey(m)] ?? null);
-    resolved.set(matchKey(m), {
-      ...m,
-      aSeed,
-      bSeed,
-      winnerSeed,
-      bye: false,
-      playable: aSeed !== null && bSeed !== null && winnerSeed === null,
-      // No byes in a consolation match — it exists only when there are semis to
-      // lose, so both seats are real people or neither is.
-      decidable: aSeed !== null && bSeed !== null,
-      // Fed by the two semis' LOSERS, so it is unreachable only when neither semi
-      // can ever produce one — i.e. both are unreachable themselves. A semi that
-      // is merely undecided leaves this waiting, not empty.
-      neverContested: semis.every((s) => !s || s.neverContested),
-    });
+    const semis = [1, 2].map((slot) => at(lastRound - 1, slot));
+    resolved.set(
+      matchKey(m),
+      settle(
+        m,
+        loserOf(semis[0]),
+        loserOf(semis[1]),
+        !semis[0] || semis[0].neverContested,
+        !semis[1] || semis[1].neverContested,
+        winners[matchKey(m)] ?? null,
+        withdrawn,
+      ),
+    );
   }
 
   // Emitted in the caller's order so the view can render the draw as stored.
@@ -339,13 +358,14 @@ export function applyPickCascadingWith<T extends BracketDrawMatch & { winnerSeed
 export function applyPickCascading<T extends BracketDrawMatch & { winnerSeed: number | null }>(
   rows: readonly T[],
   ref: BracketMatchRef,
-  winnerSeed: number | null
+  winnerSeed: number | null,
+  withdrawn: ReadonlySet<number> = NO_ONE,
 ): T[] {
   const picked = applyPick(rows, ref, winnerSeed);
 
   const winners: WinnerBySeed = {};
   for (const m of picked) winners[matchKey(m)] = m.winnerSeed;
-  const resolvedByKey = new Map(resolveDraw(picked, winners).map((r) => [matchKey(r), r]));
+  const resolvedByKey = new Map(resolveDraw(picked, winners, withdrawn).map((r) => [matchKey(r), r]));
 
   const target = matchKey(ref);
   return picked.map((m) => {
@@ -365,9 +385,10 @@ export function applyPickCascading<T extends BracketDrawMatch & { winnerSeed: nu
 export function orphanedByPick<T extends BracketDrawMatch & { winnerSeed: number | null }>(
   rows: readonly T[],
   ref: BracketMatchRef,
-  winnerSeed: number | null
+  winnerSeed: number | null,
+  withdrawn: ReadonlySet<number> = NO_ONE,
 ): BracketMatchRef[] {
-  const after = applyPickCascading(rows, ref, winnerSeed);
+  const after = applyPickCascading(rows, ref, winnerSeed, withdrawn);
   const before = new Map(rows.map((m) => [matchKey(m), m.winnerSeed]));
   return after
     .filter((m) => m.winnerSeed === null && (before.get(matchKey(m)) ?? null) !== null)

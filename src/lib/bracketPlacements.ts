@@ -74,7 +74,14 @@ export function bracketPlacements(resolved: ResolvedMatch[]): EntrantPlacement[]
   // Everyone else is placed by the round they lost in. The final's loser falls
   // out of the same formula: 2^0 + 1 = 2.
   for (const m of main) {
-    if (m.winnerSeed === null) continue;
+    if (m.winnerSeed === null) {
+      // An EMPTY SLOT left by two withdrawals (ruling 8): both forfeiters are out
+      // in this round, tied, like any two people who went out at the same stage.
+      for (const seed of m.forfeited) placed.set(seed, 2 ** (lastRound - m.round) + 1);
+      continue;
+    }
+    // A walkover's loser is its forfeiter, so a withdrawn entrant is placed by the
+    // round it withdrew — the same formula as a played loss.
     const loser = m.winnerSeed === m.aSeed ? m.bSeed : m.aSeed;
     if (loser === null) continue; // a bye: nobody played, so nobody lost
     placed.set(loser, 2 ** (lastRound - m.round) + 1);

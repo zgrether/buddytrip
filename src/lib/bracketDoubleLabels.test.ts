@@ -141,3 +141,32 @@ describe("round naming (T3)", () => {
     }
   });
 });
+
+describe("withdrawals reach the labels (ruling 8)", () => {
+  const withOut = (n: number, out: number[]) => {
+    const resolved = resolveDoubleDraw(buildDoubleDraw(n), {}, new Set(out));
+    return { resolved, display: doubleBracketDisplay(resolved) };
+  };
+
+  it("the lower seat a forfeiter would have dropped into is VACANT, not 'Loser of …' — and its neighbour still waits", () => {
+    const { resolved, display } = withOut(4, [4]);
+    const walkover = resolved.find((m) => m.bracket === "main" && m.round === 1 && m.forfeited.includes(4))!;
+    const other = resolved.find((m) => m.bracket === "main" && m.round === 1 && m !== walkover)!;
+    const lower1 = resolved.find((m) => m.bracket === "lower" && m.round === 1)!;
+    const d = of(display, lower1);
+    const walkoverNo = of(display, walkover).number;
+    const otherNo = of(display, other).number;
+    // No seat names the walkover's loser; exactly one is vacant.
+    expect([d.aPending, d.bPending]).not.toContain(`Loser of ${walkoverNo}`);
+    expect([d.aVacant, d.bVacant].filter(Boolean)).toHaveLength(1);
+    // CONTROL: the played match's loser is still awaited, by name.
+    expect([d.aPending, d.bPending]).toContain(`Loser of ${otherNo}`);
+  });
+
+  it("CONTROL: with nobody withdrawn, both lower seats wait on a named loser", () => {
+    const { resolved, display } = withOut(4, []);
+    const lower1 = resolved.find((m) => m.bracket === "lower" && m.round === 1)!;
+    const d = of(display, lower1);
+    expect([d.aVacant, d.bVacant]).toEqual([false, false]);
+  });
+});

@@ -182,8 +182,10 @@ export function doubleBracketDisplay(resolved: ResolvedMatch[]): Map<string, Mat
     // bug. Decided in the upper entrant's favour → it will never be played.
     if (m.bracket === "final" && m.round === 2) {
       const gf1 = byKey.get(key("final", 1, 1));
+      // A first final won by WALKOVER — either way round — also settles it: the side
+      // that forfeited is out, so no reset is owed (ruling 8; the resolver agrees).
       const settledByUpper =
-        !!gf1 && gf1.winnerSeed !== null && gf1.winnerSeed === gf1.aSeed;
+        !!gf1 && gf1.winnerSeed !== null && (gf1.winnerSeed === gf1.aSeed || gf1.forfeited.length > 0);
       aVacant = bVacant = settledByUpper;
     }
 
@@ -205,10 +207,17 @@ export function doubleBracketDisplay(resolved: ResolvedMatch[]): Map<string, Mat
 
     // What this match can still send onward. A bye advances its occupant but produces
     // no loser; a match with both seats permanently empty produces nothing at all.
-    const bothEmpty = aVacant && bVacant;
+    //
+    // Withdrawals (ruling 8) are read from the RESOLVER rather than re-derived here —
+    // a second answer to "can this seat ever be filled" is the defect this module's
+    // header records being made twice. A WALKOVER's loser forfeited and is never sent
+    // down, so it produces no loser; a match both sides withdrew from is an empty slot
+    // (`neverContested`) and produces no winner either. Without this the lower seat a
+    // forfeiter would have dropped into read "Loser of 2" for someone never coming.
+    const bothEmpty = (aVacant && bVacant) || m.neverContested;
     produces.set(k, {
       winner: !bothEmpty,
-      loser: !bothEmpty && !m.bye && !(aVacant || bVacant),
+      loser: !bothEmpty && !m.bye && !(aVacant || bVacant) && m.forfeited.length === 0,
     });
   }
 

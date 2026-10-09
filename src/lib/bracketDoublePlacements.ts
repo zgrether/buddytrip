@@ -80,17 +80,38 @@ export function doubleBracketPlacements(resolved: ResolvedMatch[]): EntrantPlace
   const runnerUp = loserOf(final);
   if (runnerUp !== null) placed.set(runnerUp, 2);
 
-  // Only the LOWER bracket eliminates. A `main` loss is a transfer, not an exit —
-  // which is the entire difference from the single-elim rule, stated as code.
+  // Only the LOWER bracket eliminates a player who PLAYED. A `main` loss is a
+  // transfer, not an exit — which is the entire difference from the single-elim
+  // rule, stated as code.
   const lower = resolved.filter((m) => m.bracket === "lower");
   const rounds = [...new Set(lower.map((m) => m.round))].sort((a, b) => b - a);
 
+  // A FORFEIT is an exit wherever it happens (ruling 8). In `lower` it is placed by
+  // its own round like any elimination; in `main` it is placed with the lower round
+  // that loss would have fed — "the round they withdrew", in this format's terms:
+  // main round 1 feeds lower round 1, main round r >= 2 feeds lower round 2(r-1)
+  // (the inverse of `feederMainRound`). An empty slot two withdrawals left places
+  // both of its forfeiters.
+  const forfeitsByLowerRound = new Map<number, number[]>();
+  const addForfeit = (round: number, seed: number) =>
+    forfeitsByLowerRound.set(round, [...(forfeitsByLowerRound.get(round) ?? []), seed]);
+  for (const m of resolved) {
+    if (m.forfeited.length === 0) continue;
+    if (m.bracket === "main") {
+      const lowerRound = m.round === 1 ? 1 : 2 * (m.round - 1);
+      for (const seed of m.forfeited) addForfeit(lowerRound, seed);
+    } else if (m.bracket === "lower" && m.winnerSeed === null) {
+      // A walkover's forfeiter is `loserOf` already; only an empty slot is new here.
+      for (const seed of m.forfeited) addForfeit(m.round, seed);
+    }
+  }
+
   let position = placed.size + 1; // 3rd, once 1st and 2nd are known
   for (const round of rounds) {
-    const out = lower
-      .filter((m) => m.round === round)
-      .map(loserOf)
-      .filter((s): s is number => s !== null && !placed.has(s));
+    const out = [
+      ...lower.filter((m) => m.round === round).map(loserOf),
+      ...(forfeitsByLowerRound.get(round) ?? []),
+    ].filter((s, i, all): s is number => s !== null && !placed.has(s) && all.indexOf(s) === i);
     if (out.length === 0) continue;
     // Everyone eliminated in the same round ties — they survived equally long.
     for (const seed of out) placed.set(seed, position);
