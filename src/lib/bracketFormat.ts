@@ -74,8 +74,11 @@ export function isDoubleElimination(draw: readonly BracketDrawMatch[]): boolean 
 export function resolveAnyDraw(
   draw: BracketDrawMatch[],
   winners: WinnerBySeed = {},
+  withdrawn: ReadonlySet<number> = new Set<number>(),
 ): ResolvedMatch[] {
-  return isDoubleElimination(draw) ? resolveDoubleDraw(draw, winners) : resolveDraw(draw, winners);
+  return isDoubleElimination(draw)
+    ? resolveDoubleDraw(draw, winners, withdrawn)
+    : resolveDraw(draw, winners, withdrawn);
 }
 
 /**

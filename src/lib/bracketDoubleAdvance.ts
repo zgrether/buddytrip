@@ -70,8 +70,8 @@
  * the one that was right.
  */
 
-import { isBye, type BracketDrawMatch } from "./bracket";
-import { matchKey, type ResolvedMatch, type WinnerBySeed } from "./bracketAdvance";
+import type { BracketDrawMatch } from "./bracket";
+import { matchKey, settle, type ResolvedMatch, type WinnerBySeed } from "./bracketAdvance";
 import { dropSlot, feederMainRound, lowerRoundCount } from "./bracketDouble";
 
 /**
@@ -121,44 +121,36 @@ function winnerFeed(m: ResolvedMatch | undefined): Feed {
 function loserFeed(m: ResolvedMatch | undefined): Feed {
   if (!m) return NEVER;
   if (m.bye) return NEVER;
+  // A WALKOVER's loser withdrew: eliminated outright, never sent down (ruling 8).
+  // Treating the forfeit as an ordinary main-bracket loss would drop them into the
+  // lower bracket, where they would have to forfeit again — and again at a reset.
+  if (m.forfeited.length > 0) return NEVER;
   if (m.neverContested) return NEVER;
   if (m.winnerSeed === null) return WAITING;
   return { seed: m.winnerSeed === m.aSeed ? m.bSeed : m.aSeed, empty: false };
 }
 
-/** Resolve one match from its two feeds. A seat whose feed is permanently empty stays
- *  null, and a match with exactly one occupant and one permanently-empty seat is a BYE:
- *  its occupant advances without a result, the same answer round 1 already gives. */
-function fromFeeds(m: BracketDrawMatch, a: Feed, b: Feed, recorded: number | null): ResolvedMatch {
-  const aSeed = a.seed;
-  const bSeed = b.seed;
-  // A bye needs the other seat to be PERMANENTLY empty. `b.empty` carries that and
-  // `bSeed === null` does not — a WAITING feed is also seedless, and treating it as a
-  // bye is what advanced an entrant past a match that had not been played.
-  const bye = (aSeed !== null && b.empty) || (bSeed !== null && a.empty);
-  // A bye's occupant may be sitting in either seat, so normalise it into A — every
-  // consumer reads a bye's survivor from `aSeed` (`winnerFeed` above included).
-  const occupant = aSeed ?? bSeed;
-  const winnerSeed = bye
-    ? occupant
-    : aSeed !== null && bSeed !== null && (recorded === aSeed || recorded === bSeed)
-      ? recorded
-      : null;
-
-  return {
-    ...m,
-    aSeed: bye ? occupant : aSeed,
-    bSeed: bye ? null : bSeed,
-    winnerSeed,
-    bye,
-    playable: !bye && aSeed !== null && bSeed !== null && winnerSeed === null,
-    decidable: !bye && aSeed !== null && bSeed !== null,
-    // Unreachable ⟺ NEITHER feed can ever deliver anyone. One empty feed and one
-    // waiting feed is a row that will eventually hold exactly one entrant — a future
-    // bye, not an empty row.
-    neverContested: a.empty && b.empty,
-  };
+/** Resolve one match from its two feeds, through the ONE rule single elimination
+ *  uses too (`settle`): a permanently-empty feed or a withdrawn occupant is
+ *  nobody, so one side empty is a bye or a walkover and both empty is an empty slot.
+ *  A WAITING feed is never mistaken for an empty one — that is what manufactured the
+ *  phantom bye (see the header). Then the one double-elim convention: a bye's
+ *  occupant is normalised into seat A, because every consumer reads a bye's survivor
+ *  from `aSeed` (`winnerFeed` above included). */
+function fromFeeds(
+  m: BracketDrawMatch,
+  a: Feed,
+  b: Feed,
+  recorded: number | null,
+  withdrawn: ReadonlySet<number>,
+): ResolvedMatch {
+  const r = settle(m, a.seed, b.seed, a.empty, b.empty, recorded, withdrawn);
+  if (!r.bye) return r;
+  return { ...r, aSeed: r.aSeed ?? r.bSeed, bSeed: null };
 }
+
+/** A round-1 seat as a feed: seeded at build time, so a null seat is EMPTY. */
+const seedFeed = (seed: number | null): Feed => (seed === null ? NEVER : { seed, empty: false });
 
 /**
  * Resolve a whole double-elimination draw.
@@ -169,7 +161,11 @@ function fromFeeds(m: BracketDrawMatch, a: Feed, b: Feed, recorded: number | nul
  * then the grand final (depends on both), then the if-necessary final (depends on the
  * grand final). Nothing ever needs to look upward.
  */
-export function resolveDoubleDraw(draw: BracketDrawMatch[], winners: WinnerBySeed = {}): ResolvedMatch[] {
+export function resolveDoubleDraw(
+  draw: BracketDrawMatch[],
+  winners: WinnerBySeed = {},
+  withdrawn: ReadonlySet<number> = new Set<number>(),
+): ResolvedMatch[] {
   if (draw.length === 0) return [];
   const won = (m: BracketDrawMatch) => winners[matchKey(m)] ?? null;
   const resolved = new Map<string, ResolvedMatch>();
@@ -180,23 +176,13 @@ export function resolveDoubleDraw(draw: BracketDrawMatch[], winners: WinnerBySee
   for (let round = 1; round <= mainLast; round++) {
     for (const m of main.filter((x) => x.round === round)) {
       if (round === 1) {
-        const bye = isBye(m);
-        const rec = won(m);
-        resolved.set(matchKey(m), {
-          ...m,
-          winnerSeed: bye ? m.aSeed : rec === m.aSeed || rec === m.bSeed ? rec : null,
-          bye,
-          playable: !bye && m.aSeed !== null && m.bSeed !== null && (rec === m.aSeed || rec === m.bSeed ? false : true),
-          decidable: !bye && m.aSeed !== null && m.bSeed !== null,
-          // ROUND 1 IS THE ONE PLACE two null seats really mean unreachable: these
-          // seats are seeded when the draw is built, so nothing upstream can arrive
-          // later. Every other row gets the propagated answer from `fromFeeds`.
-          neverContested: m.aSeed === null && m.bSeed === null,
-        });
+        // ROUND 1 IS THE ONE PLACE a null seat really means empty: seeded when the
+        // draw is built, so nothing upstream can arrive later.
+        resolved.set(matchKey(m), fromFeeds(m, seedFeed(m.aSeed), seedFeed(m.bSeed), won(m), withdrawn));
       } else {
         const feedA = winnerFeed(resolved.get(matchKey({ bracket: "main", round: round - 1, slot: m.slot * 2 - 1 })));
         const feedB = winnerFeed(resolved.get(matchKey({ bracket: "main", round: round - 1, slot: m.slot * 2 })));
-        resolved.set(matchKey(m), fromFeeds(m, feedA, feedB, won(m)));
+        resolved.set(matchKey(m), fromFeeds(m, feedA, feedB, won(m), withdrawn));
       }
     }
   }
@@ -224,7 +210,7 @@ export function resolveDoubleDraw(draw: BracketDrawMatch[], winners: WinnerBySee
         const mainRound = feederMainRound(round)!;
         b = loserFeed(resolved.get(matchKey({ bracket: "main", round: mainRound, slot: dropSlot(m.slot, inRound.length) })));
       }
-      resolved.set(matchKey(m), fromFeeds(m, a, b, won(m)));
+      resolved.set(matchKey(m), fromFeeds(m, a, b, won(m), withdrawn));
     }
   }
 
@@ -237,7 +223,7 @@ export function resolveDoubleDraw(draw: BracketDrawMatch[], winners: WinnerBySee
     const fromLower = lowerRounds === 0
       ? NEVER
       : winnerFeed(resolved.get(matchKey({ bracket: "lower", round: lowerRounds, slot: 1 })));
-    gf1Resolved = fromFeeds(gf1, fromMain, fromLower, won(gf1));
+    gf1Resolved = fromFeeds(gf1, fromMain, fromLower, won(gf1), withdrawn);
     resolved.set(matchKey(gf1), gf1Resolved);
   }
   if (gf2) {
@@ -259,11 +245,15 @@ export function resolveDoubleDraw(draw: BracketDrawMatch[], winners: WinnerBySee
      * same rule, which is what keeps this to one predicate.
      */
     const lowerSurvivor = gf1Resolved?.bSeed ?? null;
+    // A WALKOVER is not a loss that leaves a life: the side that forfeited is out
+    // (ruling 8). So a grand final won by walkover — either way round — decides
+    // the bracket, and no reset is owed.
     const resetNeeded =
-      gf1Resolved != null && lowerSurvivor !== null && gf1Resolved.winnerSeed === lowerSurvivor;
+      gf1Resolved != null && lowerSurvivor !== null && gf1Resolved.winnerSeed === lowerSurvivor &&
+      gf1Resolved.forfeited.length === 0;
     const a: Feed = resetNeeded ? { seed: gf1Resolved!.aSeed, empty: false } : NEVER;
     const b: Feed = resetNeeded ? { seed: lowerSurvivor, empty: false } : NEVER;
-    resolved.set(matchKey(gf2), fromFeeds(gf2, a, b, won(gf2)));
+    resolved.set(matchKey(gf2), fromFeeds(gf2, a, b, won(gf2), withdrawn));
   }
 
   return draw.map((m) => resolved.get(matchKey(m))!);
@@ -288,7 +278,9 @@ function countEntrantsFrom(draw: BracketDrawMatch[]): number {
 export function lossesBySeed(resolved: ResolvedMatch[]): Map<number, number> {
   const out = new Map<number, number>();
   for (const m of resolved) {
-    if (m.winnerSeed === null || m.bye) continue;
+    // A forfeiter is eliminated outright, whatever they had left (ruling 8).
+    for (const seed of m.forfeited) out.set(seed, 2);
+    if (m.winnerSeed === null || m.bye || m.forfeited.length > 0) continue;
     const loser = m.winnerSeed === m.aSeed ? m.bSeed : m.aSeed;
     if (loser === null) continue;
     out.set(loser, (out.get(loser) ?? 0) + 1);

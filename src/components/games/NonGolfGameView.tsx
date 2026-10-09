@@ -42,8 +42,8 @@ import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bra
 import { type BracketEntrantMeta } from "@/components/games/bracket/BracketBoard";
 import { BracketScoringSurface } from "@/components/games/bracket/BracketScoringSurface";
 import { matchKey, type WinnerBySeed } from "@/lib/bracketAdvance";
-import type { BracketSide } from "@/lib/bracket";
-import { resolveDoubleDraw, lossesBySeed, isMustWin } from "@/lib/bracketDoubleAdvance";
+import type { BracketDrawMatch, BracketSide } from "@/lib/bracket";
+import { lossesBySeed, isMustWin } from "@/lib/bracketDoubleAdvance";
 import { isDoubleElimination, resolveAnyDraw, placementsForDraw } from "@/lib/bracketFormat";
 import { doublePositionsAwarded, doubleSettledPlaces } from "@/lib/bracketDoublePlacements";
 import { stakesFromPositions } from "@/lib/bracketStakes";
@@ -757,12 +757,32 @@ export function NonGolfGameView() {
     return rows.map((r) => ({ bracket: r.bracket, round: r.round, slot: r.slot, aSeed: r.aSeed, bSeed: r.bSeed }));
   }, [drawQ.data]);
   const isDouble = isDoubleElimination(bracketDraw);
+  /**
+   * Seeds whose entrant has WITHDRAWN (ruling 8, migration 209). The draw rows flag
+   * the entrants they store, and every entrant sits in exactly one main round-1
+   * seat, so the set comes from the draw already in hand. ONE set, read by the board's
+   * resolution AND the optimistic pick's (`resolveBracket` below), so a pick resolves
+   * the same way on this device as it will on the server.
+   */
+  const withdrawnSeeds = useMemo(() => {
+    const rows = (drawQ.data ?? []) as { aSeed: number | null; bSeed: number | null; aWithdrawn?: boolean; bWithdrawn?: boolean }[];
+    const out = new Set<number>();
+    for (const r of rows) {
+      if (r.aWithdrawn && r.aSeed !== null) out.add(r.aSeed);
+      if (r.bWithdrawn && r.bSeed !== null) out.add(r.bSeed);
+    }
+    return out;
+  }, [drawQ.data]);
+  const resolveBracket = useCallback(
+    (draw: BracketDrawMatch[], winners: WinnerBySeed) => resolveAnyDraw(draw, winners, withdrawnSeeds),
+    [withdrawnSeeds],
+  );
   const resolvedDraw = useMemo(() => {
     const rows = (drawQ.data ?? []) as { bracket: BracketSide; round: number; slot: number; aSeed: number | null; bSeed: number | null; winnerSeed: number | null }[];
     const winners: WinnerBySeed = {};
     for (const r of rows) winners[matchKey(r)] = r.winnerSeed;
-    return resolveAnyDraw(bracketDraw, winners);
-  }, [drawQ.data, bracketDraw]);
+    return resolveBracket(bracketDraw, winners);
+  }, [drawQ.data, bracketDraw, resolveBracket]);
 
   /** Lives per seed, for the board's per-side must-win marker. Bracket-local — this
    *  must not travel to the competition layer (glossary). */
@@ -1435,7 +1455,7 @@ export function NonGolfGameView() {
               }
             : undefined}
           mustWin={isDouble ? (seed: number) => isMustWin(bracketLosses, seed) : undefined}
-          resolve={isDouble ? resolveDoubleDraw : undefined}
+          resolve={resolveBracket}
           // What each match is worth. The game's own placement split, or empty when
           // it pays no per-place values — the header then quotes nothing rather than
           // inventing zeroes.

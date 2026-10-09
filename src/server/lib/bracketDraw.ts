@@ -25,6 +25,10 @@ export interface BracketMatchRow {
 
 export interface BracketDrawRead {
   matches: BracketMatchRow[];
+  /** Seeds whose entrant has WITHDRAWN (`bracket_entrants.withdrawn_at`, migration
+   *  209): both resolvers give their opponent a walkover at every match not
+   *  already decided. */
+  withdrawnSeeds: ReadonlySet<number>;
   seedOf: (id: string | null) => number | null;
   idOfSeed: (seed: number) => string | null;
   error: string | null;
@@ -58,20 +62,23 @@ export async function readBracketDraw(
       .order("bracket")
       .order("round")
       .order("slot"),
-    supabase.from("bracket_entrants").select("id, seed").eq("game_id", gameId).order("seed"),
+    supabase.from("bracket_entrants").select("id, seed, withdrawn_at").eq("game_id", gameId).order("seed"),
   ]);
-  const empty = { matches: [] as BracketMatchRow[], seedOf: () => null, idOfSeed: () => null };
+  const empty = { matches: [] as BracketMatchRow[], withdrawnSeeds: new Set<number>(), seedOf: () => null, idOfSeed: () => null };
   if (matchRes.error) return { ...empty, error: matchRes.error.message };
   if (entrantRes.error) return { ...empty, error: entrantRes.error.message };
 
   const seedById = new Map<string, number>();
   const idBySeed = new Map<number, string>();
-  for (const e of (entrantRes.data ?? []) as { id: string; seed: number }[]) {
+  const withdrawnSeeds = new Set<number>();
+  for (const e of (entrantRes.data ?? []) as { id: string; seed: number; withdrawn_at: string | null }[]) {
     seedById.set(e.id, e.seed);
     idBySeed.set(e.seed, e.id);
+    if (e.withdrawn_at !== null) withdrawnSeeds.add(e.seed);
   }
   return {
     matches: (matchRes.data ?? []) as BracketMatchRow[],
+    withdrawnSeeds,
     seedOf: (id) => (id === null ? null : seedById.get(id) ?? null),
     idOfSeed: (seed) => idBySeed.get(seed) ?? `${gameId}:e${seed}`,
     error: null,
