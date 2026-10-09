@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc-client";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { markLeavingTrip, unmarkLeavingTrip } from "@/components/TripMembershipGate";
 import { clearLastTripPointer } from "@/lib/lastTripPointer";
+import { resetTripGameState } from "@/lib/gameConfigHash";
 import { DepartureWarning } from "./DepartureWarning";
 
 /**
@@ -14,7 +15,8 @@ import { DepartureWarning } from "./DepartureWarning";
  * same archive an organizer's removal uses (`tripMembers.leave`).
  *
  * Lives on the YOU tile, the one place every member — Owner, Organizer or
- * Member — sees their own row on the Crew tab.
+ * Member — sees their own row on the Crew tab, and under the ideas-phase
+ * roster (`IdeaZonePanel`), which has no Crew tab.
  *
  * Arming reads `departureSummary` for the viewer, and only then: what they
  * would leave behind is worth one read when someone starts to leave, not on
@@ -46,6 +48,10 @@ export function LeaveTripButton({ tripId, userId }: { tripId: string; userId: st
     onSuccess: () => {
       clearLastTripPointer();
       void utils.trips.list.invalidate();
+      // Leaving vacates their seats in the trip's unfinished games (the
+      // archive), so this device's cached game state for the trip is stale —
+      // the same reset a removal does (#1507).
+      resetTripGameState(utils, tripId);
       router.replace("/dashboard");
     },
   });
