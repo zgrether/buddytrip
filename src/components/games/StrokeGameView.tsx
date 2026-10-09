@@ -5,6 +5,8 @@ import { Scale, Settings, SlidersHorizontal, Users } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
+import { useDepartedNames } from "@/hooks/useDepartedNames";
+import { withDeparted } from "@/lib/departedNames";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
 import { gamesPageHref, isScrambleFormat } from "@/lib/gameRoutes";
@@ -204,11 +206,16 @@ export function StrokeGameView() {
   // setFoursomes upserts the roster + creates the group atomically (reused from rack).
   const seedFoursome = trpc.playGroups.setFoursomes.useMutation();
 
+  const departedNames = useDepartedNames(tripId);
   const memberById = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
     for (const c of crew.data ?? []) m.set(c.user_id, { id: c.user_id, name: c.displayName ?? c.user?.name ?? "Player" });
-    return m;
-  }, [crew.data]);
+    // Plus everyone who has LEFT, by the name the crew saw (PR 8d) — for lookup
+    // only: their finished results and seats still name them.
+    // (`members` below filters the CREW by this map, so a departed id — never in
+    // the crew — cannot reach the roster through it.)
+    return withDeparted(m, departedNames, (name, id) => ({ id, name }));
+  }, [crew.data, departedNames]);
 
   /**
    * userId -> their chosen avatar icon. Stroke had no such map and every path

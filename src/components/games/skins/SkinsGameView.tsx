@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { Scale, Sparkles, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { useDepartedNames } from "@/hooks/useDepartedNames";
+import { withDeparted } from "@/lib/departedNames";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -200,11 +202,14 @@ export function SkinsGameView() {
   const { rows: teeRows, courseName } = useScorecardTeeRows(tripId, gameQ.data);
 
   // ── Names, teams, roster ─────────────────────────────────────────────────
+  const departedNames = useDepartedNames(tripId);
   const nameOf = useMemo(() => {
     const m = new Map<string, string>();
     for (const c of crew.data ?? []) m.set(c.user_id, c.displayName ?? c.user?.name ?? "Player");
-    return m;
-  }, [crew.data]);
+    // Plus everyone who has LEFT, by the name the crew saw (PR 8d) — for lookup
+    // only: their finished results and seats still name them.
+    return withDeparted(m, departedNames, (n) => n);
+  }, [crew.data, departedNames]);
   const avatarOf = useMemo(() => {
     const m = new Map<string, string | null>();
     for (const c of crew.data ?? []) m.set(c.user_id, c.user?.avatar_icon ?? null);

@@ -193,6 +193,9 @@ export function MemberEditor({
   const removeMember = trpc.tripMembers.remove.useMutation({
     onSuccess: () => {
       utils.tripMembers.list.invalidate({ tripId });
+      // They are a departed person now (PR 8d): their name moves to the departure
+      // record, which every name map reads for people no longer on the list.
+      utils.tripMembers.departedNames.invalidate({ tripId });
       // Removing someone vacates their seats in every game of the trip, in shared
       // server code (#1507). Reset every game's config hash so an open settings
       // draft cannot keep a stale baseline, and re-pull the boards.
@@ -251,6 +254,9 @@ export function MemberEditor({
   const removeGuest = trpc.ghostCrew.remove.useMutation({
     onSuccess: () => {
       utils.tripMembers.list.invalidate({ tripId });
+      // They are a departed person now (PR 8d): their name moves to the departure
+      // record, which every name map reads for people no longer on the list.
+      utils.tripMembers.departedNames.invalidate({ tripId });
       // Removing someone vacates their seats in every game of the trip, in shared
       // server code (#1507). Reset every game's config hash so an open settings
       // draft cannot keep a stale baseline, and re-pull the boards.

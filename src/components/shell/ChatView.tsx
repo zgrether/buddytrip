@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { MessageCircle, ClipboardList, Newspaper, Shield } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { useDepartedNames } from "@/hooks/useDepartedNames";
+import { withDeparted } from "@/lib/departedNames";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { FloatingChatPanel } from "@/components/FloatingChatPanel";
 import { NewsPanel, useNewsUnreadCount, type NewsAuthorMeta } from "@/components/NewsPanel";
@@ -175,14 +177,27 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
   // a tab that is no longer rendered.
   const teamUnread = hasTeam ? (chatUnread?.team ?? 0) : 0;
 
+  // Plus everyone who has LEFT, by the name the crew saw (PR 8d): their messages
+  // and posts stay, and read "Unknown" / "Someone" without this. Lookup only —
+  // these records are read by author id, never listed. A departed author holds
+  // no role on the trip any more, so they read as a Member (no badge).
+  const departedNames = useDepartedNames(tripId);
   const memberNames = Object.fromEntries(
-    typedMembers.map((m) => [m.user_id ?? m.memberId, m.displayName])
+    withDeparted(
+      new Map(typedMembers.map((m) => [m.user_id ?? m.memberId, m.displayName] as const)),
+      departedNames,
+      (n) => n,
+    )
   );
   const authors = Object.fromEntries(
-    typedMembers.map((m) => [
-      m.user_id ?? m.memberId,
-      { name: m.displayName, role: m.role, avatarIcon: m.user?.avatar_icon ?? null } satisfies NewsAuthorMeta,
-    ])
+    withDeparted(
+      new Map(typedMembers.map((m) => [
+        m.user_id ?? m.memberId,
+        { name: m.displayName, role: m.role, avatarIcon: m.user?.avatar_icon ?? null } satisfies NewsAuthorMeta,
+      ] as const)),
+      departedNames,
+      (name): NewsAuthorMeta => ({ name, role: "Member", avatarIcon: null }),
+    )
   );
 
   const SEGMENT_META: Record<ChatSegment, { label: string; Icon: typeof MessageCircle; unread: number }> = {
