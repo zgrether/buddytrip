@@ -156,13 +156,37 @@ export async function sendPushToUsers(
     // 1 · Audience: de-duplicate and drop the actor. A user can appear twice in
     // a resolved audience (e.g. on two teams), and sending twice for one event
     // is indistinguishable from a bug to the person holding the phone.
-    const audience = [...new Set(userIds)].filter(
+    const resolved = [...new Set(userIds)].filter(
       (id) => !!id && id !== opts.excludeUserId
     );
-    result.recipients = audience.length;
-    if (audience.length === 0) return;
+    if (resolved.length === 0) return;
 
     const admin = opts.admin ?? createAdminClient();
+
+    // 1b · A TRIP's push goes to that trip's CURRENT members only (PR 8d). Every
+    // call site resolves its audience from rows that outlive a membership on
+    // purpose — a finished game's participants, a decided match's seats, a
+    // cup's roster — so someone who LEFT, or was removed, would otherwise keep
+    // hearing about a trip that is no longer on their list (a re-finalize, a
+    // clinch). Noise for someone who left; worse for someone removed. Filtered
+    // HERE rather than at each call site, so a push added later cannot forget.
+    //
+    // A failed read is not data: it throws into this send's own error handling
+    // and sends nothing, rather than falling back to the unfiltered audience.
+    let audience = resolved;
+    const tripId = opts.context?.tripId;
+    if (tripId) {
+      const { data: current, error: memberErr } = await admin
+        .from("trip_members")
+        .select("user_id")
+        .eq("trip_id", tripId)
+        .in("user_id", resolved);
+      if (memberErr) throw new Error(`could not read the trip's current members: ${memberErr.message}`);
+      const onTrip = new Set((current ?? []).map((m: { user_id: string }) => m.user_id));
+      audience = resolved.filter((id) => onTrip.has(id));
+    }
+    result.recipients = audience.length;
+    if (audience.length === 0) return;
 
     // 2 · Preference gate — ONE query for the whole audience. A user row that
     // doesn't come back (deleted mid-flight) resolves through the registry
