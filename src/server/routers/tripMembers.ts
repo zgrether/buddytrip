@@ -6,10 +6,9 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { joinNoticeText } from "@/lib/joinMessage";
-import { archiveTripMember } from "../lib/archiveMember";
+import { archiveTripMember, ownerLeaveRefusal } from "../lib/archiveMember";
 import {
   findContributionBlockers,
-  contributionRefusalMessage,
   hasContributions,
 } from "../lib/participationGuard";
 
@@ -154,13 +153,6 @@ export const tripMembersRouter = router({
       return { result: "invite" as const };
     }),
 
-  // -----------------------------------------------------------------------
-  // removalBlockers — games this member is playing in / has scores in (#951).
-  //
-  // Read-only, for the UI to state the blocker BEFORE the remove button rather
-  // than after a failed press. `remove` re-checks and is the authority; this is
-  // the courtesy on top of it, never a substitute.
-  // -----------------------------------------------------------------------
   departedNames: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
@@ -188,22 +180,40 @@ export const tripMembersRouter = router({
       return (data ?? []).map((d) => ({ userId: d.user_id as string, displayName: d.display_name as string }));
     }),
 
-  removalBlockers: authedProcedure
+  // -----------------------------------------------------------------------
+  // departureSummary — what someone leaves behind, read BEFORE they go
+  // (PR 8d-3; was `removalBlockers`, #951).
+  //
+  // It used to gate removal: anyone with history was refused. Since PR 8d a
+  // departure is an ARCHIVE that keeps history (ruling 19), so nothing here
+  // blocks any more — it is what the remove and Leave trip WARNINGS list
+  // (ruling 2: warn, never block). Renamed with that change, because a query
+  // called "blockers" that blocks nothing is one concept under two names.
+  //
+  //   - `history`: the games they have results or scores in, and the
+  //     expenses they paid or are split into — the same predicate as before
+  //     (`findContributionBlockers`, the plan/result rule of #997).
+  //   - `ownerRefusal`: set only when the Owner asks about LEAVING. The one
+  //     departure that IS refused (ruling 3), with the same sentence the
+  //     archive's refusal gives (`ownerLeaveRefusal`), so the button can say
+  //     why before the press rather than after it.
+  //
+  // Read-only and advisory: the archive applies its own rules on the press.
+  // -----------------------------------------------------------------------
+  departureSummary: authedProcedure
     .input(z.object({ tripId: z.string(), userId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const blockers = await findContributionBlockers(ctx.supabase, ctx.tripId!, input.userId);
-      // `blocked` is returned explicitly rather than left for the client to
-      // re-derive: the predicate now spans games AND two expense counts, and a
-      // client re-implementing it is how the two drift apart.
-      const blocked = hasContributions(blockers);
-      const message: string | null = !blocked
-        ? null
-        : contributionRefusalMessage(
-            await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId),
-            blockers
-          );
-      return { blocked, blockers, message };
+      const history = await findContributionBlockers(ctx.supabase, ctx.tripId!, input.userId);
+      // `hasHistory` is returned rather than left for the client to re-derive:
+      // the predicate spans games AND two expense counts, and a client
+      // re-implementing it is how the two drift apart.
+      const hasHistory = hasContributions(history);
+      const leavingOwner = input.userId === ctx.user!.id && ctx.tripRole === "Owner";
+      const ownerRefusal = leavingOwner
+        ? await ownerLeaveRefusal(ctx.supabase, ctx.tripId!, input.userId)
+        : null;
+      return { hasHistory, history, ownerRefusal };
     }),
 
   // -----------------------------------------------------------------------
@@ -442,9 +452,9 @@ export const tripMembersRouter = router({
       if (input.userId === ctx.user!.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          // Not "use Leave trip": that button arrives with 8d-3, and a refusal
-          // must name an action the reader can actually take.
-          message: "You can't remove yourself from a trip.",
+          // Names the action that does exist (PR 8d-3): leaving is the same
+          // archive, with the leaver's own warnings.
+          message: "You can't remove yourself from a trip. Use Leave trip on the Crew tab instead.",
         });
       }
 
@@ -458,8 +468,8 @@ export const tripMembersRouter = router({
       //
       // It no longer REFUSES someone with history (#951's guard). History is
       // what the archive keeps; refusing made removal impossible on any trip
-      // that had been played (ruling 2: warn, never block). `removalBlockers`
-      // still answers for the UI until 8d-3 replaces that panel.
+      // that had been played (ruling 2: warn, never block). `departureSummary`
+      // is what the panel warns with.
       await archiveTripMember(ctx.supabase, ctx.tripId!, input.userId);
 
       return { success: true };

@@ -164,18 +164,16 @@ async function restore(userId: string) {
  * path is supposed to produce.
  */
 async function expectWarnedAbout(userId: string, gameId: string, gameName: string) {
-  const info = (await ctx.caller().tripMembers.removalBlockers({ tripId, userId })) as {
-    blocked: boolean;
-    blockers: { games: { gameId: string; gameName: string; reasons: string[] }[] };
-    message: string | null;
+  const info = (await ctx.caller().tripMembers.departureSummary({ tripId, userId })) as {
+    hasHistory: boolean;
+    history: { games: { gameId: string; gameName: string; reasons: string[] }[] };
   };
-  expect(info.blocked).toBe(true);
-  const hit = info.blockers.games.find((g) => g.gameId === gameId);
-  expect(hit, `no blocker named game ${gameId}; got ${JSON.stringify(info.blockers.games)}`)
+  expect(info.hasHistory).toBe(true);
+  const hit = info.history.games.find((g) => g.gameId === gameId);
+  expect(hit, `no blocker named game ${gameId}; got ${JSON.stringify(info.history.games)}`)
     .toBeTruthy();
   expect(hit!.gameName).toBe(gameName);
   expect(hit!.reasons).toContain("played-game");
-  expect(info.message).toContain(gameName);
 
   // PR 8d: the mutation no longer refuses (ruling 2) — it ARCHIVES. What the
   // predicate now drives is the remove panel's warning (until 8d-3). So the
@@ -348,12 +346,12 @@ describe("#1151/#1018 — the removal warning can see a pick'em", () => {
       withResult: true,
     });
 
-    const info = (await ctx.caller().tripMembers.removalBlockers({
+    const info = (await ctx.caller().tripMembers.departureSummary({
       tripId,
       userId: bystander,
-    })) as { blocked: boolean; blockers: { games: unknown[] } };
-    expect(info.blocked, "the bystander is in nothing").toBe(false);
-    expect(info.blockers.games).toEqual([]);
+    })) as { hasHistory: boolean; history: { games: unknown[] } };
+    expect(info.hasHistory, "the bystander is in nothing").toBe(false);
+    expect(info.history.games).toEqual([]);
 
     await expect(
       ctx.caller().tripMembers.remove({ tripId, userId: bystander })
@@ -388,11 +386,11 @@ describe("#1151/#1018 — the removal warning can see a pick'em", () => {
       withResult: false,
     });
 
-    const info = (await ctx.caller().tripMembers.removalBlockers({
+    const info = (await ctx.caller().tripMembers.departureSummary({
       tripId,
       userId: target,
-    })) as { blocked: boolean };
-    expect(info.blocked).toBe(false);
+    })) as { hasHistory: boolean };
+    expect(info.hasHistory).toBe(false);
 
     await expect(
       ctx.caller().tripMembers.remove({ tripId, userId: target })
