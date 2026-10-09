@@ -7,7 +7,8 @@ import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { applyPickCascadingWith, drawComplete, resolveDraw, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { applyPickCascadingWith, resolveDraw, type WinnerBySeed } from "@/lib/bracketAdvance";
+import { bracketResultReady } from "@/lib/bracketFormat";
 import type { BracketDrawMatch } from "@/lib/bracket";
 import type { BracketSide } from "@/lib/bracket";
 import type { MatchStakes } from "@/lib/bracketStakes";
@@ -263,15 +264,16 @@ export function BracketScoringSurface({
   );
 
   /**
-   * Is the bracket finished enough to post? `drawComplete` — the SAME predicate
-   * the server's finalize refuses on, so the CTA cannot be live for a state
-   * `games.finish` would reject.
+   * Is the bracket finished enough to post? `bracketResultReady` — the SAME
+   * answer the server's finalize refuses on, read from the placement functions,
+   * so the CTA cannot be live for a state `games.finish` would reject (#1417).
    *
-   * Note it is not "the final has a winner": a draw carrying a consolation match
-   * is unfinished while the play-off is open, and posting there would record two
-   * tied thirds for a game about to separate them.
+   * Note it is not "the final has a winner": a consolation still open, or a
+   * grand-final reset still owed, is an unfinished draw. `matches` is the full
+   * resolved set, so it serves as the draw too — it carries every row's
+   * `bracket`, which is all the format dispatch reads.
    */
-  const allComplete = drawComplete(matches);
+  const allComplete = bracketResultReady(matches, matches);
 
   return (
     // Full width, and the cap moved INSIDE. The whole surface used to sit in one

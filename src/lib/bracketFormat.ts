@@ -93,3 +93,23 @@ export function placementsForDraw(
 ): EntrantPlacement[] {
   return isDoubleElimination(draw) ? doubleBracketPlacements(resolved) : bracketPlacements(resolved);
 }
+
+/**
+ * Can this bracket's result be posted? ONE answer, and it comes from the
+ * placement functions: a result is postable exactly when they place someone.
+ *
+ * "Is the draw complete?" used to be decided in three places — the server's own
+ * `drawComplete` gate, the server's separate "no placements" refusal, and the
+ * play surface's Finish CTA — while the preview read the placements. They
+ * disagreed: with the grand-final reset owed, the placements crowned a champion
+ * the server's gate refused (#1417). The placement functions now return nothing
+ * until the draw is finished, so they ARE the completeness rule, and every
+ * caller reads it from here. Same shape as readiness living in two places
+ * (#1332): one question, one home.
+ */
+export function bracketResultReady(
+  draw: readonly BracketDrawMatch[],
+  resolved: ResolvedMatch[],
+): boolean {
+  return placementsForDraw(draw, resolved).length > 0;
+}
