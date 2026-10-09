@@ -93,11 +93,16 @@ describe("migration 122 — role-column guard, enforced at the DATABASE", () => 
     // Widening the DELETE policy without this arm would hand an Organizer the
     // ability to strand the trip with no Owner — #957's state, reached from a
     // layer #957's application guard cannot see.
-    const { error } = await organizer
-      .from("trip_members").delete()
+    //
+    // Since migration 210 there is no DELETE policy, so this is refused one layer
+    // earlier — RLS removes nothing — and the archive, the only remaining door,
+    // refuses it by its own rule (tripMembers.removeScoping.test.ts asserts that).
+    const { error, count } = await organizer
+      .from("trip_members").delete({ count: "exact" })
       .eq("trip_id", tripId).eq("user_id", ownerId);
 
-    expect(error).not.toBeNull();
+    expect(error).toBeNull();
+    expect(count).toBe(0);
     const { data } = await ctx.admin
       .from("trip_members").select("role")
       .eq("trip_id", tripId).eq("user_id", ownerId).maybeSingle();

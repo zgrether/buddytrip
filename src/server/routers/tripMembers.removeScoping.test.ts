@@ -30,6 +30,20 @@ async function signInAs(email: string): Promise<SupabaseClient> {
   return c;
 }
 
+/** A direct delete of one membership row; returns how many rows it removed. */
+async function directDelete(c: SupabaseClient, userId: string): Promise<number> {
+  const { error, count } = await c.from("trip_members").delete({ count: "exact" }).eq("trip_id", tripId).eq("user_id", userId);
+  if (error) throw new Error(`direct delete errored instead of removing nothing: ${error.message}`);
+  return count ?? 0;
+}
+const archive = (c: SupabaseClient, userId: string) =>
+  c.rpc("archive_trip_member", { p_trip_id: tripId, p_user_id: userId });
+async function roleOf(userId: string): Promise<string | null> {
+  const { data, error } = await ctx.admin.from("trip_members").select("role").eq("trip_id", tripId).eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return (data?.role as string | undefined) ?? null;
+}
+
 let ctx: TestContext;
 let organizer: SupabaseClient;
 let owner: SupabaseClient;
@@ -54,44 +68,38 @@ describe("migration 123 — Organizer may remove Members, not peers", () => {
     await ctx.cleanup();
   }, 60_000);
 
+  // ── Since migration 210 there is no DELETE policy at all ─────────────────
+  // The threat this file names — a signed-in caller who never traverses tRPC —
+  // now meets two facts, and every case asserts both:
+  //   - a DIRECT delete removes nothing, whatever the caller's role (RLS refuses
+  //     it before the role guard runs, so it returns no error and no row);
+  //   - the one door left, `archive_trip_member`, reachable from the same
+  //     client by RPC, applies 122/123's rules itself.
+  // Every case reads the row back afterwards: "no error" alone is what a delete
+  // that did nothing also returns.
+
   it("REFUSES an Organizer removing a fellow Organizer", async () => {
     // The gap #786 opened: demoting a peer was already impossible, deleting
     // them was not.
-    const { error } = await organizer
-      .from("trip_members").delete()
-      .eq("trip_id", tripId).eq("user_id", secondOrganizerId);
-
-    expect(error).not.toBeNull();
-    expect(error!.message).toMatch(/only the trip owner/i);
-
-    const { data } = await ctx.admin
-      .from("trip_members").select("role")
-      .eq("trip_id", tripId).eq("user_id", secondOrganizerId).maybeSingle();
-    expect(data).toMatchObject({ role: "Organizer" }); // still there
+    expect(await directDelete(organizer, secondOrganizerId)).toBe(0);
+    const { error } = await archive(organizer, secondOrganizerId);
+    expect(error?.message).toContain("ARCHIVE_ORGANIZER_REMOVES_MEMBERS_ONLY");
+    expect(await roleOf(secondOrganizerId)).toBe("Organizer"); // still there
   }, 60_000);
 
   it("REFUSES an Organizer removing the Owner (migration 122, still holds)", async () => {
-    const { error } = await organizer
-      .from("trip_members").delete()
-      .eq("trip_id", tripId).eq("user_id", ownerId);
-    expect(error).not.toBeNull();
-
-    const { data } = await ctx.admin
-      .from("trip_members").select("role")
-      .eq("trip_id", tripId).eq("user_id", ownerId).maybeSingle();
-    expect(data).toMatchObject({ role: "Owner" });
+    expect(await directDelete(organizer, ownerId)).toBe(0);
+    const { error } = await archive(organizer, ownerId);
+    expect(error?.message).toContain("ARCHIVE_CANNOT_REMOVE_OWNER");
+    expect(await roleOf(ownerId)).toBe("Owner");
   }, 60_000);
 
-  it("ALLOWS an Organizer removing a Member", async () => {
-    const { error } = await organizer
-      .from("trip_members").delete()
-      .eq("trip_id", tripId).eq("user_id", memberId);
-    expect(error).toBeNull();
+  it("ALLOWS an Organizer removing a Member — through the archive, not directly", async () => {
+    expect(await directDelete(organizer, memberId)).toBe(0);
+    expect(await roleOf(memberId)).toBe("Member"); // the direct door did nothing
 
-    const { data } = await ctx.admin
-      .from("trip_members").select("user_id")
-      .eq("trip_id", tripId).eq("user_id", memberId).maybeSingle();
-    expect(data).toBeNull();
+    expect((await archive(organizer, memberId)).error).toBeNull();
+    expect(await roleOf(memberId)).toBeNull();
 
     await ctx.admin.from("trip_members")
       .insert({ trip_id: tripId, user_id: memberId, role: "Member", status: "in" });
@@ -103,19 +111,16 @@ describe("migration 123 — Organizer may remove Members, not peers", () => {
     await ctx.admin.from("trip_members")
       .insert({ trip_id: tripId, user_id: ghostId, role: "Member", status: "in" });
 
-    const { error } = await organizer
-      .from("trip_members").delete()
-      .eq("trip_id", tripId).eq("user_id", ghostId);
-    expect(error).toBeNull();
+    expect((await archive(organizer, ghostId)).error).toBeNull();
+    expect(await roleOf(ghostId)).toBeNull();
 
     await ctx.admin.from("users").delete().eq("id", ghostId);
   }, 60_000);
 
-  it("ALLOWS the Owner removing an Organizer", async () => {
-    const { error } = await owner
-      .from("trip_members").delete()
-      .eq("trip_id", tripId).eq("user_id", secondOrganizerId);
-    expect(error).toBeNull();
+  it("ALLOWS the Owner removing an Organizer — through the archive; even the Owner cannot delete directly", async () => {
+    expect(await directDelete(owner, secondOrganizerId)).toBe(0);
+    expect((await archive(owner, secondOrganizerId)).error).toBeNull();
+    expect(await roleOf(secondOrganizerId)).toBeNull();
 
     await ctx.admin.from("trip_members")
       .insert({ trip_id: tripId, user_id: secondOrganizerId, role: "Organizer", status: "in" });
@@ -150,15 +155,12 @@ describe("migration 123 — Organizer may remove Members, not peers", () => {
     expect(rows ?? []).toHaveLength(0);
   }, 60_000);
 
-  it("the cascade allowance does NOT weaken the rule on a live trip", async () => {
-    // The pass is keyed on the parent trip being gone. A live trip still has
-    // its row, so an Organizer acting on one is held to 122/123 exactly as
-    // before — asserted here so a future "simplification" of that condition
-    // can't quietly turn it into a general bypass.
-    const { error } = await organizer
-      .from("trip_members").delete()
-      .eq("trip_id", tripId).eq("user_id", secondOrganizerId);
-    expect(error).not.toBeNull();
-    expect(error!.message).toMatch(/only the trip owner/i);
+  it("the cascade allowance does NOT open a door on a live trip", async () => {
+    // The guard's pass is keyed on the parent trip being gone. On a live trip
+    // an Organizer's direct delete of a peer removes nothing — since migration
+    // 210 RLS refuses it before the guard is reached — and the peer is still
+    // there. Asserted so a future widening of either layer is noticed here.
+    expect(await directDelete(organizer, secondOrganizerId)).toBe(0);
+    expect(await roleOf(secondOrganizerId)).toBe("Organizer");
   }, 60_000);
 });

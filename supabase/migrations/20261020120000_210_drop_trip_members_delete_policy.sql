@@ -1,0 +1,26 @@
+-- 210 · The archive is the only way a membership ends
+--
+-- Migration 205 narrowed `trip_members_delete` to Owners/Organizers and said
+-- the policy would go entirely once the app's remove paths moved onto
+-- `archive_trip_member` — a follow-up, because the code deployed then still
+-- deleted rows directly. PR 8d-2 (#1573) moved them; it is deployed
+-- (production deployment of 16e161fa and every one since). A sweep of every
+-- source file finds no direct `trip_members` delete outside the test-cleanup
+-- helper, which uses the service role and is not subject to RLS.
+--
+-- This is CLAUDE.md's step 3b — a removal lands after the code that stops using
+-- it is deployed, never before.
+--
+-- What still ends a membership, and why each is unaffected:
+--   - `archive_trip_member` (leaving and removal) — SECURITY DEFINER, so it is
+--     not subject to this table's RLS;
+--   - `merge_guest_to_real_user` (a guest's row folded into the real account
+--     on signup or link) — SECURITY DEFINER likewise;
+--   - deleting a whole trip — the FK cascade from `trips`, which RLS does not
+--     filter.
+--
+-- With no DELETE policy, RLS refuses every direct delete from an API role: a
+-- caller who could reach the table through PostgREST can no longer end a
+-- membership without the archive's rules and clean-up, whatever their role.
+
+DROP POLICY IF EXISTS trip_members_delete ON public.trip_members;
