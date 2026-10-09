@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Calendar, Plus, PlaneLanding, PlaneTakeoff } from "lucide-react";
 import { Avatar, InvitedAvatar, PlaceholderAvatar } from "@/components/Avatar";
+import { LeaveTripButton } from "./LeaveTripButton";
 import { parseLocalDate } from "@/lib/dates";
 import { ROLE_COLOR, badgedRole } from "@/lib/roleColor";
 import {
@@ -519,6 +520,23 @@ export function YouTile({
             </button>
           )}
         </div>
+
+        {/* Leave trip (PR 8d-3) — the one self-service exit, on the one card
+            every role sees as their own. Set off by the same inset hairline
+            as the travel block above; the Owner arms it to the reason they
+            can't leave yet. */}
+        {m.user_id && (
+          <>
+            <div
+              className="mx-4"
+              style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
+              aria-hidden
+            />
+            <div className="px-4 py-3">
+              <LeaveTripButton tripId={tripId} userId={m.user_id} />
+            </div>
+          </>
+        )}
       </div>
     </section>
   );

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ConfirmDeleteButton } from "./ConfirmDeleteButton";
+import { ArmedWarning, ConfirmDeleteButton } from "./ConfirmDeleteButton";
 
 /**
  * The `blocked` arm (#1034).
@@ -60,9 +60,86 @@ describe("ConfirmDeleteButton — blocked", () => {
   it("pending disables the resting button, so an unresolved guard can't be armed", () => {
     // MemberEditor passes the guard's own `isPending` here: before the answer
     // arrives, `blocked` is undefined only because it is unknown.
-    const html = renderToStaticMarkup(
+    //
+    // The ATTRIBUTE, not the word: every button here carries the Tailwind class
+    // `disabled:opacity-40`, so `toContain("disabled")` was true of an ENABLED
+    // button too (CLAUDE.md's ninth inert instrument, the same file's sibling).
+    // The control below proves this form can tell the two apart.
+    const pending = renderToStaticMarkup(
       <ConfirmDeleteButton label="Remove from trip" onConfirm={() => {}} pending />
     );
-    expect(html).toContain("disabled");
+    const idle = renderToStaticMarkup(<ConfirmDeleteButton label="Remove from trip" onConfirm={() => {}} />);
+    expect(pending).toContain('disabled=""');
+    expect(idle).not.toContain('disabled=""');
+  });
+});
+
+/**
+ * The `warning` arm (PR 8d-3): the action goes ahead, and arming says what it
+ * means first. Same placement rule as `blocked` — nothing at rest — and,
+ * unlike `blocked`, the confirm is REACHABLE from the warning.
+ *
+ * The armed state is behind a click and this suite renders statically, so the
+ * armed markup is asserted through `ArmedWarning`, the component the button
+ * renders when armed with a warning.
+ */
+describe("ConfirmDeleteButton — warning", () => {
+  const WARNING = <p>Their history stays</p>;
+
+  it("renders identically at rest with or without a warning — nobody reads one they didn't ask for", () => {
+    const warned = renderToStaticMarkup(
+      <ConfirmDeleteButton label="Remove from trip" onConfirm={() => {}} warning={WARNING} />
+    );
+    const plain = renderToStaticMarkup(<ConfirmDeleteButton label="Remove from trip" onConfirm={() => {}} />);
+    expect(warned).toBe(plain);
+    expect(warned).not.toContain("history stays");
+  });
+
+  it("armed: the warning AND a live confirm, in one panel", () => {
+    const html = renderToStaticMarkup(
+      <ArmedWarning
+        warning={WARNING}
+        pending={false}
+        confirmLabel="Remove"
+        pendingLabel="Removing…"
+        testId="remove-member"
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />
+    );
+    expect(html).toContain('data-testid="confirm-warning"');
+    expect(html).toContain("Their history stays");
+    // The confirm is the element carrying the caller's testId, and it is live.
+    const confirm = html.match(/<button[^>]*data-testid="remove-member"[^>]*>/)?.[0];
+    expect(confirm, "the confirm button is rendered").toBeTruthy();
+    expect(confirm).not.toContain('disabled=""');
+  });
+
+  it("armed and pending: the confirm is held", () => {
+    const html = renderToStaticMarkup(
+      <ArmedWarning
+        warning={WARNING}
+        pending
+        confirmLabel="Leave"
+        pendingLabel="Leaving…"
+        testId="leave-trip"
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />
+    );
+    const confirm = html.match(/<button[^>]*data-testid="leave-trip"[^>]*>/)?.[0];
+    expect(confirm).toContain('disabled=""');
+    expect(html).toContain("Leaving…");
+  });
+
+  it("takes the caller's icon in place of the trash can", () => {
+    const html = renderToStaticMarkup(
+      <ConfirmDeleteButton label="Leave trip" onConfirm={() => {}} icon={<span data-icon="leave" />} />
+    );
+    const trash = renderToStaticMarkup(<ConfirmDeleteButton label="Leave trip" onConfirm={() => {}} />);
+    expect(html).toContain('data-icon="leave"');
+    // The default icon is gone, not added beside the caller's.
+    expect(html.match(/<svg/g)?.length ?? 0).toBe(0);
+    expect(trash.match(/<svg/g)?.length ?? 0).toBe(1);
   });
 });
