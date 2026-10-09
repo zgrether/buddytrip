@@ -56,7 +56,7 @@ export async function deriveBracketPlacements(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<BracketPlacementRow[]> {
-  const { matches, seedOf, idOfSeed, error } = await readBracketDraw(supabase, gameId);
+  const { matches, seedOf, idOfSeed, withdrawnSeeds, error } = await readBracketDraw(supabase, gameId);
   if (error) {
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
@@ -81,7 +81,7 @@ export async function deriveBracketPlacements(
   // could not see the matches it exists to check, passed, and the bracket posted
   // with 4 of 15 matches undecided. Both dispatches now read the DRAW; see
   // `bracketFormat.ts` for why the draw decides and not the config.
-  const resolved = resolveAnyDraw(draw, winners);
+  const resolved = resolveAnyDraw(draw, winners, withdrawnSeeds);
 
   // ONE decision: the placements. Empty means not postable — refused rather than
   // written, which keeps the game finishable (status stays non-complete, the

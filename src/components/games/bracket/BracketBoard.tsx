@@ -611,6 +611,10 @@ function Slot({
   const seed = seat === "a" ? match.aSeed : match.bSeed;
   const meta = seed === null ? undefined : bySeed.get(seed);
   const won = seed !== null && match.winnerSeed === seed;
+  /** This seat's entrant WITHDREW and forfeited this match (ruling 8): the other
+   *  side advanced by walkover. Shown, not hidden — the draw keeps its shape and a
+   *  reader can see why a match was decided without being played. */
+  const withdrew = seed !== null && match.forfeited.includes(seed);
   const base = {
     display: "flex", alignItems: "center", gap: 7,
     // FIXED height, not minimum — see the card's own note. A "Bye" row and a
@@ -626,8 +630,10 @@ function Slot({
     borderBottom: seat === "a" ? "1px solid var(--color-bt-border)" : undefined,
   } as const;
 
-  // The empty half of a bye. Nobody played, so there is nothing to tap.
-  if (seed === null && match.bye && seat === "b") {
+  // The empty half of a bye. Nobody played, so there is nothing to tap. Either
+  // seat: a round-1 bye always leaves B empty, but a bye ABOVE round 1 — the slot
+  // after a match both sides withdrew from (ruling 8) — can leave either.
+  if (seed === null && match.bye) {
     return (
       // Secondary, like the pending row — a bye is a state, not a competitor.
       <div style={{ ...base, color: "var(--color-bt-text-dim)", fontSize: TYPE_SCALE.caption }} data-testid="bracket-slot-bye">
@@ -704,6 +710,18 @@ function Slot({
       <span className="min-w-0 flex-1" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {meta ? (meta.partner ? `${meta.name} & ${meta.partner}` : meta.name) : `Seed ${seed}`}
       </span>
+      {withdrew && (
+        <span
+          data-testid="bracket-withdrew"
+          style={{
+            ...EYEBROW, flexShrink: 0, color: "var(--color-bt-text-dim)",
+            border: "1px solid var(--color-bt-border)", borderRadius: 4,
+            padding: "1px 4px", lineHeight: 1.2,
+          }}
+        >
+          Withdrew
+        </span>
+      )}
       {/* MUST-WIN — the GRAND FINAL only (T5).
           Everywhere else it restated its own column heading: the lower bracket is
           headed "second life", so every row in it is must-win by definition and the
@@ -749,7 +767,9 @@ function Slot({
     fontWeight: won ? 650 : undefined,
     width: "100%",
     textAlign: "left" as const,
-    color: "var(--color-bt-text)",
+    // A forfeiter's name steps back to the secondary ink: present, but not a
+    // competitor in this match any more.
+    color: withdrew ? "var(--color-bt-text-dim)" : "var(--color-bt-text)",
   };
 
   if (!tappable) return <div style={style} data-testid={`bracket-slot-${seed}`}>{content}</div>;

@@ -86,3 +86,27 @@ describe("stakes appear only where places are PAID", () => {
     expect(withStakes(4, [])).not.toContain("bracket-match-stakes");
   });
 });
+
+describe("a withdrawn entrant (ruling 8)", () => {
+  /** The markup from one seat's own anchor to the next seat's: that seat's row
+   *  and nothing else (a chip elsewhere on the board cannot satisfy it). */
+  const seatRegion = (html: string, seed: number) => {
+    const start = html.indexOf(`data-testid="bracket-slot-${seed}"`);
+    if (start < 0) throw new Error(`no row for seed ${seed}`);
+    const next = html.indexOf(`data-testid="bracket-slot-`, start + 1);
+    return html.slice(start, next < 0 ? undefined : next);
+  };
+
+  it("marks the forfeiter's row 'Withdrew' — and only that row", () => {
+    const html = renderToStaticMarkup(
+      <BracketBoard matches={resolveDraw(buildDraw(4), {}, new Set([4]))} entrants={entrants(4)} />
+    );
+    expect(seatRegion(html, 4)).toContain('data-testid="bracket-withdrew"');
+    expect(seatRegion(html, 1)).not.toContain("bracket-withdrew");
+    expect(html.match(/data-testid="bracket-withdrew"/g)).toHaveLength(1);
+  });
+
+  it("CONTROL: nobody withdrawn, no chip anywhere", () => {
+    expect(board(4)).not.toContain("bracket-withdrew");
+  });
+});

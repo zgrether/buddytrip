@@ -753,19 +753,29 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const { matches, seedOf, error } = await readBracketDraw(ctx.supabase, input.gameId);
+      const { matches, seedOf, withdrawnSeeds, error } = await readBracketDraw(ctx.supabase, input.gameId);
       if (error) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the bracket draw: ${error}` });
       }
-      return matches.map((m) => ({
-        id: m.id,
-        bracket: m.bracket,
-        round: m.round,
-        slot: m.slot,
-        aSeed: seedOf(m.entrant_a_id),
-        bSeed: seedOf(m.entrant_b_id),
-        winnerSeed: seedOf(m.winner_entrant_id),
-      }));
+      return matches.map((m) => {
+        const aSeed = seedOf(m.entrant_a_id);
+        const bSeed = seedOf(m.entrant_b_id);
+        return {
+          id: m.id,
+          bracket: m.bracket,
+          round: m.round,
+          slot: m.slot,
+          aSeed,
+          bSeed,
+          winnerSeed: seedOf(m.winner_entrant_id),
+          // Withdrawal (migration 209), on the rows that STORE entrants — main round 1,
+          // where every entrant sits exactly once — so the client derives the full
+          // withdrawn set from the draw it already holds, and the cached array keeps
+          // the shape the optimistic pick patches.
+          aWithdrawn: aSeed !== null && withdrawnSeeds.has(aSeed),
+          bWithdrawn: bSeed !== null && withdrawnSeeds.has(bSeed),
+        };
+      });
     }),
 
   /**
@@ -838,7 +848,7 @@ export const gamesRouter = router({
         });
       }
 
-      const { matches, seedOf, idOfSeed, error } = await readBracketDraw(ctx.supabase, input.gameId);
+      const { matches, seedOf, idOfSeed, withdrawnSeeds, error } = await readBracketDraw(ctx.supabase, input.gameId);
       if (error) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the bracket draw: ${error}` });
       }
@@ -865,7 +875,7 @@ export const gamesRouter = router({
       // answer anywhere (`bracketFormat.ts`). The finalize path asked nothing at all,
       // which is Phase 0 F1.
       const isDouble = isDoubleElimination(draw);
-      const resolved = resolveAnyDraw(draw, winners);
+      const resolved = resolveAnyDraw(draw, winners, withdrawnSeeds);
       const target = resolved.find(
         (m) => m.bracket === input.bracket && m.round === input.round && m.slot === input.slot
       );
@@ -876,6 +886,14 @@ export const gamesRouter = router({
       // rather than ignored, so a client that offers the pick learns it is wrong.
       if (target.bye) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "That entrant has a bye — there's no match to decide." });
+      }
+      // A WALKOVER has no result to record either: someone in it withdrew, so the other
+      // side advanced with no pick (ruling 8). Refused for the same reason as a bye.
+      if (target.forfeited.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Someone in that match withdrew, so it's a walkover — there's no result to record.",
+        });
       }
       if (input.winnerSeed !== null) {
         if (target.aSeed === null || target.bSeed === null) {
@@ -907,10 +925,10 @@ export const gamesRouter = router({
         // people BETWEEN brackets rather than only upward, so "orphaned" is defined by
         // re-resolution — a stored winner who is no longer one of their match's
         // occupants. Same rule the client's cascade runs, so the two cannot disagree.
-        ? applyPickCascadingWith(rowsWithWinners, ref, input.winnerSeed, resolveDoubleDraw)
+        ? applyPickCascadingWith(rowsWithWinners, ref, input.winnerSeed, (d, w) => resolveDoubleDraw(d, w, withdrawnSeeds))
             .filter((m, i) => m.winnerSeed === null && rowsWithWinners[i].winnerSeed !== null)
             .map((m) => ({ bracket: m.bracket, round: m.round, slot: m.slot }))
-        : orphanedByPick(rowsWithWinners, ref, input.winnerSeed);
+        : orphanedByPick(rowsWithWinners, ref, input.winnerSeed, withdrawnSeeds);
       const orphanIds = orphanRefs
         .map((r) => matches.find((m) => m.bracket === r.bracket && m.round === r.round && m.slot === r.slot)?.id)
         .filter((id): id is string => !!id);
