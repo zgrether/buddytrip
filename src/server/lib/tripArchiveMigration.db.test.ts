@@ -133,10 +133,13 @@ describe("leaving", () => {
 
   it("an Organizer CAN leave through the archive — and the same delete made DIRECTLY is still refused", async () => {
     const t = await plainTrip("Archive organizer leaves");
-    // CONTROL first: the role guard refuses an Organizer deleting an
-    // Organizer's row (their own), so without the archive's marker this fails.
-    const direct = await ctx.authedClient("planner").from("trip_members").delete().eq("trip_id", t.tripId).eq("user_id", f.planner);
-    expect(direct.error?.message).toContain("Only the trip owner");
+    // CONTROL first: the same delete made DIRECTLY removes nothing. Until
+    // migration 210 the role guard refused it ("Only the trip owner"); since
+    // then there is no DELETE policy, so RLS refuses it first — either way only
+    // the archive, with its marker, can end an Organizer's membership.
+    const direct = await ctx.authedClient("planner").from("trip_members").delete({ count: "exact" }).eq("trip_id", t.tripId).eq("user_id", f.planner);
+    expect(direct.error).toBeNull();
+    expect(direct.count).toBe(0);
     expect(await isMember(t.tripId, f.planner)).toBe(true);
 
     const { error } = await archive("planner", t.tripId, f.planner);
