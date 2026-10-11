@@ -215,8 +215,9 @@ describe("RosterChangeSheet — uneven teams after the change", () => {
   const move = { kind: "move" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamName: "Blue", toTeamId: "blue" };
   const STROKE_WHY = "In stroke play a team's total adds up its players' strokes, so the bigger team is at a disadvantage.";
   const SKINS_WHY = "In skins a team's total adds up its players' skins, so the bigger team is at an advantage.";
+  // The sheet reads only tag and explanation; consequence is setup's half.
   const tagged = (name: string, tag: string, explanation: string) => ({
-    gameId: name, name, uneven: { tag, explanation },
+    gameId: name, name, uneven: { tag, explanation, consequence: "" },
   });
 
   it("the tag sits under its game, and the explanation is said once for two rounds that share it", () => {

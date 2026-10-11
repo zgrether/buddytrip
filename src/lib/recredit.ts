@@ -166,6 +166,17 @@ export interface UnevenTeams {
   tag: string;
   /** The format's sentence, shown once however many games carry a tag. */
   explanation: string;
+  /** Just its consequence — "the bigger team is at a disadvantage" — for a
+   *  surface whose reader chose the teams and needs what to DO about it, not
+   *  how totals add up (setup, Zach's look on #1585). */
+  consequence: string;
+}
+
+/** "the bigger team is at a disadvantage" (low wins) / "…at an advantage"
+ *  (high wins). The ONE place the direction is worded; the explanation
+ *  below is built on it. */
+export function unevenTeamsConsequence(scoring: ScoringType): string {
+  return `the bigger team is ${rankingDirection(scoring) === "low_wins" ? "at a disadvantage" : "at an advantage"}`;
 }
 
 /** "In stroke play a team's total adds up its players' strokes, so the bigger
@@ -174,8 +185,7 @@ export interface UnevenTeams {
 export function unevenTeamsExplanation(scoring: ScoringType): string {
   const format = scoring === "skins" ? "skins" : scoring === "stableford" ? "Stableford" : "stroke play";
   const unit = scoring === "skins" ? "skins" : scoring === "stableford" ? "points" : "strokes";
-  const effect = rankingDirection(scoring) === "low_wins" ? "at a disadvantage" : "at an advantage";
-  return `In ${format} a team's total adds up its players' ${unit}, so the bigger team is ${effect}.`;
+  return `In ${format} a team's total adds up its players' ${unit}, so ${unevenTeamsConsequence(scoring)}.`;
 }
 
 /**
@@ -197,6 +207,7 @@ export function unevenTeams(input: {
   return {
     tag: `Uneven teams: ${rows.map((r) => `${r.name} ${r.n}`).join(", ")}`,
     explanation: unevenTeamsExplanation(input.scoring),
+    consequence: unevenTeamsConsequence(input.scoring),
   };
 }
 

@@ -59,6 +59,7 @@ describe("preview and confirm", () => {
     expect(g.uneven).toEqual({
       tag: "Uneven teams: Bravo 3, Alpha 1",
       explanation: "In stroke play a team's total adds up its players' strokes, so the bigger team is at a disadvantage.",
+      consequence: "the bigger team is at a disadvantage",
     });
 
     const res = await ctx.caller().recredits.confirm({

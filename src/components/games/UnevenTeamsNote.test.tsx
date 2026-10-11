@@ -5,10 +5,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { UnevenTeamsNote } from "./UnevenTeamsNote";
 
 /**
- * #1562 — the uneven-teams note in stroke and skins SETUP. Each sentence is
- * pinned whole, by the element that carries it, in BOTH directions: a note that
- * says the wrong direction is worse than none (it tells the organizer the
- * opposite of what will happen).
+ * #1562 — the uneven-teams note in stroke and skins SETUP: ONE line, the tag and
+ * its consequence (Zach's look on #1585). Pinned whole, in BOTH directions: a
+ * note that says the wrong direction is worse than none (it tells the
+ * organizer the opposite of what will happen).
  */
 
 const TEAMS = [
@@ -17,9 +17,6 @@ const TEAMS = [
 ];
 const ROSTER = { a: "sp", b: "sp", c: "sp", d: "ce", e: "ce", f: "ce" };
 
-const STROKE_WHY = "In stroke play a team's total adds up its players' strokes, so the bigger team is at a disadvantage.";
-const STABLEFORD_WHY = "In Stableford a team's total adds up its players' points, so the bigger team is at an advantage.";
-const SKINS_WHY = "In skins a team's total adds up its players' skins, so the bigger team is at an advantage.";
 
 /** The text of the ONE element carrying `data-testid={id}`, or null. */
 function textOf(html: string, id: string): string | null {
@@ -30,21 +27,19 @@ function textOf(html: string, id: string): string | null {
 const render = (props: Parameters<typeof UnevenTeamsNote>[0]) => renderToStaticMarkup(<UnevenTeamsNote {...props} />);
 
 describe("UnevenTeamsNote — the tag, and the explanation in the format's direction", () => {
-  it("traditional stroke: 3 v 2 is tagged, biggest first, and the bigger team is at a DISADVANTAGE", () => {
+  it("traditional stroke: one line — 3 v 2, biggest first, and the bigger team is at a DISADVANTAGE", () => {
     const html = render({ scoring: "traditional", playerIds: ["a", "b", "c", "d", "e"], roster: ROSTER, teams: TEAMS });
-    expect(textOf(html, "setup-uneven-tag")).toBe("Uneven teams: Spartans 3, Centurions 2");
-    expect(textOf(html, "setup-uneven-explanation")).toBe(STROKE_WHY);
+    expect(textOf(html, "setup-uneven")).toBe("Uneven teams: Spartans 3, Centurions 2 — the bigger team is at a disadvantage.");
   });
 
   it("Stableford: the same counts, the OTHER direction", () => {
     const html = render({ scoring: "stableford", playerIds: ["a", "b", "c", "d", "e"], roster: ROSTER, teams: TEAMS });
-    expect(textOf(html, "setup-uneven-explanation")).toBe(STABLEFORD_WHY);
+    expect(textOf(html, "setup-uneven")).toBe("Uneven teams: Spartans 3, Centurions 2 — the bigger team is at an advantage.");
   });
 
   it("skins: an ADVANTAGE too", () => {
     const html = render({ scoring: "skins", playerIds: ["a", "d", "e"], roster: ROSTER, teams: TEAMS });
-    expect(textOf(html, "setup-uneven-tag")).toBe("Uneven teams: Centurions 2, Spartans 1");
-    expect(textOf(html, "setup-uneven-explanation")).toBe(SKINS_WHY);
+    expect(textOf(html, "setup-uneven")).toBe("Uneven teams: Centurions 2, Spartans 1 — the bigger team is at an advantage.");
   });
 
   it("even teams: no note at all", () => {
@@ -55,7 +50,7 @@ describe("UnevenTeamsNote — the tag, and the explanation in the format's direc
   it("evening the groups clears it — the same round, one more Centurion", () => {
     const before = render({ scoring: "traditional", playerIds: ["a", "b", "c", "d", "e"], roster: ROSTER, teams: TEAMS });
     const after = render({ scoring: "traditional", playerIds: ["a", "b", "c", "d", "e", "f"], roster: ROSTER, teams: TEAMS });
-    expect(textOf(before, "setup-uneven-tag")).not.toBeNull(); // premise
+    expect(textOf(before, "setup-uneven")).not.toBeNull(); // premise
     expect(after).toBe("");
   });
 
@@ -65,9 +60,14 @@ describe("UnevenTeamsNote — the tag, and the explanation in the format's direc
     expect(html).toBe("");
   });
 
+  it("no mechanics: the organizer chose these groups, so no 'adds up' sentence", () => {
+    const html = render({ scoring: "traditional", playerIds: ["a", "b", "c", "d"], roster: ROSTER, teams: TEAMS });
+    expect(html).not.toContain("adds up");
+  });
+
   it("a team with nobody playing is listed at 0", () => {
     const html = render({ scoring: "traditional", playerIds: ["a"], roster: ROSTER, teams: TEAMS });
-    expect(textOf(html, "setup-uneven-tag")).toBe("Uneven teams: Spartans 1, Centurions 0");
+    expect(textOf(html, "setup-uneven")).toBe("Uneven teams: Spartans 1, Centurions 0 — the bigger team is at a disadvantage.");
   });
 });
 

@@ -8,10 +8,13 @@ import type { ScoringType } from "@/lib/stableford";
  * #1561: a stroke or skins team total stays a sum — the app warns, it never
  * blocks, because uneven teams are the organizer's call).
  *
- * The same two parts as the re-credit sheet and the trade preview, from the
- * same helper (`unevenTeams`): the tag ("Uneven teams: Spartans 3, Centurions
- * 2", biggest first) and the format's one-sentence explanation, whose
- * direction comes from how the format ranks (`rankingDirection`) and is never
+ * ONE line: the tag and its consequence — "Uneven teams: Spartans 2,
+ * Centurions 1 — the bigger team is at a disadvantage." (Zach's look on #1585).
+ * The organizer chose these groups, so how totals add up is not news to them;
+ * what the imbalance DOES is the half they can act on (CLAUDE.md, "Copy"). The
+ * re-credit sheet and the trade preview keep the full explanation, for a reader
+ * who did not set the round up. Both halves come from the same helper
+ * (`unevenTeams`), whose direction comes from `rankingDirection` and is never
  * worded here.
  *
  * Counted over the players in the DRAFT groupings, so it moves as the
@@ -34,13 +37,8 @@ export function UnevenTeamsNote({
   const uneven = unevenTeams({ scoring, counts: playersByTeam(playerIds, roster), teams });
   if (!uneven) return null;
   return (
-    <div className="mt-3" data-testid="setup-uneven">
-      <p className="text-[12px] font-semibold" style={{ color: "var(--color-bt-warning)" }} data-testid="setup-uneven-tag">
-        {uneven.tag}
-      </p>
-      <p className="mt-1 text-[12px]" style={{ color: "var(--color-bt-warning)" }} data-testid="setup-uneven-explanation">
-        {uneven.explanation}
-      </p>
-    </div>
+    <p className="mb-3 text-[12px]" style={{ color: "var(--color-bt-warning)" }} data-testid="setup-uneven">
+      {`${uneven.tag} — ${uneven.consequence}.`}
+    </p>
   );
 }

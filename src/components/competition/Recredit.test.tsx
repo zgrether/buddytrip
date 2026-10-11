@@ -119,8 +119,8 @@ describe("RecreditSheet", () => {
 });
 
 describe("uneven teams: a short tag per game, the explanation ONCE (#1561: warn, never block)", () => {
-  const stroke: UnevenTeams = { tag: "Uneven teams: Blue 2, Red 1", explanation: unevenTeamsExplanation("traditional") };
-  const skins: UnevenTeams = { tag: "Uneven teams: Blue 2, Red 1", explanation: unevenTeamsExplanation("skins") };
+  const stroke: UnevenTeams = { tag: "Uneven teams: Blue 2, Red 1", explanation: unevenTeamsExplanation("traditional"), consequence: "the bigger team is at a disadvantage" };
+  const skins: UnevenTeams = { tag: "Uneven teams: Blue 2, Red 1", explanation: unevenTeamsExplanation("skins"), consequence: "the bigger team is at an advantage" };
 
   it("two stroke rounds, both uneven: two tags, ONE explanation", () => {
     const html = render(ready(preview({

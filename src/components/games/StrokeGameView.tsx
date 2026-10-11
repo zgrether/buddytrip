@@ -1242,10 +1242,12 @@ export function StrokeGameView() {
         <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
           Group players into tee groups — any mix across teams, up to 4 each. Everyone playing must be in a group; anyone left ungrouped isn&rsquo;t in the game.
         </p>
-        <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={pickerTeams} />
         {/* #1562: warn when the cup's teams have different numbers of players
             in this round — counted from the DRAFT groups, so it moves before
-            Save. Warn, never block (Zach's ruling on #1561). */}
+            Save. Warn, never block (Zach's ruling on #1561). ABOVE the
+            builder: on a phone a single group of four already pushes anything
+            below it behind the Save bar, so below was out of sight exactly
+            while the organizer edits (measured at 375x812, #1585). */}
         {gameCompetitionId && (
           <UnevenTeamsNote
             scoring={configDraft.scoring.type}
@@ -1254,6 +1256,7 @@ export function StrokeGameView() {
             teams={(teamsQ.data ?? []).map((t) => ({ teamId: t.id as string, teamName: t.name as string }))}
           />
         )}
+        <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={pickerTeams} />
       </ChecklistRow>
     );
     // Handicaps row (GROUP SETTINGS, P3 3.3) — INLINE per-player strokes (was a full-page

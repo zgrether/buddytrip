@@ -98,6 +98,7 @@ describe("the trade preview's uneven-teams tag — counted on the roster AFTER t
     expect(await unevenOf(c, memberId, c.teamB, "Friday Stroke")).toEqual({
       tag: "Uneven teams: Team B 3, Team A 1",
       explanation: STROKE_WHY,
+      consequence: "the bigger team is at a disadvantage",
     });
     // CONTROL: same person, same round, destination = their own team. Even.
     expect(await unevenOf(c, memberId, c.teamA, "Friday Stroke")).toBeNull();
@@ -113,6 +114,7 @@ describe("the trade preview's uneven-teams tag — counted on the roster AFTER t
     expect(await unevenOf(c, memberId, c.teamA, "Saturday Stroke")).toEqual({
       tag: "Uneven teams: Team A 3, Team B 1",
       explanation: STROKE_WHY,
+      consequence: "the bigger team is at a disadvantage",
     });
     // After the move: 2 v 2.
     expect(await unevenOf(c, memberId, c.teamB, "Saturday Stroke")).toBeNull();
@@ -126,6 +128,7 @@ describe("the trade preview's uneven-teams tag — counted on the roster AFTER t
     expect(await unevenOf(c, memberId, c.teamB, "Back Nine Skins")).toEqual({
       tag: "Uneven teams: Team B 3, Team A 1",
       explanation: SKINS_WHY,
+      consequence: "the bigger team is at an advantage",
     });
   });
 
@@ -137,6 +140,7 @@ describe("the trade preview's uneven-teams tag — counted on the roster AFTER t
     expect(await unevenOf(c, memberId, null, "Sunday Stroke")).toEqual({
       tag: "Uneven teams: Team B 1, Team A 0",
       explanation: STROKE_WHY,
+      consequence: "the bigger team is at a disadvantage",
     });
   });
 

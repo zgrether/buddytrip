@@ -767,9 +767,9 @@ export function SkinsGameView() {
                   never touches another. Pick 2–4 players per group from any team; anyone left out
                   sits this round out.
                 </p>
-                <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={builderTeams} />
-                {/* #1562: the same note as stroke setup — skins says the other
-                    direction (more players, more skins: an advantage). */}
+                {/* #1562: the same note as stroke setup, above the builder for
+                    the same reason — skins says the other direction (more
+                    players, more skins: an advantage). */}
                 {competitionId && (
                   <UnevenTeamsNote
                     scoring="skins"
@@ -778,6 +778,7 @@ export function SkinsGameView() {
                     teams={(teamsQ.data ?? []).map((t) => ({ teamId: t.id as string, teamName: t.name as string }))}
                   />
                 )}
+                <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={builderTeams} />
               </ChecklistRow>
             </>
           }
