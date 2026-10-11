@@ -1225,10 +1225,12 @@ These patterns have been established through prior work. Follow them exactly —
       untouched by this.
     - **A broadcast failure must never roll back a write.** Two independent layers:
       `realtime.send` already swallows its own errors (`RAISE WARNING`), and the trigger
-      body has its own `WHEN OTHERS` handler. A game with no competition simply
-      early-returns — and since PR 6b that is a **side game**, the path the Games page
-      exists for (ruling 1), so it gets **no live broadcast**: its section refreshes on
-      the backstop poll and local-mutation invalidation until a trip-scoped topic exists.
+      body has its own `WHEN OTHERS` handler. A game with no competition — since PR 6b
+      a **side game**, the path the Games page exists for (ruling 1) — broadcasts the
+      SAME signal on its TRIP's topic, `trip_events:{tripId}` (migration 196, #1498),
+      which the board and the side-games board subscribe to with a `null` competition.
+      **Corrected 2026-10-11:** this line said side games get "no live broadcast" until
+      a trip-scoped topic exists. 196 had already added it; the line outlived its fact.
       **This line used to say "Standalone games (~40% of prod) … the COMMON case", and
       it was false twice when measured — 0 of 40 games, then 0 of 60 (2026-09-27): no
       game could be created without a competition through any screen.** It was the
