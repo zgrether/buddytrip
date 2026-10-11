@@ -256,6 +256,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         personName: nameOf(vars.userId),
         fromTeamName: teamNameOf(currentTeamId),
         toTeamName: teamNameOf(vars.teamId),
+        toTeamId: vars.teamId,
         run: (rosterFingerprint) => rawAssign.mutate({ ...vars, rosterFingerprint }),
       });
     },
@@ -271,6 +272,7 @@ function useTeamAssignmentMutations(tripId: string, competitionId: string) {
         userId: vars.userId,
         personName: nameOf(vars.userId),
         fromTeamName: teamNameOf(currentTeamId),
+        toTeamId: null,
         run: (rosterFingerprint) => rawRemove.mutate({ ...vars, rosterFingerprint }),
       });
     },

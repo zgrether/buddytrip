@@ -177,7 +177,7 @@ describe("after the roster locks, captains have nothing; organizers still add", 
     // path since PR 8b-2 (ruling 20: an add is previewed like a move), so it
     // carries the preview's fingerprint. The captain above has no such path.
     const { fingerprint } = await ctx.callerAs("planner").teamAssignments.previewChange({
-      tripId: c.tripId, competitionId: c.competitionId, userId: c.outsider,
+      tripId: c.tripId, competitionId: c.competitionId, userId: c.outsider, toTeamId: c.red,
     });
     await ctx.callerAs("planner").teamAssignments.assign({
       tripId: c.tripId, competitionId: c.competitionId, userId: c.outsider, teamId: c.red, rosterFingerprint: fingerprint,

@@ -104,8 +104,10 @@ async function teamExists(teamId: string): Promise<boolean> {
   return data !== null;
 }
 
+// The fingerprint is the roster as it stands, whatever the destination, so a
+// null `toTeamId` here reads the same one the real move's preview would.
 const fingerprintFor = async (cup: Cup, userId: string) =>
-  (await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId })).fingerprint;
+  (await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId, toTeamId: null })).fingerprint;
 
 beforeAll(async () => {
   ctx = await TestContext.create();
@@ -261,16 +263,17 @@ describe("the preview's finished-games answer is about THIS person, and names no
     const done = await insertGame(cup, { game_type_id: "gtt_stroke_play", name: "Done Round", status: "complete" });
     await addParticipant(done, memberId);
 
-    const member = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: memberId });
+    // `hasFinishedGames` is about the person, not where they go: null destination.
+    const member = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: memberId, toTeamId: null });
     expect(member.hasFinishedGames).toBe(true);
 
     // The planner played in nothing — the cup HAS a finished game, which is
     // exactly what the old cup-wide count would have reported for them.
-    const planner = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId });
+    const planner = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: plannerId, toTeamId: null });
     expect(planner.hasFinishedGames).toBe(false);
 
     // An UNFINISHED game is not a finished one: the owner is in "Locker" (active).
-    const owner = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: ownerId });
+    const owner = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: ownerId, toTeamId: null });
     expect(owner.hasFinishedGames).toBe(false);
 
     // And the payload carries no team for finished games at all.
@@ -284,7 +287,7 @@ describe("after results — refused while the person is in an unfinished team-de
     const match = await insertGame(cup, { game_type_id: "gtt_match_play", name: "Hole 7 Match", status: "active" });
     await addParticipant(match, memberId);
 
-    const preview = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: memberId });
+    const preview = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: memberId, toTeamId: cup.teamB });
     expect(preview.blocking).toEqual([{ gameId: match, name: "Hole 7 Match" }]);
     await expect(
       ctx.caller().teamAssignments.assign({
@@ -296,7 +299,7 @@ describe("after results — refused while the person is in an unfinished team-de
     // CONTROL: the owner is in "Locker", an unfinished STROKE round — team-
     // independent, so the trade goes through and the round will count for the
     // new team at finalize.
-    const ownerPreview = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: ownerId });
+    const ownerPreview = await ctx.caller().teamAssignments.previewChange({ tripId: cup.tripId, competitionId: cup.competitionId, userId: ownerId, toTeamId: cup.teamA });
     expect(ownerPreview.blocking).toEqual([]);
     expect(ownerPreview.moving.map((g) => g.name)).toEqual(["Locker"]);
     await ctx.caller().teamAssignments.assign({

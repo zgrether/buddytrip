@@ -55,7 +55,7 @@ describe("rosterGateDecision — what stops for a preview", () => {
 });
 
 describe("RosterChangeSheet — a move", () => {
-  const move = { kind: "move" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamName: "Blue" };
+  const move = { kind: "move" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamName: "Blue", toTeamId: "blue" };
 
   it("asks, and says the results of games they already played will stand", () => {
     const html = render({ request: move, state: { phase: "ready", preview: preview() }, onCancel: noop, onConfirm: noop });
@@ -69,7 +69,7 @@ describe("RosterChangeSheet — a move", () => {
   it("names each unfinished team-independent game whose credit moves with them", () => {
     const html = render({
       request: move,
-      state: { phase: "ready", preview: preview({ moving: [{ gameId: "g", name: "Sunday Stroke" }] }) },
+      state: { phase: "ready", preview: preview({ moving: [{ gameId: "g", name: "Sunday Stroke", uneven: null }] }) },
       onCancel: noop, onConfirm: noop,
     });
     expect(allOf(html, "roster-change-moving")).toEqual(["Sunday Stroke will count for Blue when it finishes."]);
@@ -91,12 +91,12 @@ describe("RosterChangeSheet — a move", () => {
 });
 
 describe("RosterChangeSheet — a removal is FROM THE TEAM, never just 'removed'", () => {
-  const removal = { kind: "remove" as const, userId: "u", personName: "Alice", fromTeamName: "Red" };
+  const removal = { kind: "remove" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamId: null };
 
   it("every line that names the act names the team, and says they stay on the trip", () => {
     const html = render({
       request: removal,
-      state: { phase: "ready", preview: preview({ moving: [{ gameId: "g", name: "Sunday Stroke" }] }) },
+      state: { phase: "ready", preview: preview({ moving: [{ gameId: "g", name: "Sunday Stroke", uneven: null }] }) },
       onCancel: noop, onConfirm: noop,
     });
     expect(textOf(html, "roster-change-title")).toBe("Remove Alice from Red?");
@@ -119,7 +119,7 @@ describe("RosterChangeSheet — a removal is FROM THE TEAM, never just 'removed'
 });
 
 describe("RosterChangeSheet — while checking, and when the check fails", () => {
-  const move = { kind: "move" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamName: "Blue" };
+  const move = { kind: "move" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamName: "Blue", toTeamId: "blue" };
 
   it("loading: says it is checking, and offers no confirm", () => {
     const html = render({ request: move, state: { phase: "loading" }, onCancel: noop, onConfirm: noop });
@@ -135,12 +135,12 @@ describe("RosterChangeSheet — while checking, and when the check fails", () =>
 });
 
 describe("RosterChangeSheet — an ADD after results (ruling 20)", () => {
-  const add = { kind: "add" as const, userId: "u", personName: "Alice", fromTeamName: "", toTeamName: "Blue" };
+  const add = { kind: "add" as const, userId: "u", personName: "Alice", fromTeamName: "", toTeamName: "Blue", toTeamId: "blue" };
 
   it("asks, says earlier results stand, and names what will count for the new team", () => {
     const html = render({
       request: add,
-      state: { phase: "ready", preview: preview({ moving: [{ gameId: "g", name: "Sunday Stroke" }] }) },
+      state: { phase: "ready", preview: preview({ moving: [{ gameId: "g", name: "Sunday Stroke", uneven: null }] }) },
       onCancel: noop, onConfirm: noop,
     });
     expect(textOf(html, "roster-change-title")).toBe("Add Alice to Blue?");
@@ -163,7 +163,7 @@ describe("RosterChangeSheet — an ADD after results (ruling 20)", () => {
 
 describe("RosterChangeSheet — the route to a blocking game", () => {
   it("is offered only when the host gives one, and never on an allowed change", () => {
-    const move = { kind: "move" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamName: "Blue" };
+    const move = { kind: "move" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamName: "Blue", toTeamId: "blue" };
     const blocked = { phase: "ready" as const, preview: preview({ blocking: [{ gameId: "m", name: "Hole 7 Match" }] }) };
     expect(render({ request: move, state: blocked, onCancel: noop, onConfirm: noop })).not.toContain("roster-change-open-game");
     const allowed = { phase: "ready" as const, preview: preview() };
@@ -180,9 +180,9 @@ describe("RosterChangeSheet — the route to a blocking game", () => {
  */
 describe("finished games: they stand, with no team named — and no line when there are none", () => {
   const people = [
-    { kind: "add" as const, userId: "u", personName: "Bill", fromTeamName: "", toTeamName: "Centurions" },
-    { kind: "move" as const, userId: "u", personName: "Bill", fromTeamName: "Red", toTeamName: "Centurions" },
-    { kind: "remove" as const, userId: "u", personName: "Bill", fromTeamName: "Centurions" },
+    { kind: "add" as const, userId: "u", personName: "Bill", fromTeamName: "", toTeamName: "Centurions", toTeamId: "cent" },
+    { kind: "move" as const, userId: "u", personName: "Bill", fromTeamName: "Red", toTeamName: "Centurions", toTeamId: "cent" },
+    { kind: "remove" as const, userId: "u", personName: "Bill", fromTeamName: "Centurions", toTeamId: null },
   ];
 
   it.each(people)("$kind: a person with finished games is never told they count for 'no team'", (request) => {
@@ -202,5 +202,67 @@ describe("finished games: they stand, with no team named — and no line when th
   it("the projections line is gone", () => {
     const html = render({ request: people[0], state: { phase: "ready", preview: preview() }, onCancel: noop, onConfirm: noop });
     expect(html).not.toMatch(/projection/i);
+  });
+});
+
+/**
+ * #1562 — the teams a change would LEAVE a round with (Zach's ruling on #1561:
+ * a stroke or skins team total stays a sum; warn, never block). The server
+ * computes the tag (`rosterChange.uneven.test.ts`); the sheet's job is the
+ * re-credit layout: the tag under its game, the explanation once at the end.
+ */
+describe("RosterChangeSheet — uneven teams after the change", () => {
+  const move = { kind: "move" as const, userId: "u", personName: "Alice", fromTeamName: "Red", toTeamName: "Blue", toTeamId: "blue" };
+  const STROKE_WHY = "In stroke play a team's total adds up its players' strokes, so the bigger team is at a disadvantage.";
+  const SKINS_WHY = "In skins a team's total adds up its players' skins, so the bigger team is at an advantage.";
+  // The sheet reads only tag and explanation; consequence is setup's half.
+  const tagged = (name: string, tag: string, explanation: string) => ({
+    gameId: name, name, uneven: { tag, explanation, consequence: "" },
+  });
+
+  it("the tag sits under its game, and the explanation is said once for two rounds that share it", () => {
+    const html = render({
+      request: move,
+      state: { phase: "ready", preview: preview({ moving: [
+        tagged("Sunday Stroke", "Uneven teams: Blue 3, Red 2", STROKE_WHY),
+        tagged("Monday Stroke", "Uneven teams: Blue 2, Red 1", STROKE_WHY),
+      ] }) },
+      onCancel: noop, onConfirm: noop,
+    });
+    expect(allOf(html, "roster-change-uneven")).toEqual(["Uneven teams: Blue 3, Red 2", "Uneven teams: Blue 2, Red 1"]);
+    expect(allOf(html, "roster-change-uneven-explanation")).toEqual([STROKE_WHY]);
+  });
+
+  it("one line per DIRECTION when rounds differ — stroke and skins both said", () => {
+    const html = render({
+      request: move,
+      state: { phase: "ready", preview: preview({ moving: [
+        tagged("Sunday Stroke", "Uneven teams: Blue 3, Red 2", STROKE_WHY),
+        tagged("Skins", "Uneven teams: Blue 3, Red 2", SKINS_WHY),
+      ] }) },
+      onCancel: noop, onConfirm: noop,
+    });
+    expect(allOf(html, "roster-change-uneven-explanation")).toEqual([STROKE_WHY, SKINS_WHY]);
+  });
+
+  it("an even round: no tag and no explanation", () => {
+    const html = render({
+      request: move,
+      state: { phase: "ready", preview: preview({ moving: [{ gameId: "g", name: "Sunday Stroke", uneven: null }] }) },
+      onCancel: noop, onConfirm: noop,
+    });
+    expect(html).not.toContain("roster-change-uneven");
+  });
+
+  it("a BLOCKED change shows neither — it is not being offered", () => {
+    const html = render({
+      request: move,
+      state: { phase: "ready", preview: preview({
+        moving: [tagged("Sunday Stroke", "Uneven teams: Blue 3, Red 2", STROKE_WHY)],
+        blocking: [{ gameId: "m", name: "Hole 7 Match" }],
+      }) },
+      onCancel: noop, onConfirm: noop,
+    });
+    expect(html).not.toContain("roster-change-uneven");
   });
 });

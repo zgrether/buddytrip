@@ -32,6 +32,7 @@ import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack
 import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerTakesAll, type StrokeConfigDraft, type StrokeScoringDraft } from "@/lib/configDraft";
 import { StrokeScoringRow } from "@/components/games/StrokeScoringRow";
 import { scoringOf, type ScoringType } from "@/lib/stableford";
+import { UnevenTeamsNote } from "./UnevenTeamsNote";
 import { teamColorByUser, UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
 import { rollUpOf, type StrokeRollUp } from "@/lib/strokeGameConfig";
 import { bottomNavInset } from "@/lib/bottomNavInset";
@@ -1241,6 +1242,20 @@ export function StrokeGameView() {
         <p style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginBottom: 12 }}>
           Group players into tee groups — any mix across teams, up to 4 each. Everyone playing must be in a group; anyone left ungrouped isn&rsquo;t in the game.
         </p>
+        {/* #1562: warn when the cup's teams have different numbers of players
+            in this round — counted from the DRAFT groups, so it moves before
+            Save. Warn, never block (Zach's ruling on #1561). ABOVE the
+            builder: on a phone a single group of four already pushes anything
+            below it behind the Save bar, so below was out of sight exactly
+            while the organizer edits (measured at 375x812, #1585). */}
+        {gameCompetitionId && (
+          <UnevenTeamsNote
+            scoring={configDraft.scoring.type}
+            playerIds={configDraft.groups.flat()}
+            roster={Object.fromEntries((assignQ.data ?? []).map((a) => [a.user_id as string, a.team_id as string]))}
+            teams={(teamsQ.data ?? []).map((t) => ({ teamId: t.id as string, teamName: t.name as string }))}
+          />
+        )}
         <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={pickerTeams} />
       </ChecklistRow>
     );
