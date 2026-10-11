@@ -149,7 +149,7 @@ export const usersRouter = router({
     const blockers = await findOrphanBlockers(ctx.supabase, ctx.user.id);
     return {
       blockers,
-      message: blockers.length > 0 ? orphanRefusalMessage(blockers, "delete-account") : null,
+      message: blockers.length > 0 ? orphanRefusalMessage(blockers) : null,
     };
   }),
 
@@ -187,7 +187,7 @@ export const usersRouter = router({
     if (blockers.length > 0) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
-        message: orphanRefusalMessage(blockers, "delete-account"),
+        message: orphanRefusalMessage(blockers),
       });
     }
 

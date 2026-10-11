@@ -246,6 +246,24 @@ describe("removal archives instead of refusing", () => {
     expect(await rowCount("expenses", { id: expenseId, paid_by_user_id: member })).toBe(1);
   });
 
+  it("an expense they PAID and are split into counts ONCE — paid and split-into are disjoint", async () => {
+    // The confirm adds the two ("part of N expenses", PR 8d-3). A payer is
+    // usually split into their own receipt, and the split count used to
+    // include it, so one receipt read as two.
+    const tripId = await trip("paid and split");
+    const expenseId = crypto.randomUUID();
+    await seed("expenses", { id: expenseId, trip_id: tripId, title: "Groceries", amount: 100, paid_by_user_id: member });
+    await seed("expense_splits", [
+      { expense_id: expenseId, user_id: member, amount: 50 },
+      { expense_id: expenseId, user_id: outsider, amount: 50 },
+    ]);
+    const mine = await ctx.caller().tripMembers.departureSummary({ tripId, userId: member });
+    expect(mine.history).toMatchObject({ expensesPaid: 1, expenseSplits: 0 });
+    // CONTROL: the same receipt IS a split-into for the person who did not pay.
+    const theirs = await ctx.caller().tripMembers.departureSummary({ tripId, userId: outsider });
+    expect(theirs.history).toMatchObject({ expensesPaid: 0, expenseSplits: 1 });
+  });
+
   it("they are SPLIT INTO someone else's expense: warned with the count, and the split stays", async () => {
     // The least obvious category: "Charlie hasn't done anything" is true right
     // up until you notice removing him would change what everyone else owes.

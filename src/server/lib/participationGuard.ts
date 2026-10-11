@@ -148,7 +148,9 @@ export interface ContributionBlockers {
   games: GameBlocker[];
   /** Receipts they paid for. */
   expensesPaid: number;
-  /** Receipts someone else paid that they are split into. */
+  /** Receipts someone ELSE paid that they are split into. Disjoint from
+   *  `expensesPaid` (a payer is usually split into their own receipt too), so
+   *  the two add up to how many expenses they are part of. */
   expenseSplits: number;
 }
 
@@ -240,12 +242,16 @@ export async function findContributionBlockers(
       .select("id", { count: "exact", head: true })
       .eq("trip_id", tripId)
       .eq("paid_by_user_id", userId),
-    // expense_splits has no trip_id — scope through the parent expense.
+    // expense_splits has no trip_id — scope through the parent expense. And
+    // only receipts someone ELSE paid: their split of one they paid is already
+    // counted above, and counting it twice made "part of N expenses" wrong
+    // (PR 8d-3, the first surface to add the two together).
     supabase
       .from("expense_splits")
-      .select("expense_id, expenses!inner(trip_id)", { count: "exact", head: true })
+      .select("expense_id, expenses!inner(trip_id, paid_by_user_id)", { count: "exact", head: true })
       .eq("user_id", userId)
-      .eq("expenses.trip_id", tripId),
+      .eq("expenses.trip_id", tripId)
+      .neq("expenses.paid_by_user_id", userId),
   ]);
   if (gamesErr) throw new Error(`Failed to read the trip's games: ${gamesErr.message}`);
   if (paid.error) throw new Error(`Failed to read expenses: ${paid.error.message}`);

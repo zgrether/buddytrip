@@ -123,9 +123,11 @@ export async function findOrphanBlockers(
  * Both branches name the specific trips, so the message is actionable without
  * a support request (§4.4).
  */
-export function orphanRefusalMessage(blockers: OrphanBlocker[], action: "delete-account" | "leave-trip"): string {
+export function orphanRefusalMessage(blockers: OrphanBlocker[]): string {
+  // Account deletion only. Leaving a trip had its own arm here until PR 8d-3,
+  // when the Leave trip sheet got a one-trip sentence (`ownerLeaveRefusal`).
   const plural = blockers.length > 1;
-  const subject = action === "delete-account" ? "delete your account" : "leave";
+  const subject = "delete your account";
 
   const transferable = blockers.filter((b) => b.hasTransferTarget);
   const stuck = blockers.filter((b) => !b.hasTransferTarget);

@@ -321,7 +321,43 @@ describe("tripMembers router", () => {
       (e: Error) => e.message
     );
     expect(refused).not.toBeNull(); // premise: the leave really is refused
-    expect(summary.ownerRefusal).toBe(refused);
+    expect(summary.ownerRefusal?.message).toBe(refused);
+    // Someone can take it over (the Organizer), so the place is Transfer.
+    expect(summary.ownerRefusal?.settingsView).toBe("transfer");
+    expect(summary.ownerRefusal?.message).toBe(
+      "You own Members summary-owner. Transfer ownership in Trip settings, then you can leave."
+    );
+  });
+
+  it("departureSummary — an Owner nobody can take over from is sent to DELETE, not to a transfer that cannot happen", async () => {
+    const tripId = await ctx.createTrip("Members summary-alone"); // the Owner alone
+    const summary = await ctx.caller().tripMembers.departureSummary({ tripId, userId: ctx.user.id });
+    expect(summary.ownerRefusal).toEqual({
+      message: "Nobody else on Members summary-alone can own it. Delete it in Trip settings instead.",
+      settingsView: "delete",
+    });
+  });
+
+  it("departureSummary — the names each title uses: the trip always, the person removed, the Owner for a leaver", async () => {
+    const tripId = await crewTrip("summary-names");
+    const member = ctx.getUser("member");
+    const { data: owner } = await ctx.admin.from("users").select("name").eq("id", ctx.user.id).single();
+    const { data: m } = await ctx.admin.from("users").select("name").eq("id", member.id).single();
+
+    // While the trip is still in the ideas phase a Member cannot read its row
+    // (`trips_select` admits planners only until the destination locks) — nor
+    // open its page, so this is the fallback, not a screen anyone sees.
+    const early = await ctx.callerAs("member").tripMembers.departureSummary({ tripId, userId: member.id });
+    expect(early.tripTitle).toBe("this trip");
+
+    // Once it locks, the Member reads the title.
+    const lock = await ctx.admin.from("trips").update({ locked_destination_at: new Date().toISOString() }).eq("id", tripId);
+    if (lock.error) throw lock.error;
+    const leaving = await ctx.callerAs("member").tripMembers.departureSummary({ tripId, userId: member.id });
+    expect(leaving).toMatchObject({ tripTitle: "Members summary-names", ownerName: owner!.name, displayName: null });
+
+    const removing = await ctx.caller().tripMembers.departureSummary({ tripId, userId: member.id });
+    expect(removing).toMatchObject({ tripTitle: "Members summary-names", displayName: m!.name, ownerName: null });
   });
 
   it("departureSummary — nobody else is told they can't leave", async () => {

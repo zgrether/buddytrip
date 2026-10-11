@@ -196,7 +196,12 @@ export const tripMembersRouter = router({
   //   - `ownerRefusal`: set only when the Owner asks about LEAVING. The one
   //     departure that IS refused (ruling 3), with the same sentence the
   //     archive's refusal gives (`ownerLeaveRefusal`), so the button can say
-  //     why before the press rather than after it.
+  //     why before the press rather than after it — and which part of Trip
+  //     settings to open.
+  //   - The names the confirm's title and money line use (Zach's look, PR
+  //     8d-3: "Leave {trip}?", "Remove {name} from {trip}?", "check back with
+  //     {Owner}"): `tripTitle` always, `displayName` for someone being
+  //     removed, `ownerName` for someone leaving.
   //
   // Read-only and advisory: the archive applies its own rules on the press.
   // -----------------------------------------------------------------------
@@ -209,11 +214,29 @@ export const tripMembersRouter = router({
       // the predicate spans games AND two expense counts, and a client
       // re-implementing it is how the two drift apart.
       const hasHistory = hasContributions(history);
-      const leavingOwner = input.userId === ctx.user!.id && ctx.tripRole === "Owner";
-      const ownerRefusal = leavingOwner
-        ? await ownerLeaveRefusal(ctx.supabase, ctx.tripId!, input.userId)
-        : null;
-      return { hasHistory, history, ownerRefusal };
+      const leaving = input.userId === ctx.user!.id;
+      const ownerRefusal =
+        leaving && ctx.tripRole === "Owner"
+          ? await ownerLeaveRefusal(ctx.supabase, ctx.tripId!, input.userId)
+          : null;
+
+      const { data: trip, error: tripErr } = await ctx.supabase
+        .from("trips").select("title").eq("id", ctx.tripId!).maybeSingle();
+      if (tripErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to read the trip" });
+      const tripTitle = (trip?.title as string | undefined) ?? "this trip";
+
+      let displayName: string | null = null;
+      let ownerName: string | null = null;
+      if (leaving) {
+        const { data: owner, error: ownerErr } = await ctx.supabase
+          .from("trip_members").select("user_id")
+          .eq("trip_id", ctx.tripId!).eq("role", "Owner").limit(1).maybeSingle();
+        if (ownerErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to read the trip's owner" });
+        ownerName = owner ? await memberDisplayName(ctx.supabase, ctx.tripId!, owner.user_id as string) : null;
+      } else {
+        displayName = await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId);
+      }
+      return { hasHistory, history, ownerRefusal, tripTitle, displayName, ownerName };
     }),
 
   // -----------------------------------------------------------------------
