@@ -22,12 +22,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * ── Why a helper and not two copies of the same query ─────────────────────
  *
- * `findContributionBlockers` and `competitionHasResults` are two guards asking
+ * `findContributionBlockers` and `competitionHasResults` were two guards asking
  * one question, and they had already drifted: the first grew a second source
  * for outcome-mode play (#1016), the second never did. Two hand-edited copies
- * of a predicate are how that happens, so there is one function and both call
- * it — a new arm in the view reaches both without a sweep, and neither can be
- * fixed while the other is forgotten.
+ * of a predicate are how that happens, so there is one function and every
+ * caller uses it — a new arm in the view reaches them all without a sweep.
+ * (The first was retired in PR 8d-3, when removal stopped judging history:
+ * the archive decides that, in the database. `competitionHasResults`, via
+ * `anyGameStarted`, is the caller today.)
  *
  * ── RLS ───────────────────────────────────────────────────────────────────
  *

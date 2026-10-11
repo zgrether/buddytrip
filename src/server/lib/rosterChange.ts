@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { competitionHasResults } from "./rosterLock";
 import { assertRosterUnchanged, readRosterFingerprint } from "./rosterFingerprint";
-import { readPersonParticipation } from "./participationGuard";
+import { readPersonParticipation } from "./personParticipation";
 import { countOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**

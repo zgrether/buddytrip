@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
-import { findContributionBlockers } from "../lib/participationGuard";
 
 /**
  * #1016 — removing someone vacates their match seat instead of leaving a "Player".
@@ -16,19 +15,11 @@ import { findContributionBlockers } from "../lib/participationGuard";
  * side refs live in JSONB, which no FK can see and no cascade can reach, so the
  * removal left the match pointing at somebody who no longer existed.
  *
- * The second half of this file is the guard itself, which turned out to be blind
- * in two directions Phase 0 found and prod could reach today:
- *
- *   - `match_hole_outcomes` — the score in `entry_mode='outcome'`, and a table
- *     the guard never read. An outcome game carries ZERO `score_entries` rows,
- *     so "has anyone played this?" answered no for a match seventeen holes in.
- *   - `play_group` sides — a 2v2 side is a minted group, and both the side ref
- *     and the `game_results` row are keyed to the GROUP. Comparing those to a
- *     user id answers no for every doubles match ever played.
- *
- * Those are asserted against `findContributionBlockers` directly rather than
- * through the refusal message, because the message says the same words for five
- * different reasons and the REASON is the thing being fixed.
+ * This file once had a second half testing the removal guard itself
+ * (`findContributionBlockers`), which turned out to be blind to outcome-mode
+ * hole results and to doubles sides keyed to a `play_group` (CLAUDE.md #27).
+ * PR 8d-3 retired that guard — the archive decides what is history, once, in
+ * the database — so only the seat half remains.
  */
 
 const MATCH_PLAY = "gtt_match_play";
@@ -239,127 +230,4 @@ describe("removing a crew member vacates their match seat", () => {
     if (error) throw new Error(`read owner's handicap: ${error.message}`);
     expect((data as { handicap_strokes: number | null }).handicap_strokes).toBeNull();
   }, 120_000);
-});
-
-describe("the guard sees the score in both of its storage shapes", () => {
-  it("SEES recorded hole outcomes, which are not score_entries (the remove panel's warning)", async () => {
-    // `entry_mode='outcome'` stores the score in `match_hole_outcomes`, and
-    // `matchOutcomes.upsertOutcome` deliberately runs no recompute — so until
-    // `games.finish` there is no `game_results` row and no decided match either.
-    // Every column the guard used to read is empty for a game genuinely underway.
-    const cup = await vacateCup("outcome-underway");
-    const { tripId } = cup;
-    const { gameId, m1 } = await pairedGame(cup, "Outcome Mode Underway");
-    await ctx.caller().games.update({ tripId, gameId, entryMode: "outcome" });
-    await ctx.caller().matches.enableScoring({ tripId, gameId });
-    await ctx.caller().matchOutcomes.upsertOutcome({
-      tripId, gameId, matchId: m1, holeNumber: 1, result: "side_b",
-    });
-
-    // The premise: this game really does have no score_entries. Without it the
-    // block below could be coming from the old signal and prove nothing.
-    const { count, error } = await ctx.admin
-      .from("score_entries").select("id", { count: "exact", head: true }).eq("game_id", gameId);
-    if (error) throw new Error(`count score_entries: ${error.message}`);
-    expect(count).toBe(0);
-
-    const blockers = await findContributionBlockers(ctx.admin, tripId, member);
-    const game = blockers.games.find((g) => g.gameId === gameId);
-    expect(game?.reasons).toContain("played-game");
-    // Since PR 8d the predicate drives a warning, not a refusal: removal goes
-    // through (what it does to the seat is the case at the top of this file).
-    await expect(ctx.caller().tripMembers.remove({ tripId, userId: member })).resolves.toMatchObject({ success: true });
-  }, 120_000);
-
-  it("does NOT block a game nobody has played (a plan stays removable)", async () => {
-    // The control the test above needs: same shape, no outcome recorded. If this
-    // one blocked too, "blocks on outcomes" would be indistinguishable from
-    // "blocks on being in a match at all".
-    const cup = await vacateCup("outcome-untouched");
-    const { tripId } = cup;
-    const { gameId } = await pairedGame(cup, "Outcome Mode Untouched");
-    await ctx.caller().games.update({ tripId, gameId, entryMode: "outcome" });
-    await ctx.caller().matches.enableScoring({ tripId, gameId });
-
-    const blockers = await findContributionBlockers(ctx.admin, tripId, member);
-    expect(blockers.games.find((g) => g.gameId === gameId)).toBeUndefined();
-  }, 120_000);
-});
-
-describe("the guard resolves a doubles side to the people in it", () => {
-  // These cases only READ one finished game, so they share it — on a cup of
-  // their own, so the result it records cannot reach any other describe.
-  let tripId: string;
-  let gameId: string;
-
-  beforeAll(async () => {
-    // One 2v2 match, played to a finish in outcome mode. `games.finish` runs
-    // `computeMatchPlayResults`, which writes `game_matches.status='complete'`
-    // and a `game_results` row per side — both keyed to the minted play_group,
-    // never to a person.
-    const cup = await vacateCup("doubles");
-    tripId = cup.tripId;
-    const game = (await ctx.caller().games.create({
-      tripId, gameTypeId: MATCH_PLAY, name: "Doubles Decided", competitionId: cup.competitionId, pointsTotal: 10,
-    })) as { id: string };
-    gameId = game.id;
-    const matches = (await ctx.caller().matches.setPairings({
-      tripId,
-      gameId,
-      matches: [{
-        playersPerSide: 2,
-        sideA: { members: [owner, planner] },
-        sideB: { members: [member, outsider] },
-        matchNumber: 1,
-      }],
-    })) as MatchRow[];
-    await ctx.caller().games.update({ tripId, gameId, entryMode: "outcome" });
-    await ctx.caller().matches.enableScoring({ tripId, gameId });
-    for (let hole = 1; hole <= 18; hole++) {
-      await ctx.caller().matchOutcomes.upsertOutcome({
-        tripId, gameId, matchId: matches[0].id, holeNumber: hole, result: "side_a",
-      });
-    }
-    await ctx.caller().games.finish({ tripId, gameId });
-  }, 180_000);
-
-  it("keys the decided match and its results to the GROUP, not to a user", async () => {
-    // The premise this whole describe rests on. Asserted rather than assumed,
-    // because if a side or a result were user-keyed the tests below would pass
-    // through the OLD comparison and say nothing about the new one.
-    const { data: results, error } = await ctx.admin
-      .from("game_results").select("entity_type, entity_id").eq("game_id", gameId);
-    if (error) throw new Error(`read results: ${error.message}`);
-    const rows = (results ?? []) as { entity_type: string; entity_id: string }[];
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.map((r) => r.entity_id)).not.toContain(member);
-
-    const sides = Object.values(await seats(gameId)).flatMap((m) => [m.side_a, m.side_b]);
-    expect(sides.every((s) => s?.type === "play_group")).toBe(true);
-    expect(sides.map((s) => s?.id)).not.toContain(member);
-  }, 60_000);
-
-  it("BLOCKS a member of the winning side on both the result and the decided match", async () => {
-    const blockers = await findContributionBlockers(ctx.admin, tripId, planner);
-    const game = blockers.games.find((g) => g.gameId === gameId);
-    expect(game?.reasons).toContain("result");
-    expect(game?.reasons).toContain("decided-match");
-  }, 60_000);
-
-  it("BLOCKS a member of the losing side too — a result is not only the winner's", async () => {
-    const blockers = await findContributionBlockers(ctx.admin, tripId, member);
-    const game = blockers.games.find((g) => g.gameId === gameId);
-    expect(game?.reasons).toContain("result");
-    expect(game?.reasons).toContain("decided-match");
-  }, 60_000);
-
-  it("does NOT block someone on the trip who is in no side of it", async () => {
-    // The control: a guest on the same trip, in no game. Without this, "the
-    // group resolves to its members" is indistinguishable from "everything
-    // blocks once any match is decided".
-    const guest = (await ctx.caller().ghostCrew.create({ tripId, name: "Doubles Bystander" })) as { id: string };
-    const blockers = await findContributionBlockers(ctx.admin, tripId, guest.id);
-    expect(blockers.games.find((g) => g.gameId === gameId)).toBeUndefined();
-    await ctx.caller().ghostCrew.remove({ tripId, guestUserId: guest.id });
-  }, 60_000);
 });

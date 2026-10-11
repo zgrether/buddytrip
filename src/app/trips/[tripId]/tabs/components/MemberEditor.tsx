@@ -212,30 +212,19 @@ export function MemberEditor({
     {
       enabled: !!member.user_id,
       /**
-       * ALWAYS re-read on open (#1034b). The reported bug: delete a listed
-       * game or remove a receipt, reopen this modal, and the panel still lists
-       * them — a hard refresh was the only way out. The cause is the GLOBAL
-       * 60s `staleTime` (`providers.tsx`): this query took the default, so a
-       * remount inside that window served the cache and never refetched.
+       * ALWAYS re-read on open (#1034b). The reported bug: remove a receipt,
+       * reopen this modal, and it still counted it — a hard refresh was the
+       * only way out. The cause is the GLOBAL 60s `staleTime` (`providers.tsx`):
+       * a remount inside that window served the cache and never refetched.
        *
        * ── Why refetch-on-mount and NOT a list of mutations to invalidate ────
-       * The obvious fix is to invalidate this key from everything that can
-       * change what it lists. That list is not enumerable in advance:
-       * `findContributionBlockers` reads TEN relations — `games`, `expenses`,
-       * `expense_splits`, `game_participants`, `game_matches`,
-       * `bracket_entrant_members`, `score_entries`, `game_results`,
-       * `match_hole_outcomes`, `bracket_matches` — so it would mean touching
-       * roughly every write path in the app and keeping them in step forever.
-       * That is precisely the "enumerate the writers" mistake CLAUDE.md #25
-       * records getting wrong twice, and #22's "two lists that happen to
-       * match" in another costume.
-       *
-       * This query does not need it. It is a PRE-FLIGHT check read once, when
-       * a modal opens, for a destructive action that cannot be taken while
-       * anything else is on screen — you cannot delete a game with this modal
-       * open. So "fresh at open" IS fresh, it costs one small read per open,
-       * and it is correct no matter which of the ten relations moved or
-       * whether the change came from this device at all.
+       * What it reads — expenses, their splits, the trip title, nicknames — is
+       * written from several screens and other devices, and invalidating it
+       * from each is the "enumerate the writers" mistake CLAUDE.md #25 records
+       * getting wrong twice. It is a PRE-FLIGHT read for an action that cannot
+       * be taken while anything else is on screen, so "fresh at open" IS fresh,
+       * for one small read per open. (It once read TEN relations, when it also
+       * worked out which games someone had history in; PR 8d-3 dropped that.)
        *
        * The archive behind `tripMembers.remove` applies its own rules on the
        * press; this is the courtesy layer staying honest.

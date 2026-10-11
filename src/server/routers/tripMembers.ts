@@ -7,10 +7,38 @@ import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { joinNoticeText } from "@/lib/joinMessage";
 import { archiveTripMember, ownerLeaveRefusal } from "../lib/archiveMember";
-import {
-  findContributionBlockers,
-  hasContributions,
-} from "../lib/participationGuard";
+import { countOrThrow } from "../lib/rowOrThrow";
+
+/**
+ * How many of the trip's expenses `userId` is part of: ones they paid, plus
+ * ones someone ELSE paid that they are split into. Disjoint by construction —
+ * a payer is usually split into their own receipt, and counting that split
+ * too made one receipt read as two (PR 8d-3).
+ *
+ * Head counts, so a failed read throws (`countOrThrow`) instead of reading as
+ * zero and dropping the one line the departure sheets exist to show.
+ */
+async function expenseCountOf(
+  supabase: SupabaseClient,
+  tripId: string,
+  userId: string
+): Promise<number> {
+  const [paid, splitInto] = await Promise.all([
+    supabase
+      .from("expenses")
+      .select("id", { count: "exact", head: true })
+      .eq("trip_id", tripId)
+      .eq("paid_by_user_id", userId),
+    // expense_splits has no trip_id — scope through the parent expense.
+    supabase
+      .from("expense_splits")
+      .select("expense_id, expenses!inner(trip_id, paid_by_user_id)", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("expenses.trip_id", tripId)
+      .neq("expenses.paid_by_user_id", userId),
+  ]);
+  return countOrThrow(paid, "expenses they paid") + countOrThrow(splitInto, "expenses they are split into");
+}
 
 /** Resolve a member's trip display name (nickname → account name) for
  *  system chat lines. Best-effort; falls back to "Someone". */
@@ -181,18 +209,20 @@ export const tripMembersRouter = router({
     }),
 
   // -----------------------------------------------------------------------
-  // departureSummary — what someone leaves behind, read BEFORE they go
-  // (PR 8d-3; was `removalBlockers`, #951).
+  // departureSummary — what the remove and Leave trip sheets say, read BEFORE
+  // anyone goes (PR 8d-3; was `removalBlockers`, #951).
   //
-  // It used to gate removal: anyone with history was refused. Since PR 8d a
-  // departure is an ARCHIVE that keeps history (ruling 19), so nothing here
-  // blocks any more — it is what the remove and Leave trip WARNINGS list
-  // (ruling 2: warn, never block). Renamed with that change, because a query
-  // called "blockers" that blocks nothing is one concept under two names.
+  // It used to gate removal: anyone with a result, score or expense was
+  // refused. Since PR 8d a departure is an ARCHIVE that keeps history (ruling
+  // 19), so nothing here blocks — renamed, because a query called "blockers"
+  // that blocks nothing is one concept under two names.
   //
-  //   - `history`: the games they have results or scores in, and the
-  //     expenses they paid or are split into — the same predicate as before
-  //     (`findContributionBlockers`, the plan/result rule of #997).
+  // It no longer works out which GAMES someone has history in, either. The
+  // sheets stopped showing games (Zach's look), and what counts as history is
+  // decided once, in the database, by the archive; a second copy here would be
+  // two deciders for one question. So:
+  //   - `expenseCount`: the one thing a person still settles themselves
+  //     (ruling 2), and the one line the sheets show when it is not zero.
   //   - `ownerRefusal`: set only when the Owner asks about LEAVING. The one
   //     departure that IS refused (ruling 3), with the same sentence the
   //     archive's refusal gives (`ownerLeaveRefusal`), so the button can say
@@ -209,11 +239,7 @@ export const tripMembersRouter = router({
     .input(z.object({ tripId: z.string(), userId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const history = await findContributionBlockers(ctx.supabase, ctx.tripId!, input.userId);
-      // `hasHistory` is returned rather than left for the client to re-derive:
-      // the predicate spans games AND two expense counts, and a client
-      // re-implementing it is how the two drift apart.
-      const hasHistory = hasContributions(history);
+      const expenseCount = await expenseCountOf(ctx.supabase, ctx.tripId!, input.userId);
       const leaving = input.userId === ctx.user!.id;
       const ownerRefusal =
         leaving && ctx.tripRole === "Owner"
@@ -236,7 +262,7 @@ export const tripMembersRouter = router({
       } else {
         displayName = await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId);
       }
-      return { hasHistory, history, ownerRefusal, tripTitle, displayName, ownerName };
+      return { expenseCount, ownerRefusal, tripTitle, displayName, ownerName };
     }),
 
   // -----------------------------------------------------------------------

@@ -1483,7 +1483,9 @@ These patterns have been established through prior work. Follow them exactly —
 27. **A score has TWO storage shapes, and a SIDE is not a person. Any predicate
     over `score_entries` + user ids is blind to whole categories of real game.**
     Both halves are properties of the schema, both fail by answering *no*, and
-    `findContributionBlockers` had both at once (#1016).
+    `findContributionBlockers` had both at once (#1016). (That guard was retired
+    in PR 8d-3, when the archive took over deciding what is history; the
+    schema facts below did not change, and any new predicate meets them.)
 
     - **Two tables.** `entry_mode='outcome'` match play stores the score in
       `match_hole_outcomes` — read directly by `computeMatchPlayResults`, no

@@ -1206,6 +1206,12 @@ column is #1568, after PR 9.
   do. Then a follow-up migration drops `trip_members_delete` entirely, so the archive is the only
   way a membership ends.
 - **8d-3 — surfaces (look-gated):** Leave trip with its warnings; the removed person's exit message.
+  **Built (#1583), after Zach's look:** the sheets are a title plus one expense line ("Leave {trip}?",
+  "Remove {name} from {trip}?"); Leave trip is a small link; the Owner's refusal opens Trip settings on
+  Transfer ownership, or on Delete trip when nobody can take it over. `findContributionBlockers` is
+  RETIRED: once the sheets stopped listing games, its game half was work nobody saw and a second
+  decider beside the archive's. `departureSummary` returns an expense count (paid + split-into,
+  disjoint), the Owner's refusal, and the names the titles use.
 
 **Ruled on 8d-1's two open choices (Zach, 2026-10-08), and built into 205 before it merged:**
 5. **Placeholders split on history.** "No history, delete as before; any history, archive. A

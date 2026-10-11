@@ -20,8 +20,8 @@ const expenses = (n: number) => `${n} expense${n === 1 ? "" : "s"}`;
  *
  * The one line that stays is money, and only when they are in an expense:
  * an expense ledger is the one thing the archive keeps that a PERSON still has
- * to settle (ruling 2). Paid and split-into are disjoint counts, so their sum
- * is how many expenses they are part of.
+ * to settle (ruling 2). `expenseCount` is paid plus split-into, counted so one
+ * receipt is never two.
  *
  * ONE component for both doors — someone removing a member, and a member
  * leaving — because one archive is behind both.
@@ -34,7 +34,7 @@ export function DepartureWarning({
   who: "self" | "them";
   summary: DepartureSummary;
 }) {
-  const n = summary.history.expensesPaid + summary.history.expenseSplits;
+  const n = summary.expenseCount;
   const self = who === "self";
 
   return (

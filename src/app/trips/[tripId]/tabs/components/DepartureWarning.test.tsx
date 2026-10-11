@@ -13,9 +13,8 @@ import { linkSettings } from "./LeaveTripButton";
  * was about.
  */
 
-const summary = (over: Partial<DepartureSummary> = {}, money = { expensesPaid: 0, expenseSplits: 0 }): DepartureSummary => ({
-  hasHistory: false,
-  history: { games: [], ...money },
+const summary = (over: Partial<DepartureSummary> = {}): DepartureSummary => ({
+  expenseCount: 0,
   ownerRefusal: null,
   tripTitle: "Lake Week",
   displayName: "Biscuit",
@@ -38,35 +37,18 @@ describe("Leave — the person leaving", () => {
     expect(text(html)).toBe("Leave Lake Week?");
   });
 
-  it("in expenses: one line, counting paid and split-into together, naming the Owner", () => {
+  it("in expenses: one line, with the count and the Owner by name", () => {
     const html = renderToStaticMarkup(
-      <DepartureWarning who="self" summary={summary({}, { expensesPaid: 1, expenseSplits: 2 })} />
+      <DepartureWarning who="self" summary={summary({ expenseCount: 3 })} />
     );
     expect(text(html)).toBe("Leave Lake Week? You’re part of 3 expenses here — check back with Zach to settle up.");
   });
 
   it("one expense is singular", () => {
     const html = renderToStaticMarkup(
-      <DepartureWarning who="self" summary={summary({}, { expensesPaid: 0, expenseSplits: 1 })} />
+      <DepartureWarning who="self" summary={summary({ expenseCount: 1 })} />
     );
     expect(text(html)).toBe("Leave Lake Week? You’re part of 1 expense here — check back with Zach to settle up.");
-  });
-
-  it("games are history the app keeps — they never reach the sheet", () => {
-    const html = renderToStaticMarkup(
-      <DepartureWarning
-        who="self"
-        summary={summary({
-          hasHistory: true,
-          history: {
-            games: [{ gameId: "g1", gameName: "Saturday Stroke", reasons: ["scores"], hasScores: true }],
-            expensesPaid: 0,
-            expenseSplits: 0,
-          },
-        })}
-      />
-    );
-    expect(text(html)).toBe("Leave Lake Week?");
   });
 });
 
@@ -78,7 +60,7 @@ describe("Remove — someone being removed", () => {
 
   it("in an expense: the remover's line, never the leaver's", () => {
     const html = renderToStaticMarkup(
-      <DepartureWarning who="them" summary={summary({}, { expensesPaid: 1, expenseSplits: 0 })} />
+      <DepartureWarning who="them" summary={summary({ expenseCount: 1 })} />
     );
     expect(text(html)).toBe("Remove Biscuit from Lake Week? They’re part of 1 expense here — settle up with them.");
   });
