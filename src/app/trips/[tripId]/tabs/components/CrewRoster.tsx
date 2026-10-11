@@ -522,20 +522,13 @@ export function YouTile({
         </div>
 
         {/* Leave trip (PR 8d-3) — the one self-service exit, on the one card
-            every role sees as their own. Set off by the same inset hairline
-            as the travel block above; the Owner arms it to the reason they
-            can't leave yet. */}
+            every role sees as their own. A small text link at the foot (Zach's
+            look), not a full-width button; the Owner arms it to the reason
+            they can't leave yet. */}
         {m.user_id && (
-          <>
-            <div
-              className="mx-4"
-              style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
-              aria-hidden
-            />
-            <div className="px-4 py-3">
-              <LeaveTripButton tripId={tripId} userId={m.user_id} />
-            </div>
-          </>
+          <div className="px-4 pb-3">
+            <LeaveTripButton tripId={tripId} userId={m.user_id} />
+          </div>
         )}
       </div>
     </section>

@@ -132,6 +132,19 @@ describe("ConfirmDeleteButton — warning", () => {
     expect(html).toContain("Leaving…");
   });
 
+  it("appearance=link: a small text link at rest, not the full-width button", () => {
+    const link = renderToStaticMarkup(
+      <ConfirmDeleteButton label="Leave trip" appearance="link" onConfirm={() => {}} warning={WARNING} />
+    );
+    const button = renderToStaticMarkup(<ConfirmDeleteButton label="Leave trip" onConfirm={() => {}} />);
+    // The full-width button is `w-full` with a trash icon; the link is neither.
+    expect(button).toContain("w-full");
+    expect(link).not.toContain("w-full");
+    expect(link.match(/<svg/g)?.length ?? 0).toBe(0);
+    expect(link).toContain(">Leave trip</button>");
+    expect(link).not.toContain("history stays");
+  });
+
   it("takes the caller's icon in place of the trash can", () => {
     const html = renderToStaticMarkup(
       <ConfirmDeleteButton label="Leave trip" onConfirm={() => {}} icon={<span data-icon="leave" />} />

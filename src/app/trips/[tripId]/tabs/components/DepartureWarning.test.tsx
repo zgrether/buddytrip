@@ -1,72 +1,101 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { DepartureWarning, type DepartureHistory } from "./DepartureWarning";
+import { DepartureWarning, type DepartureSummary } from "./DepartureWarning";
+import { linkSettings } from "./LeaveTripButton";
 
 /**
- * The words shown before someone leaves or is removed (PR 8d-3).
+ * The departure confirms (PR 8d-3, after Zach's look): the title, plus ONE
+ * line only when the person is in an expense — nothing else.
  *
- * Ruling 2's sentence is pinned EXACTLY: it was ruled word for word, and a
- * reworded copy would pass any `toContain` on a fragment.
+ * The copy was ruled word for word, so it is pinned by the sheet's whole
+ * visible text, not by fragments: a `toContain` on a fragment would pass a
+ * sheet that grew a second sentence again, which is the regression the look
+ * was about.
  */
 
-const RULING_2 = "You have expenses on this trip — you won’t be able to see them after you leave.";
-
-const history = (over: Partial<DepartureHistory> = {}): DepartureHistory => ({
-  games: [],
-  expensesPaid: 0,
-  expenseSplits: 0,
+const summary = (over: Partial<DepartureSummary> = {}, money = { expensesPaid: 0, expenseSplits: 0 }): DepartureSummary => ({
+  hasHistory: false,
+  history: { games: [], ...money },
+  ownerRefusal: null,
+  tripTitle: "Lake Week",
+  displayName: "Biscuit",
+  ownerName: "Zach",
   ...over,
 });
 
-/** Visible text, entities decoded, tags dropped — what a reader sees. */
+/** The sheet's visible text, entities decoded. */
 const text = (html: string) =>
   html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&#x27;|&#39;|&rsquo;/g, "’")
+    .replace(/<\/p><p/g, "</p> <p")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&#x27;|&#39;/g, "'")
     .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
     .trim();
 
-describe("DepartureWarning — leaving (self)", () => {
-  it("money: ruling 2's sentence, word for word", () => {
-    const html = renderToStaticMarkup(<DepartureWarning who="self" history={history({ expenseSplits: 2 })} />);
-    // Source uses a straight apostrophe in JSX; the renderer escapes it.
-    expect(text(html).replace(/'/g, "’")).toContain(RULING_2);
-    expect(text(html)).toContain("2 expenses — you're split into".replace(/'/g, "’"));
+describe("Leave — the person leaving", () => {
+  it("not in an expense: the title, and nothing else", () => {
+    const html = renderToStaticMarkup(<DepartureWarning who="self" summary={summary()} />);
+    expect(text(html)).toBe("Leave Lake Week?");
   });
 
-  it("no money: the money sentence is absent, not shown with a zero", () => {
-    const html = renderToStaticMarkup(<DepartureWarning who="self" history={history()} />);
-    expect(text(html)).not.toContain("expenses");
-    expect(text(html)).toContain("Leave this trip?");
+  it("in expenses: one line, counting paid and split-into together, naming the Owner", () => {
+    const html = renderToStaticMarkup(
+      <DepartureWarning who="self" summary={summary({}, { expensesPaid: 1, expenseSplits: 2 })} />
+    );
+    expect(text(html)).toBe("Leave Lake Week? You’re part of 3 expenses here — check back with Zach to settle up.");
   });
 
-  it("games: each listed with what it holds", () => {
+  it("one expense is singular", () => {
+    const html = renderToStaticMarkup(
+      <DepartureWarning who="self" summary={summary({}, { expensesPaid: 0, expenseSplits: 1 })} />
+    );
+    expect(text(html)).toBe("Leave Lake Week? You’re part of 1 expense here — check back with Zach to settle up.");
+  });
+
+  it("games are history the app keeps — they never reach the sheet", () => {
     const html = renderToStaticMarkup(
       <DepartureWarning
         who="self"
-        history={history({
-          games: [
-            { gameId: "g1", gameName: "Saturday Stroke", reasons: ["scores"], hasScores: true },
-            { gameId: "g2", gameName: "Cornhole", reasons: ["result"], hasScores: false },
-          ],
+        summary={summary({
+          hasHistory: true,
+          history: {
+            games: [{ gameId: "g1", gameName: "Saturday Stroke", reasons: ["scores"], hasScores: true }],
+            expensesPaid: 0,
+            expenseSplits: 0,
+          },
         })}
       />
     );
-    expect(text(html)).toContain("Saturday Stroke — has scores");
-    expect(text(html)).toContain("Cornhole — has a result");
+    expect(text(html)).toBe("Leave Lake Week?");
   });
 });
 
-describe("DepartureWarning — removing someone (them)", () => {
-  it("speaks about THEM, and never uses the leaver's money sentence", () => {
+describe("Remove — someone being removed", () => {
+  it("not in an expense: the title, and nothing else", () => {
+    const html = renderToStaticMarkup(<DepartureWarning who="them" summary={summary()} />);
+    expect(text(html)).toBe("Remove Biscuit from Lake Week?");
+  });
+
+  it("in an expense: the remover's line, never the leaver's", () => {
     const html = renderToStaticMarkup(
-      <DepartureWarning who="them" history={history({ expensesPaid: 1 })} />
+      <DepartureWarning who="them" summary={summary({}, { expensesPaid: 1, expenseSplits: 0 })} />
     );
-    const t = text(html).replace(/'/g, "’");
-    expect(t).toContain("Their history stays");
-    expect(t).toContain("1 expense — they paid");
-    expect(t).not.toContain(RULING_2);
-    expect(t).not.toMatch(/\byou\b/i);
+    expect(text(html)).toBe("Remove Biscuit from Lake Week? They’re part of 1 expense here — settle up with them.");
+  });
+});
+
+describe("the Owner's refusal links Trip settings", () => {
+  const MESSAGE = "You own Lake Week. Transfer ownership in Trip settings, then you can leave.";
+
+  it("with an opener, the place name becomes the link and the sentence is otherwise unchanged", () => {
+    const html = renderToStaticMarkup(<p>{linkSettings(MESSAGE, () => {})}</p>);
+    expect(html).toMatch(/<button[^>]*data-testid="leave-open-trip-settings"[^>]*>Trip settings<\/button>/);
+    expect(text(html)).toBe(MESSAGE);
+  });
+
+  it("without one, plain text — never a link to nothing", () => {
+    const html = renderToStaticMarkup(<p>{linkSettings(MESSAGE, null)}</p>);
+    expect(html).not.toContain("<button");
+    expect(text(html)).toBe(MESSAGE);
   });
 });

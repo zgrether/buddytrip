@@ -681,14 +681,13 @@ export function MemberEditor({
               Space above comes from the Travel group's paddingBottom. */}
           {!isOwnerRow && (
             <div style={{ borderTop: "1px solid var(--color-bt-subtle-border)", paddingTop: 18, paddingBottom: 16 }}>
-              {/* Removal is never refused for history any more (PR 8d-3, ruling
-                  2: warn, never block). Someone with nothing on the trip gets
-                  the plain one-line confirm — the majority case stays
-                  frictionless. Someone WITH history gets the warning when the
-                  remover arms the button, above the confirm, saying what stays
-                  and what goes — not to everyone who opens the modal (#1034).
-
-                  `hasHistory` comes from the SERVER, not re-derived here. */}
+              {/* Removal is never refused for history (PR 8d-3, ruling 2:
+                  warn, never block). Arming shows "Remove {name} from {trip}?",
+                  plus one line when they are in an expense — the one thing the
+                  remover can act on (Zach's look; CLAUDE.md "Copy"). Shown when
+                  someone arms the button, not to everyone who opens the modal
+                  (#1034). The plain prompt below is only the fallback if the
+                  summary could not be read. */}
               <ConfirmDeleteButton
                 label="Remove from trip"
                 confirmLabel="Remove"
@@ -698,9 +697,7 @@ export function MemberEditor({
                    has not arrived yet. */
                 pending={removeMember.isPending || removeGuest.isPending || removalPending}
                 onConfirm={handleRemove}
-                warning={
-                  removalInfo?.hasHistory ? <DepartureWarning who="them" history={removalInfo.history} /> : undefined
-                }
+                warning={removalInfo ? <DepartureWarning who="them" summary={removalInfo} /> : undefined}
               />
             </div>
           )}

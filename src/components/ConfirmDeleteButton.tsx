@@ -44,6 +44,7 @@ export function ConfirmDeleteButton({
   blocked,
   warning,
   icon,
+  appearance = "button",
   onArm,
   testId,
 }: {
@@ -65,6 +66,11 @@ export function ConfirmDeleteButton({
   /** The resting button's icon. A trash can for deleting; leaving a trip is
    *  not deleting anything, so it passes its own. */
   icon?: ReactNode;
+  /** How the RESTING control looks. "button" is the full-width outlined
+   *  danger button; "link" is a small red text link, for an action that sits
+   *  at the foot of a card every viewer sees (Leave trip). Armed, both open
+   *  the same panels. */
+  appearance?: "button" | "link";
   /** Called when the button is armed — for a caller that reads what the
    *  warning needs only once someone actually starts the action, rather than
    *  on every render of the screen the button sits on. */
@@ -157,6 +163,24 @@ export function ConfirmDeleteButton({
           {pending ? pendingLabel : confirmLabel}
         </button>
       </div>
+    );
+  }
+
+  if (appearance === "link") {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setArmed(true);
+          onArm?.();
+        }}
+        disabled={pending}
+        data-testid={testId ? `${testId}-arm` : undefined}
+        className="text-xs font-semibold hover:underline disabled:opacity-40"
+        style={{ color: "var(--color-bt-danger)" }}
+      >
+        {label}
+      </button>
     );
   }
 

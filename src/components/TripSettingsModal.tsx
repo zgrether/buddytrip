@@ -34,6 +34,7 @@ import {
   type DateRange,
 } from "@/lib/calendar";
 import type { TripRole } from "@/server/middleware";
+import type { TripSettingsView } from "@/components/TripSettingsOpener";
 import type { TripData } from "@/app/trips/[tripId]/tabs/types";
 
 // ── Trip settings (drill-in / master→detail) ──────────────────────────────
@@ -72,6 +73,8 @@ interface TripSettingsModalProps {
   trip?: TripData;
   onClose: () => void;
   viewerRole: TripRole;
+  /** Open on this screen instead of the menu. */
+  initialView?: TripSettingsView;
 }
 
 // YYYY-MM-DD from local parts (a UTC-shifted toISOString could slip a day).
@@ -88,6 +91,7 @@ export function TripSettingsModal({
   trip,
   onClose,
   viewerRole,
+  initialView,
 }: TripSettingsModalProps) {
   const router = useRouter();
   const utils = trpc.useUtils();
@@ -102,13 +106,23 @@ export function TripSettingsModal({
   const { data: competition } = trpc.competitions.getByTrip.useQuery({ tripId });
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const [view, setView] = useState<View>("menu");
+  // `initialView` opens straight onto one screen — the Leave trip refusal's
+  // link lands the Owner on Transfer ownership (or Delete trip), PR 8d-3.
+  // Back still returns to the menu.
+  const [view, setView] = useState<View>(initialView ?? "menu");
   const [dir, setDir] = useState<"right" | "left">("right");
   const go = (v: View) => {
     setDir("right");
     setView(v);
   };
   const back = () => {
+    // Opened straight onto a screen (`initialView`), the reader never saw the
+    // menu: back and Cancel return them to where they came from instead of
+    // into a menu they did not open.
+    if (initialView && view === initialView) {
+      onClose();
+      return;
+    }
     setDir("left");
     setView("menu");
   };
