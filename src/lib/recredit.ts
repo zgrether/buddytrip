@@ -145,6 +145,22 @@ export function finishersByTeam(
   return out;
 }
 
+/** People PLAYING in an unfinished game, per team, through `roster` — the count
+ *  game setup and the trade preview warn on (#1562). A round still being played
+ *  has no finishers yet, so it counts who is in it. Each person once; someone on
+ *  no team counts for no team, as the team total will leave them out. */
+export function playersByTeam(
+  userIds: Iterable<string>,
+  roster: Readonly<Record<string, string>>
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const id of new Set(userIds)) {
+    const team = roster[id];
+    if (team) out.set(team, (out.get(team) ?? 0) + 1);
+  }
+  return out;
+}
+
 export interface UnevenTeams {
   /** "Uneven teams: Spartans 2, Centurions 1" — biggest first. */
   tag: string;

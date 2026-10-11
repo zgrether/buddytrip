@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { ArrowRightLeft, UserMinus, UserPlus, Ban } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { ScrollLock } from "@/hooks/useScrollLock";
+import type { UnevenTeams } from "@/lib/recredit";
 
 /**
  * The before-and-after preview for a staff roster change once a cup has results
@@ -69,7 +70,9 @@ export interface RosterPreview {
   hasResults: boolean;
   /** This person played in a finished game. No team: see `RosterChangePreview`. */
   hasFinishedGames: boolean;
-  moving: RosterGame[];
+  /** Each with the uneven-teams tag the change would leave it with, or null
+   *  (#1562). */
+  moving: (RosterGame & { uneven: UnevenTeams | null })[];
   blocking: RosterGame[];
 }
 
@@ -81,6 +84,9 @@ export interface RosterChangeRequest {
   fromTeamName: string;
   /** The destination, for a move or an add. */
   toTeamName?: string;
+  /** The destination's id — null for a removal. The preview warns about the
+   *  teams the change would leave a round with, so it needs to know where. */
+  toTeamId: string | null;
   /** Runs the change with the fingerprint the preview was built on. */
   run: (rosterFingerprint: string) => void;
 }
@@ -137,6 +143,12 @@ export function RosterChangeSheet({
         : `Remove ${personName} from ${fromTeamName}?`;
 
   const Icon = blocked ? Ban : kind === "remove" ? UserMinus : kind === "add" ? UserPlus : ArrowRightLeft;
+  // The explanation once, however many rounds carry a tag — one line per
+  // distinct direction (the re-credit sheet's layout, #1564).
+  const explanations =
+    state.phase === "ready"
+      ? [...new Set(state.preview.moving.flatMap((g) => (g.uneven ? [g.uneven.explanation] : [])))]
+      : [];
   const firstBlocking = state.phase === "ready" ? state.preview.blocking[0] : undefined;
 
   return (
@@ -210,10 +222,31 @@ export function RosterChangeSheet({
                 {state.preview.moving.map((g) => (
                   <li key={g.gameId} data-testid="roster-change-moving">
                     {g.name} will count for {destination ?? "no team"} when it finishes.
+                    {/* #1562: the teams this change would LEAVE the round with —
+                        warn, never block (Zach's ruling on #1561). */}
+                    {g.uneven && (
+                      <span
+                        className="mt-1 block text-[12px]"
+                        style={{ color: "var(--color-bt-warning)" }}
+                        data-testid="roster-change-uneven"
+                      >
+                        {g.uneven.tag}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
             )}
+            {state.phase === "ready" && !blocked && explanations.map((e) => (
+              <p
+                key={e}
+                className="mt-3 text-left text-[12px]"
+                style={{ color: "var(--color-bt-warning)" }}
+                data-testid="roster-change-uneven-explanation"
+              >
+                {e}
+              </p>
+            ))}
           </div>
 
           <div className="flex flex-col-reverse gap-2 px-5 pb-5 pt-3 sm:flex-row sm:justify-end">
@@ -303,7 +336,7 @@ export function RosterChangeGateProvider({
       // A FRESH read every time: the preview's fingerprint is the claim the
       // confirm makes, so a cached one would confirm against a stale roster.
       utils.teamAssignments.previewChange
-        .fetch({ tripId, competitionId, userId: req.userId }, { staleTime: 0 })
+        .fetch({ tripId, competitionId, userId: req.userId, toTeamId: req.toTeamId }, { staleTime: 0 })
         .then((preview) => setState({ phase: "ready", preview }))
         .catch(() => setState({ phase: "error" }));
     },

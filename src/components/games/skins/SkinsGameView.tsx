@@ -68,6 +68,7 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { Participant } from "@/components/games/types";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 import { gamesPageHref } from "@/lib/gameRoutes";
+import { UnevenTeamsNote } from "@/components/games/UnevenTeamsNote";
 
 const SKINS = "gtt_skins";
 
@@ -767,6 +768,16 @@ export function SkinsGameView() {
                   sits this round out.
                 </p>
                 <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={builderTeams} />
+                {/* #1562: the same note as stroke setup — skins says the other
+                    direction (more players, more skins: an advantage). */}
+                {competitionId && (
+                  <UnevenTeamsNote
+                    scoring="skins"
+                    playerIds={configDraft.groups.flat()}
+                    roster={Object.fromEntries(teamOfUser)}
+                    teams={(teamsQ.data ?? []).map((t) => ({ teamId: t.id as string, teamName: t.name as string }))}
+                  />
+                )}
               </ChecklistRow>
             </>
           }

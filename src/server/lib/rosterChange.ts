@@ -5,6 +5,7 @@ import { competitionHasResults } from "./rosterLock";
 import { assertRosterUnchanged, readRosterFingerprint } from "./rosterFingerprint";
 import { readPersonParticipation } from "./participationGuard";
 import { countOrThrow, rowsOrThrow } from "./rowOrThrow";
+import { playersByTeam, recreditedRoster, TEAM_SCORING, unevenTeams, type UnevenTeams } from "@/lib/recredit";
 
 /**
  * Roster changes after results (PR 8b) — what replaced the roster lock.
@@ -142,15 +143,23 @@ export interface RosterChangePreview {
    * (Zach's look, 2026-10-04). So the preview says only that those results stand.
    */
   hasFinishedGames: boolean;
-  /** Unfinished team-independent games that will count for the new team (or none). */
-  moving: RosterGame[];
+  /** Unfinished team-independent games that will count for the new team (or
+   *  none), each with the uneven-teams warning the change would leave it with
+   *  (#1562) — null when its teams would be even. */
+  moving: (RosterGame & { uneven: UnevenTeams | null })[];
   /** Non-empty means the change will be refused — shown, not offered. */
   blocking: RosterGame[];
 }
 
 export async function previewRosterChange(
   supabase: SupabaseClient,
-  input: { tripId: string; competitionId: string; userId: string }
+  input: {
+    tripId: string;
+    competitionId: string;
+    userId: string;
+    /** Where the person goes: a team for a move or an add, null for a removal. */
+    toTeamId: string | null;
+  }
 ): Promise<RosterChangePreview> {
   const [fingerprint, hasResults, finished, games] = await Promise.all([
     readRosterFingerprint(supabase, input.tripId, input.competitionId),
@@ -162,14 +171,68 @@ export async function previewRosterChange(
   // (`readPersonParticipation`): participant rows, 2v2 groups, pick'em sheets
   // and bracket entrants.
   const finishedIds = rowsOrThrow(finished, "cup's finished games").map((g) => g.id as string);
-  const played = await readPersonParticipation(supabase, finishedIds, input.userId);
+  const [played, uneven] = await Promise.all([
+    readPersonParticipation(supabase, finishedIds, input.userId),
+    unevenAfterChange(supabase, input, games.moving),
+  ]);
   return {
     fingerprint,
     hasResults,
     hasFinishedGames: finishedIds.some((id) => played.gameIds.has(id) || played.entrantGameIds.has(id)),
-    moving: games.moving,
+    moving: games.moving.map((g) => ({ ...g, uneven: uneven.get(g.gameId) ?? null })),
     blocking: games.blocking,
   };
+}
+
+/**
+ * UNEVEN TEAMS AFTER THE CHANGE (#1562; Zach's ruling on #1561: a stroke or
+ * skins team total stays a sum — warn, never block).
+ *
+ * For each unfinished game the change moves (`moving`: the person is in it,
+ * and it is team-independent), the tag the round would carry with this person
+ * on `toTeamId`. Counted over the game's PARTICIPANTS, since a round still
+ * being played has no finishers, through the cup's roster with this one entry
+ * changed (`recreditedRoster` — the same "after" the re-credit sheet uses).
+ * Finished games are not here at all: they keep the roster they finalized with
+ * (8a), so a trade changes nothing in them.
+ *
+ * Only formats that say how their teams rank (`TEAM_SCORING`) are tagged; the
+ * direction of the explanation comes from there, never worded here.
+ */
+async function unevenAfterChange(
+  supabase: SupabaseClient,
+  input: { competitionId: string; userId: string; toTeamId: string | null },
+  moving: RosterGame[]
+): Promise<Map<string, UnevenTeams | null>> {
+  const out = new Map<string, UnevenTeams | null>();
+  if (moving.length === 0) return out;
+  const ids = moving.map((g) => g.gameId);
+  const [gamesRes, partsRes, rosterRes, teamsRes] = await Promise.all([
+    supabase.from("games").select("id, game_type_id, config").in("id", ids),
+    supabase.from("game_participants").select("game_id, user_id").in("game_id", ids),
+    supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", input.competitionId),
+    supabase.from("teams").select("id, name").eq("competition_id", input.competitionId),
+  ]);
+  const roster = Object.fromEntries(
+    rowsOrThrow(rosterRes, "cup's rosters").map((a) => [a.user_id as string, a.team_id as string])
+  );
+  const after = recreditedRoster(roster, input.userId, input.toTeamId);
+  const teams = rowsOrThrow(teamsRes, "cup's teams").map((t) => ({ teamId: t.id as string, teamName: t.name as string }));
+  const players = new Map<string, string[]>();
+  for (const p of rowsOrThrow(partsRes, "games' players")) {
+    const list = players.get(p.game_id as string) ?? [];
+    list.push(p.user_id as string);
+    players.set(p.game_id as string, list);
+  }
+  for (const g of rowsOrThrow(gamesRes, "games being moved")) {
+    const scoringOf = TEAM_SCORING[g.game_type_id as string];
+    if (!scoringOf) continue;
+    out.set(
+      g.id as string,
+      unevenTeams({ scoring: scoringOf(g.config), counts: playersByTeam(players.get(g.id as string) ?? [], after), teams })
+    );
+  }
+  return out;
 }
 
 export const TEAM_HAS_RESULTS_MESSAGE = (teamName: string) =>

@@ -138,7 +138,17 @@ export const teamAssignmentsRouter = router({
   // count, not a list: none of their points move (8a). Staff only: it is the
   // first half of a staff action.
   previewChange: authedProcedure
-    .input(z.object({ tripId: z.string(), competitionId: z.string(), userId: z.string() }))
+    .input(
+      z.object({
+        tripId: z.string(),
+        competitionId: z.string(),
+        userId: z.string(),
+        // Where they go — a team for a move or an add, null for a removal. The
+        // preview warns about the teams the change would LEAVE a round with
+        // (#1562), so it has to know the destination.
+        toTeamId: z.string().nullable(),
+      })
+    )
     .use(requireTripRole("Organizer"))
     .query(({ ctx, input }) => previewRosterChange(ctx.supabase, { ...input, tripId: ctx.tripId })),
 

@@ -32,6 +32,7 @@ import { RackGroupBuilder, type GroupBuilderTeam } from "@/components/games/rack
 import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerTakesAll, type StrokeConfigDraft, type StrokeScoringDraft } from "@/lib/configDraft";
 import { StrokeScoringRow } from "@/components/games/StrokeScoringRow";
 import { scoringOf, type ScoringType } from "@/lib/stableford";
+import { UnevenTeamsNote } from "./UnevenTeamsNote";
 import { teamColorByUser, UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
 import { rollUpOf, type StrokeRollUp } from "@/lib/strokeGameConfig";
 import { bottomNavInset } from "@/lib/bottomNavInset";
@@ -1242,6 +1243,17 @@ export function StrokeGameView() {
           Group players into tee groups — any mix across teams, up to 4 each. Everyone playing must be in a group; anyone left ungrouped isn&rsquo;t in the game.
         </p>
         <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={pickerTeams} />
+        {/* #1562: warn when the cup's teams have different numbers of players
+            in this round — counted from the DRAFT groups, so it moves before
+            Save. Warn, never block (Zach's ruling on #1561). */}
+        {gameCompetitionId && (
+          <UnevenTeamsNote
+            scoring={configDraft.scoring.type}
+            playerIds={configDraft.groups.flat()}
+            roster={Object.fromEntries((assignQ.data ?? []).map((a) => [a.user_id as string, a.team_id as string]))}
+            teams={(teamsQ.data ?? []).map((t) => ({ teamId: t.id as string, teamName: t.name as string }))}
+          />
+        )}
       </ChecklistRow>
     );
     // Handicaps row (GROUP SETTINGS, P3 3.3) — INLINE per-player strokes (was a full-page
