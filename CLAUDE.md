@@ -1717,6 +1717,20 @@ column_name IN ('user_id','created_by','submitted_by','paid_by_user_id',
 'entity_id','participant_id','granted_by','author_id','confirmed_by')` — plus a
 scan of `jsonb` columns for embedded ids.
 
+**ADD a table → state its grants, in the same migration.** From 2026-10-30
+Supabase no longer grants `anon` / `authenticated` / `service_role` on a new
+table in `public` — and that includes the fresh local database CI replays on
+every run. A table with no stated grant is unreachable before RLS is even asked.
+Migration 211 stated what production held for every relation up to then; from
+there, every `CREATE TABLE` carries its own `GRANT … ON TABLE public.<t>`,
+named per table (never `ALL TABLES IN SCHEMA`, which would widen a table meant
+to be narrow — 204 and 205 give `authenticated` SELECT only). The usual shape
+is `GRANT ALL ON TABLE public.<t> TO anon, authenticated, service_role;`, and
+RLS decides the rows. `migrationGrants.guard.test.ts` fails a history whose
+final tables include one with no grant; `publicViews.catalogue.test.ts` fails
+any view that is not `security_invoker` (a `CREATE OR REPLACE VIEW` without
+the option resets it to owner security) and any materialized view in `public`.
+
 ## Migration Workflow
 
 Migrations are committed as files in `supabase/migrations/`. **CI does NOT apply them to any
