@@ -192,6 +192,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 | Promote/demote role | ✓ | — | — | `updateRole` *(Owner; not self)* |
 | Rename (trip nickname) | ✓ | ✓ | — | `updateNickname` *(Owner/Organizer; not the Owner)* |
 | Remove member | ✓ | ✓ | — | `remove` *(Owner/Organizer; not self. An Organizer may remove **Members and ghosts only** — removing an Owner or a fellow Organizer is Owner-only, enforced at the DB by mig 122/123, because removal is a stronger form of `updateRole`)* |
+| Leave the trip | — | ✓ | ✓ | `leave` *(self; the same archive as removal — `archive_trip_member`. The Owner cannot leave: a trip with no Owner has nobody who can run it, so they transfer ownership first (PR 8d, ruling 3). History stays; the Leave trip button warns, it never blocks — `departureSummary`)* |
 | Add / remove ghost (placeholder) crew | ✓ | ✓ | — | `ghostCrew.create` / `remove` *(Owner/Organizer; only the Owner may add one AS an Organizer)* |
 | **Edit** ghost (placeholder) crew | ✓ | **—** | — | `ghostCrew.update` *(Owner — see the deviations note; `link_guest_to_account` checks Owner inside the function, and that check is the only gate on a merge primitive `authenticated` can call directly)* |
 | Set **own** travel info | ✓ | ✓ | ✓ | `tripMembers.updateTravel` *(self)* |

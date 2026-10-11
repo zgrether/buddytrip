@@ -6,12 +6,39 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { joinNoticeText } from "@/lib/joinMessage";
-import { archiveTripMember } from "../lib/archiveMember";
-import {
-  findContributionBlockers,
-  contributionRefusalMessage,
-  hasContributions,
-} from "../lib/participationGuard";
+import { archiveTripMember, ownerLeaveRefusal } from "../lib/archiveMember";
+import { countOrThrow } from "../lib/rowOrThrow";
+
+/**
+ * How many of the trip's expenses `userId` is part of: ones they paid, plus
+ * ones someone ELSE paid that they are split into. Disjoint by construction —
+ * a payer is usually split into their own receipt, and counting that split
+ * too made one receipt read as two (PR 8d-3).
+ *
+ * Head counts, so a failed read throws (`countOrThrow`) instead of reading as
+ * zero and dropping the one line the departure sheets exist to show.
+ */
+async function expenseCountOf(
+  supabase: SupabaseClient,
+  tripId: string,
+  userId: string
+): Promise<number> {
+  const [paid, splitInto] = await Promise.all([
+    supabase
+      .from("expenses")
+      .select("id", { count: "exact", head: true })
+      .eq("trip_id", tripId)
+      .eq("paid_by_user_id", userId),
+    // expense_splits has no trip_id — scope through the parent expense.
+    supabase
+      .from("expense_splits")
+      .select("expense_id, expenses!inner(trip_id, paid_by_user_id)", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("expenses.trip_id", tripId)
+      .neq("expenses.paid_by_user_id", userId),
+  ]);
+  return countOrThrow(paid, "expenses they paid") + countOrThrow(splitInto, "expenses they are split into");
+}
 
 /** Resolve a member's trip display name (nickname → account name) for
  *  system chat lines. Best-effort; falls back to "Someone". */
@@ -154,13 +181,6 @@ export const tripMembersRouter = router({
       return { result: "invite" as const };
     }),
 
-  // -----------------------------------------------------------------------
-  // removalBlockers — games this member is playing in / has scores in (#951).
-  //
-  // Read-only, for the UI to state the blocker BEFORE the remove button rather
-  // than after a failed press. `remove` re-checks and is the authority; this is
-  // the courtesy on top of it, never a substitute.
-  // -----------------------------------------------------------------------
   departedNames: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
@@ -188,22 +208,61 @@ export const tripMembersRouter = router({
       return (data ?? []).map((d) => ({ userId: d.user_id as string, displayName: d.display_name as string }));
     }),
 
-  removalBlockers: authedProcedure
+  // -----------------------------------------------------------------------
+  // departureSummary — what the remove and Leave trip sheets say, read BEFORE
+  // anyone goes (PR 8d-3; was `removalBlockers`, #951).
+  //
+  // It used to gate removal: anyone with a result, score or expense was
+  // refused. Since PR 8d a departure is an ARCHIVE that keeps history (ruling
+  // 19), so nothing here blocks — renamed, because a query called "blockers"
+  // that blocks nothing is one concept under two names.
+  //
+  // It no longer works out which GAMES someone has history in, either. The
+  // sheets stopped showing games (Zach's look), and what counts as history is
+  // decided once, in the database, by the archive; a second copy here would be
+  // two deciders for one question. So:
+  //   - `expenseCount`: the one thing a person still settles themselves
+  //     (ruling 2), and the one line the sheets show when it is not zero.
+  //   - `ownerRefusal`: set only when the Owner asks about LEAVING. The one
+  //     departure that IS refused (ruling 3), with the same sentence the
+  //     archive's refusal gives (`ownerLeaveRefusal`), so the button can say
+  //     why before the press rather than after it — and which part of Trip
+  //     settings to open.
+  //   - The names the confirm's title and money line use (Zach's look, PR
+  //     8d-3: "Leave {trip}?", "Remove {name} from {trip}?", "check back with
+  //     {Owner}"): `tripTitle` always, `displayName` for someone being
+  //     removed, `ownerName` for someone leaving.
+  //
+  // Read-only and advisory: the archive applies its own rules on the press.
+  // -----------------------------------------------------------------------
+  departureSummary: authedProcedure
     .input(z.object({ tripId: z.string(), userId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const blockers = await findContributionBlockers(ctx.supabase, ctx.tripId!, input.userId);
-      // `blocked` is returned explicitly rather than left for the client to
-      // re-derive: the predicate now spans games AND two expense counts, and a
-      // client re-implementing it is how the two drift apart.
-      const blocked = hasContributions(blockers);
-      const message: string | null = !blocked
-        ? null
-        : contributionRefusalMessage(
-            await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId),
-            blockers
-          );
-      return { blocked, blockers, message };
+      const expenseCount = await expenseCountOf(ctx.supabase, ctx.tripId!, input.userId);
+      const leaving = input.userId === ctx.user!.id;
+      const ownerRefusal =
+        leaving && ctx.tripRole === "Owner"
+          ? await ownerLeaveRefusal(ctx.supabase, ctx.tripId!, input.userId)
+          : null;
+
+      const { data: trip, error: tripErr } = await ctx.supabase
+        .from("trips").select("title").eq("id", ctx.tripId!).maybeSingle();
+      if (tripErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to read the trip" });
+      const tripTitle = (trip?.title as string | undefined) ?? "this trip";
+
+      let displayName: string | null = null;
+      let ownerName: string | null = null;
+      if (leaving) {
+        const { data: owner, error: ownerErr } = await ctx.supabase
+          .from("trip_members").select("user_id")
+          .eq("trip_id", ctx.tripId!).eq("role", "Owner").limit(1).maybeSingle();
+        if (ownerErr) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to read the trip's owner" });
+        ownerName = owner ? await memberDisplayName(ctx.supabase, ctx.tripId!, owner.user_id as string) : null;
+      } else {
+        displayName = await memberDisplayName(ctx.supabase, ctx.tripId!, input.userId);
+      }
+      return { expenseCount, ownerRefusal, tripTitle, displayName, ownerName };
     }),
 
   // -----------------------------------------------------------------------
@@ -442,9 +501,9 @@ export const tripMembersRouter = router({
       if (input.userId === ctx.user!.id) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          // Not "use Leave trip": that button arrives with 8d-3, and a refusal
-          // must name an action the reader can actually take.
-          message: "You can't remove yourself from a trip.",
+          // Names the action that does exist (PR 8d-3): leaving is the same
+          // archive, with the leaver's own warnings.
+          message: "You can't remove yourself from a trip. Use Leave trip on the Crew tab instead.",
         });
       }
 
@@ -458,8 +517,8 @@ export const tripMembersRouter = router({
       //
       // It no longer REFUSES someone with history (#951's guard). History is
       // what the archive keeps; refusing made removal impossible on any trip
-      // that had been played (ruling 2: warn, never block). `removalBlockers`
-      // still answers for the UI until 8d-3 replaces that panel.
+      // that had been played (ruling 2: warn, never block). `departureSummary`
+      // is what the panel warns with.
       await archiveTripMember(ctx.supabase, ctx.tripId!, input.userId);
 
       return { success: true };

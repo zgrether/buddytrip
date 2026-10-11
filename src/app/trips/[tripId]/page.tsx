@@ -18,6 +18,7 @@ import { TripTabBar } from "@/components/TripTabBar";
 import { getTripStatus } from "@/components/StatusBadge";
 import { TripHeader } from "@/components/TripHeader";
 import { TripSettingsModal } from "@/components/TripSettingsModal";
+import { TripSettingsOpenerProvider, type TripSettingsView } from "@/components/TripSettingsOpener";
 import { TopNav } from "@/components/TopNav";
 import { SURFACE_BOX, SURFACE_BOX_FLUSH } from "@/components/shell/contentArea";
 import { useRealtimeCompetition } from "@/hooks/useRealtimeCompetition";
@@ -33,6 +34,8 @@ import { isReadOnly as checkReadOnly } from "@/lib/tripStatus";
 import { DatesSheet } from "./components/DatesSheet";
 import { AppShell } from "@/components/shell/AppShell";
 import { useTripId } from "@/components/TripIdProvider";
+import { clearLastTripPointer } from "@/lib/lastTripPointer";
+import { isNotAMemberError } from "@/lib/tripAccessMessages";
 import { ChatView } from "@/components/shell/ChatView";
 import { LiveFaceClient } from "@/components/competition/LiveFaceClient";
 
@@ -86,6 +89,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     [activeTabRaw, pathname],
   );
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsView, setSettingsView] = useState<TripSettingsView | undefined>(undefined);
   const [toast, setToast] = useState<{ message: string; variant: "warning" } | null>(null);
   const [datesSheetOpen, setDatesSheetOpen] = useState(false);
 
@@ -240,21 +244,28 @@ function TripDetailBody({ tripId }: { tripId: string }) {
     }
   }, [tripId]);
 
+  // All hooks must be called before any early returns
+  const utils = trpc.useUtils();
+
   // Stale-pointer recovery: if the trip 404s — deleted (or membership revoked)
   // while bt-last-trip-id still pointed here, which the root route blindly
   // 307s to — clear the pointer and bounce to the dashboard instead of
   // stranding the user on a dead-end "Trip not found" screen.
+  //
+  // EXCEPT when they were removed while looking at it (PR 8d-3): the trip had
+  // loaded, and the refusal is the membership gate's real "no". Bouncing them
+  // silently is what the ruling replaced — `TripMembershipGate` (trip layout)
+  // says "You're no longer a member of this trip." So hand over to it: re-read
+  // the roster it watches, which refuses them the same way.
   useEffect(() => {
     if (!error) return;
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem("bt-last-trip-id");
-      document.cookie = "bt-last-trip-id=; Max-Age=0; Path=/; SameSite=Lax";
+    if (trip && isNotAMemberError(error)) {
+      void utils.tripMembers.list.invalidate({ tripId });
+      return;
     }
+    clearLastTripPointer();
     router.replace("/dashboard");
-  }, [error, router]);
-
-  // All hooks must be called before any early returns
-  const utils = trpc.useUtils();
+  }, [error, router, trip, tripId, utils]);
 
   const lockDestination = trpc.trips.lockDestination.useMutation({
     onSuccess: () => {
@@ -530,8 +541,21 @@ function TripDetailBody({ tripId }: { tripId: string }) {
   // so an owner sees exactly what an owner always saw. A Member gets no gear
   // here and no gear on a live trip — unchanged, and it must stay that way.
   const onSettingsClick = isOwner
-    ? () => setShowSettings(true)
+    ? () => {
+        setSettingsView(undefined);
+        setShowSettings(true);
+      }
     : undefined;
+  // The same door, opened onto one screen from inside a tab (PR 8d-3: the
+  // Owner's "you can't leave yet" links to Transfer ownership). Derived FROM
+  // the gear rather than re-reading the role, so it exists exactly when the
+  // gear does (dateLockGates.test.ts allows one raw role alias, and it is that).
+  const openSettings = onSettingsClick
+    ? (view?: TripSettingsView) => {
+        setSettingsView(view);
+        setShowSettings(true);
+      }
+    : null;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -549,6 +573,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
      * reach AppShell's own `chatOpen` state (see AppShell's `topBar` doc
      * comment).
      */
+    <TripSettingsOpenerProvider value={openSettings}>
     <AppShell
       tripId={tripId}
       defaultView="trip"
@@ -746,6 +771,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
           tripName={trip.title}
           trip={trip}
           viewerRole={role}
+          initialView={settingsView}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -785,6 +811,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
         </>
       )}
     />
+    </TripSettingsOpenerProvider>
   );
 }
 

@@ -33,6 +33,7 @@ import { AddPropertySheet, detectPlatform, extractDomain, type PropertyFormValue
 import { AddOrganizerComposer } from "@/app/trips/[tripId]/tabs/components/PlannersPanel";
 import { type Member, deriveStatus as deriveStatusIZ, CrewSection } from "@/app/trips/[tripId]/tabs/components/CrewRoster";
 import { MemberEditor } from "@/app/trips/[tripId]/tabs/components/MemberEditor";
+import { LeaveTripButton } from "@/app/trips/[tripId]/tabs/components/LeaveTripButton";
 import { useDepartedNames } from "@/hooks/useDepartedNames";
 import { CrewEmailPanel } from "@/app/trips/[tripId]/tabs/components/CrewEmailPanel";
 import { buildPlanningInvitation } from "@/lib/invitationDefault";
@@ -1986,6 +1987,7 @@ export default function IdeaZonePanel({
                   onEditMember={(m) => setEditingMemberId(m.memberId)}
                 />
               )}
+              {currentUser && <LeaveTripButton tripId={tripId} userId={currentUser.id} />}
             </div>
             <aside>
               <AddOrganizerComposer tripId={tripId} />
@@ -2009,6 +2011,9 @@ export default function IdeaZonePanel({
                 currentUserId={currentUser?.id}
               />
             )}
+            {/* Leave trip (PR 8d-3). The ideas phase has no Crew tab and so no
+                YOU tile — without this an Organizer here had no way out. */}
+            {currentUser && <LeaveTripButton tripId={tripId} userId={currentUser.id} />}
           </div>
         )}
 

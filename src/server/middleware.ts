@@ -15,19 +15,11 @@ const ROLE_LEVEL: Record<TripRole, number> = {
   Member: 1,
 };
 
-/** The trip membership check RAN and the answer was no. A real refusal. */
-export const NOT_A_MEMBER_MESSAGE = "You are not a member of this trip";
-
-/**
- * The trip membership check COULD NOT RUN. Not a refusal — we do not know.
- *
- * Names the failed check rather than a conclusion, and gives the one action
- * that helps (wait, retry), because the conditions that produce it are
- * transient by nature. Never tell someone they have been removed from a trip
- * on the strength of a query that did not answer.
- */
-export const GATE_UNAVAILABLE_MESSAGE =
-  "Couldn't check your access to this trip just now. Nothing is lost — try again in a moment.";
+// The gate's two answers — a refusal, and a check that could not run. Defined
+// client-side (`src/lib/tripAccessMessages.ts`) because the client must tell
+// them apart: only the first may ever tell someone they are off a trip.
+import { NOT_A_MEMBER_MESSAGE, GATE_UNAVAILABLE_MESSAGE } from "@/lib/tripAccessMessages";
+export { NOT_A_MEMBER_MESSAGE, GATE_UNAVAILABLE_MESSAGE };
 
 // ---------------------------------------------------------------------------
 // requireTripMember

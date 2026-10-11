@@ -6,7 +6,7 @@ import {
 } from "@/lib/recredit";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { parseCreditedRoster } from "./creditRoster";
-import { readPersonParticipation } from "./participationGuard";
+import { readPersonParticipation } from "./personParticipation";
 import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 import { tripDisplayNames } from "./tripDisplayNames";
 

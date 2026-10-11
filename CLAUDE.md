@@ -1483,7 +1483,9 @@ These patterns have been established through prior work. Follow them exactly —
 27. **A score has TWO storage shapes, and a SIDE is not a person. Any predicate
     over `score_entries` + user ids is blind to whole categories of real game.**
     Both halves are properties of the schema, both fail by answering *no*, and
-    `findContributionBlockers` had both at once (#1016).
+    `findContributionBlockers` had both at once (#1016). (That guard was retired
+    in PR 8d-3, when the archive took over deciding what is history; the
+    schema facts below did not change, and any new predicate meets them.)
 
     - **Two tables.** `entry_mode='outcome'` match play stores the score in
       `match_hole_outcomes` — read directly by `computeMatchPlayResults`, no
@@ -1875,6 +1877,24 @@ table (migration 039) reached via **`CourseService`** (`src/lib/courseService.ts
 Applying a course to a game **snapshots** its `par[]` + `handicap_index[]` into
 `games.scorecard_schema.units.metadata` (the shape `strokeHoles` reads); the
 snapshot freezes once scores exist, and `games.course_id` is kept as provenance.
+
+## Copy — a confirmation says what is being confirmed, plus what the reader can act on
+
+Nothing else. Anything the app handles for them stays out: what it keeps, what
+happens to their games, how the mechanism works. **Apply it before every look:
+write the sheet, then cut every line the reader wouldn't miss.**
+
+It keeps recurring, which is why it is a rule. Zach's looks cut words more often
+than they change anything else. The pick'em locked page said three things twice.
+The first 8d-3 leave and remove sheets carried a reassurance sentence, a
+"history stays" line, an "undecided games" line and a games list, and Zach cut
+all four. What survived was the title ("Leave {trip}?", "Remove {name} from
+{trip}?") and one line, shown only when they are in an expense: money is the one
+thing a person still has to settle themselves.
+
+**The tell:** a line that explains what the system does, rather than asking the
+reader to decide or do something. A refusal has the same shape: the reason, and
+where to go. See "A REFUSAL MUST NAME AN ACTION THE READER CAN TAKE".
 
 ## Verification Cadence — stop and ask Zach to look
 

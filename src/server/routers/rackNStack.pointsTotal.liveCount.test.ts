@@ -11,11 +11,11 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
  * reflected the instant it happens, both in the derived value and in the award
  * write.
  *
- * A FRESH file/trip, deliberately: `tripMembers.remove` refuses to remove
- * someone with contributions ANYWHERE in the trip (`findContributionBlockers`),
- * and `rackNStack.pointsTotal.test.ts`'s shared trip already has all four users
- * scored by its earlier tests. Isolating this test is what keeps the removal
- * clean without weakening that guard.
+ * A FRESH file/trip, deliberately: `rackNStack.pointsTotal.test.ts`'s shared
+ * trip already has all four users scored by its earlier tests, and this case
+ * needs a removal whose only effect is the seat it vacates. (It was also
+ * needed while removal REFUSED anyone with history, #951; since PR 8d a
+ * removal is an archive that keeps history and refuses nobody for it.)
  */
 
 const RACK = "gtt_rack_n_stack";
@@ -96,10 +96,10 @@ describe("#1031 — rack per-slot value recomputes with NO settings Save", () =>
     const { data: preVacate } = await ctx.admin.from("games").select("points_distribution").eq("id", gameId).maybeSingle();
     expect((preVacate as { points_distribution: { value: number } }).points_distribution.value).toBe(5);
 
-    // `member` has no scores anywhere in this fresh trip yet — findContributionBlockers
-    // passes, and removal proceeds to clearTripParticipation → vacateTripGameSeats,
-    // which DELETES member's game_participants row for every game in the trip
-    // (rack has no side to null — the row itself goes). No settings Save follows.
+    // `member` has no scores anywhere in this fresh trip yet. Removal is the
+    // archive (`archive_trip_member`), which DELETES their game_participants row
+    // in every unfinished game of the trip (rack has no side to null — the row
+    // itself goes). No settings Save follows.
     await ctx.caller().tripMembers.remove({ tripId, userId: member });
 
     const { data: parts } = await ctx.admin.from("game_participants").select("user_id").eq("game_id", gameId);

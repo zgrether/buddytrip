@@ -90,7 +90,7 @@ describe("#957 orphan guard — findOrphanBlockers", () => {
     expect(blockers).toHaveLength(1);
     expect(blockers[0]).toMatchObject({ hasOtherMembers: true, hasTransferTarget: false });
 
-    const msg = orphanRefusalMessage(blockers, "delete-account");
+    const msg = orphanRefusalMessage(blockers);
     expect(msg).toContain("Guests Only Trip");
     expect(msg).toMatch(/delete that trip first/i);
     // Must NOT tell them to do the impossible thing.
@@ -110,7 +110,7 @@ describe("#957 orphan guard — findOrphanBlockers", () => {
       hasTransferTarget: true,
       hasOtherMembers: true,
     }));
-    const msg = orphanRefusalMessage(many, "delete-account");
+    const msg = orphanRefusalMessage(many);
 
     expect(msg).toContain("Trip 0");
     expect(msg).toContain("and 16 more"); // 19 − 3 shown
@@ -123,8 +123,7 @@ describe("#957 orphan guard — findOrphanBlockers", () => {
     await ctx.addTripMember(tripId, "member", "Member");
 
     const msg = orphanRefusalMessage(
-      await findOrphanBlockers(ctx.admin, ctx.user.id, { tripId }),
-      "delete-account"
+      await findOrphanBlockers(ctx.admin, ctx.user.id, { tripId })
     );
     // §4.4 — fail loud: the user must know WHICH trip to act on.
     expect(msg).toContain("Named In Message Trip");

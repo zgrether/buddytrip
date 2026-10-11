@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
-import { findOrphanBlockers, orphanRefusalMessage } from "./ownerGuard";
+import { findOrphanBlockers } from "./ownerGuard";
 
 /**
  * Leaving a trip, or being removed from one, is an ARCHIVE (PR 8d, ruling 19).
@@ -62,16 +62,8 @@ async function refusalMessage(
       return { code: "UNAUTHORIZED", message: "Sign in to do that." };
     case "ARCHIVE_NOT_A_MEMBER":
       return { code: "NOT_FOUND", message: "That person isn't on this trip." };
-    case "ARCHIVE_OWNER_MUST_TRANSFER": {
-      const blockers = await findOrphanBlockers(supabase, userId, { tripId });
-      return {
-        code: "PRECONDITION_FAILED",
-        message:
-          blockers.length > 0
-            ? orphanRefusalMessage(blockers, "leave-trip")
-            : "You own this trip. Transfer ownership in Trip settings first, then leave.",
-      };
-    }
+    case "ARCHIVE_OWNER_MUST_TRANSFER":
+      return { code: "PRECONDITION_FAILED", message: (await ownerLeaveRefusal(supabase, tripId, userId)).message };
     case "ARCHIVE_NOT_ALLOWED":
       return { code: "FORBIDDEN", message: "Only the trip's owner or an organizer can remove people." };
     case "ARCHIVE_CANNOT_REMOVE_OWNER":
@@ -83,6 +75,42 @@ async function refusalMessage(
           "Only the trip owner can remove an organizer. Ask the owner to remove them, or to change their role to Member first.",
       };
   }
+}
+
+/** Where in Trip settings the Owner goes instead of leaving. */
+export type OwnerLeaveSettingsView = "transfer" | "delete";
+
+/**
+ * Why the Owner cannot leave, and where to go instead — the ONE sentence for
+ * it, shown both by the refusal above and BEFORE the attempt
+ * (`tripMembers.departureSummary`, which the Leave trip button reads), so the
+ * two can never say different things.
+ *
+ * Short on purpose (Zach's look, PR 8d-3): the reason and the one place to go,
+ * nothing the reader can't act on. `settingsView` is that place, so the button
+ * can open Trip settings on it.
+ *   - Someone can take the trip over (or there is already another Owner):
+ *     transfer it.
+ *   - Nobody can — they are alone, or only placeholders are left, who can't
+ *     own a trip (`findOrphanBlockers`, the same answer account deletion
+ *     uses): "transfer first" would be a dead end, so delete it instead.
+ */
+export async function ownerLeaveRefusal(
+  supabase: SupabaseClient,
+  tripId: string,
+  userId: string
+): Promise<{ message: string; settingsView: OwnerLeaveSettingsView }> {
+  const blockers = await findOrphanBlockers(supabase, userId, { tripId });
+  const stuck = blockers.some((b) => !b.hasTransferTarget);
+  const title = blockers[0]?.title ?? (await tripTitle(supabase, tripId));
+  return stuck
+    ? { message: `Nobody else on ${title} can own it. Delete it in Trip settings instead.`, settingsView: "delete" }
+    : { message: `You own ${title}. Transfer ownership in Trip settings, then you can leave.`, settingsView: "transfer" };
+}
+
+async function tripTitle(supabase: SupabaseClient, tripId: string): Promise<string> {
+  const { data } = await supabase.from("trips").select("title").eq("id", tripId).maybeSingle();
+  return (data?.title as string | undefined) ?? "this trip";
 }
 
 /**

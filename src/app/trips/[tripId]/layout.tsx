@@ -3,6 +3,7 @@ import type { inferRouterOutputs } from "@trpc/server";
 import { createSSRHelpers } from "@/server/trpc-ssr";
 import { TripBootSeed } from "@/components/competition/TripBootSeed";
 import { TripIdProvider } from "@/components/TripIdProvider";
+import { TripMembershipGate } from "@/components/TripMembershipGate";
 import type { FaceBootstrap } from "@/components/competition/LiveFaceClient";
 import type { AppRouter } from "@/server/router";
 
@@ -120,6 +121,9 @@ export default async function TripLayout({
             cache here; see TripBootSeed for the evidence and why. */}
         {tripId && <TripBootSeed tripId={tripId} boot={boot} members={members} />}
         {children}
+        {/* A person removed while the app is open is told so, on every route
+            under the trip (PR 8d-3). Renders nothing for a member. */}
+        <TripMembershipGate />
       </TripIdProvider>
     </HydrateQueryState>
   );
