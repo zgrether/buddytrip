@@ -1876,6 +1876,24 @@ Applying a course to a game **snapshots** its `par[]` + `handicap_index[]` into
 `games.scorecard_schema.units.metadata` (the shape `strokeHoles` reads); the
 snapshot freezes once scores exist, and `games.course_id` is kept as provenance.
 
+## Copy — a confirmation says what is being confirmed, plus what the reader can act on
+
+Nothing else. Anything the app handles for them stays out: what it keeps, what
+happens to their games, how the mechanism works. **Apply it before every look:
+write the sheet, then cut every line the reader wouldn't miss.**
+
+It keeps recurring, which is why it is a rule. Zach's looks cut words more often
+than they change anything else. The pick'em locked page said three things twice.
+The first 8d-3 leave and remove sheets carried a reassurance sentence, a
+"history stays" line, an "undecided games" line and a games list, and Zach cut
+all four. What survived was the title ("Leave {trip}?", "Remove {name} from
+{trip}?") and one line, shown only when they are in an expense: money is the one
+thing a person still has to settle themselves.
+
+**The tell:** a line that explains what the system does, rather than asking the
+reader to decide or do something. A refusal has the same shape: the reason, and
+where to go. See "A REFUSAL MUST NAME AN ACTION THE READER CAN TAKE".
+
 ## Verification Cadence — stop and ask Zach to look
 
 **Stop and ask Zach to look the moment a surface first becomes reachable — not when the
