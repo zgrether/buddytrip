@@ -63,8 +63,8 @@ test.beforeAll(async () => {
   // Trip-scoped nicknames make the player picker deterministic regardless of the
   // shared users' drifting account names.
   const { error: mErr } = await admin.from("trip_members").insert([
-    { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in", nickname: "MP Owner" },
-    { trip_id: tripId, user_id: memberId, role: "Member", status: "in", nickname: "MP Member" },
+    { trip_id: tripId, user_id: ownerId, role: "Owner", nickname: "MP Owner" },
+    { trip_id: tripId, user_id: memberId, role: "Member", nickname: "MP Member" },
   ]);
   if (mErr) throw new Error(`seed members failed: ${mErr.message}`);
 

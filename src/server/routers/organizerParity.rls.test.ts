@@ -59,7 +59,7 @@ describe("migration 101 — Organizer parity RLS", () => {
       .insert({ id: guestId, name: "Parity Guest", is_guest: true });
     await ctx.admin
       .from("trip_members")
-      .insert({ trip_id: tripId, user_id: guestId, role: "Member", status: "in" });
+      .insert({ trip_id: tripId, user_id: guestId, role: "Member" });
   });
 
   afterAll(async () => {
@@ -398,7 +398,6 @@ describe("migration 101 — Organizer parity RLS", () => {
         trip_id: tripId,
         user_id: guestId,
         role: "Member",
-        status: "in",
       });
       expect(error).not.toBeNull();
     });

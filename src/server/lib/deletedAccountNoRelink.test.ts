@@ -94,7 +94,7 @@ describe("migration 132 — a deleted account cannot be resurrected by its addre
     const email = `${genId("ordinary")}@example.com`.toLowerCase();
     const ghost = genId("ordinary-ghost");
     await seed("users", { id: ghost, name: "Ordinary Ghost", email, is_guest: true });
-    await seed("trip_members", { trip_id: tripId, user_id: ghost, role: "Member", status: "in" });
+    await seed("trip_members", { trip_id: tripId, user_id: ghost, role: "Member" });
 
     const { data: created, error } = await ctx.admin.auth.admin.createUser({
       email, password: "BuddyTripTest2026!", email_confirm: true,
@@ -129,8 +129,8 @@ describe("migration 132 — a deleted account cannot be resurrected by its addre
       { id: live, name: "Ordinary Ghost", is_guest: true },
     ]);
     await seed("trip_members", [
-      { trip_id: tripId, user_id: dead, role: "Member", status: "in" },
-      { trip_id: tripId, user_id: live, role: "Member", status: "in" },
+      { trip_id: tripId, user_id: dead, role: "Member" },
+      { trip_id: tripId, user_id: live, role: "Member" },
     ]);
     expect(owner).toBeTruthy();
 

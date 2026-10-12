@@ -71,7 +71,7 @@ test.beforeAll(async () => {
   const t = await admin.from("trips").insert({ id: tripId, title: "E2E Handler Accumulation" });
   if (t.error) throw new Error(`seed trip: ${t.error.message}`);
   const m = await admin.from("trip_members").insert([
-    { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in", nickname: "Acc Owner" },
+    { trip_id: tripId, user_id: ownerId, role: "Owner", nickname: "Acc Owner" },
   ]);
   if (m.error) throw new Error(`seed member: ${m.error.message}`);
 

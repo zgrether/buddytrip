@@ -88,9 +88,9 @@ ON CONFLICT (id) DO NOTHING;
 -- 3. TRIP MEMBERS — owner + 1 crew member
 -- ═══════════════════════════════════════════════════════════════
 
-INSERT INTO trip_members (id, trip_id, user_id, role, status, joined_at, travel_shared) VALUES
-  ('seed-tm-owner', 'seed-trip-bbmi-2027', :owner_id, 'owner',  'in',    now(), true),
-  ('seed-tm-crew',  'seed-trip-bbmi-2027', :crew_id,  'member', 'going', now(), true)
+INSERT INTO trip_members (id, trip_id, user_id, role, joined_at, travel_shared) VALUES
+  ('seed-tm-owner', 'seed-trip-bbmi-2027', :owner_id, 'owner',  now(), true),
+  ('seed-tm-crew',  'seed-trip-bbmi-2027', :crew_id,  'member', now(), true)
 ON CONFLICT (id) DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════

@@ -252,7 +252,6 @@ describe("messages router", () => {
       trip_id: floorTrip,
       user_id: ctx.getUser("member").id,
       role: "Member",
-      status: "in",
       chat_visible_from: floor,
     });
 
@@ -305,7 +304,6 @@ describe("messages router", () => {
       trip_id: trip,
       user_id: ctx.getUser("member").id,
       role: "Member",
-      status: "in",
       chat_visible_from: joinFloor,
     });
 
@@ -323,7 +321,6 @@ describe("messages router", () => {
       trip_id: trip,
       user_id: ctx.getUser("member").id,
       role: "Member",
-      status: "in",
       chat_visible_from: new Date().toISOString(),
     });
 
@@ -644,7 +641,6 @@ describe("messages router", () => {
       trip_id: trip,
       user_id: ctx.getUser("member").id,
       role: "Member",
-      status: "in",
       chat_visible_from: floor,
     });
 
@@ -724,7 +720,6 @@ describe("messages router", () => {
       trip_id: floorTrip,
       user_id: ctx.getUser("outsider").id,
       role: "Organizer",
-      status: "in",
       chat_visible_from: floor,
       planning_visible_from: floor,
     });

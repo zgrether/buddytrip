@@ -169,14 +169,13 @@ describe("invites.claim — token-authorized placeholder claim", () => {
     //     new id and silently drop the nickname and role riding on the old one.
     const member = await ctx.admin
       .from("trip_members")
-      .select("id, user_id, nickname, role, status")
+      .select("id, user_id, nickname, role")
       .eq("id", seed.memberRowId)
       .maybeSingle();
     expect(member.data).toBeTruthy();
     expect(member.data!.user_id).toBe(outsiderId);
     expect(member.data!.nickname).toBe("Bradley");
     expect(member.data!.role).toBe("Member");
-    expect(member.data!.status).toBe("in");
 
     // (2) Competition history followed. These three are the tables the shipped
     //     auto-link bug left behind, and the JSONB side is the one a plain

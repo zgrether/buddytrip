@@ -228,7 +228,7 @@ export class TestContext {
       () =>
         this.admin
           .from("trip_members")
-          .insert({ trip_id: tripId, user_id: this.user.id, role: "Owner", status: "in" }),
+          .insert({ trip_id: tripId, user_id: this.user.id, role: "Owner" }),
       "Failed to add trip member"
     );
 
@@ -247,7 +247,7 @@ export class TestContext {
       () =>
         this.admin
           .from("trip_members")
-          .insert({ trip_id: tripId, user_id: user.id, role: tripRole, status: "in" }),
+          .insert({ trip_id: tripId, user_id: user.id, role: tripRole }),
       "Failed to add trip member"
     );
   }
@@ -262,7 +262,7 @@ export class TestContext {
       () =>
         this.admin
           .from("trip_members")
-          .insert({ trip_id: tripId, user_id: userId, role: tripRole, status: "in" }),
+          .insert({ trip_id: tripId, user_id: userId, role: tripRole }),
       "Failed to add trip member"
     );
   }

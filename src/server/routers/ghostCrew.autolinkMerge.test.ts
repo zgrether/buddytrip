@@ -226,7 +226,6 @@ describe("ghostCrew.update auto-link → full merge", () => {
       trip_id: tripId,
       user_id: realId,
       role: "Member",
-      status: "in",
     });
     await ctx.admin.from("game_participants").insert({
       id: `gp-collide-${Date.now()}`,

@@ -65,8 +65,8 @@ test.beforeAll(async () => {
   // shared users' account names (which drift as other tests rename them) — and
   // they mutate nothing outside this throwaway trip.
   const { error: mErr } = await admin.from("trip_members").insert([
-    { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in", nickname: "E2E Owner" },
-    { trip_id: tripId, user_id: memberId, role: "Member", status: "in", nickname: "E2E Member" },
+    { trip_id: tripId, user_id: ownerId, role: "Owner", nickname: "E2E Owner" },
+    { trip_id: tripId, user_id: memberId, role: "Member", nickname: "E2E Member" },
   ]);
   if (mErr) throw new Error(`seed members failed: ${mErr.message}`);
 

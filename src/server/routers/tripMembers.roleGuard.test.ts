@@ -146,12 +146,12 @@ describe("migration 122 — role-column guard, enforced at the DATABASE", () => 
     ]);
 
     const ok = await organizer.from("trip_members")
-      .insert({ trip_id: tripId, user_id: guestOk, role: "Member", status: "in" });
+      .insert({ trip_id: tripId, user_id: guestOk, role: "Member" });
     expect(ok.error).toBeNull();
 
     // Granting a privileged role is "changing who is trusted" — Owner only.
     const bad = await organizer.from("trip_members")
-      .insert({ trip_id: tripId, user_id: guestBad, role: "Organizer", status: "in" });
+      .insert({ trip_id: tripId, user_id: guestBad, role: "Organizer" });
     expect(bad.error).not.toBeNull();
 
     await ctx.admin.from("trip_members").delete().eq("trip_id", tripId).in("user_id", [guestOk, guestBad]);
@@ -191,7 +191,7 @@ describe("migration 122 — the signup path stays inert (the regression cases)",
     // A placeholder on the trip, carrying the email the new account will use.
     const ghostId = `ghost-122-merge-${Date.now()}`;
     await c.admin.from("users").insert({ id: ghostId, name: "Colliding Ghost", email, is_guest: true });
-    await c.admin.from("trip_members").insert({ trip_id: trip, user_id: ghostId, role: "Member", status: "in" });
+    await c.admin.from("trip_members").insert({ trip_id: trip, user_id: ghostId, role: "Member" });
 
     // Sign up for real — fires handle_new_user -> merge_guest_to_real_user.
     const { data, error } = await c.admin.auth.admin.createUser({

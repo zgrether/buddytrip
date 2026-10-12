@@ -117,7 +117,7 @@ describe("a decided match pays the team the leaver was on", () => {
     // the win pay nobody (ruling 7).
     const c = await decidedMatch("rejoined");
     expect((await ctx.authedClient("owner").rpc("archive_trip_member", { p_trip_id: c.tripId, p_user_id: planner })).error).toBeNull();
-    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: c.tripId, user_id: planner, role: "Member", status: "in" });
+    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: c.tripId, user_id: planner, role: "Member" });
     if (back.error) throw back.error;
     // Premise: on the trip again, and on no team.
     const { count } = await ctx.admin.from("team_assignments")
@@ -148,7 +148,7 @@ describe("a decided match pays the team the leaver was on", () => {
   it("a FRESH assignment always beats the departure's team", async () => {
     const c = await decidedMatch("fresh team");
     expect((await ctx.authedClient("owner").rpc("archive_trip_member", { p_trip_id: c.tripId, p_user_id: planner })).error).toBeNull();
-    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: c.tripId, user_id: planner, role: "Member", status: "in" });
+    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: c.tripId, user_id: planner, role: "Member" });
     if (back.error) throw back.error;
     // Written directly: 8b refuses this through the app while the game is
     // unfinished, which is exactly why the departure team is safe to use. This
@@ -182,7 +182,7 @@ describe("a decided match pays the team the leaver was on", () => {
     const { data: first } = await ctx.admin.from("trip_departures").select("left_at, team_id").eq("trip_id", c.tripId).eq("user_id", planner).single();
     expect(first?.team_id).toBe(c.teamA);
 
-    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: c.tripId, user_id: planner, role: "Member", status: "in" });
+    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: c.tripId, user_id: planner, role: "Member" });
     if (back.error) throw back.error;
     await new Promise((r) => setTimeout(r, 20));
     const round = (await ctx.caller().games.create({

@@ -235,7 +235,7 @@ describe("what leaving clears — and what it keeps", () => {
     await say(t.tripId, f.member);
     expect((await archive("member", t.tripId, f.member)).error).toBeNull();
     const first = await departure(t.tripId, f.member);
-    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: t.tripId, user_id: f.member, role: "Member", status: "in" });
+    const back = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: t.tripId, user_id: f.member, role: "Member" });
     if (back.error) throw back.error;
     await new Promise((r) => setTimeout(r, 20));
     expect((await archive("member", t.tripId, f.member)).error).toBeNull();
@@ -270,7 +270,7 @@ describe("placeholders", () => {
     const id = `ghost-${crypto.randomUUID()}`;
     const u = await ctx.admin.from("users").insert({ id, name, is_guest: true });
     if (u.error) throw u.error;
-    const m = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: tripId, user_id: id, role: "Member", status: "in" });
+    const m = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: tripId, user_id: id, role: "Member" });
     if (m.error) throw m.error;
     return id;
   }
@@ -308,7 +308,7 @@ describe("placeholders", () => {
     await say(t.tripId, ghost);
     expect((await archive("owner", t.tripId, ghost)).error).toBeNull();
     // A second trip where BOTH have left: the collision.
-    const g2 = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: other.tripId, user_id: ghost, role: "Member", status: "in" });
+    const g2 = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: other.tripId, user_id: ghost, role: "Member" });
     if (g2.error) throw g2.error;
     await say(other.tripId, ghost);
     expect((await archive("owner", other.tripId, ghost)).error).toBeNull();

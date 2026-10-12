@@ -161,7 +161,7 @@ describe("inviteLink — viewerCanSeeTrip", () => {
     await ctx.admin.from("users").insert({ id: uid, name: "Invited", is_guest: true });
     await ctx.admin
       .from("trip_members")
-      .insert({ trip_id: seenTripId, user_id: uid, role: "Member", status: "invited" });
+      .insert({ trip_id: seenTripId, user_id: uid, role: "Member" });
 
     expect(await viewerCanSeeTrip(uid, seenTripId)).toBe(true);
 
