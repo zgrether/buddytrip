@@ -6,7 +6,6 @@ import {
   canPlayInTeamlessRace,
   type GameTypeDefinition,
   type ResultKind,
-  type GameContainer,
 } from "./gameTypes";
 import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
 
@@ -16,7 +15,7 @@ import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
  * ── What this guards that `tsc` does not ───────────────────────────────────
  *
  * The compiler already refuses a format missing `resultKinds`, `teamDependent`
- * or `allowedContainers` — adding the fields produced ten errors naming ten
+ * or `allowedInPointsRace` — adding the fields produced ten errors naming ten
  * formats, which is the presence check done for free. **A runtime test that
  * only re-asserts presence would be inert**: it could never fail on a tree that
  * compiles, and it would look exactly like protection.
@@ -42,7 +41,13 @@ import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
  */
 
 const RESULT_KINDS: ResultKind[] = ["head_to_head", "ranked"];
-const CONTAINERS: GameContainer[] = ["head_to_head", "points_race"];
+/**
+ * No list check for `allowedInPointsRace`. It was `allowedContainers`, a list,
+ * until PR 9e deleted its unread `head_to_head` half; a boolean cannot be empty
+ * or hold a duplicate, so the checks below would be the type system's job
+ * restated — inert by construction. Its one invariant that a value can break
+ * (rack) is asserted over the real catalog further down.
+ */
 /**
  * `scoreTables` (#1432): any broadcasting table EXCEPT `games`. `tsc` already
  * refuses a table outside `BROADCAST_TABLES`; `games` is in that list (its
@@ -60,7 +65,6 @@ function declarationFaults(d: GameTypeDefinition): string[] {
     for (const v of vals) if (!legal.includes(v)) faults.push(`${label} has illegal value ${String(v)}`);
   };
   set("resultKinds", d.resultKinds, RESULT_KINDS);
-  set("allowedContainers", d.allowedContainers, CONTAINERS);
   set("scoreTables", d.scoreTables, SCORE_TABLES);
   if (typeof d.teamDependent !== "boolean") faults.push("teamDependent is not a boolean");
   return faults;
@@ -96,12 +100,10 @@ describe("declared format properties", () => {
       ...GAME_TYPE_LIST[0],
       id: "gtt_stub",
       resultKinds: [] as ResultKind[],
-      allowedContainers: [] as GameContainer[],
       scoreTables: [] as BroadcastTable[],
     } as GameTypeDefinition;
     expect(declarationFaults(stub)).toEqual([
       "resultKinds is empty",
-      "allowedContainers is empty",
       "scoreTables is empty",
     ]);
   });
@@ -136,9 +138,22 @@ describe("declared format properties", () => {
    * The model's own invariants, asserted over the real catalog rather than
    * restated in prose. Each is a ruling that would otherwise live only here.
    */
-  it("rack can never be a side game (rulings 12, 27)", () => {
+  /**
+   * This used to assert `allowedContainers` was `["head_to_head"]` under a name
+   * about SIDE games — which `allowedContainers` stopped deciding in PR 7. The
+   * name claimed a path the assertion did not take. Both facts now, each read
+   * from the field that actually decides it.
+   */
+  it("rack lives in a head-to-head cup only: never a points tournament, never a side game (rulings 12, 27)", () => {
     const rack = GAME_TYPE_LIST.find((d) => d.id === "gtt_rack_n_stack")!;
-    expect(rack.allowedContainers).toEqual(["head_to_head"]);
+    expect(rack.allowedInPointsRace).toBe(false);
+    expect(canBeSideGame(rack.id)).toBe(false);
+  });
+
+  /** And it is the ONLY one: every other format may be played in a points
+   *  tournament. Stated as the set, so a format losing it is named here. */
+  it("rack is the only format barred from a points tournament", () => {
+    expect(GAME_TYPE_LIST.filter((d) => !d.allowedInPointsRace).map((d) => d.id)).toEqual(["gtt_rack_n_stack"]);
   });
 
   /**

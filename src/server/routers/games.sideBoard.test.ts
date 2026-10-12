@@ -11,7 +11,7 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
  *    made JD build a fake three-team cup — and appears on the side board, its
  *    row built by the same `boardRow` the leaderboard uses;
  *  - a format that records nothing without a competition is REFUSED as a side
- *    game, reading the declaration (`allowedContainers`), with the control
+ *    game, reading the declaration (`canBeSideGame`), with the control
  *    showing the same format is admitted INTO a cup;
  *  - a finished side game names its WINNER (a tie names both), never a row of
  *    zeros;

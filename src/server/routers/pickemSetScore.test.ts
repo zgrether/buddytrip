@@ -48,7 +48,7 @@ async function scoreRow(id = slateId) {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  // Pick'em is not a side game (`allowedContainers`), so both slates live in
+  // Pick'em is not a side game (`canBeSideGame`), so both slates live in
   // the trip's cup — a POINTS cup, which needs no team roster to hold one.
   ({ tripId, competitionId } = await ctx.createCupTrip({
     name: "Pick'em Score Entry Trip",

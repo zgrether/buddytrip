@@ -104,7 +104,7 @@ async function declareResult(matchId: string, result: "a_win" | "b_win" | "halve
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  // A card game is not a side game (`allowedContainers`), so it lives in the
+  // A card game is not a side game (`canBeSideGame`), so it lives in the
   // trip's cup. A POINTS cup: it holds a Matches game without the two-team
   // roster a Match Play cup would require of every paired player.
   ({ tripId, competitionId } = await ctx.createCupTrip({

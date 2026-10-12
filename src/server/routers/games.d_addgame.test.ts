@@ -49,7 +49,7 @@ async function newGame(pointsTotal: number | null, name = "Placement Game") {
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  // A manual game is not a side game (`allowedContainers`), so it lives in the
+  // A manual game is not a side game (`canBeSideGame`), so it lives in the
   // trip's cup — a POINTS cup, whose award model is the placement total below.
   ({ tripId, competitionId } = await ctx.createCupTrip({
     name: "D Add-Game Trip",

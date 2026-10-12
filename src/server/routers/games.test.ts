@@ -207,7 +207,7 @@ describe("games router — result_strategy dispatch guard", () => {
 
   beforeAll(async () => {
     ctx = await TestContext.create();
-    // The manual games below are not side games (`allowedContainers`), so they
+    // The manual games below are not side games (`canBeSideGame`), so they
     // live in the trip's cup — a POINTS cup, which takes placement formats. The
     // stroke and unregistered-type games stay side games on the same trip.
     ({ tripId, competitionId } = await ctx.createCupTrip({
