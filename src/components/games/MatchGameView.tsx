@@ -24,7 +24,7 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { isTeamCaptain } from "@/hooks/useCanEditTeam";
 import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
 import { useRosterChangeGate } from "@/components/competition/RosterChangeGate";
-import { builderAddTargets, builderPool, notOnATeamIds, pairsFromRosters } from "@/lib/builderPool";
+import { builderAddTargets, builderPool, notOnATeamIds, notOnATeamNote, pairsFromRosters } from "@/lib/builderPool";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MatchOutcomeEntryView } from "@/components/games/MatchOutcomeEntryView";
 import { matchDefeatText } from "@/components/games/MatchResultBanner";
@@ -2504,7 +2504,19 @@ export function MatchGameView() {
                 ? {
                     ids: notOnATeamIds({ rostersApply, crewIds, teamOf: (id) => teamOfUser.get(id) }),
                     targets: addTargets,
-                    onAdd: (userId, teamId) => assignToTeam.mutate({ tripId, competitionId: gameCompId, userId, teamId }),
+                    note: notOnATeamNote({ targets: addTargets, staff: rosterStaff, hasResults: !!hasResultsQ.data, previewAvailable: !!rosterPreview }),
+                    // Join the team AND fill this slot — after results, only once
+                    // the preview is confirmed (`onRun`).
+                    onAdd: (userId, teamId) =>
+                      assignToTeam.mutate(
+                        { tripId, competitionId: gameCompId, userId, teamId },
+                        {
+                          onRun: () => {
+                            editDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId));
+                            setSelector(null);
+                          },
+                        },
+                      ),
                   }
                 : undefined
             }

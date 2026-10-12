@@ -71,6 +71,30 @@ export function notOnATeamIds(p: {
  *    mounted (a game opened on its standalone route), no add is offered — the
  *    server would refuse it for lacking the preview's fingerprint.
  */
+/**
+ * What the section says when this viewer has NO add — every viewer who can
+ * build matches sees who is not on a team (9b look: hiding them brought back
+ * the silent-missing bug for delegates, who are often the ones building), and a
+ * viewer who cannot add is told who can.
+ *
+ * The exception names a place instead: an Owner or Organizer with results in
+ * but no preview mounted (a game opened on its standalone route). "An
+ * organizer can add them" would send them looking for themselves.
+ */
+export const NOT_ON_A_TEAM_NOTE = "An organizer can add them to a team.";
+export const NOT_ON_A_TEAM_ROSTERS_NOTE = "Add them to a team in Rosters.";
+
+export function notOnATeamNote(p: {
+  targets: BuilderTeam[];
+  staff: boolean;
+  hasResults: boolean;
+  previewAvailable: boolean;
+}): string | null {
+  if (p.targets.length > 0) return null;
+  if (p.staff && p.hasResults && !p.previewAvailable) return NOT_ON_A_TEAM_ROSTERS_NOTE;
+  return NOT_ON_A_TEAM_NOTE;
+}
+
 export function builderAddTargets(p: {
   teams: BuilderTeam[];
   slotTeamId?: string;

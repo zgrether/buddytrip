@@ -95,10 +95,20 @@ export function useTeamAssignmentMutations(tripId: string, competitionId: string
   type RemoveVars = Parameters<typeof rawRemove.mutate>[0];
   const assign = {
     ...rawAssign,
-    mutate: (vars: AssignVars) => {
+    /**
+     * `onRun` fires when the change ACTUALLY runs — at once when it goes
+     * direct, or when the organizer confirms the preview — and never on a
+     * cancelled preview. The match builder places the person in its slot there
+     * (9b look), so a cancelled add leaves the slot as it was.
+     */
+    mutate: (vars: AssignVars, opts?: { onRun?: () => void }) => {
       const currentTeamId = currentTeamOf(vars.userId);
       const decision = rosterGateDecision({ staff, hasResults, kind: "assign", currentTeamId, toTeamId: vars.teamId });
-      if (decision === "direct" || !gate) return rawAssign.mutate(vars);
+      if (decision === "direct" || !gate) {
+        rawAssign.mutate(vars);
+        opts?.onRun?.();
+        return;
+      }
       gate({
         // No current team: an ADD (previewed after results, ruling 20).
         kind: currentTeamId ? "move" : "add",
@@ -107,7 +117,10 @@ export function useTeamAssignmentMutations(tripId: string, competitionId: string
         fromTeamName: teamNameOf(currentTeamId),
         toTeamName: teamNameOf(vars.teamId),
         toTeamId: vars.teamId,
-        run: (rosterFingerprint) => rawAssign.mutate({ ...vars, rosterFingerprint }),
+        run: (rosterFingerprint) => {
+          rawAssign.mutate({ ...vars, rosterFingerprint });
+          opts?.onRun?.();
+        },
       });
     },
   };

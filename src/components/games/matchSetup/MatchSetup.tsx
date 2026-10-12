@@ -536,14 +536,15 @@ export function PlayerSelector({
   onClose: () => void;
   /**
    * The cup's crew on no team, and the teams THIS viewer may add them to
-   * (`builderPool.ts`). Rendered only when there is someone to list AND a team
-   * to add them to: a section of names nobody here can act on is a list of
-   * things the screen cannot do (the Copy rule). Omitted by a side game, a
-   * teamless race and pick'em.
+   * (`builderPool.ts`). Shown to everyone who can build matches, so nobody is
+   * silently missing; a viewer with no add sees `note` instead of buttons.
+   * Adding from here also PLACES the person in this slot (`onAdd` does both).
+   * Omitted by a side game, a teamless race and pick'em.
    */
   notOnATeam?: {
     ids: string[];
     targets: BuilderTeam[];
+    note: string | null;
     onAdd: (userId: string, teamId: string) => void;
   };
 }) {
@@ -608,9 +609,14 @@ export function PlayerSelector({
             </p>
           </>
         )}
-        {notOnATeam && notOnATeam.ids.length > 0 && notOnATeam.targets.length > 0 && (
+        {notOnATeam && notOnATeam.ids.length > 0 && (
           <>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 16 }}>Not on a team</div>
+            {notOnATeam.note && (
+              <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 6 }} data-testid="not-on-a-team-note">
+                {notOnATeam.note}
+              </p>
+            )}
             <div className="mt-2 flex flex-col gap-1.5" data-testid="selector-not-on-a-team">
               {notOnATeam.ids.map((id) => (
                 <NotOnATeamRow
@@ -657,33 +663,52 @@ function Slot({ player, onTap }: { player: Participant | null; onTap?: () => voi
 }
 
 /**
- * A crew member on no team: their name, and one "Add to {team}" per team this
- * viewer may add them to. Adding does not place them — they join the team and
- * appear in the list above, where a tap places them like anyone else. After
- * results the add opens the before-and-after preview first.
+ * A crew member on no team, and ONE control (9b look):
+ *  - one team they could go to (head to head: the slot's own) → "Add to {team}";
+ *  - several (a points race) → "Add to team…", which opens the choice in place;
+ *  - none (this viewer cannot add) → no control; the section's note says who can.
+ * Adding places them in the slot the picker was opened from. After results the
+ * preview comes first, and the slot fills only once it is confirmed.
  */
 function NotOnATeamRow({ userId, name, targets, onAdd }: { userId: string; name: string; targets: BuilderTeam[]; onAdd: (userId: string, teamId: string) => void }) {
+  const [choosing, setChoosing] = useState(false);
+  const pill = { padding: "5px 10px", borderRadius: 999, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", fontSize: 13, fontWeight: 600, color: "var(--color-bt-text)" } as const;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2" style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }} data-testid={`not-on-a-team-${userId}`}>
-      <span className="flex min-w-0 items-center gap-2.5">
-        <Avatar name={name} sizePx={30} collapse />
-        <span style={{ fontSize: 15, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-      </span>
-      <span className="flex flex-wrap justify-end gap-1.5">
-        {targets.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onAdd(userId, t.id)}
-            data-testid={`add-to-team-${userId}-${t.id}`}
-            className="flex items-center gap-1.5"
-            style={{ padding: "5px 10px", borderRadius: 999, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", fontSize: 13, fontWeight: 600, color: "var(--color-bt-text)" }}
-          >
-            <span className="inline-block h-2 w-2 rounded-full" style={{ background: t.color }} />
-            Add to {t.name}
+    <div style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }} data-testid={`not-on-a-team-${userId}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-2.5">
+          <Avatar name={name} sizePx={30} collapse />
+          <span style={{ fontSize: 15, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+        </span>
+        {targets.length === 1 && (
+          <button type="button" onClick={() => onAdd(userId, targets[0].id)} data-testid={`add-to-team-${userId}`} className="flex shrink-0 items-center gap-1.5" style={pill}>
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: targets[0].color }} />
+            Add to {targets[0].name}
           </button>
-        ))}
-      </span>
+        )}
+        {targets.length > 1 && (
+          <button type="button" onClick={() => setChoosing((c) => !c)} aria-expanded={choosing} data-testid={`add-to-team-${userId}`} className="shrink-0" style={pill}>
+            Add to team…
+          </button>
+        )}
+      </div>
+      {choosing && targets.length > 1 && (
+        <div className="mt-2 flex flex-col gap-1.5" data-testid={`add-to-team-choice-${userId}`}>
+          {targets.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onAdd(userId, t.id)}
+              data-testid={`add-to-team-${userId}-${t.id}`}
+              className="flex w-full items-center gap-2 text-left"
+              style={{ padding: "8px 10px", borderRadius: 8, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", fontSize: 14, fontWeight: 600, color: "var(--color-bt-text)" }}
+            >
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: t.color }} />
+              {t.name}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

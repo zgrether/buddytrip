@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { builderAddTargets, builderPool, notOnATeamIds, pairsFromRosters, type BuilderTeam } from "./builderPool";
+import { builderAddTargets, builderPool, notOnATeamIds, notOnATeamNote, pairsFromRosters, type BuilderTeam } from "./builderPool";
 
 const RED: BuilderTeam = { id: "red", name: "Red", color: "#ef4444" };
 const BLUE: BuilderTeam = { id: "blue", name: "Blue", color: "#3b82f6" };
@@ -86,5 +86,31 @@ describe("builderAddTargets — whoever the server allows, by a path it accepts"
 
   it("before results the preview is irrelevant", () => {
     expect(builderAddTargets({ ...base, staff: true, previewAvailable: false }).map((t) => t.id)).toEqual(["red", "blue", "green"]);
+  });
+});
+
+/**
+ * 9b look: everyone who can build matches sees who is not on a team, and a
+ * viewer who cannot add is told who can — hiding the section brought back the
+ * silent-missing bug for delegates.
+ */
+describe("notOnATeamNote — what a viewer with no add is told", () => {
+  const base = { targets: [] as BuilderTeam[], staff: false, hasResults: false, previewAvailable: true };
+
+  it("says nothing when the viewer can add", () => {
+    expect(notOnATeamNote({ ...base, targets: [RED] })).toBeNull();
+  });
+
+  it("a delegate or member is told an organizer can", () => {
+    expect(notOnATeamNote(base)).toBe("An organizer can add them to a team.");
+  });
+
+  it("a captain locked out by results is told the same", () => {
+    expect(notOnATeamNote({ ...base, hasResults: true })).toBe("An organizer can add them to a team.");
+  });
+
+  /** An Organizer with no preview mounted must not be sent looking for themselves. */
+  it("an organizer with results in and no preview is sent to Rosters", () => {
+    expect(notOnATeamNote({ ...base, staff: true, hasResults: true, previewAvailable: false })).toBe("Add them to a team in Rosters.");
   });
 });

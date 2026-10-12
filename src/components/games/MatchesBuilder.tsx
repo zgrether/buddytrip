@@ -77,7 +77,14 @@ export function MatchesBuilder({
    *  (undefined in a points race) — built by the view, which holds the roster
    *  rights (`builderPool.ts`). Omitted: no section. */
   notOnATeamFor?: (slotTeamId: string | undefined) =>
-    | { ids: string[]; targets: BuilderTeam[]; onAdd: (userId: string, teamId: string) => void }
+    | {
+        ids: string[];
+        targets: BuilderTeam[];
+        note: string | null;
+        /** Join the team; `onRun` fires when the change runs (after the
+         *  preview, once results are in) — the builder places the person then. */
+        add: (userId: string, teamId: string, onRun: () => void) => void;
+      }
     | undefined;
 }) {
   // This used to take `const [a, b] = teams` in EVERY cup, so in a points race
@@ -147,7 +154,20 @@ export function MatchesBuilder({
             setSelector(null);
           }}
           onClose={() => setSelector(null)}
-          notOnATeam={notOnATeamFor?.(teamForSlot(selector.slot)?.id)}
+          notOnATeam={(() => {
+            const section = notOnATeamFor?.(teamForSlot(selector.slot)?.id);
+            if (!section) return undefined;
+            return {
+              ids: section.ids,
+              targets: section.targets,
+              note: section.note,
+              onAdd: (userId: string, teamId: string) =>
+                section.add(userId, teamId, () => {
+                  setDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId));
+                  setSelector(null);
+                }),
+            };
+          })()}
         />
       )}
     </>
