@@ -111,6 +111,8 @@ describe("bootstrap-seeded caches (#1405 C)", () => {
 describe("no snapshot restore on the roster, schedule and trip-member writers (#1405)", () => {
   const SCOPE = [
     "components/competition/TeamsPanel.tsx",
+    // TeamsPanel's roster mutations moved here in PR 9b; the guard follows them.
+    "hooks/useTeamAssignmentMutations.ts",
     "lib/rosterMutations.ts",
     "app/trips/[tripId]/tabs/ScheduleTab.tsx",
     "app/trips/[tripId]/tabs/components/MemberEditor.tsx",

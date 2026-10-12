@@ -1443,6 +1443,22 @@ clauses); reset and merge carry their new lines. No rows yet.
 **Split, in order:** 9a AS chip → 9b match builder → 9c-1 projection arms + teamless keying
 (no surface; closes #1120) → 9c-2 standings → 9d Live now on Home → 9e deletions.
 
+**After 9e, as its own sweep: *Cup* and *Tournament* on screen (Zach, 2026-10-12).** *Cup* is
+head to head; a points-based competition, teams or individuals, is a **Tournament** — never
+"Race" or "Tourney". *Bracket* stays the game-format word and is never called a tournament;
+*League* is reserved for the future season-long competition. COPY ONLY, the display-string
+tier: code identifiers, the `competitions` table and `scoring_model` keep their names. The
+vocabulary is already recorded in the CLAUDE.md glossary (*Container*); the sweep changes the
+screens. Not before 9e, so no PR 9 surface is renamed mid-build.
+
+**9b, refined on its look:** everyone who can build matches sees *Not on a team*. Only
+roster editors get an add; anyone else reads "An organizer can add them to a team."
+(hiding the section brought back the silent-missing bug for delegates, who often build
+matches). Adding from a slot's picker places the person in that slot, and after results
+only once the preview is confirmed. One control per row: *Add to {team}* where there is a
+single team (head to head), else *Add to team…*, which opens the choice. The narrow
+reading of "no assignments" stands: side games and teamless races keep the whole crew.
+
 ---
 
 ## Vocabulary

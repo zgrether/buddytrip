@@ -20,6 +20,11 @@ import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
 import { useInGamePanel, useGameSurfaceChrome } from "@/components/games/GameChrome";
 import { GameStandaloneHeader } from "@/components/games/GameStandaloneHeader";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useTripRole } from "@/hooks/useTripRole";
+import { isTeamCaptain } from "@/hooks/useCanEditTeam";
+import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
+import { useRosterChangeGate } from "@/components/competition/RosterChangeGate";
+import { builderAddTargets, builderPool, notOnATeamIds, notOnATeamNote, pairsFromRosters } from "@/lib/builderPool";
 import { MatchEntryView, type MatchGroupData } from "@/components/games/MatchEntryView";
 import { MatchOutcomeEntryView } from "@/components/games/MatchOutcomeEntryView";
 import { matchDefeatText } from "@/components/games/MatchResultBanner";
@@ -85,7 +90,7 @@ import { showToast } from "@/lib/toast";
 import type { OutcomeOverwrite } from "@/lib/outcomeReconcile";
 import { outcomeOverwriteNotice } from "@/components/games/outcomeOverwriteNotice";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
-import { gamesPageHref } from "@/lib/gameRoutes";
+import { gamesPageHref, rostersHref } from "@/lib/gameRoutes";
 
 // One unified match-play type (Refactor A1). 1v1-vs-2v2 is per-match, derived from
 // each match's side type — not the game type. `MATCH_PLAY_DOUBLES` is retired.
@@ -309,6 +314,17 @@ export function MatchGameView() {
     { tripId: tripId!, competitionId: gameCompId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompId }
   );
+  // "Add to {team}" from the picker (PR 9b): the Rosters screen's own path —
+  // optimistic, and after results through the 8b preview — and the rights it
+  // reads (`builderAddTargets`). Staff is the TRIP role, not game edit access:
+  // a delegate edits the game and has no roster rights.
+  const { canEdit: rosterStaff } = useTripRole(tripId);
+  const rosterPreview = useRosterChangeGate();
+  const hasResultsQ = trpc.teamAssignments.hasResults.useQuery(
+    { tripId: tripId!, competitionId: gameCompId! },
+    { enabled: !!tripId && !!gameCompId }
+  );
+  const { assign: assignToTeam } = useTeamAssignmentMutations(tripId ?? "", gameCompId ?? "");
   // Multi-tee scorecard yardage rows (Spec 5b) — reads the persisted course record(s).
   const { rows: teeRows, courseName: scorecardCourseName } = useScorecardTeeRows(tripId, gameQ.data);
   const matchesQ = trpc.matches.listByGame.useQuery({ tripId: tripId!, gameId: gameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameId });
@@ -2451,14 +2467,21 @@ export function MatchGameView() {
       )}
 
       {/* Player selector sheet — constrained to the side's team in a 2-team
-          competition (no cross-team pair), else the whole roster/crew. */}
+          competition (no cross-team pair), else every rostered player; the
+          whole crew only where there is no team to be on (`builderPool`). */}
       {selector && (() => {
         const slotTeam = teamForSlot(selector.slot);
-        const selectorCrew = slotTeam
-          ? rosterOfTeam(slotTeam.id)
-          : gameCompId && rosterIds.length > 0
-            ? rosterIds
-            : (crew.data ?? []).map((c) => c.user_id);
+        const rostersApply = pairsFromRosters({ inCup: !!gameCompId, teamCount: teams.length });
+        const crewIds = (crew.data ?? []).flatMap((c) => (c.user_id ? [c.user_id as string] : []));
+        const selectorCrew = builderPool({ slotTeamId: slotTeam?.id, rostersApply, rosterOfTeam, rosterIds, crewIds });
+        const addTargets = builderAddTargets({
+          teams,
+          slotTeamId: slotTeam?.id,
+          staff: rosterStaff,
+          captainOf: (teamId) => isTeamCaptain(assignQ.data as { user_id: string; team_id: string; is_captain?: boolean }[] | undefined, me?.id, teamId),
+          hasResults: !!hasResultsQ.data,
+          previewAvailable: !!rosterPreview,
+        });
         return (
           <PlayerSelector
             matchIdx={selector.matchIdx}
@@ -2476,6 +2499,28 @@ export function MatchGameView() {
               setSelector(null);
             }}
             onClose={() => setSelector(null)}
+            notOnATeam={
+              gameCompId && tripId
+                ? {
+                    ids: notOnATeamIds({ rostersApply, crewIds, teamOf: (id) => teamOfUser.get(id) }),
+                    targets: addTargets,
+                    note: notOnATeamNote({ targets: addTargets, staff: rosterStaff, hasResults: !!hasResultsQ.data, previewAvailable: !!rosterPreview }),
+                    rostersHref: rostersHref(tripId),
+                    // Join the team AND fill this slot — after results, only once
+                    // the preview is confirmed (`onRun`).
+                    onAdd: (userId, teamId) =>
+                      assignToTeam.mutate(
+                        { tripId, competitionId: gameCompId, userId, teamId },
+                        {
+                          onRun: () => {
+                            editDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId));
+                            setSelector(null);
+                          },
+                        },
+                      ),
+                  }
+                : undefined
+            }
           />
         );
       })()}
