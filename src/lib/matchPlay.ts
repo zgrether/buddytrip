@@ -60,6 +60,10 @@ export interface MatchState {
  * last is a result. Empty rendering as a value is this file's recurring
  * mistake (CLAUDE.md, "EMPTY IS NOT UNKNOWN").
  *
+ * On the match card none of them is a CHIP word: each belongs to neither side,
+ * so the card says it once in its header and keeps the chips for a leader's
+ * margin (Zach's 9a looks).
+ *
  * Six surfaces say these words, and each used to format its own: the match
  * card, two scorecards' per-hole cells, the result banner, the Quick Play
  * subtitle and the pick'em match note. Six private formatters are how they

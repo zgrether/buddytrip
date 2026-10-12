@@ -260,12 +260,21 @@ describe("MatchCard — not started, AS and Halved are three different cards", (
     expect(c.chipA).toBe("");
   });
 
-  it("level in play: AS on both chips, the round still counting", () => {
+  /** Level belongs to neither side either: said once, in the header, with the
+   *  count still in the centre. No chip ever carries a word but a margin. */
+  it("level in play: the header says AS · THRU over the count and both chips are EMPTY", () => {
     const c = read(seq(["W", "L"]));
-    expect(c.word).toBe("THRU");
+    expect(c.word).toBe("AS · THRU");
     expect(c.centre).toBe("2");
-    expect(c.chipA).toBe("AS");
-    expect(c.chipB).toBe("AS");
+    expect(c.chipA).toBe("");
+    expect(c.chipB).toBe("");
+  });
+
+  it("level on a slate counts down: AS · LEFT", () => {
+    const c = read(seq(["W", "L"]), 16, "slate");
+    expect(c.word).toBe("AS · LEFT");
+    expect(c.centre).toBe("14");
+    expect(c.chipA).toBe("");
   });
 
   /**

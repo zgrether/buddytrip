@@ -1417,6 +1417,9 @@ clauses); reset and merge carry their new lines. No rows yet.
    as references): a win keeps its margin chip on the winner's edge; a halve says its word
    ONCE, in the header's centre label where FINAL sits, and leaves both chips empty — a tie
    belongs to neither side, so both broadcasts put it in the middle.
+   **And a level match in play, by the same rule:** the header reads *AS · THRU* over the
+   hole count, both chips empty. Nothing puts a word in a chip but a margin on the
+   leader's edge. The halved header keeps FINAL's green: it is the status colour.
 2. **Match builder:** a *Not on a team* section; *Add to {team}* offered to whoever the
    server allows — Owner, Organizers, and captains for their own team before results.
    After results the add goes through the 8b preview, never a bare add. **Remove the

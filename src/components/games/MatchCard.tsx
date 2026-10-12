@@ -273,17 +273,17 @@ export function MatchCard({
   const aLeads = st.leader === "A";
   const bLeads = st.leader === "B";
   /**
-   * Nobody leads is three states, not one (`matchLevel`), and only LEVEL puts
-   * a word in the chips. An unplayed match has no score to show. A HALVED one
-   * says so ONCE, in the header's centre label where FINAL would sit, and
-   * leaves both chips empty: a tie belongs to neither side, so it does not go
-   * on either side's edge. Zach's look on 9a, after the Ryder Cup and
-   * Presidents Cup boards, which both put a tie in the middle. A win keeps its
-   * margin chip on the winner's edge.
+   * ── NOTHING PUTS A WORD IN A CHIP EXCEPT A MARGIN ON THE LEADER'S EDGE ────
+   *
+   * Nobody leads is three states (`matchLevel`), and none of them belongs to
+   * either side, so none of them goes on a side's edge. Each is said ONCE, in
+   * the header's centre label: "Not started", "AS · THRU" over the hole count,
+   * "Halved" where FINAL would sit. Both chips stay empty. Zach's looks on 9a,
+   * after the Ryder Cup and Presidents Cup boards, which both put a tie in the
+   * middle. A lead is the only state that is one side's, and only it reaches a
+   * chip.
    */
   const level = matchLevel(st);
-  const square = level === "level";
-  const squareText = square ? MATCH_LEVEL_WORD.level : "";
   /**
    * ── TWO DELIBERATE DIVERGENCES, ONE REASON, ONE PROP ──────────────────────
    *
@@ -311,11 +311,14 @@ export function MatchCard({
    */
   const slate = dialect === "slate";
   const notStarted = level === "not_started";
+  const progressWord = slate ? "LEFT" : "THRU";
   const headerWord = notStarted
     ? MATCH_LEVEL_WORD.not_started
     : level === "halved"
       ? MATCH_LEVEL_WORD.halved
-      : st.over ? "FINAL" : st.dormie ? "DORMIE" : slate ? "LEFT" : "THRU";
+      : level === "level"
+        ? `${MATCH_LEVEL_WORD.level} · ${progressWord}`
+        : st.over ? "FINAL" : st.dormie ? "DORMIE" : progressWord;
   /**
    * DORMIE IS NOT FINAL, AND THEY NO LONGER SHARE A COLOUR.
    *
@@ -412,7 +415,7 @@ export function MatchCard({
       {/* 2 · Row — `minHeight` (not a fixed 50) so a 2v2's stacked SideChips grow
           the strip instead of clipping (item 3); a 1v1 keeps the 50px single-name row. */}
       <div className="flex" style={{ minHeight: 50, alignItems: "stretch" }}>
-        <Margin side="a" active={aLeads} square={square} text={aLeads ? leadText : squareText} color={lc} closed={st.closed} />
+        <Margin side="a" active={aLeads} text={leadText} color={lc} closed={st.closed} />
         <NameCell name={a.name} players={aPlayers} align="right" tinted={aLeads} color={lc} note={aNote} muted={aMuted} />
         <div style={{ width: 3, background: wonL }} />
         <div className="flex items-center justify-center" data-testid="match-centre" style={{ width: CENTRE_W, flexShrink: 0, background: "var(--color-bt-card-raised)", fontSize: 19, fontWeight: 700, color: "var(--color-bt-text)" }}>
@@ -420,7 +423,7 @@ export function MatchCard({
         </div>
         <div style={{ width: 3, background: wonR }} />
         <NameCell name={b.name} players={bPlayers} align="left" tinted={bLeads} color={rc} note={bNote} muted={bMuted} />
-        <Margin side="b" active={bLeads} square={square} text={bLeads ? leadText : squareText} color={rc} closed={st.closed} />
+        <Margin side="b" active={bLeads} text={leadText} color={rc} closed={st.closed} />
       </div>
 
       {/* 3 · History */}
@@ -540,15 +543,14 @@ export function MatchCard({
   );
 }
 
-/** Outer status margin — solid emphasis color iff this side leads; the grey
- *  "AS" (`MATCH_LEVEL_WORD.level`) on both while level in play; empty
- *  otherwise, which includes an unplayed match and a halved one (the header
- *  says those). */
-function Margin({ side, active, square, text, color, closed }: { side: "a" | "b"; active: boolean; square: boolean; text: string; color: string; closed: boolean }) {
+/** Outer status margin — the leader's margin, in their emphasis colour, on
+ *  their edge. Empty on the other side, and on both whenever nobody leads: the
+ *  header says those states (see `matchLevel` above). */
+function Margin({ side, active, text, color, closed }: { side: "a" | "b"; active: boolean; text: string; color: string; closed: boolean }) {
   return (
     <div className="flex items-center justify-center" data-testid={`match-margin-${side}`} style={{ width: MARGIN_CHIP_W, flexShrink: 0, background: active ? color : "transparent" }}>
-      {(active || square) && (
-        <span style={{ fontSize: closed && active ? 14 : 15, fontWeight: 800, color: active ? teamTextColor(color) : NEU_HALF, whiteSpace: "nowrap" }}>
+      {active && (
+        <span style={{ fontSize: closed ? 14 : 15, fontWeight: 800, color: teamTextColor(color), whiteSpace: "nowrap" }}>
           {text}
         </span>
       )}
