@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { competitionNoun } from "@/lib/competitionWords";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -330,7 +331,7 @@ export function GameSheet({
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
             {competitionId && (
               <CountsToward
-                competitionName={competitionName ?? "The competition"}
+                competitionName={competitionName ?? `The ${competitionNoun(scoringModel)}`}
                 value={countsToward}
                 onChange={setCountsToward}
               />

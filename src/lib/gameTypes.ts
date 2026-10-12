@@ -33,6 +33,7 @@
 
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { BroadcastTable } from "@/lib/broadcastTables";
+import { competitionWord } from "@/lib/competitionWords";
 
 /** The scoring engines a format can dispatch to. `null` = manual / non-engine
  *  (finishing order entered by hand — cornhole, trivia, generic games). */
@@ -701,10 +702,7 @@ export function gameTypesForTeamlessRace(catalog: GameType[] = GAME_TYPES): Game
   return catalog.filter((t) => canPlayInTeamlessRace(t.id));
 }
 
-const SCORING_MODEL_LABEL: Record<ScoringModel, string> = {
-  match_play: "Match Play",
-  points: "Points",
-};
+
 
 /**
  * Why a competition of this scoring-model cannot hold this format, or null when
@@ -727,7 +725,7 @@ export function formatRefusalForScoringModel(
   if (!type || isGameTypeForScoringModel(type, scoringModel)) return null;
   const model = scoringModel as ScoringModel;
   const takes = gameTypesForScoringModel(model, catalog).map((t) => t.name).join(", ");
-  return `A ${SCORING_MODEL_LABEL[model]} cup can't hold ${type.name}. It takes: ${takes}.`;
+  return `A ${competitionWord(model)} can't hold ${type.name}. It takes: ${takes}.`;
 }
 
 // ── Lookups (the server readers' synchronous replacement for the DB query) ────

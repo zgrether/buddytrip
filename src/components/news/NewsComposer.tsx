@@ -491,7 +491,7 @@ function BlockEditor({
     heading: "Heading",
     text: "Text",
     crew: "@Crew · from the roster",
-    teams: "Teams · from Competition",
+    teams: "Teams · from the rosters",
     media: "Media",
     steps: "Steps",
     callout: "Callout",
@@ -958,7 +958,7 @@ function TeamsFields({
   if (!draw || draw.teams.length === 0) {
     return (
       <p style={{ margin: 0, fontSize: 12, color: "var(--color-bt-text-dim)", lineHeight: 1.45 }}>
-        No draw yet — set up teams in the Competition tab, then come back and add this block.
+        No draw yet — set up teams on the Games tab, then come back and add this block.
       </p>
     );
   }
@@ -995,7 +995,7 @@ function TeamsFields({
         </button>
       </div>
       <p style={{ margin: 0, fontSize: 11, color: "var(--color-bt-text-dim)" }}>
-        Rosters stay in sync with Competition — you don&rsquo;t retype them.
+        Rosters stay in sync — you don&rsquo;t retype them.
       </p>
     </div>
   );

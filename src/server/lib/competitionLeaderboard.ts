@@ -421,9 +421,9 @@ export async function computeCompetitionLeaderboard(
   ]);
   // EVERY read below either succeeds or throws (#1411, #1468) — see the note at
   // the second wave. None of them is ever read as the empty answer.
-  const teams = rowsOrThrow(teamsRes, "cup's teams");
+  const teams = rowsOrThrow(teamsRes, "teams");
   const teamIds = (teams ?? []).map((t) => t.id as string);
-  const comp = maybeRowOrThrow(compRes, "cup");
+  const comp = maybeRowOrThrow(compRes, "standings");
   // Scoring-model axis (independent of team count; default match_play). Branches
   // ONLY the non-golf result award below — the hero stays on teams.length.
   const scoringModel = ((comp?.scoring_model as string | null) ?? "match_play") as ScoringModel;
@@ -443,9 +443,9 @@ export async function computeCompetitionLeaderboard(
   // the format definitions in code (W-PERF-01), no longer a DB template fetch.
   // Only manual games get the match-play winner-take-all award; golf untouched.
   const isManualType = (typeId: string | null) => isManualGameType(typeId);
-  const allGames = rowsOrThrow(gameRowsRes, "cup's games");
+  const allGames = rowsOrThrow(gameRowsRes, "games");
   const sizeByTeam = new Map<string, number>();
-  for (const a of rowsOrThrow(assignmentsRes, "cup's rosters")) {
+  for (const a of rowsOrThrow(assignmentsRes, "rosters")) {
     const tid = a.team_id as string;
     sizeByTeam.set(tid, (sizeByTeam.get(tid) ?? 0) + 1);
   }
@@ -482,7 +482,7 @@ export async function computeCompetitionLeaderboard(
           // being credited twice (as themselves AND through their team).
           .in("entity_type", teamless ? ["team", "entrant", "user"] : ["team", "entrant"])
       : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[], error: null }),
-    readBoardInputs(supabase, allGames, "cup's", (comp?.trip_id as string | null) ?? null, opts.viewerId ?? null),
+    readBoardInputs(supabase, allGames, "board's", (comp?.trip_id as string | null) ?? null, opts.viewerId ?? null),
     // The race's PLAYERS (teamless only): a person is a unit from the first game
     // they are IN, before they have a result — "no points yet" (ruling 22).
     teamless && gameIds.length
@@ -515,7 +515,7 @@ export async function computeCompetitionLeaderboard(
    * FIRST load shows "Couldn't load the leaderboard", never an empty board); the
    * clinch check records `threw`; `reconcileClinchClaim` leaves the claim alone.
    */
-  const results = withTeamRowsOverride(rowsOrThrow(resultsRes, "cup's results"), opts.teamRowsOverride);
+  const results = withTeamRowsOverride(rowsOrThrow(resultsRes, "results"), opts.teamRowsOverride);
   /**
    * ── THE UNITS ──────────────────────────────────────────────────────────────
    *
@@ -528,7 +528,7 @@ export async function computeCompetitionLeaderboard(
   const personUnitIds: string[] = [];
   if (teamless) {
     const players = new Set<string>(
-      (rowsOrThrow(playersRes, "race's players") as { user_id: string }[]).map((p) => p.user_id)
+      (rowsOrThrow(playersRes, "players") as { user_id: string }[]).map((p) => p.user_id)
     );
     for (const r of results ?? []) if ((r.entity_type as string) === "user") players.add(r.entity_id as string);
     personUnitIds.push(...players);

@@ -45,20 +45,20 @@ export async function listTeams(
  * an API caller or a stale client, and "not allowed" alone leaves them nowhere.
  */
 export const HEAD_TO_HEAD_NO_THIRD_TEAM =
-  "A Match Play cup is exactly two teams, so it can't take another. Rename or recolour one of the two in Rosters instead.";
+  "A Cup is exactly two teams, so it can't take another. Rename or recolor one of the two in Rosters instead.";
 export const HEAD_TO_HEAD_KEEPS_BOTH_TEAMS =
-  "A Match Play cup is exactly two teams, so neither can be deleted. Rename it in Rosters instead, or delete the whole cup in its settings.";
+  "A Cup is exactly two teams, so neither can be deleted. Rename it in Rosters instead, or delete the whole cup in its settings.";
 /** PR 7, ruling 23: individuals-or-teams locks at the first result. The way out
  *  that exists is clearing the results, which the competition's settings offer. */
 export const INDIVIDUALS_LOCKED_AT_FIRST_RESULT =
-  "This race is played as individuals and already has results, so it can't switch to teams: that would null everyone's points. Reset the race's scores in its settings first.";
+  "This tournament is played as individuals and already has results, so it can't switch to teams: that would null everyone's points. Reset the tournament's scores in its settings first.";
 
 /** How many teams a competition has, any kind (PR 7: a points race with none is
  *  played as individuals, ruling B). A failed read throws, never reads as 0. */
 async function teamCount(supabase: SupabaseClient, competitionId: string): Promise<number> {
   return countOrThrow(
     await supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", competitionId),
-    "competition's teams"
+    "teams"
   );
 }
 
@@ -80,7 +80,7 @@ async function headToHeadTeamCount(
     .eq("id", competitionId)
     .maybeSingle();
   if (error) {
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the competition: ${error.message}` });
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the Cup or Tournament: ${error.message}` });
   }
   if (!comp || comp.scoring_model !== "match_play") return null;
   const { count, error: countErr } = await supabase
@@ -266,14 +266,14 @@ export const teamsRouter = router({
         if (h2hTeams === null && (await teamCount(ctx.supabase, team.competition_id as string)) === 1) {
           const games = rowsOrThrow(
             await ctx.supabase.from("games").select("name, game_type_id").eq("competition_id", team.competition_id as string),
-            "race's games"
+            "games"
           );
           const blocking = games.filter((g) => !canPlayInTeamlessRace(g.game_type_id as string | null));
           if (blocking.length > 0) {
             const names = blocking.map((g) => (g.name as string | null)?.trim() || "an unnamed game").join(", ");
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Without teams this race is played as individuals, and ${names} pays teams. Remove ${blocking.length === 1 ? "that game" : "those games"} first, or keep a team.`,
+              message: `Without teams this tournament is played as individuals, and ${names} pays teams. Remove ${blocking.length === 1 ? "that game" : "those games"} first, or keep a team.`,
             });
           }
         }

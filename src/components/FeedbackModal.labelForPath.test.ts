@@ -19,7 +19,7 @@ describe("labelForPath — per-tab labels (reachable again after Phase 2)", () =
     ["lodging", "Trip · Lodging"],
     ["schedule", "Trip · Schedule"],
     ["expenses", "Trip · Expenses"],
-    ["comp", "Trip · Competition"],
+    ["comp", "Trip · Games"],
   ])("?tab=%s → %s", (tab, expected) => {
     expect(labelForPath("/trips/abc123", tab)).toBe(expected);
   });

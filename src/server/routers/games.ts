@@ -250,7 +250,7 @@ async function refuseRankedFormatInHeadToHead(
     .eq("id", game.competition_id as string)
     .maybeSingle();
   if (compErr) {
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the competition: ${compErr.message}` });
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the Cup or Tournament: ${compErr.message}` });
   }
   if (comp?.scoring_model === "match_play") {
     throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
@@ -510,7 +510,7 @@ export const gamesRouter = router({
           .eq("trip_id", ctx.tripId)
           .maybeSingle();
         if (compErr) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to read the competition: ${compErr.message}` });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the Cup or Tournament: ${compErr.message}` });
         }
         const refusal = comp
           ? formatRefusalForScoringModel(input.gameTypeId, comp.scoring_model as ScoringModel | null)
@@ -524,14 +524,14 @@ export const gamesRouter = router({
         if (comp && (comp.scoring_model as string | null) === "points" && !canPlayInTeamlessRace(input.gameTypeId)) {
           const teamCount = countOrThrow(
             await ctx.supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", input.competitionId),
-            "race's teams"
+            "teams"
           );
           if (teamCount === 0) {
             const def = getGameTypeDefinition(input.gameTypeId);
             const allowed = gameTypesForTeamlessRace().map((t) => t.name).join(", ");
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `${def?.name ?? "This format"} pays teams, and this race is played as individuals. Pick one of ${allowed}, or add teams to the race first.`,
+              message: `${def?.name ?? "This format"} pays teams, and this tournament is played as individuals. Pick one of ${allowed}, or add teams to the tournament first.`,
             });
           }
         }
@@ -547,7 +547,7 @@ export const gamesRouter = router({
         if (def && !canBeSideGame(input.gameTypeId)) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `${def.name} records its result against a competition's teams, so it can't be a side game. Add it to the trip's competition.`,
+            message: `${def.name} records its result against teams, so it can't be a side game. Add it to the trip's Cup or Tournament.`,
           });
         }
       }
@@ -2037,7 +2037,7 @@ export const gamesRouter = router({
                   code: z.ZodIssueCode.custom,
                   path: ["bracketEntrants"],
                   message:
-                    "A bracket needs a cup to score into — every entrant must belong to a team. Standalone brackets aren't supported yet.",
+                    "A bracket needs teams to score into — every entrant must belong to a team. Standalone brackets aren't supported yet.",
                 });
               }
 

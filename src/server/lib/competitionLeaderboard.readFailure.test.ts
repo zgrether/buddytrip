@@ -117,14 +117,14 @@ describe("the board is computed from successful reads, or not at all", () => {
   // compute does NOT read would resolve, and the case would go red — so this
   // list cannot quietly include a table nothing reads.
   it.each([
-    ["game_results", "cup's results"],
-    ["teams", "cup's teams"],
-    ["competitions", "cup"],
-    ["games", "cup's games"],
-    ["team_assignments", "cup's rosters"],
-    ["game_matches", "cup's matches"],
-    ["game_participants", "cup's participants"],
-    ["game_started", "cup's started games"],
+    ["game_results", "results"],
+    ["teams", "teams"],
+    ["competitions", "standings"],
+    ["games", "games"],
+    ["team_assignments", "rosters"],
+    ["game_matches", "board's matches"],
+    ["game_participants", "board's participants"],
+    ["game_started", "board's started games"],
   ])("a failed %s read THROWS, naming what could not be checked", async (failTable, what) => {
     await expect(board({ state: "blueWon", failTable })).rejects.toThrow(
       `Couldn't check the ${what} just now. This is temporary — try again in a moment.`,

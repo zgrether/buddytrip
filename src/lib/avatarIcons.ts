@@ -22,7 +22,7 @@ export type AvatarCategory = {
 export const AVATAR_CATEGORIES: AvatarCategory[] = [
   {
     id: "competition",
-    label: "Competition",
+    label: "Winning",
     icons: [
       { id: "flag-2", label: "Flag" },
       { id: "trophy", label: "Trophy" },

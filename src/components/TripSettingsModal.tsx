@@ -17,6 +17,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { COMPETITION_UMBRELLA } from "@/lib/competitionWords";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
@@ -388,11 +389,11 @@ export function TripSettingsModal({
                       from the leaderboard/Live face itself), so we hide the whole
                       section rather than show a low-value "open it" row. */}
                   {canEditPlan && !competition && (
-                    <Section label="Competition">
+                    <Section label="Games">
                       <Row
                         testId="settings-competition-row"
                         icon={<Trophy size={17} />}
-                        title="Enable competition"
+                        title={`Start a ${COMPETITION_UMBRELLA}`}
                         subtitle="Teams, games, and a live leaderboard"
                         onClick={() => {
                           // Same entry the enable card uses — the face hosts the

@@ -5,6 +5,7 @@ import { Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
 import type { ScoringModel } from "@/lib/gameTypes";
+import { COMPETITION_CHOICE_WORD, COMPETITION_NAME_EXAMPLE, COMPETITION_UMBRELLA, competitionNoun, competitionWord } from "@/lib/competitionWords";
 import { Stepper } from "@/components/games/Stepper";
 import { MAX_SEED_TEAMS } from "@/lib/teamColors";
 
@@ -15,6 +16,7 @@ interface Competition {
   name: string;
   tagline: string | null;
   status?: string | null;
+  scoring_model?: ScoringModel | null;
 }
 
 interface Props {
@@ -44,13 +46,13 @@ const SHAPE_OPTIONS: ShapeOption[] = [
   {
     model: "match_play",
     icon: <Swords size={18} />,
-    title: "Head to head",
-    blurb: "Two teams play matches against each other. Ryder Cup style — knows when a side has clinched.",
+    title: COMPETITION_CHOICE_WORD.match_play,
+    blurb: "Two teams play matches against each other. First to the target wins.",
   },
   {
     model: "points",
     icon: <Users size={18} />,
-    title: "Points race",
+    title: COMPETITION_CHOICE_WORD.points,
     blurb: "Everyone earns points across the games you add. Play as individuals, or split into teams.",
   },
 ];
@@ -75,6 +77,14 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
   // A points race is played as INDIVIDUALS by default (PR 7, ruling 21):
   // structure is something you add, not something you are made to build.
   const [playAs, setPlayAs] = useState<"individuals" | "teams">("individuals");
+  // Edit mode names the competition that exists; create mode follows the shape
+  // being picked, so the name field and button change with it. The title is
+  // the umbrella word ("Start a Competition"); the shape options are where the
+  // type is CHOSEN, so they use the choosing form (Head-to-Head Cup); the name
+  // field and button come after the choice and say plain Cup.
+  const kind = isEdit ? competition?.scoring_model ?? null : scoringModel;
+  const word = competitionWord(kind);
+  const noun = competitionNoun(kind);
   const [name, setName] = useState(competition?.name ?? "");
   const [tagline, setTagline] = useState(competition?.tagline ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +93,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
     onMutate: async () => {
       await utils.competitions.getByTrip.cancel({ tripId });
     },
-    onError: (e) => setError(e.message ?? "Failed to create competition"),
+    onError: (e) => setError(e.message ?? `Couldn't create the ${noun}`),
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
       // The Live face renders from the faceBootstrap snapshot (boot.competition),
@@ -125,7 +135,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       if (ctxRollback?.previous) {
         utils.competitions.getByTrip.setData({ tripId }, ctxRollback.previous);
       }
-      setError(e.message ?? "Failed to update competition");
+      setError(e.message ?? "Couldn't save the change");
     },
     onSettled: () => {
       utils.competitions.getByTrip.invalidate({ tripId });
@@ -142,7 +152,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
   async function handleSubmit() {
     setError(null);
     if (trimmedName.length < 2) {
-      setError("Competition name must be at least 2 characters");
+      setError("The name needs at least 2 characters");
       return;
     }
 
@@ -191,11 +201,8 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
           </div>
           <div>
             <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-              Set Up Competition
+              {isEdit ? `Edit ${noun}` : `Start a ${COMPETITION_UMBRELLA}`}
             </h2>
-            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Pick a shape, name it, and you&rsquo;re set.
-            </p>
           </div>
         </div>
       )}
@@ -203,7 +210,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       <div className="space-y-4">
         {/* Shape chooser — create only (the shape is frozen after creation). */}
         {!isEdit && (
-          <FieldShell label="How are you competing?" required>
+          <div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="shape-chooser">
               {SHAPE_OPTIONS.map((opt) => (
                 <ShapeCard
@@ -214,7 +221,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
                 />
               ))}
             </div>
-          </FieldShell>
+          </div>
         )}
 
         {/* Play as — a points race only (ruling 21). Individuals is the default and
@@ -266,11 +273,11 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
           </FieldShell>
         )}
 
-        <FieldShell label="Competition Name" required>
+        <FieldShell label={`${word} name`} required>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. BBMI 2026, The Yert Open"
+            placeholder={COMPETITION_NAME_EXAMPLE[kind ?? "match_play"]}
             maxLength={200}
             className="w-full rounded-lg px-3 py-2 text-sm outline-none"
             style={{
@@ -313,7 +320,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
             data-testid="competition-setup-submit"
           >
             {!isEdit && <Plus size={15} />}
-            {isEdit ? "Save Changes" : "Create Competition"}
+            {isEdit ? "Save Changes" : `Create ${noun}`}
           </button>
           {isEdit && onCancel && (
             <button

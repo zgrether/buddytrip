@@ -57,7 +57,7 @@ describe("competitions.create when the race reaches the constraint", () => {
     await ctx.caller().competitions.create({ tripId, name: "First", scoringModel: "points" });
     await expect(ctx.caller().competitions.create({ tripId, name: "Second", scoringModel: "points" })).rejects.toMatchObject({
       code: "CONFLICT",
-      message: "A competition already exists for this trip",
+      message: "This trip already has a Cup or Tournament.",
     });
   }, 60_000);
 
@@ -69,7 +69,7 @@ describe("competitions.create when the race reaches the constraint", () => {
     const blind = callerFailingRead(ctx, "owner", { table: "competitions", columns: "id" });
     await expect(blind.competitions.create({ tripId, name: "Loser of the race", scoringModel: "points" })).rejects.toMatchObject({
       code: "CONFLICT",
-      message: "A competition already exists for this trip",
+      message: "This trip already has a Cup or Tournament.",
     });
     const { count } = await ctx.admin.from("competitions").select("id", { count: "exact", head: true }).eq("trip_id", tripId);
     expect(count).toBe(1);

@@ -151,7 +151,7 @@ export function requireCompetitionRole(minRole: CompetitionRole) {
         code: "FORBIDDEN",
         message:
           minRole === "owner"
-            ? "Only the competition owner can do this."
+            ? "Only the trip's Owner can do this."
             : "Requires organizer access.",
       });
     }

@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { competitionNoun } from "@/lib/competitionWords";
+import type { ScoringModel } from "@/lib/gameTypes";
 import { gameHref, gamePanelHref, gamesPageHref, opensAsPanel } from "@/lib/gameRoutes";
 import { readSideGameWinners } from "./sideBoard";
 import type { ResolvedResultStrategy } from "@/lib/resultStrategy";
@@ -366,9 +368,9 @@ const COPY = {
     body: summary || "Results are in.",
   }),
   /** The highest-value push in the app — ~1-3 per trip. */
-  clinched: (teamName: string, competitionName: string | null, summary: string) => ({
+  clinched: (teamName: string, competitionName: string | null, summary: string, noun: string) => ({
     title: `${teamName} clinched`,
-    body: [competitionName, summary].filter(Boolean).join(" · ") || "The cup is decided.",
+    body: [competitionName, summary].filter(Boolean).join(" · ") || `The ${noun} is decided.`,
   }),
 };
 
@@ -1346,7 +1348,7 @@ export async function notifyCupClinchedIfDecided(
 
     const { data: comp } = await admin
       .from("competitions")
-      .select("name")
+      .select("name, scoring_model")
       .eq("id", input.competitionId)
       .maybeSingle();
 
@@ -1370,7 +1372,8 @@ export async function notifyCupClinchedIfDecided(
         ...COPY.clinched(
           clincher.name ?? "A team",
           (comp?.name as string | null) ?? null,
-          standingsLine
+          standingsLine,
+          competitionNoun(comp?.scoring_model as ScoringModel | null | undefined)
         ),
         url: cupUrl(input.tripId),
         tag: `bt-clinch-${input.competitionId}`,

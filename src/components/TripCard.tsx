@@ -10,6 +10,7 @@ import { RoleBadge } from "./RoleBadge";
 import { parseLocalDate } from "@/lib/dates";
 import { isGrayscale as checkGrayscale } from "@/lib/tripStatus";
 import { trpc } from "@/lib/trpc-client";
+import { EITHER_COMPETITION } from "@/lib/competitionWords";
 import type { TripRole } from "@/server/middleware";
 import { getLocationInfo } from "@/lib/locationUtils";
 import { temporalGradient } from "@/lib/temporalGradient";
@@ -31,6 +32,8 @@ interface Trip {
   myRole?: TripRole | null;
   /** True when at least one competitions row exists for this trip. */
   hasCompetition?: boolean | null;
+  /** That competition's own name — the chip's tooltip. */
+  competitionName?: string | null;
 }
 
 interface TripCardProps {
@@ -196,8 +199,8 @@ export const TripCard: FC<TripCardProps> = ({ trip }) => {
               color: "var(--color-bt-accent)",
               border: "1px solid var(--color-bt-accent-border)",
             }}
-            title="Has competition"
-            aria-label="Competition set up for this trip"
+            title={trip.competitionName || EITHER_COMPETITION}
+            aria-label={trip.competitionName || EITHER_COMPETITION}
           >
             <Trophy size={10} strokeWidth={2.5} />
           </span>

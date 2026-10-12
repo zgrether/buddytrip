@@ -57,14 +57,14 @@ type GameRow = Record<string, unknown> & { id: unknown; game_type_id: unknown; c
  * configured game as New, or a live game as Ready, and the leaderboard's clinch
  * writers act on the same counts.
  *
- * `owner` is the noun's owner in the failure sentence — "cup's" for the
+ * `owner` is the noun's owner in the failure sentence — "board's" for the
  * leaderboard (whose sentences #1468's tests pin exactly) and "trip's" for the
  * side board.
  */
 export async function readBoardInputs(
   supabase: SupabaseClient,
   games: GameRow[],
-  owner: "cup's" | "trip's",
+  owner: "board's" | "trip's",
   /** The trip whose names a re-credit note uses. Null skips the read (the side
    *  board: no competition, so nothing can have been re-credited). */
   recreditsTripId: string | null = null,
@@ -162,7 +162,7 @@ export async function readBoardInputs(
 async function readRecredits(
   supabase: SupabaseClient,
   games: GameRow[],
-  owner: "cup's" | "trip's",
+  owner: "board's" | "trip's",
   tripId: string | null
 ): Promise<Map<string, { byName: string; at: string }>> {
   const out = new Map<string, { byName: string; at: string }>();

@@ -338,8 +338,8 @@ function ScheduleItemRow({
                 onClick={(e) => { e.stopPropagation(); onUnlinkCompGame(cg.id); }}
                 className="ml-auto flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-70"
                 style={{ color: "var(--color-bt-text-dim)" }}
-                title="Remove competition link"
-                aria-label="Remove competition link"
+                title="Unlink this game"
+                aria-label="Unlink this game"
               >
                 <X size={12} />
               </button>

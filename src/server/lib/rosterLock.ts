@@ -41,7 +41,7 @@ export async function competitionHasResults(
   // (`startedGameIds` below already refuses its own failures.)
   const games = rowsOrThrow(
     await supabase.from("games").select("id").eq("competition_id", competitionId),
-    "cup's games"
+    "games"
   );
   const ids = games.map((g) => g.id as string);
   return anyGameStarted(supabase, ids);

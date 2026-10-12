@@ -97,8 +97,8 @@ describe("source guard — no second copy of a role colour", () => {
     //
     // So the ROLE half is asserted where it now lives — behaviourally, via the
     // predicate that produces the labels (fuller coverage in
-    // `components/shell/railKeyMarks.test.ts`). "Cup" is still a literal in the
-    // key's markup and is still checked as one.
+    // `components/shell/railKeyMarks.test.ts`). The trophy's word is one
+    // constant: one icon marks either kind, so the key names both.
     for (const word of ["Owner", "Organizer"] as const) {
       expect(
         railKeyMarks([{ myRole: word }]).roles,
@@ -115,8 +115,8 @@ describe("source guard — no second copy of a role colour", () => {
       .split("\n");
 
     expect(
-      code.some((l) => l.trim() === "Cup"),
-      'the rail key should render "Cup" as a label',
+      code.some((l) => l.trim() === "{EITHER_COMPETITION}"),
+      'the rail key should render "Cup or Tournament" as a label',
     ).toBe(true);
     expect(
       code.join("\n"),

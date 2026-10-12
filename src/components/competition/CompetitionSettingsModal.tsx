@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
+import { COMPETITION_NAME_EXAMPLE, COMPETITION_WORD, competitionNoun, competitionWord, type CompetitionWord } from "@/lib/competitionWords";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 
@@ -45,14 +46,17 @@ type View =
   | "reset-skeleton"
   | "delete";
 
-const TITLES: Record<View, string> = {
-  menu: "Competition settings",
-  details: "Competition details",
-  scoring: "Scoring model",
-  "reset-scoring": "Reset all scoring",
-  "reset-skeleton": "Reset all games",
-  delete: "Delete competition",
-};
+/** Each view's title, worded for this competition's kind (Cup / Tournament). */
+function viewTitle(view: View, word: CompetitionWord): string {
+  switch (view) {
+    case "menu": return `${word} settings`;
+    case "details": return `${word} details`;
+    case "scoring": return "Scoring model";
+    case "reset-scoring": return "Reset all scoring";
+    case "reset-skeleton": return "Reset all games";
+    case "delete": return `Delete ${word.toLowerCase()}`;
+  }
+}
 
 interface Competition {
   id: string;
@@ -81,8 +85,8 @@ const MODEL_DISPLAY: Record<
   "match_play" | "points",
   { label: string; shape: string; icon: ReactNode }
 > = {
-  match_play: { label: "Match Play", shape: "Head to head", icon: <Swords size={16} /> },
-  points: { label: "Points", shape: "Points race", icon: <Users size={16} /> },
+  match_play: { label: COMPETITION_WORD.match_play, shape: "Head to head", icon: <Swords size={16} /> },
+  points: { label: COMPETITION_WORD.points, shape: "Points across the games", icon: <Users size={16} /> },
 };
 
 export function CompetitionSettingsModal({
@@ -118,6 +122,8 @@ export function CompetitionSettingsModal({
 
   const model = competition.scoring_model ?? "match_play";
   const modelCfg = MODEL_DISPLAY[model];
+  const word = competitionWord(model);
+  const noun = competitionNoun(model);
 
   // ── Details drafts (auto-saved on blur — the game-settings pattern) ───────
   const [name, setName] = useState(competition.name);
@@ -277,7 +283,7 @@ export function CompetitionSettingsModal({
       onDeleted?.();
       onClose();
     },
-    onError: (e) => setDangerError(e.message ?? "Failed to delete competition"),
+    onError: (e) => setDangerError(e.message ?? `Couldn't delete the ${noun}`),
   });
 
   const openDanger = (v: View) => {
@@ -329,7 +335,7 @@ export function CompetitionSettingsModal({
               className="min-w-0 flex-1 truncate text-base font-bold"
               style={{ color: "var(--color-bt-text)" }}
             >
-              {TITLES[view]}
+              {viewTitle(view, word)}
             </span>
             {view === "details" && (
               <SaveStatus pending={updateComp.isPending} savedAt={savedAt} />
@@ -354,13 +360,13 @@ export function CompetitionSettingsModal({
               {/* ── Menu ──────────────────────────────────────────── */}
               {view === "menu" && (
                 <>
-                  {scored && <ScoringStartedNote />}
+                  {scored && <ScoringStartedNote noun={noun} />}
 
-                  <Section label="Competition">
+                  <Section label={word}>
                     <Row
                       testId="comp-settings-details-row"
                       icon={<Trophy size={17} />}
-                      title="Competition details"
+                      title={`${word} details`}
                       subtitle={[competition.name, competition.tagline]
                         .filter(Boolean)
                         .join(" · ")}
@@ -410,7 +416,7 @@ export function CompetitionSettingsModal({
                         tone="danger"
                         testId="competition-delete-btn"
                         icon={<Trash2 size={16} />}
-                        title="Delete competition"
+                        title={`Delete ${noun}`}
                         subtitle="Removes teams, games, scores — for everyone"
                         onClick={() => openDanger("delete")}
                       />
@@ -423,7 +429,7 @@ export function CompetitionSettingsModal({
               {view === "details" && (
                 <>
                   <FieldLabel>
-                    Competition name{" "}
+                    {word} name{" "}
                     <span className="font-normal normal-case">required</span>
                   </FieldLabel>
                   <input
@@ -434,7 +440,7 @@ export function CompetitionSettingsModal({
                     }}
                     onBlur={commitName}
                     readOnly={!canEdit}
-                    placeholder="e.g. BBMI 2026, The Yert Open"
+                    placeholder={COMPETITION_NAME_EXAMPLE[model]}
                     maxLength={200}
                     style={{ ...fieldStyle, opacity: canEdit ? 1 : 0.7 }}
                     data-testid="comp-settings-name"
@@ -545,9 +551,8 @@ export function CompetitionSettingsModal({
                     className="mt-3 px-1 text-xs leading-snug"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   >
-                    The scoring model is chosen when the competition is created and
-                    can&apos;t be changed. To use a different shape, delete and
-                    restart the competition.
+                    Chosen when the {noun} was created, and can&apos;t be
+                    changed. To switch, delete this {noun} and start again.
                   </p>
                 </>
               )}
@@ -592,10 +597,10 @@ export function CompetitionSettingsModal({
                   tone="danger"
                   icon={<Trash2 size={22} />}
                   title={`Delete “${competition.name}”?`}
-                  body={`This removes the competition, its teams, and rosters${describeRemoved(
+                  body={`This removes the ${noun}, its teams, and rosters${describeRemoved(
                     teamsCount,
                   )}.${describeDeleteGames(gamesCount)} This cannot be undone.`}
-                  confirmLabel="Delete competition"
+                  confirmLabel={`Delete ${noun}`}
                   pendingLabel="Deleting…"
                   pending={deleteComp.isPending}
                   error={dangerError}
@@ -616,7 +621,7 @@ export function CompetitionSettingsModal({
 
 // ── Scoring-started explainer (top-of-menu, mirrors the game lock banner) ─────
 
-function ScoringStartedNote() {
+function ScoringStartedNote({ noun }: { noun: string }) {
   return (
     <p
       className="mb-4 flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12px] leading-snug"
@@ -632,7 +637,7 @@ function ScoringStartedNote() {
         style={{ color: "var(--color-bt-text-dim)", flexShrink: 0, marginTop: 1 }}
       />
       <span>
-        Scoring has started — the competition&rsquo;s shape is locked. You can still
+        Scoring has started — the {noun}&rsquo;s shape is locked. You can still
         rename it and change rosters (each change shows what it does first), and
         the reset / delete hatches stay available below.
       </span>

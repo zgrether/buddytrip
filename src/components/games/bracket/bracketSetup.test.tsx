@@ -94,11 +94,11 @@ describe("BracketFieldPicker — selection only", () => {
     expect(full).toContain("Clear");
   });
 
-  it("says why there is nothing to pick when nobody is on a cup team", () => {
+  it("says why there is nothing to pick when nobody is on a team", () => {
     const html = renderToStaticMarkup(
       <BracketFieldPicker pool={[]} teams={[]} canEdit onChange={noop} />
     );
-    expect(html).toMatch(/cup team/i);
+    expect(html).toContain("Nobody is on a team yet");
   });
 });
 
