@@ -1457,7 +1457,7 @@ screens. Not before 9e, so no PR 9 surface is renamed mid-build.
 (`src/lib/competitionWords.ts`); a surface that can't know the kind says "Cup or
 Tournament". Zach added one rule when he scheduled it: no real event's name on screen, so the
 setup blurb lost "Ryder Cup style". Refined on its look (Zach): **Head-to-Head Cup** where a
-type is being chosen (the create flow, starting points, help), plain **Cup** after the choice. The create panel's title is the umbrella, "Start a Competition", with no helper lines under it.
+type is being chosen (the create flow's options, help), plain **Cup** after the choice. Every starting point says the umbrella, "Start a Competition": the create panel's title (with no helper lines under it), the side games start card and the trip settings row. The name field's example follows the type: "The Turkey Cup" or "The Yert Open".
 And a trip list doesn't need the type: the trip card's trophy shows the competition's own
 name (a "Turkey Cup" would otherwise read "Turkey Cup · Cup"), and the rail's key for the
 trophy says "Cup or Tournament". Database refusals that still say "competition" need
