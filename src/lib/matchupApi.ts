@@ -279,6 +279,18 @@ export function normalizeQuery(s: string): string {
 export const MIN_QUERY = 2;
 
 /**
+ * The line under a picked team when no games are listed (#1611). "Couldn't
+ * load" and "has no games" are different facts: a team's schedule can really
+ * be empty (off-season), and a failed load used to read "No games found". Both
+ * keep the type-it-in way out.
+ */
+export function scheduleLine(s: { failed: boolean }): string {
+  return s.failed
+    ? "Couldn't load this team's games just now — try again, or type the game in below."
+    : "No games found — type the game in below.";
+}
+
+/**
  * Rank a team against a query, or null for no match.
  *
  * Lower is better. The ordering is the whole point of scoring rather than

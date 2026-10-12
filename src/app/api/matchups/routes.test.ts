@@ -133,8 +133,27 @@ describe("GET /api/matchups/schedule", () => {
     ]);
   });
 
-  it("ESPN unreachable → [] and 200", async () => {
+  /**
+   * #1611 REVERSES this route's first design ("ESPN unreachable → [] and 200").
+   * A team's schedule can really be empty, so the picker can't tell "couldn't
+   * load" from "no games" by `[]`, and it rendered a failure as "No games
+   * found". (The TEAMS route above keeps `[]`: an empty team index already reads
+   * "Team search isn't available right now", since a league always has teams.)
+   */
+  it("ESPN unreachable → 502, not an empty schedule", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("boom")) as unknown as typeof fetch;
+    const res = await scheduleGET(req("/api/matchups/schedule?league=cfb&teamId=194"));
+    expect(res.status).toBe(502);
+  });
+
+  it("ESPN returns 500 → 502, not an empty schedule", async () => {
+    global.fetch = vi.fn().mockResolvedValue(new Response("nope", { status: 500 })) as unknown as typeof fetch;
+    const res = await scheduleGET(req("/api/matchups/schedule?league=cfb&teamId=194"));
+    expect(res.status).toBe(502);
+  });
+
+  it("control: ESPN answers with no games → 200 and [] (that IS 'no games')", async () => {
+    global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ events: [] }), { status: 200 })) as unknown as typeof fetch;
     const res = await scheduleGET(req("/api/matchups/schedule?league=cfb&teamId=194"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);

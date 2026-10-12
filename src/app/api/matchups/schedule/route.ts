@@ -32,9 +32,12 @@ export async function GET(req: NextRequest) {
       next: { revalidate: REVALIDATE_SECONDS },
       headers: { accept: "application/json" },
     });
-    if (!res.ok) return NextResponse.json([] satisfies Matchup[]);
+    // ESPN unreachable or refusing is an ERROR status, never `[]` (#1611). A
+    // team's schedule can really be empty, so `[]` must mean only that; the
+    // picker used to render a failure as "No games found".
+    if (!res.ok) return NextResponse.json({ error: "schedule unavailable" }, { status: 502 });
     return NextResponse.json(normalizeSchedule(await res.json()));
   } catch {
-    return NextResponse.json([] satisfies Matchup[]);
+    return NextResponse.json({ error: "schedule unavailable" }, { status: 502 });
   }
 }

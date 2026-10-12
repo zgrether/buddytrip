@@ -6,6 +6,7 @@ import {
   MATCHUP_LEAGUES,
   MIN_QUERY,
   formatKickoff,
+  scheduleLine,
   searchTeams,
   upcomingFirst,
   type Matchup,
@@ -64,6 +65,8 @@ export function MatchupSearch({
   const [team, setTeam] = useState<MatchupTeam | null>(null);
   const [games, setGames] = useState<Matchup[] | null>(null);
   const [loadingGames, setLoadingGames] = useState(false);
+  // The schedule couldn't load (#1611): a different fact from "no games".
+  const [gamesFailed, setGamesFailed] = useState(false);
 
   /** league id → team index. Kept for the component's lifetime so switching
    *  leagues back and forth does not refetch. */
@@ -107,13 +110,18 @@ export function MatchupSearch({
     setTeam(t);
     setGames(null);
     setLoadingGames(true);
+    setGamesFailed(false);
     fetch(`/api/matchups/schedule?league=${encodeURIComponent(leagueId)}&teamId=${encodeURIComponent(t.id)}`)
-      .then((r) => (r.ok ? r.json() : []))
-      .catch(() => [])
-      .then((m: Matchup[]) => {
-        setGames(upcomingFirst(Array.isArray(m) ? m : []));
-        setLoadingGames(false);
-      });
+      .then((r) => {
+        if (!r.ok) throw new Error(`schedule failed (${r.status})`);
+        return r.json();
+      })
+      .then((m: Matchup[]) => setGames(upcomingFirst(Array.isArray(m) ? m : [])))
+      .catch(() => {
+        setGames([]);
+        setGamesFailed(true);
+      })
+      .finally(() => setLoadingGames(false));
   }
 
   function reset() {
@@ -267,7 +275,21 @@ export function MatchupSearch({
           {loadingGames ? (
             <Muted>Loading games…</Muted>
           ) : !games || games.length === 0 ? (
-            <Muted>No games found — type the game in below.</Muted>
+            <div className="flex flex-col items-start gap-1">
+              <span data-testid="matchup-schedule-line">
+                <Muted>{scheduleLine({ failed: gamesFailed })}</Muted>
+              </span>
+              {gamesFailed && (
+                <button
+                  type="button"
+                  onClick={() => pickTeam(team)}
+                  className="text-[13px] font-semibold"
+                  style={{ color: "var(--color-bt-accent)" }}
+                >
+                  Try again
+                </button>
+              )}
+            </div>
           ) : (
             games.map((g) => {
               const isTaken = taken.has(g.espnEventId);
