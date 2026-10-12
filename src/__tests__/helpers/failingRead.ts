@@ -32,6 +32,18 @@ export function callerFailingRead(
   target: { table: string; columns: string },
 ) {
   const real = typeof who === "string" ? ctx.authedClient(who) : who.client();
+  const client = clientFailingRead(real, target);
+  const user = typeof who === "string" ? ctx.getUser(who) : { id: who.id, email: who.email };
+  const trpcCtx: TRPCContext = { supabase: client, user: { id: user.id, email: user.email }, membershipCache: new Map() };
+  return createCallerFactory(appRouter)(trpcCtx);
+}
+
+/**
+ * The same one-read failure, as a CLIENT rather than a tRPC caller: for code
+ * that builds its own client (`createAdminClient()`) instead of taking one from
+ * the request — mock the factory to return this. Same narrowness rules.
+ */
+export function clientFailingRead(real: SupabaseClient, target: { table: string; columns: string }): SupabaseClient {
   const failure = { data: null, count: null, error: { code: "PGRST003", message: "simulated read failure" } };
 
   const failingChain = (): unknown => {
@@ -64,8 +76,5 @@ export function callerFailingRead(
       };
     },
   }) as SupabaseClient;
-
-  const user = typeof who === "string" ? ctx.getUser(who) : { id: who.id, email: who.email };
-  const trpcCtx: TRPCContext = { supabase: client, user: { id: user.id, email: user.email }, membershipCache: new Map() };
-  return createCallerFactory(appRouter)(trpcCtx);
+  return client;
 }

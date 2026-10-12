@@ -6,7 +6,17 @@ import InviteShell from "./InviteShell";
  * cannot continue (the link names nothing; the roster no longer includes you),
  * so the one action offered goes somewhere that always works.
  */
-export default function InviteMessage({ title, body }: { title: string; body: string }) {
+/** `action` replaces the default "Go to BuddyTrip" — a failed load offers
+ *  "Try again" on the same link instead (#1611). */
+export default function InviteMessage({
+  title,
+  body,
+  action = { href: "/", label: "Go to BuddyTrip" },
+}: {
+  title: string;
+  body: string;
+  action?: { href: string; label: string };
+}) {
   return (
     <InviteShell>
       <div className="space-y-4 text-center">
@@ -17,11 +27,11 @@ export default function InviteMessage({ title, body }: { title: string; body: st
           {body}
         </p>
         <Link
-          href="/"
+          href={action.href}
           className="inline-block rounded-xl px-6 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
           style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
         >
-          Go to BuddyTrip
+          {action.label}
         </Link>
       </div>
     </InviteShell>
