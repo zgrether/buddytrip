@@ -15,7 +15,7 @@ import type { LinkAddressee, LinkTarget } from "@/lib/accessRoute";
  * encoded, DB-unique — `invites.token`) that reveals a trip title, an inviter's
  * name, and the address it was sent to. It GRANTS NOTHING. The invited person
  * is already on the roster — `tripMembers.inviteByEmail` writes their
- * `trip_members` row (status `invited`) before the email is even sent — so
+ * `trip_members` row before the email is even sent — so
  * there is no membership to hand out here and no accept step to perform.
  *
  * ── Why `expires_at` is not consulted ──────────────────────────────────────
@@ -193,9 +193,8 @@ async function lookupAddressee(
 /**
  * Whether a viewer can see a trip. Membership IS visibility here: `is_trip_member`
  * (the RLS helper every trip-scoped policy funnels through) tests for a
- * `trip_members` row and nothing else — it does NOT filter on `status`, so a row
- * still sitting at `invited` counts, which is what makes branch 1 work for
- * someone who has never opened the app.
+ * `trip_members` row and nothing else, so a crew member added before they have
+ * ever opened the app already counts, which is what makes branch 1 work for them.
  *
  * Read through the admin client on purpose: this runs on a public page where the
  * caller may be a DIFFERENT account than the addressee, and the answer decides

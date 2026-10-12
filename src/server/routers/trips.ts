@@ -11,7 +11,7 @@ export const tripsRouter = router({
   list: authedProcedure.query(async ({ ctx }) => {
     const { data: memberships, error: memErr } = await ctx.supabase
       .from("trip_members")
-      .select("trip_id, role, status")
+      .select("trip_id, role")
       .eq("user_id", ctx.user.id);
 
     if (memErr || !memberships || memberships.length === 0) {
@@ -78,7 +78,6 @@ export const tripsRouter = router({
     return (tripsRes.data ?? []).map((trip) => ({
       ...trip,
       myRole: membershipByTripId.get(trip.id)?.role ?? null,
-      myStatus: membershipByTripId.get(trip.id)?.status ?? null,
       hasCompetition: competitionNameByTrip.has(trip.id),
       competitionName: competitionNameByTrip.get(trip.id) ?? null,
       ideaCount: ideaCountByTripId.get(trip.id) ?? 0,
