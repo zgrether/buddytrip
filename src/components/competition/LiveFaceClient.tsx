@@ -123,7 +123,7 @@ function LiveFaceInner({
   // suppressed by the Router Cache (experimental.staleTimes.dynamic). The STATE
   // layer (standings) rides its own cadence — see the seed below + the
   // leaderboard's 30s poll.
-  const { data: boot, isLoading: loading } =
+  const { data: boot, isLoading: loading, isError: bootFailed, refetch: retryBoot } =
     trpc.competitions.faceBootstrap.useQuery(
       { tripId },
       initialBoot
@@ -182,7 +182,31 @@ function LiveFaceInner({
   }, [boot, tripId, utils]);
 
   let body: React.ReactNode;
-  if (loading) {
+  // UNKNOWN IS NEVER "NO CUP". `boot` undefined means the bootstrap has not
+  // ANSWERED — still loading, or the read failed — not that the trip has no
+  // competition. The no-competition branch below renders the side-games board
+  // with a live "Add a game", and a game is created in or out of a cup ONCE, at
+  // creation: one added while the cup was merely unknown became a side game, and
+  // the only fix afterwards was to delete it (Zach, the E2E load-window fix).
+  // So until the read answers there is a spinner, or a retry if it failed —
+  // never an action that bakes in a guess.
+  if (boot === undefined && bootFailed) {
+    body = (
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-6 text-center" data-testid="face-boot-failed">
+        <p className="text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
+          Couldn&rsquo;t load this trip&rsquo;s games just now.
+        </p>
+        <button
+          type="button"
+          onClick={() => void retryBoot()}
+          className="rounded-lg px-4 py-2 text-sm font-semibold"
+          style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  } else if (loading || boot === undefined) {
     body = (
       <div className="flex min-h-[40vh] items-center justify-center">
         <div
