@@ -119,7 +119,31 @@ describe("CompletedRow — IN REVIEW replaces the result", () => {
         onPrefetch={() => {}}
       />
     );
-    expect(html).toContain("width:260px"); // 4 × 56 + 3 × 12 gaps
+    // PR 9c-2: a points tournament's result is a row of 48px tiles 6px apart,
+    // and the badge spans what it stands in for: 4 × 48 + 3 × 6.
+    expect(html).toContain("width:210px");
+  });
+
+  it("a match-play cup's badge spans its grid columns", () => {
+    const html = render(game({ correctionsOpen: true })); // 2 teams
+    expect(html).toContain("width:124px"); // 2 × 56 + 1 × 12
+  });
+
+  /** A tournament of individuals has no team columns; this used to come out at
+   *  -12px (0 × 56 + (0 − 1) × 12). */
+  it("a tournament of individuals gives the badge no fixed width — never a negative one", () => {
+    const html = renderToStaticMarkup(
+      <CompletedRow
+        game={game({ correctionsOpen: true, winners: ["Ann"] })}
+        teams={[]}
+        cells={undefined}
+        scoringModel="points"
+        tripId="t1"
+        onPrefetch={() => {}}
+      />
+    );
+    expect(html).toContain('data-testid="game-in-review"');
+    expect(html).not.toMatch(/width:-/);
   });
 
   it("a losing score is NOT dimmed — a score is a score", () => {

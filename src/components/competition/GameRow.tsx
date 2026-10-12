@@ -1,6 +1,7 @@
 "use client";
 
 import { createElement } from "react";
+import { resultTiles } from "@/lib/standingsRows";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Table2 } from "lucide-react";
@@ -832,6 +833,10 @@ export function CompletedRow({
   // as the SAME panel a live game does (Spec 2) — no full-page nav to view results.
   // Complete → never setup, so no `?settings=1`. Stroke keeps the route <Link>.
   const panelFormat = opensAsPanel(game.gameTypeId);
+  // A points tournament's teamed result is a row of TILES (9c-2), and its game
+  // name WRAPS rather than truncating, so the tiles keep their columns at any
+  // name length. Every other arm keeps its single line.
+  const showsTiles = !inReview && !game.sideGame && game.winners === undefined && scoringModel === "points";
   const inner = (
     <div
       className="flex items-center gap-3 px-4 py-2"
@@ -844,7 +849,7 @@ export function CompletedRow({
       })}
       <span className="min-w-0 flex-1">
         <span
-          className="block truncate text-[13px] font-medium"
+          className={`block text-[13px] font-medium ${showsTiles ? "[overflow-wrap:anywhere]" : "truncate"}`}
           style={{ color: "var(--color-bt-text)" }}
         >
           {game.name}
@@ -863,7 +868,18 @@ export function CompletedRow({
           contribution mid-edit would be a bigger lie than leaving it. So the ROW
           is flagged provisional while the standings stay honest. */}
       {inReview ? (
-        <InReviewBadge teams={teams} />
+        <InReviewBadge
+          width={
+            // The span of the result it stands in for, so every completed row
+            // keeps one right edge. A tournament of individuals has no team
+            // columns: `teams.length * …` went NEGATIVE there (-12px).
+            teams.length === 0
+              ? undefined
+              : scoringModel === "points"
+                ? tilesWidth(teams.length)
+                : teams.length * GRID_COLW + (teams.length - 1) * ROW_GAP
+          }
+        />
       ) : game.sideGame ? (
         <SideGameWinners winners={game.winners ?? []} />
       ) : game.winners !== undefined ? (
@@ -871,7 +887,7 @@ export function CompletedRow({
         // it shows who won, as a side game does, and never a row of team cells.
         <WinnersLine winners={game.winners} testId="game-winners" />
       ) : scoringModel === "points" ? (
-        <CompletedPodium teams={teams} cells={cells} />
+        <CompletedTiles teams={teams} cells={cells} />
       ) : (
         <CompletedGridCells teams={teams} cells={cells} />
       )}
@@ -918,7 +934,7 @@ export function CompletedRow({
  * `shrink-0` and the same right-edge alignment as the result it replaces, so a
  * column of completed rows keeps its right margin when one row is in review.
  */
-function InReviewBadge({ teams }: { teams: LBTeam[] }) {
+function InReviewBadge({ width }: { width: number | undefined }) {
   return (
     /**
      * CENTERED ACROSS THE SCORE COLUMNS, not parked at the right edge.
@@ -936,7 +952,7 @@ function InReviewBadge({ teams }: { teams: LBTeam[] }) {
      */
     <span
       className="flex shrink-0 items-center justify-center"
-      style={{ width: teams.length * GRID_COLW + (teams.length - 1) * ROW_GAP }}
+      style={{ width }}
     >
       <span
         data-testid="game-in-review"
@@ -1064,67 +1080,75 @@ function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<stri
   );
 }
 
-/** points completed result — a horizontal placement podium (1st/2nd/3rd…) in the
- *  shared place tokens; each pill = place chip (gold/silver/bronze bg) + team
- *  color dot + short name. Only teams with a resolved place are shown. */
-function CompletedPodium({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
-  // POINTS, not ordinals. The badge used to read "1st MAN · 2nd CEN", which is a
-  // different number from the one in the Completed TABLE directly beside it — the
-  // table has always shown per-game points per team. Two numbers for one result,
-  // and the badge's was the one that doesn't decide anything.
-  //
-  // `points` is already on the cell (`LBCell`), so nothing needs the distribution
-  // resolved here; the leaderboard has done that work upstream.
-  //
-  // Places that earned NOTHING are omitted entirely — no zero, no ordinal. With a
-  // distribution of [6, 3.5, 1.5] and four teams, 4th pays nothing, and printing
-  // "4th" or "0" would assert a standing the scoring model doesn't award. The
-  // place COLOR still comes from the finishing position, so the ranking is still
-  // legible without spelling it out.
-  const ranked = teams
-    .map((t) => ({ team: t, cell: cells?.get(t.id) }))
-    .filter((x): x is { team: LBTeam; cell: LBCell } => x.cell != null && x.cell.points > 0)
-    .sort((a, b) => a.cell.place - b.cell.place);
-  if (ranked.length === 0) return null;
+/** A tile's side, and the gap between tiles. Four tiles and three gaps fit a
+ *  390px row beside a wrapping game name (9c-2's check). */
+const TILE = 48;
+const TILE_GAP = 6;
+function tilesWidth(n: number): number {
+  return n * TILE + Math.max(0, n - 1) * TILE_GAP;
+}
+
+/**
+ * A POINTS TOURNAMENT'S FINISHED GAME, AS TILES (PR 9c-2, Zach's design).
+ *
+ * One square tile per team, in the board's FIXED team order (`teams`, creation
+ * order) and NEVER re-sorted — so down the completed list each team is a column
+ * you can scan, which is what the old podium (sorted by place, zero-earners
+ * dropped) could not be. Points on top, dot + abbreviation underneath. The
+ * winner's tile takes the stronger tint, the others stay muted; a tie for most
+ * shares it.
+ *
+ * Text is `--color-bt-text`, the theme's primary ink — "white" in the spec meant
+ * primary text, and a literal white vanishes on a light-mode tint.
+ *
+ * A game that paid nobody anything says **No points** rather than nothing (the
+ * Cornhole look trip: finished, placings recorded, no payout configured — the
+ * podium returned null and the row read as broken).
+ */
+function CompletedTiles({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
+  const tiles = resultTiles(
+    teams.map((t) => t.id),
+    cells
+  );
+  if (!tiles) {
+    return (
+      <span
+        className="shrink-0 text-right text-[12px]"
+        style={{ width: tilesWidth(teams.length), color: "var(--color-bt-text-dim)" }}
+        data-testid="game-no-points"
+      >
+        No points
+      </span>
+    );
+  }
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      {ranked.map(({ team, cell }) => {
-        // Each badge is tinted with ITS OWN TEAM's colour, at one uniform strength.
-        //
-        // Three facts, three carriers, no overlap: colour says WHICH team,
-        // left-to-right position says the finish, the number says what it earned.
-        // The place tokens encoded finish a second time — and washed every badge in
-        // gold/silver/bronze, so the team colour survived only as a 1.5px dot.
-        // #830 removed the tint from FIRST place alone, which made the winner the
-        // plainest pill on the row; tinting every place with its own colour is what
-        // that change was reaching for.
-        //
-        // Opacity is deliberately CONSTANT across places. Varying it would put the
-        // finishing order back into the colour channel, which is the thing being
-        // removed. 14% is the established team-tint strength in this file (the
-        // completed-grid winner chip) and in `OutcomeChoiceRow` — reused, not picked.
-        //
-        // The dot stays: at 14% the tint reads as a mood rather than a hue, and the
-        // full-saturation dot is the reference that makes it legible as *that*
-        // team's colour. Text is `--color-bt-text`, which is theme-aware — and at
-        // 14% over the row surface the effective background is dominated by the
-        // surface, not the team colour, so contrast does not depend on which of the
-        // eight palette colours a team has.
+    <span className="flex shrink-0" style={{ gap: TILE_GAP }} data-testid="game-result-tiles">
+      {tiles.map((tile, i) => {
+        const team = teams[i];
         return (
           <span
             key={team.id}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold"
+            className="flex flex-col items-center justify-center rounded-lg"
             style={{
-              background: `color-mix(in srgb, ${team.color} 14%, transparent)`,
-              color: "var(--color-bt-text)",
+              width: TILE,
+              height: TILE,
+              background: `color-mix(in srgb, ${team.color} ${tile.winner ? 32 : 12}%, transparent)`,
+              boxShadow: tile.winner ? `inset 0 0 0 1px color-mix(in srgb, ${team.color} 55%, transparent)` : undefined,
             }}
+            data-testid={`result-tile-${team.id}`}
+            data-winner={tile.winner ? "true" : "false"}
           >
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: team.color }} />
-            {team.short_name} {fmtPts(cell.points)}
+            <span className="text-[16px] font-extrabold leading-none tabular-nums" style={{ color: "var(--color-bt-text)" }}>
+              {tile.points == null ? "–" : fmtPts(tile.points)}
+            </span>
+            <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold leading-none" style={{ color: "var(--color-bt-text-dim)" }}>
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: team.color }} />
+              {team.short_name}
+            </span>
           </span>
         );
       })}
-    </div>
+    </span>
   );
 }
 
