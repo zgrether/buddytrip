@@ -4,9 +4,10 @@ import {
   GAME_TYPE_LIST,
   canBeSideGame,
   canPlayInTeamlessRace,
+  isGameTypeForScoringModel,
+  teamlessRaceAdmits,
   type GameTypeDefinition,
   type ResultKind,
-  type GameContainer,
 } from "./gameTypes";
 import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
 
@@ -16,7 +17,7 @@ import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
  * ── What this guards that `tsc` does not ───────────────────────────────────
  *
  * The compiler already refuses a format missing `resultKinds`, `teamDependent`
- * or `allowedContainers` — adding the fields produced ten errors naming ten
+ * or `allowedContainers` (deleted in PR 9e) — adding the fields produced ten errors naming ten
  * formats, which is the presence check done for free. **A runtime test that
  * only re-asserts presence would be inert**: it could never fail on a tree that
  * compiles, and it would look exactly like protection.
@@ -42,7 +43,13 @@ import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
  */
 
 const RESULT_KINDS: ResultKind[] = ["head_to_head", "ranked"];
-const CONTAINERS: GameContainer[] = ["head_to_head", "points_race"];
+/**
+ * No container check: `allowedContainers` was deleted in PR 9e. Its
+ * `head_to_head` half was never read, and its `points_race` half said the same
+ * as `compatibleScoringModels` for all ten formats once PR 5 landed — so the
+ * scoring-model list is the one source, and its invariant (rack) is asserted
+ * over the real catalog further down, through the add-game filter's own rule.
+ */
 /**
  * `scoreTables` (#1432): any broadcasting table EXCEPT `games`. `tsc` already
  * refuses a table outside `BROADCAST_TABLES`; `games` is in that list (its
@@ -60,7 +67,6 @@ function declarationFaults(d: GameTypeDefinition): string[] {
     for (const v of vals) if (!legal.includes(v)) faults.push(`${label} has illegal value ${String(v)}`);
   };
   set("resultKinds", d.resultKinds, RESULT_KINDS);
-  set("allowedContainers", d.allowedContainers, CONTAINERS);
   set("scoreTables", d.scoreTables, SCORE_TABLES);
   if (typeof d.teamDependent !== "boolean") faults.push("teamDependent is not a boolean");
   return faults;
@@ -96,12 +102,10 @@ describe("declared format properties", () => {
       ...GAME_TYPE_LIST[0],
       id: "gtt_stub",
       resultKinds: [] as ResultKind[],
-      allowedContainers: [] as GameContainer[],
       scoreTables: [] as BroadcastTable[],
     } as GameTypeDefinition;
     expect(declarationFaults(stub)).toEqual([
       "resultKinds is empty",
-      "allowedContainers is empty",
       "scoreTables is empty",
     ]);
   });
@@ -136,9 +140,39 @@ describe("declared format properties", () => {
    * The model's own invariants, asserted over the real catalog rather than
    * restated in prose. Each is a ruling that would otherwise live only here.
    */
-  it("rack can never be a side game (rulings 12, 27)", () => {
+  /**
+   * This used to assert `allowedContainers` was `["head_to_head"]` under a name
+   * about SIDE games — which `allowedContainers` stopped deciding in PR 7. The
+   * name claimed a path the assertion did not take. Both facts now, each read
+   * from the field that actually decides it.
+   */
+  it("rack lives in a head-to-head cup only: never a points tournament, never a side game (rulings 12, 27)", () => {
     const rack = GAME_TYPE_LIST.find((d) => d.id === "gtt_rack_n_stack")!;
-    expect(rack.allowedContainers).toEqual(["head_to_head"]);
+    expect(isGameTypeForScoringModel(rack, "points")).toBe(false);
+    expect(canBeSideGame(rack.id)).toBe(false);
+  });
+
+  /**
+   * THE GUARD NO CURRENT FORMAT CAN TRIP, made visible. A tournament of
+   * individuals refuses a format that records per-person results but does not
+   * fit a points competition. No catalog entry is both today — every per-person
+   * format fits points — so the check decides nothing on the real catalog, and a
+   * guard nothing can see fail is one a tidy-up deletes unnoticed (Zach, #1600).
+   * A synthetic declaration is the only way to exercise it; the control beside it
+   * proves the same declaration IS admitted once points is allowed, so the
+   * refusal is the scoring-model check and nothing else.
+   */
+  it("refuses a per-person format that is barred from points tournaments", () => {
+    const barred = { recordsPerPersonResults: true, compatibleScoringModels: ["match_play"] as GameTypeDefinition["compatibleScoringModels"] };
+    expect(teamlessRaceAdmits(barred)).toBe(false);
+    expect(teamlessRaceAdmits({ ...barred, compatibleScoringModels: ["match_play", "points"] })).toBe(true);
+    expect(teamlessRaceAdmits({ ...barred, compatibleScoringModels: null })).toBe(true);
+  });
+
+  /** And it is the ONLY one: every other format may be played in a points
+   *  tournament. Stated as the set, so a format losing it is named here. */
+  it("rack is the only format barred from a points tournament", () => {
+    expect(GAME_TYPE_LIST.filter((d) => !isGameTypeForScoringModel(d, "points")).map((d) => d.id)).toEqual(["gtt_rack_n_stack"]);
   });
 
   /**

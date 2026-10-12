@@ -157,7 +157,7 @@ describe("2v2 match — the unit is the match (its two side groups)", () => {
 
 describe("rack — the unit is the play_group (cart)", () => {
   let gameId: string;
-  // Rack is not a side game (`allowedContainers`): it needs a Match Play cup of
+  // Rack is not a side game (`canBeSideGame`): it needs a Match Play cup of
   // exactly two teams, so it gets a trip of its own — same people, same roles.
   let rackTripId: string;
   beforeAll(async () => {

@@ -15,7 +15,7 @@ import { tripDisplayNames } from "@/server/lib/tripDisplayNames";
  * WINNERS instead — the completed table shows those in place of the team
  * columns, and never a row of zeros, which would read as a result (PR 6 plan).
  * Only the three formats that record a per-person result with no competition can
- * be side games (`allowedContainers`, #1493), and each banks its standing as
+ * be side games (`canBeSideGame`, #1493), and each banks its standing as
  * `position` on a `user` or `play_group` row, so position 1 is the winner.
  */
 export interface SideBoardGame extends BoardGameRow {
