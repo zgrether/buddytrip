@@ -100,10 +100,21 @@ describe("GameRow — a live game that can't project says why", () => {
     expect(html).toContain("Underway · scoring");
   });
 
-  it("a points cup keeps the plain line either way — it shows no projection anywhere yet (PR 9)", () => {
+  it("a points tournament keeps the plain line for every other reason", () => {
     const html = render({ cannotProject: "no_points", scoringModel: "points" });
     expect(html).toContain("Underway · scoring");
     expect(html).not.toContain("no points to award");
+  });
+
+  /**
+   * 9c-2 look: in a points tournament the ONE reason that is said is a stroke or
+   * scramble round's — it counts once finished, and the standings' hatched bars
+   * have nothing from it until then. In place of the plain line, not beside it.
+   */
+  it("a live stroke or scramble round in a points tournament says it counts when finished", () => {
+    const html = render({ cannotProject: "round_incomplete", scoringModel: "points" });
+    expect(html).toContain("Underway · counts when finished");
+    expect(html).not.toContain("Underway · scoring");
   });
 });
 

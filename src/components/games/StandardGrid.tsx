@@ -522,8 +522,7 @@ export function ScorecardChrome({ units, tee, teeRows = [], glorious = NO_GLORIO
   return (
     <div className="h-full" style={{ background: "var(--color-bt-base)" }}>
       {/* Multi-tee selector (Spec 5b) — reveal/hide each tee's yardage row.
-          Collapsed behind a disclosure (mirrors the leaderboard's "Game by game"
-          PointsMatrix toggle) so the selection controls aren't always taking up
+          Collapsed behind a disclosure so the selection controls aren't always taking up
           space; the chosen tee shows in the trigger and always renders in the grid.
           The chosen tee is checked + disabled (in play, never hidable). */}
       {multiTee ? (

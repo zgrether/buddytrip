@@ -10,12 +10,13 @@ import { useVisibleEnabled } from "@/lib/surfaceVisibility";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useFirstClinchView } from "@/hooks/useFirstClinchView";
 import { useMyTeamId } from "@/hooks/useMyTeamColor";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { StandingsRows } from "./StandingsRows";
 import { isCupComplete, gamesRemaining } from "@/lib/cupCompletion";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { CannotProjectReason } from "@/lib/gameProjection";
-import { GameRow, CompletedRow, GridColumnHeader, sectionOf, fmtPts, type GameSection } from "./GameRow";
+import { GameRow, CompletedRow, GridColumnHeader, sectionOf, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
-import { PointsMatrix } from "./PointsMatrix";
 import { ReorderableSection } from "./ReorderableGames";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -284,6 +285,9 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // Shares `competitions.myTeamColor`'s cache entry with the app-bar avatar, so
   // this is a cache read, not a second request.
   const myTeamId = useMyTeamId(tripId);
+  // The viewer's own unit in a tournament of individuals is THEMSELVES — its
+  // units are auth user ids (`competitionLeaderboard.ts`, PR 7).
+  const me = useCurrentUser();
 
   // Never blank-on-error (Connectivity Layer 1). TanStack keeps the last `data`
   // through a failed refetch, so a flaky poll keeps showing the board. Only when
@@ -409,31 +413,27 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           rather than 0 for anyone yet to finish a game. No bars and no games ×
           units matrix — a column per person does not scale; the completed rows
           name each game's winners instead. The bars are PR 9's. */}
-      {data.teamless && <PeopleRankedList units={data.units} unitTotals={unitTotals} />}
-
-      {scoringModel === "points" && !data.teamless && (
-        <>
-          <div
-            className="overflow-hidden rounded-xl"
-            style={{
-              background: "var(--color-bt-card)",
-              border: "1px solid var(--color-bt-border)",
-            }}
-          >
-            <div className="px-4 pt-3 pb-1">
-              {/* Factual subtitle only — no "first to X" (not calculable in points: the
-                  score accrues open-endedly, there's no clinch ceiling). */}
-              <p
-                className="text-[11px] font-semibold uppercase tracking-wider"
-                style={{ color: "var(--color-bt-text-dim)" }}
-              >
-                {teams.length} {teams.length === 1 ? "team" : "teams"}
-              </p>
-            </div>
-            <NTeamRankedList teams={teams} teamTotals={teamTotals} onEditTeam={onEditTeam} />
-          </div>
-          <PointsMatrix games={liveGames} teams={teams} cellsByGame={cellsByGame} teamTotals={teamTotals} />
-        </>
+      {/* PR 9c-2: ONE standings component for a points tournament, teams or
+          people — banked solid, projected hatched, no points yet rather than 0,
+          the viewer's row filled. The game-by-game view is the COMPLETED TILES
+          below (Zach's 9c-2 look dropped both the Game by game matrix and the
+          row expansion: three views of one set of numbers). Team names stay
+          editable from the hero. */}
+      {scoringModel === "points" && (
+        <StandingsRows
+          kind={data.teamless ? "players" : "teams"}
+          units={data.units.map((u) => ({
+            id: u.id,
+            // A team's SHORT name: a standings row is a label slot (STYLE_GUIDE
+            // "Team names — subject slots vs label slots").
+            label: u.kind === "team" ? u.short_name ?? u.name : u.name,
+            color: u.color,
+            hasResult: u.hasResult,
+          }))}
+          unitTotals={unitTotals}
+          projections={data.projections}
+          viewerUnitId={data.teamless ? me?.id : myTeamId}
+        />
       )}
 
       {/* Bones copy — the calm setup voice, only while the board is empty and
@@ -807,140 +807,6 @@ export function GamesSection({
 // quieter. Reached only by points cups now — match_play renders the Ryder hero.
 
 /**
- * A TEAMLESS race's standings (PR 7, ruling C): its people in order, points on
- * the right. Someone with no finished result reads **no points yet** and sorts
- * below everyone who has one — never "0", which would say they played and scored
- * nothing (ruling 30). Ties share a rank.
- */
-function PeopleRankedList({ units, unitTotals }: { units: LBUnit[]; unitTotals: Record<string, number> }) {
-  const scored = units
-    .filter((u) => u.hasResult)
-    .sort((a, b) => (unitTotals[b.id] ?? 0) - (unitTotals[a.id] ?? 0) || a.name.localeCompare(b.name));
-  const waiting = units.filter((u) => !u.hasResult).sort((a, b) => a.name.localeCompare(b.name));
-  // Standard competition ranking (1, 2, 2, 4).
-  const rankOf = new Map<string, number>();
-  scored.forEach((u, i) => {
-    const prev = scored[i - 1];
-    rankOf.set(u.id, prev && (unitTotals[prev.id] ?? 0) === (unitTotals[u.id] ?? 0) ? rankOf.get(prev.id)! : i + 1);
-  });
-  return (
-    <div
-      className="overflow-hidden rounded-xl"
-      style={{ background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
-      data-testid="people-standings"
-    >
-      <div className="px-4 pt-3 pb-1">
-        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>
-          {units.length === 0 ? "Standings" : `${units.length} ${units.length === 1 ? "player" : "players"}`}
-        </p>
-      </div>
-      <div className="space-y-2 px-4 pb-4 pt-1">
-        {units.length === 0 && (
-          <p className="text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }}>
-            Add a game to start the standings.
-          </p>
-        )}
-        {[...scored, ...waiting].map((u) => (
-          <div key={u.id} className="flex items-center gap-3" data-testid={`people-standings-row-${u.id}`}>
-            <span className="w-5 shrink-0 text-[12px] font-semibold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
-              {u.hasResult ? rankOf.get(u.id) : "–"}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-              {u.name}
-            </span>
-            {u.hasResult ? (
-              <span className="shrink-0 text-sm font-semibold tabular-nums" style={{ color: "var(--color-bt-text)" }} data-testid={`people-standings-points-${u.id}`}>
-                {fmtPts(unitTotals[u.id] ?? 0)}
-              </span>
-            ) : (
-              <span className="shrink-0 text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid={`people-standings-waiting-${u.id}`}>
-                No points yet
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function NTeamRankedList({
-  teams,
-  teamTotals,
-  onEditTeam,
-}: {
-  teams: LBTeam[];
-  teamTotals: Record<string, number>;
-  /** Tap a team name → that team's identity editor (owner / its captain). */
-  onEditTeam?: (teamId: string) => void;
-}) {
-  const sorted = [...teams].sort(
-    (a, b) => (teamTotals[b.id] ?? 0) - (teamTotals[a.id] ?? 0)
-  );
-  // Bars are proportional to the LEADER, not a fixed ceiling — points has no clinch total,
-  // so the top team fills the bar and the rest read relative to it (all-zero → empty bars).
-  const leaderTotal = Math.max(0, ...sorted.map((t) => teamTotals[t.id] ?? 0));
-
-  return (
-    <div className="px-4 pb-4 pt-1">
-      <div className="space-y-2.5">
-        {sorted.map((team, idx) => {
-          const total = teamTotals[team.id] ?? 0;
-          const barWidth = leaderTotal > 0 ? Math.min(100, (total / leaderTotal) * 100) : 0;
-          const isLeader = idx === 0 && total > 0;
-          // SHORT name: a standings row is a LABEL slot. The reader is scanning
-          // this column vertically against every other team's row — comparing,
-          // not reading one — so the name is the key to a row rather than its
-          // content. The name box is `w-[34%]` ≈ 93px after the dot and gap,
-          // which cannot hold a full name at any real length anyway, but the
-          // rule is what decides it: see STYLE_GUIDE "Team names — subject slots
-          // vs label slots".
-          const dotName = (
-            <>
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: team.color }} />
-              <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
-                {team.short_name}
-              </span>
-            </>
-          );
-
-          // One aligned row: rank · dot + name (fixed width so every bar starts at the same
-          // x) · proportional bar (fills the middle) · score (right-aligned, leader colored).
-          return (
-            <div key={team.id} className="flex items-center gap-3">
-              <span className="w-4 shrink-0 text-[12px] font-semibold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
-                {idx + 1}
-              </span>
-              {onEditTeam ? (
-                <button
-                  type="button"
-                  onClick={() => onEditTeam(team.id)}
-                  className="flex w-[34%] min-w-0 shrink-0 items-center gap-2 text-left"
-                  data-testid={`comp-team-name-${team.id}`}
-                >
-                  {dotName}
-                </button>
-              ) : (
-                <div className="flex w-[34%] min-w-0 shrink-0 items-center gap-2">{dotName}</div>
-              )}
-              <div className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full" style={{ background: "var(--color-bt-card-raised)" }}>
-                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${barWidth}%`, background: team.color }} />
-              </div>
-              <span
-                className="w-10 shrink-0 text-right font-bold tabular-nums"
-                style={{ fontSize: isLeader ? 19 : 15, color: isLeader ? team.color : "var(--color-bt-text)" }}
-              >
-                {fmtPts(total)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/**
  * One trip-wide game sequence from the cup's games and the side games (PR 6b).
  * Ordered by `displayOrder` (per trip); a row without one sorts after those that
  * have one; ties keep their input order (cup games, then side games) — a STABLE
@@ -1095,8 +961,8 @@ function SessionBreakdown({
               <span className="tabular-nums" style={{ color: "var(--color-bt-text)" }}>{sectionGames.length}</span>
             </p>
             {/* Team short-name column header — sits directly above COMPLETED
-                only (§1.2), match_play only (points cups get their own
-                team-column header inside PointsMatrix). */}
+                only (§1.2), match_play only: a points tournament's completed
+                tiles carry each team's abbreviation themselves (9c-2). */}
             {key === "completed" && scoringModel === "match_play" && (
               <GridColumnHeader teams={teams} />
             )}

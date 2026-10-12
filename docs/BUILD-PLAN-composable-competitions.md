@@ -1477,6 +1477,21 @@ wrap, the tiles must stay aligned. Tournaments of individuals keep their winners
 "no points" rather than nothing. Also settled in 9c-2's look: the words for `round_incomplete`
 ("Underway · placed when the round is complete" until then).
 
+**9c-2, settled on its look (Zach, 2026-10-12):**
+- **Ruling 4 reversed: no Game by game matrix and no row expansion.** The completed TILES
+  are the game-by-game view (one row per game, the teams in fixed columns), and the
+  projected total is on the hatched bar. Three views of one set of numbers became one.
+  `PointsMatrix` is deleted.
+- **A unit with no finished game but a live projection** keeps a hatched bar and a dash
+  for rank — not ranked yet, something coming. No extra words.
+- **Head-to-head cups keep their own completed grid FOR NOW; tiles are for tournaments.**
+  A cup's presentation is its own: team names once in the header, the winner's number
+  tinted. This is deliberate, not an inconsistency to tidy up — **to be revisited once
+  tournaments have been used for real**: if the tiles prove the better design in practice,
+  head-to-head can follow them then.
+- **A live stroke or scramble round in a tournament** reads *Underway · counts when
+  finished* in place of *Underway · scoring* (`round_incomplete`). No extra line.
+
 ---
 
 ## Vocabulary
