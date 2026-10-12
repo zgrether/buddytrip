@@ -1110,6 +1110,9 @@ export async function computeCompetitionLeaderboard(
     pointsMode: scoringModel === "points",
     // Rack's two sides are the cup's two teams (ruling 12).
     cupTeamIds: teamIds,
+    // A teamless race's units are people, so the match arms credit people —
+    // the board's own decision above, handed in rather than re-derived (9c-1).
+    teamless,
   });
   const cannotProject = live.cannotProject;
   // Every cup team, explicitly, on every projected game. An arm reports only the

@@ -139,6 +139,30 @@ export interface GameProjectionData {
   /** The COMPETITION is a points cup (`scoring_model = 'points'`). Pick'em
    *  resolves by placement there and by head-to-head otherwise. */
   pointsMode?: boolean;
+  /**
+   * A TEAMLESS race (PR 7): a points competition with no teams, whose units are
+   * PEOPLE. The match arms then credit a side's person, as the finalize pays
+   * them (`matchAwards.ts`, `personOf`) — before 9c-1 they resolved every side
+   * through `userTeam`, which is empty here, so a race being played projected
+   * nobody anything. Handed in by the board, which already decides this for its
+   * own units (`competitionLeaderboard.ts`), so the two cannot disagree.
+   */
+  teamless?: boolean;
+}
+
+/**
+ * The unit a match SIDE is credited to. In a team competition, the side's team
+ * (a 2v2 side through its members, by the one pair rule `sideUnit`). In a
+ * teamless race, the side's PERSON — and a two-person side nobody, as the
+ * finalize pays it (2v2 is refused there before it is saved, PR 7 ruling 3).
+ */
+function sideUnitResolver(parts: GameProjectionData["parts"], userTeam: Map<string, string>, teamless: boolean | undefined) {
+  if (teamless) return (s: SideRef | null): string | null => (s?.id && s.type === "user" ? s.id : null);
+  const pgTeam = playGroupUnits(parts, (id) => userTeam.get(id));
+  return (s: SideRef | null): string | null => {
+    if (!s?.id) return null;
+    return (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? null;
+  };
 }
 
 /** gameId → (teamId → projected points). Only games with a projection appear. */
@@ -223,7 +247,7 @@ export async function computeLiveProjections(
   supabase: SupabaseClient,
   competitionId: string,
   games: LiveProjectionInput[],
-  opts: { pointsMode?: boolean; cupTeamIds?: readonly string[] } = {}
+  opts: { pointsMode?: boolean; cupTeamIds?: readonly string[]; teamless?: boolean } = {}
 ): Promise<LiveProjectionResult> {
   const out: LiveProjections = {};
   const cannotProject: Record<string, CannotProjectReason> = {};
@@ -386,6 +410,7 @@ export async function computeLiveProjections(
       cupTeamIds: opts.cupTeamIds ?? [],
       pickem: pickemIds.includes(g.id) ? pickemDataFor(g.id) : null,
       pointsMode: opts.pointsMode ?? false,
+      teamless: opts.teamless ?? false,
     });
     if (proj?.kind === "projected") out[g.id] = proj.byTeam;
     else if (proj?.kind === "cannot") cannotProject[g.id] = proj.reason;
@@ -419,13 +444,9 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Project
   for (const p of parts) hcap.set(p.user_id, effectiveStrokes(p));
   for (const pg of playGroups) hcap.set(pg.id, effectiveStrokes(pg));
 
-  // play_group → its unit (2v2), by the ONE rule the finalize and both game pages
-  // use (`sideUnit`): the members' team only when they all share it.
-  const pgTeam = playGroupUnits(parts, (id) => userTeam.get(id));
-  const sideTeam = (s: SideRef | null): string | null => {
-    if (!s?.id) return null;
-    return (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? null;
-  };
+  // A side's unit: its team (2v2 through the ONE pair rule `sideUnit`), or in a
+  // teamless race its person — `sideUnitResolver`, shared with `projectMatches`.
+  const sideTeam = sideUnitResolver(parts, userTeam, data.teamless);
 
   // Refactor B3: outcome-mode matches source decided holes from recorded
   // outcomes, grouped by match id — mirrors MatchGameView's decidedFor branch.
@@ -487,10 +508,9 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Project
 function projectMatches(g: LiveProjectionInput, data: GameProjectionData): ProjectionOutcome {
   const { matches, parts, userTeam } = data;
 
-  // The ONE pair rule (`sideUnit`), as in `projectMatch` above.
-  const pgTeam = playGroupUnits(parts, (id) => userTeam.get(id));
-  const sideTeam = (s: SideRef): string | undefined =>
-    (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? undefined;
+  // The same side → unit rule as `projectMatch` above, teamless race included.
+  const unitOf = sideUnitResolver(parts, userTeam, data.teamless);
+  const sideTeam = (s: SideRef): string | undefined => unitOf(s) ?? undefined;
 
   // #1031's rule, same as golf's projectMatch: the even share is derived LIVE
   // from the CURRENT assigned matches, never a persisted snapshot.
