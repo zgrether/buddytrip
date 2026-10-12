@@ -45,8 +45,8 @@ const MOCK_IDEAS = [
 ];
 
 const MOCK_MEMBERS = [
-  { trip_id: TRIP_ID, user_id: MOCK_USER_ID, role: "Owner", status: "in" },
-  { trip_id: TRIP_ID, user_id: "user-002", role: "Member", status: "maybe" },
+  { trip_id: TRIP_ID, user_id: MOCK_USER_ID, role: "Owner" },
+  { trip_id: TRIP_ID, user_id: "user-002", role: "Member" },
 ];
 
 async function setupMocks(page: import("@playwright/test").Page) {

@@ -130,8 +130,8 @@ test.beforeAll(async () => {
 
   await ins("trips", { id: tripId, title: "E2E Slow Paths" }, "seed trip");
   await ins("trip_members", [
-    { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in", nickname: "Bench Owner" },
-    { trip_id: tripId, user_id: memberId, role: "Member", status: "in", nickname: "Bench Member" },
+    { trip_id: tripId, user_id: ownerId, role: "Owner", nickname: "Bench Owner" },
+    { trip_id: tripId, user_id: memberId, role: "Member", nickname: "Bench Member" },
   ], "seed members");
 
   compId = `e2e-slow-comp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;

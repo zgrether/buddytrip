@@ -40,7 +40,6 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
       trip_id: tripId,
       user_id: outsider.id,
       role: "Member",
-      status: "in",
     });
     expect(error).not.toBeNull();
   });
@@ -55,7 +54,6 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
         trip_id: tripId,
         user_id: outsider.id,
         role,
-        status: "in",
       });
       expect(error, `role=${role}`).not.toBeNull();
     }
@@ -72,7 +70,7 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
     const rejoinTrip = await ctx.createTrip("Rejoin Test");
     await ctx.admin
       .from("trip_members")
-      .insert({ trip_id: rejoinTrip, user_id: ctx.getUser("outsider").id, role: "Member", status: "in" });
+      .insert({ trip_id: rejoinTrip, user_id: ctx.getUser("outsider").id, role: "Member" });
     await ctx.admin
       .from("trip_members")
       .delete()
@@ -84,7 +82,6 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
       trip_id: rejoinTrip,
       user_id: ctx.getUser("outsider").id,
       role: "Member",
-      status: "in",
     });
     expect(error).not.toBeNull();
   });
@@ -122,7 +119,6 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
       trip_id: tripId,
       user_id: ctx.getUser("outsider").id,
       role: "Owner",
-      status: "in",
     });
     expect(error).not.toBeNull();
   });
@@ -136,7 +132,6 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
       trip_id: tripId,
       user_id: guestId,
       role: "Member",
-      status: "in",
     });
     expect(error).toBeNull();
 
@@ -144,24 +139,32 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
     await ctx.admin.from("users").delete().eq("id", guestId);
   });
 
-  it("a member can still write their OWN row — travel and status are untouched", async () => {
+  it("a member can still write their OWN row — travel and nickname are untouched", async () => {
     // Migration 122 justified the self arm with "join, travel, status,
     // nickname". Only "join" is removed; the rest were always UPDATE, and this
-    // pins that the fix didn't overreach into them.
-    const { error } = await ctx
+    // pins that the fix didn't overreach into them. (`status` itself was dropped
+    // in migration 213, #1568; nickname is the member's own column that stands
+    // in for it.)
+    //
+    // Asserts the ROW, not only the error: an UPDATE that RLS filters down to
+    // zero rows also returns no error, so `error === null` alone passed whether
+    // or not the write happened.
+    const { data, error } = await ctx
       .authedClient("member")
       .from("trip_members")
-      .update({ status: "likely" })
+      .update({ nickname: "Self-edited" })
       .eq("trip_id", tripId)
-      .eq("user_id", ctx.getUser("member").id);
+      .eq("user_id", ctx.getUser("member").id)
+      .select("nickname");
     expect(error).toBeNull();
+    expect(data).toEqual([{ nickname: "Self-edited" }]);
   });
 
   it("a member can still leave the trip on their own", async () => {
     const leaveTrip = await ctx.createTrip("Leave Test");
     await ctx.admin
       .from("trip_members")
-      .insert({ trip_id: leaveTrip, user_id: ctx.getUser("member").id, role: "Member", status: "in" });
+      .insert({ trip_id: leaveTrip, user_id: ctx.getUser("member").id, role: "Member" });
 
     const { error } = await ctx
       .authedClient("member")

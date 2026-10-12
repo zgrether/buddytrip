@@ -55,7 +55,7 @@ describe("tripDisplayNames — the server's one name source", () => {
   it("a CURRENT member is named by their membership, not by an old departure", async () => {
     const tripId = await departed("rejoined", "Biscuit");
     const back = await ctx.admin.from("trip_members").insert({
-      id: crypto.randomUUID(), trip_id: tripId, user_id: member, role: "Member", status: "in", nickname: "Back Again",
+      id: crypto.randomUUID(), trip_id: tripId, user_id: member, role: "Member", nickname: "Back Again",
     });
     if (back.error) throw back.error;
     // Premise: the old record is still there.

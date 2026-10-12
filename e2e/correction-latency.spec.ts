@@ -126,7 +126,7 @@ test.beforeAll(async () => {
   const { error: tErr } = await admin.from("trips").insert({ id: tripId, title: "E2E Correction Latency" });
   if (tErr) throw new Error(`seed trip failed: ${tErr.message}`);
   const { error: mErr } = await admin.from("trip_members").insert([
-    { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in", nickname: "Bench Owner" },
+    { trip_id: tripId, user_id: ownerId, role: "Owner", nickname: "Bench Owner" },
   ]);
   if (mErr) throw new Error(`seed members failed: ${mErr.message}`);
 

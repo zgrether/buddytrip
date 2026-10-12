@@ -73,7 +73,7 @@ test.beforeAll(async () => {
     .insert({ id: `${tripId}-comp`, trip_id: tripId, name: "E2E Cup", scoring_model: "points" });
   if (cErr) throw new Error(`seed competition failed: ${cErr.message}`);
   const { error: mErr } = await admin.from("trip_members").insert([
-    { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in", nickname: "E2E Owner" },
+    { trip_id: tripId, user_id: ownerId, role: "Owner", nickname: "E2E Owner" },
   ]);
   if (mErr) throw new Error(`seed member failed: ${mErr.message}`);
 });

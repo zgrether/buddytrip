@@ -44,7 +44,7 @@ async function seedPair(label: string): Promise<Seed> {
   const ghost = (await ctx.caller().ghostCrew.create({ tripId, name: `Ghost ${label}`, role: "Member" })) as { id: string };
   const secondTripId = await ctx.createTrip(`Shared ${label}`);
   await ctx.addTripMemberById(secondTripId, realId, "Member");
-  const tm = await ctx.admin.from("trip_members").insert({ trip_id: secondTripId, user_id: ghost.id, role: "Member", status: "in" });
+  const tm = await ctx.admin.from("trip_members").insert({ trip_id: secondTripId, user_id: ghost.id, role: "Member" });
   if (tm.error) throw new Error(`seed ghost membership: ${tm.error.message}`);
   return { tripId, ghostId: ghost.id, secondTripId };
 }

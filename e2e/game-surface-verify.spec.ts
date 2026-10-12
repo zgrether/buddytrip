@@ -33,7 +33,7 @@ test.beforeAll(async () => {
   tripId = `e2e-gs-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   await admin.from("trips").insert({ id: tripId, title: "E2E Game Surface" });
   await admin.from("trip_members").insert([
-    { trip_id: tripId, user_id: ownerId, role: "Owner", status: "in", nickname: "GS Owner" },
+    { trip_id: tripId, user_id: ownerId, role: "Owner", nickname: "GS Owner" },
   ]);
 
   compId = `e2e-gs-comp-${Date.now()}`;

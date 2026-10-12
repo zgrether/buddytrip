@@ -183,7 +183,7 @@ describe("account deletion → placeholder (migration 130)", () => {
     const tripId = await ctx.createTrip("Personal Rows Test");
     await ctx.admin
       .from("trip_members")
-      .insert({ trip_id: tripId, user_id: acct.id, role: "Member", status: "in" });
+      .insert({ trip_id: tripId, user_id: acct.id, role: "Member" });
     await ctx.admin
       .from("chat_reads")
       .insert({ trip_id: tripId, user_id: acct.id, visibility: "crew", last_read_at: new Date().toISOString() });

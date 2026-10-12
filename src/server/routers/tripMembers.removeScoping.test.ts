@@ -102,14 +102,14 @@ describe("migration 123 — Organizer may remove Members, not peers", () => {
     expect(await roleOf(memberId)).toBeNull();
 
     await ctx.admin.from("trip_members")
-      .insert({ trip_id: tripId, user_id: memberId, role: "Member", status: "in" });
+      .insert({ trip_id: tripId, user_id: memberId, role: "Member" });
   }, 60_000);
 
   it("ALLOWS an Organizer removing a ghost (ghosts are Members)", async () => {
     const ghostId = `ghost-123-${Date.now()}`;
     await ctx.admin.from("users").insert({ id: ghostId, name: "Removable Ghost", is_guest: true });
     await ctx.admin.from("trip_members")
-      .insert({ trip_id: tripId, user_id: ghostId, role: "Member", status: "in" });
+      .insert({ trip_id: tripId, user_id: ghostId, role: "Member" });
 
     expect((await archive(organizer, ghostId)).error).toBeNull();
     expect(await roleOf(ghostId)).toBeNull();
@@ -123,7 +123,7 @@ describe("migration 123 — Organizer may remove Members, not peers", () => {
     expect(await roleOf(secondOrganizerId)).toBeNull();
 
     await ctx.admin.from("trip_members")
-      .insert({ trip_id: tripId, user_id: secondOrganizerId, role: "Organizer", status: "in" });
+      .insert({ trip_id: tripId, user_id: secondOrganizerId, role: "Organizer" });
   }, 60_000);
 
   // ── migration 124 — the regression 123 shipped ────────────────────────────
@@ -139,9 +139,9 @@ describe("migration 123 — Organizer may remove Members, not peers", () => {
     const doomed = `remove-scoping-cascade-${Date.now()}`;
     await ctx.admin.from("trips").insert({ id: doomed, title: "Cascade Trip" });
     await ctx.admin.from("trip_members").insert([
-      { trip_id: doomed, user_id: ownerId, role: "Owner", status: "in" },
-      { trip_id: doomed, user_id: secondOrganizerId, role: "Organizer", status: "in" },
-      { trip_id: doomed, user_id: memberId, role: "Member", status: "in" },
+      { trip_id: doomed, user_id: ownerId, role: "Owner" },
+      { trip_id: doomed, user_id: secondOrganizerId, role: "Organizer" },
+      { trip_id: doomed, user_id: memberId, role: "Member" },
     ]);
 
     const { error } = await owner.from("trips").delete().eq("id", doomed);

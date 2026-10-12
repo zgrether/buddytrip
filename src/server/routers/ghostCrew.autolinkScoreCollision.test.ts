@@ -55,7 +55,7 @@ async function seedCollision(label: string): Promise<Collision> {
   // The second trip both identities are on, and the game where both scored.
   const otherTripId = await ctx.createTrip(`Shared second trip ${label}`);
   await ctx.addTripMemberById(otherTripId, realId, "Member");
-  const tm = await ctx.admin.from("trip_members").insert({ trip_id: otherTripId, user_id: ghost.id, role: "Member", status: "in" });
+  const tm = await ctx.admin.from("trip_members").insert({ trip_id: otherTripId, user_id: ghost.id, role: "Member" });
   if (tm.error) throw new Error(`seed ghost membership: ${tm.error.message}`);
 
   const gameId = genId("game");

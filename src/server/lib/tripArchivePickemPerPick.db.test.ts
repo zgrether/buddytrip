@@ -86,7 +86,7 @@ const removeAsOwner = (tripId: string, userId: string) =>
   ctx.authedClient("owner").rpc("archive_trip_member", { p_trip_id: tripId, p_user_id: userId });
 
 async function rejoin(tripId: string, userId: string) {
-  const { error } = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: tripId, user_id: userId, role: "Member", status: "in" });
+  const { error } = await ctx.admin.from("trip_members").insert({ id: crypto.randomUUID(), trip_id: tripId, user_id: userId, role: "Member" });
   if (error) throw error;
 }
 
