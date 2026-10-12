@@ -510,6 +510,17 @@ seam, never on a calendar.
   and is not covered. A test file that states its own limit is worth more than
   one that implies coverage it does not have.
 
+- **A FIX THAT HELPS IS EVIDENCE, NOT PROOF.** The cause is confirmed when the
+  explanation accounts for EVERY failure, including the leftover ones. Lived
+  2026-10-11 (#1590): waiting for hydration before each click cut the chat E2E
+  failures from 9 of 12 to 1 of 12, and read as confirming a hydration race. It
+  only helped because the wait happened to outlast the real cause — the trip
+  page's shell being REMOUNTED when the trip loaded. Refusing to call the one
+  remaining failure a flake is what found it; the remount fix alone took the
+  specs to 12 of 12 with no wait at all. **How to apply:** when a fix improves
+  the numbers and leaves a residual, the residual is the lead, not noise — ask
+  whether your explanation predicts IT, and keep going if it does not.
+
 - **ONLY A RULE ENFORCED IN THE DATABASE KEEPS FIXTURES HONEST.** Fixtures insert rows directly and never touch app code, so app-level guards cannot see them; three sightings of test data built in states the app forbids (#1402's forty impossible cups, #1428's live games with finished rows, twelve files migration 193's trigger refused) were caught only when a rule moved into the database.
 
 - **BEFORE REMOVING A GUARD, ENUMERATE WHAT IT WAS MAKING UNREACHABLE.** Lifting one exposes everything behind it at once, and nothing lists what that is: the roster lock was silently holding up rulings 15–17, because every result writer re-credits through today's roster and only the lock kept a trade from reaching a re-finalize (PR 8a, migration 203).
@@ -1225,10 +1236,12 @@ These patterns have been established through prior work. Follow them exactly —
       untouched by this.
     - **A broadcast failure must never roll back a write.** Two independent layers:
       `realtime.send` already swallows its own errors (`RAISE WARNING`), and the trigger
-      body has its own `WHEN OTHERS` handler. A game with no competition simply
-      early-returns — and since PR 6b that is a **side game**, the path the Games page
-      exists for (ruling 1), so it gets **no live broadcast**: its section refreshes on
-      the backstop poll and local-mutation invalidation until a trip-scoped topic exists.
+      body has its own `WHEN OTHERS` handler. A game with no competition — since PR 6b
+      a **side game**, the path the Games page exists for (ruling 1) — broadcasts the
+      SAME signal on its TRIP's topic, `trip_events:{tripId}` (migration 196, #1498),
+      which the board and the side-games board subscribe to with a `null` competition.
+      **Corrected 2026-10-11:** this line said side games get "no live broadcast" until
+      a trip-scoped topic exists. 196 had already added it; the line outlived its fact.
       **This line used to say "Standalone games (~40% of prod) … the COMMON case", and
       it was false twice when measured — 0 of 40 games, then 0 of 60 (2026-09-27): no
       game could be created without a competition through any screen.** It was the

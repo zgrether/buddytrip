@@ -160,8 +160,12 @@ the same.
 ### Display
 
 29. **The head-to-head match builder lists only rostered players.** Everyone else appears
-    under *ineligible for matches*; add-to-team is offered only to owners and captains, and
-    a delegate sees who can do it.
+    under *ineligible for matches*; add-to-team is offered to the Owner, Organizers, and
+    captains for their own team before results, and a delegate sees who can do it.
+    **Wording corrected 2026-10-11 (Zach):** this said "only to owners and captains". The
+    point was that DELEGATES get no roster rights, not that Organizers lose them — the
+    permissions pass already gave Organizers add, remove and move (`ROSTER_EDITORS`,
+    #786), and this now says the rule the code implements.
 30. **Points-race standings are rows with bars:** banked solid, projected lighter. Leader
     and your own row shown, full list one tap away. **Nothing banked reads "no points
     yet", never "0".** Standings are always high-wins, because every result is points by
@@ -505,10 +509,12 @@ see one thing. **"PR 3 merged" must not come to mean the award function alone.**
   match-play cup row with a pick'em game before and after reveal.
 - **Stroke, scramble and skins arms move to PR 9**, their only surface. **Points cups
   display no projection anywhere today** — row pills require a match-play cup
-  (`GameRow.tsx:294`) and the hero's projected tier sits inside the match-play-only block —
-  so building them in 3c would add three arms nobody can see. **`#1416` also blocks two of
-  them**, and stroke's *what does "if it ended now" even mean* question is best settled
-  against the bars that would show the answer. `#1120` stays open and moves with them.
+  (`GameRow.tsx:294`, now `:326`) and the hero's projected tier sits inside the
+  match-play-only block — so building them in 3c would add three arms nobody can see.
+  ~~**`#1416` also blocks two of them**~~ — **#1416 closed 2026-09-24 (#1428: the board banks
+  only finished games), so it no longer blocks anything (corrected 2026-10-11).** Stroke's
+  *what does "if it ended now" even mean* question is best settled against the bars that
+  would show the answer. `#1120` stays open and moves with them.
 - **The bracket is not one of the four.** It is never seen as started (`#1413`), nothing
   places entrants still alive in the draw, and its placement crowns a champion while a
   reset is still owed (`#1417`). **The plan's earlier mention of PR 0's draw helpers here
@@ -1385,6 +1391,49 @@ clauses); reset and merge carry their new lines. No rows yet.
   alike, not a copy of an existing one.
 
 **Look-gate:** a three-team points race and a teamless race, on a phone.
+
+### PR 9 — verify-first done and ruled, 2026-10-11
+
+**What the verify-first found** (read against `main` @ `96023b48`):
+- **Match builder:** offers rostered players only; anyone on no team is silently absent,
+  with no section and no add-to-team route (the server refuses them, migration 193). A golf
+  cup game with ZERO assignments falls back to the whole trip crew, which the server then
+  refuses one by one.
+- **Standings:** a team race already has leader-scaled bars, banked only, and shows "0" for
+  a team with nothing banked; a teamless race has "No points yet" and no bars. No "your
+  row", nothing expandable. Projections are computed for points cups and displayed nowhere;
+  stroke, scramble and skins have no arm (#1120). Unconfirmed: a teamless race's projections
+  are keyed by person while the arms return team ids, so every one may come out 0.
+- **AS chip:** decided only by "nobody leads" (`MatchCard.tsx`), so unplayed, level-in-play
+  and halved-final render the same chip; five other surfaces each format their own label.
+- **Trip home:** nothing shows a game's status; agenda chips show the name only.
+- **Unread declarations:** `supportsFreeForAll`, `supportsSides`, `requiresSides`,
+  `maxPlayersPerSide`, `entrySchema`, and the `head_to_head` half of `allowedContainers`.
+
+**Ruled (Zach):**
+1. **AS chip:** *Not started* for an unplayed match, *AS* while level in play, *Halved* once
+   over — empty versus unknown, fixed on screen. ONE shared label helper for all six
+   surfaces, in the same change.
+2. **Match builder:** a *Not on a team* section; *Add to {team}* offered to whoever the
+   server allows — Owner, Organizers, and captains for their own team before results.
+   After results the add goes through the 8b preview, never a bare add. **Remove the
+   zero-assignments fallback**: with no assignments, everyone appears under *Not on a team*
+   rather than being offered and then refused.
+3. **Projection:** skins projects (skins won so far are final); stroke and scramble are
+   *cannot project* until the round completes. To-par-through-X is the natural later
+   upgrade, but it compounds with the uneven-teams sum, so not in this PR. **Confirm and
+   fix the teamless keying bug in 9c-1**, before 9c-2 is the first surface to render it.
+4. **Expanded row:** game by game, banked and projected, projected clearly marked as not
+   yet earned — the game name and the points, nothing more.
+5. **Live now on Home:** every live game, yours first; games not matches, so it stays short.
+   Reads the board's existing data and live subscriptions, no new query.
+6. **Deletions, as the last PR:** the five unread properties and the `head_to_head` half of
+   `allowedContainers`. **Keep `scoreTables`** — read only by a test BY DESIGN: it is
+   #1432's declaration that makes the compiler force every format to name its score tables
+   so the guard can check the broadcast registry covers them.
+
+**Split, in order:** 9a AS chip → 9b match builder → 9c-1 projection arms + teamless keying
+(no surface; closes #1120) → 9c-2 standings → 9d Live now on Home → 9e deletions.
 
 ---
 

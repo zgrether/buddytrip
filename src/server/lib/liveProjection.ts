@@ -46,7 +46,8 @@ import { tallyMatchAwards } from "@/lib/matchAwards";
  * 'matches'`) and **pick'em** (3c) live games project. Stroke, scramble and
  * skins do NOT yet, and that is a decision rather than a gap: their arms would
  * land in points cups, which show no projection on any surface, so they move to
- * PR 9 with the points-race bars (#1120; #1416 must be settled first). Non-golf
+ * PR 9 with the points-race bars (#1120; #1416, which had to be settled first,
+ * closed 2026-09-24 in #1428 — the board banks only finished games). Non-golf
  * placement and Simple win/tie post straight to complete with nothing to
  * preview in between.
  *
