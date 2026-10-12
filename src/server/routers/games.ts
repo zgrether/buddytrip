@@ -398,7 +398,7 @@ async function teamCountForGame(
 ): Promise<number | null> {
   const game = maybeRowOrThrow(
     await supabase.from("games").select("competition_id").eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
-    "game's competition"
+    "game"
   );
   const competitionId = game?.competition_id as string | null | undefined;
   if (!competitionId) return null;
@@ -406,7 +406,7 @@ async function teamCountForGame(
   // "unknown" (that skips the check): it throws.
   return countOrThrow(
     await supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", competitionId),
-    "competition's team count"
+    "team count"
   );
 }
 

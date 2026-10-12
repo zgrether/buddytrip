@@ -62,11 +62,11 @@ describe("placement capacity: a failed read refuses the save, it doesn't skip th
 
   it("the game read fails → refused (it used to look 'standalone' and skip)", async () => {
     const failing = callerFailingRead(ctx, "owner", { table: "games", columns: "competition_id" });
-    await expect(save(failing)).rejects.toThrow(SENTENCE("game's competition"));
+    await expect(save(failing)).rejects.toThrow(SENTENCE("game"));
   });
 
   it("the team count fails → refused (it used to be 'unknown' and skip)", async () => {
     const failing = callerFailingRead(ctx, "owner", { table: "teams", columns: "id" });
-    await expect(save(failing)).rejects.toThrow(SENTENCE("competition's team count"));
+    await expect(save(failing)).rejects.toThrow(SENTENCE("team count"));
   });
 });
