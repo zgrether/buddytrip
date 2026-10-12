@@ -109,7 +109,7 @@ export const competitionsRouter = router({
   leaderboard: authedProcedure
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireTripMember)
-    .query(({ ctx, input }) => computeCompetitionLeaderboard(ctx.supabase, input.competitionId)),
+    .query(({ ctx, input }) => computeCompetitionLeaderboard(ctx.supabase, input.competitionId, { viewerId: ctx.user!.id })),
 
   // -----------------------------------------------------------------------
   // faceBootstrap — the competition face's single boundary resolve (Stage A).

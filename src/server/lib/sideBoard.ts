@@ -25,7 +25,12 @@ export interface SideBoardGame extends BoardGameRow {
   winners: string[];
 }
 
-export async function computeSideBoard(supabase: SupabaseClient, tripId: string): Promise<SideBoardGame[]> {
+export async function computeSideBoard(
+  supabase: SupabaseClient,
+  tripId: string,
+  /** Whose board this is: marks each row's `yours` (PR 9d). */
+  viewerId: string | null = null
+): Promise<SideBoardGame[]> {
   const games = rowsOrThrow(
     await supabase
       .from("games")
@@ -38,7 +43,7 @@ export async function computeSideBoard(supabase: SupabaseClient, tripId: string)
   ) as Record<string, unknown>[];
   if (games.length === 0) return [];
 
-  const inputs = await readBoardInputs(supabase, games as Parameters<typeof readBoardInputs>[1], "trip's");
+  const inputs = await readBoardInputs(supabase, games as Parameters<typeof readBoardInputs>[1], "trip's", null, viewerId);
   const winnersByGame = await readSideGameWinners(
     supabase,
     tripId,

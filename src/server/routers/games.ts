@@ -639,7 +639,7 @@ export const gamesRouter = router({
   sideBoard: authedProcedure
     .input(z.object({ tripId: z.string() }))
     .use(requireTripMember)
-    .query(({ ctx }) => computeSideBoard(ctx.supabase, ctx.tripId)),
+    .query(({ ctx }) => computeSideBoard(ctx.supabase, ctx.tripId, ctx.user!.id)),
 
   // getById — any trip member. Returns the game + its participants.
   getById: authedProcedure
