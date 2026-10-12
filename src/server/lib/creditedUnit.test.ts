@@ -49,7 +49,7 @@ interface Cup {
   teamB: string;
 }
 
-/** A fresh cup per case: `teamTotals` sums every game in a competition, so a
+/** A fresh cup per case: `unitTotals` sums every game in a competition, so a
  *  shared one would make each assertion depend on what ran before it. A trip
  *  holds one competition (migration 195), so each cup gets its own trip. */
 async function newCup(name: string, scoringModel?: "match_play" | "points"): Promise<Cup> {
@@ -142,7 +142,7 @@ async function rowsOf(gameId: string) {
 
 const totalsOf = async (cup: Cup) => {
   const board = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
-  return (board as { teamTotals: Record<string, number> }).teamTotals;
+  return (board as { unitTotals: Record<string, number> }).unitTotals;
 };
 
 beforeAll(async () => {

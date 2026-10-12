@@ -1048,12 +1048,12 @@ export async function computeCompetitionLeaderboard(
   // so the grid and the totals can't disagree. Only live games carry cells.
   // `teamId` is the SAME value as `unitId`, carried until #1503's date so a client
   // still running pre-PR 7 code reads the payload it knows (see the return).
-  const cells: { gameId: string; unitId: string; teamId: string; place: number; points: number }[] = [];
+  const cells: { gameId: string; unitId: string; place: number; points: number }[] = [];
   for (const g of liveGames) {
     if (!g.distribution || g.standings.length === 0) continue;
     const detail = placementDetail(g.distribution, g.standings, g.direction);
     for (const [unitId, d] of detail) {
-      cells.push({ gameId: g.id, unitId, teamId: unitId, place: d.place, points: d.points });
+      cells.push({ gameId: g.id, unitId, place: d.place, points: d.points });
     }
   }
 
@@ -1214,20 +1214,5 @@ export async function computeCompetitionLeaderboard(
     projectedUnitTotals: projected.totals,
     hasLiveProjection: projected.hasLive,
     pointsToClinch: Object.fromEntries(roll.pointsToClinch),
-    /**
-     * ── LEGACY NAMES, same values, until #1503's date ─────────────────────────
-     *
-     * A phone with the app open across the deploy keeps its OLD client, whose
-     * tRPC requests reach this NEW server: Vercel Skew Protection is on, but it
-     * does not pin custom `fetch()` calls like tRPC's (#1503). That client reads
-     * `teamTotals` / `projectedTeamTotals`. For a head-to-head or teamed cup the
-     * unit maps ARE the team maps, so it keeps working; a teamless race is new,
-     * so no old client has ever rendered one. Removed NOT BEFORE 14 days after
-     * PR 7's production deploy: an installed app can sit open for days across
-     * several deploys, so the rule is a date, not a release. Nothing in this
-     * repo reads them.
-     */
-    teamTotals: unitTotals,
-    projectedTeamTotals: projected.totals,
   };
 }

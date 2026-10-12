@@ -210,11 +210,11 @@ describe("games.setPointsDistribution — redistributing a FIXED total moves the
 
     const board = (await ctx.caller().competitions.leaderboard({ tripId, competitionId: compId })) as {
       pointsAvailable: number;
-      teamTotals: Record<string, number>;
+      unitTotals: Record<string, number>;
     };
     expect(board.pointsAvailable, "the total in play never moved — only the split did").toBe(3);
-    expect(board.teamTotals[a]).toBe(1);
-    expect(board.teamTotals[b]).toBe(2);
+    expect(board.unitTotals[a]).toBe(1);
+    expect(board.unitTotals[b]).toBe(2);
   }, 60_000);
 });
 

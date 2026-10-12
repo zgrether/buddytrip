@@ -163,7 +163,7 @@ async function resultRows(f: Fixture) {
 
 async function totals(f: Fixture): Promise<Record<string, number>> {
   const board = await computeCompetitionLeaderboard(ctx.admin, f.competitionId);
-  return (board.teamTotals ?? {}) as Record<string, number>;
+  return (board.unitTotals ?? {}) as Record<string, number>;
 }
 
 async function dropFixture(f: Fixture) {

@@ -102,8 +102,8 @@ describe("match-play cup — a manual game with NO split of its own is unchanged
     await finishFirstSecond(gameId, ta, tb);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.teamTotals[ta]).toBe(8);
-    expect(lb.teamTotals[tb]).toBe(0);
+    expect(lb.unitTotals[ta]).toBe(8);
+    expect(lb.unitTotals[tb]).toBe(0);
     expect(lb.pointsAvailable).toBe(8);
   });
 
@@ -119,8 +119,8 @@ describe("match-play cup — a manual game with NO split of its own is unchanged
     ]);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.teamTotals[ta]).toBe(4);
-    expect(lb.teamTotals[tb]).toBe(4);
+    expect(lb.unitTotals[ta]).toBe(4);
+    expect(lb.unitTotals[tb]).toBe(4);
   });
 });
 
@@ -136,8 +136,8 @@ describe("match-play cup — a manual game WITH its own split is awarded by it",
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     // The whole point: second place is worth something now. Under the override
     // this was 8 / 0.
-    expect(lb.teamTotals[ta]).toBe(5);
-    expect(lb.teamTotals[tb]).toBe(3);
+    expect(lb.unitTotals[ta]).toBe(5);
+    expect(lb.unitTotals[tb]).toBe(3);
     expect(lb.pointsAvailable).toBe(8);
   });
 
@@ -162,8 +162,8 @@ describe("match-play cup — a manual game WITH its own split is awarded by it",
     await finishFirstSecond(gameId, ta, tb);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.teamTotals[ta]).toBe(6);
-    expect(lb.teamTotals[tb]).toBe(0);
+    expect(lb.unitTotals[ta]).toBe(6);
+    expect(lb.unitTotals[tb]).toBe(0);
   });
 
   it("a split with a NULL total — points-available moves, nobody's award does", async () => {
@@ -182,12 +182,12 @@ describe("match-play cup — a manual game WITH its own split is awarded by it",
 
     const before = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     expect(before.pointsAvailable).toBe(15); // 9 + 6, derived from the split
-    expect(before.teamTotals[ta]).toBe(0); // …but nothing awarded with no results
+    expect(before.unitTotals[ta]).toBe(0); // …but nothing awarded with no results
 
     await finishFirstSecond(gameId, ta, tb);
     const after = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(after.teamTotals[ta]).toBe(9);
-    expect(after.teamTotals[tb]).toBe(6);
+    expect(after.unitTotals[ta]).toBe(9);
+    expect(after.unitTotals[tb]).toBe(6);
   });
 });
 
@@ -206,7 +206,7 @@ describe("points cup — untouched by any of this", () => {
     await finishFirstSecond(gameId, ta, tb);
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.teamTotals[ta]).toBe(5);
-    expect(lb.teamTotals[tb]).toBe(3);
+    expect(lb.unitTotals[ta]).toBe(5);
+    expect(lb.unitTotals[tb]).toBe(3);
   });
 });

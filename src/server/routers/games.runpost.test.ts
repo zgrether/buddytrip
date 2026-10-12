@@ -88,8 +88,8 @@ describe("post — commit current standing, points from configured distribution"
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId: ownTrip, competitionId: ownCup });
     // Poster set positions 1,2 — points come from the configured [5,3].
-    expect(lb.teamTotals[blue]).toBe(5);
-    expect(lb.teamTotals[red]).toBe(3);
+    expect(lb.unitTotals[blue]).toBe(5);
+    expect(lb.unitTotals[red]).toBe(3);
     expect(lb.pointsAvailable).toBe(8);
   });
 

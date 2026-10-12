@@ -1358,11 +1358,11 @@ export async function notifyCupClinchedIfDecided(
       .eq("competition_id", input.competitionId);
     const audience = (assignments ?? []).map((r: { user_id: string }) => r.user_id);
 
-    // The cup standings AT the clinch — the same `teamTotals` the board renders,
+    // The cup standings AT the clinch — the same `unitTotals` the board renders,
     // so the notification and the board can't quote different numbers. Top two
     // only: the clincher is already named in the title, and the line exists to
     // say by how much.
-    const totals = (board.teamTotals ?? {}) as Record<string, number>;
+    const totals = (board.unitTotals ?? {}) as Record<string, number>;
     const standingsLine = formatClinchMargin(teams.map((t) => totals[t.id] ?? 0));
 
     await sendPushToUsers(

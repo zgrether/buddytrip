@@ -141,7 +141,7 @@ describe("A2b — override redistributes; award reads point_value ?? even share"
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     const gameCell = lb.games.find((g) => g.id === gameId);
     expect(gameCell?.pointsTotal).toBe(6); // authoritative total, no value×mc snapshot drift
-    expect(lb.teamTotals[blue]).toBe(6);
+    expect(lb.unitTotals[blue]).toBe(6);
 
     void m2; // (referenced for clarity; its even value is asserted via byTeam)
   }, 60000);

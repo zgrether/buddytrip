@@ -65,8 +65,8 @@ describe("Refactor B2 acceptance case — outcome entry, tap by tap, posts like 
     // Posts to the leaderboard exactly like a stroke game — the SAME payload
     // shape, the SAME per_match team-points adapter.
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.teamTotals[blue]).toBe(3);
-    expect(lb.teamTotals[red] ?? 0).toBe(0);
+    expect(lb.unitTotals[blue]).toBe(3);
+    expect(lb.unitTotals[red] ?? 0).toBe(0);
 
     // The headline: zero score_entries anywhere for this game.
     const { data: scoreRows } = await ctx.admin.from("score_entries").select("id").eq("game_id", gameId);

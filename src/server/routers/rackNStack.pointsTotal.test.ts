@@ -116,7 +116,7 @@ describe("rack total-points — divisor is this game's SLOT count, not the roste
     // value(10) × roster-mc(2) = 20, which the pre-migration formula would show.
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     expect(lb.games.find((g) => g.id === gameId)?.pointsTotal).toBe(10);
-    expect(lb.teamTotals[blue]).toBe(10);
+    expect(lb.unitTotals[blue]).toBe(10);
   }, 60000);
 });
 
@@ -166,7 +166,7 @@ describe("rack total-points — per-slot value recomputes live as the field grow
     // per-slot recompute never perturbs it.
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     expect(lb.games.find((g) => g.id === gameId)?.pointsTotal).toBe(10);
-    expect(lb.teamTotals[blue]).toBe(7.5);
-    expect(lb.teamTotals[red]).toBe(2.5);
+    expect(lb.unitTotals[blue]).toBe(7.5);
+    expect(lb.unitTotals[red]).toBe(2.5);
   }, 60000);
 });

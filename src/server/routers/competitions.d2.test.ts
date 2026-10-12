@@ -88,8 +88,8 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
 
-    expect(lb.teamTotals[teamA]).toBe(0);
-    expect(lb.teamTotals[teamB]).toBe(0);
+    expect(lb.unitTotals[teamA]).toBe(0);
+    expect(lb.unitTotals[teamB]).toBe(0);
     // winNumber = smallest > half of 15 (9+6) → 8
     expect(lb.winNumber).toBe(8);
     expect(lb.pointsAvailable).toBe(15);
@@ -113,8 +113,8 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
 
     // The one game on this cup pays 9 for 1st and 6 for 2nd — exact, now that
     // no other case's game shares the cup.
-    const aTotal = lb.teamTotals[teamA] as number;
-    const bTotal = lb.teamTotals[teamB] as number;
+    const aTotal = lb.unitTotals[teamA] as number;
+    const bTotal = lb.unitTotals[teamB] as number;
     expect(aTotal).toBe(9);
     expect(bTotal).toBe(6);
 
@@ -151,8 +151,8 @@ describe("D2 §6 — 2-team hero data (N-team structure holds at 2)", () => {
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: cleanComp });
 
     // ta has 10 pts, available=10 → half=5 → winNumber=5.5 (smallest > half)
-    expect(lb.teamTotals[ta]).toBe(10);
-    expect(lb.teamTotals[tb]).toBe(0);
+    expect(lb.unitTotals[ta]).toBe(10);
+    expect(lb.unitTotals[tb]).toBe(0);
     expect(lb.winNumber).toBe(5.5);
     expect(lb.pointsToClinch[ta]).toBeLessThanOrEqual(0);
     expect(lb.pointsToClinch[tb]).toBeGreaterThan(0);
@@ -227,9 +227,9 @@ describe("D2 §6 — N-team (3+ teams) ranked list data", () => {
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
     expect(lb.teams).toHaveLength(3);
-    expect(lb.teamTotals[t1]).toBe(9);
-    expect(lb.teamTotals[t2]).toBe(6);
-    expect(lb.teamTotals[t3]).toBe(4);
+    expect(lb.unitTotals[t1]).toBe(9);
+    expect(lb.unitTotals[t2]).toBe(6);
+    expect(lb.unitTotals[t3]).toBe(4);
     // available = 19, winNumber = smallest > 9.5 → 10
     expect(lb.winNumber).toBe(10);
     expect(lb.pointsToClinch[t1]).toBe(1); // 10-9=1
@@ -261,7 +261,7 @@ describe("D2 §6 — non-engine game with no entry shows at 0, not hidden", () =
     expect(lb.cells.filter((c: { gameId: string }) => c.gameId === g.id)).toHaveLength(0);
     // Teams show at 0
     for (const team of lb.teams) {
-      expect(lb.teamTotals[team.id] ?? 0).toBe(0);
+      expect(lb.unitTotals[team.id] ?? 0).toBe(0);
     }
   });
 });
@@ -438,8 +438,8 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     }];
     const roll = rollUp(liveInput, [t1, t2]);
 
-    expect(lb.teamTotals[t1]).toBe(roll.unitTotals.get(t1));
-    expect(lb.teamTotals[t2]).toBe(roll.unitTotals.get(t2));
+    expect(lb.unitTotals[t1]).toBe(roll.unitTotals.get(t1));
+    expect(lb.unitTotals[t2]).toBe(roll.unitTotals.get(t2));
     expect(lb.winNumber).toBe(roll.winNumber);
     expect(lb.pointsAvailable).toBe(roll.pointsAvailable);
   });

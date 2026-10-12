@@ -348,10 +348,10 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
     const lb = await board(cup);
     // A fielded seeds 1 (1st → 4) and 3 (tied 3rd → (1+1)/2 = 1) = 5.
     // B fielded seeds 2 (2nd → 2) and 4 (the other tied 3rd → 1) = 3.
-    expect(lb.teamTotals[cup.teamA]).toBeCloseTo(5);
-    expect(lb.teamTotals[cup.teamB]).toBeCloseTo(3);
+    expect(lb.unitTotals[cup.teamA]).toBeCloseTo(5);
+    expect(lb.unitTotals[cup.teamB]).toBeCloseTo(3);
     // The whole split is awarded — nothing stranded by the two-step roll-up.
-    expect((lb.teamTotals[cup.teamA] ?? 0) + (lb.teamTotals[cup.teamB] ?? 0)).toBeCloseTo(8);
+    expect((lb.unitTotals[cup.teamA] ?? 0) + (lb.unitTotals[cup.teamB] ?? 0)).toBeCloseTo(8);
   });
 
   it("the per-game grid cell agrees with the totals", async () => {
@@ -363,8 +363,8 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
     const lb = await board(cup);
     const cells = lb.cells.filter((c) => c.gameId === gameId);
     expect(cells).toHaveLength(2);
-    const cellA = cells.find((c) => c.teamId === cup.teamA)!;
-    const cellB = cells.find((c) => c.teamId === cup.teamB)!;
+    const cellA = cells.find((c) => c.unitId === cup.teamA)!;
+    const cellB = cells.find((c) => c.unitId === cup.teamB)!;
     expect(cellA.points).toBeCloseTo(5);
     expect(cellB.points).toBeCloseTo(3);
     // Ranked by points, high wins — A led this game.
@@ -391,8 +391,8 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
 
     const lb = await board(cup);
     // A: 1st (4) + both tied 3rds (1 + 1) = 6. B: 2nd (2).
-    expect(lb.teamTotals[cup.teamA]).toBeCloseTo(6);
-    expect(lb.teamTotals[cup.teamB]).toBeCloseTo(2);
+    expect(lb.unitTotals[cup.teamA]).toBeCloseTo(6);
+    expect(lb.unitTotals[cup.teamB]).toBeCloseTo(2);
   });
 
   /**
@@ -409,8 +409,8 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
     // Still four rows in the database — the record is unaffected by the payout.
     expect(await resultsOf(gameId)).toHaveLength(4);
     const lb = await board(cup);
-    expect(lb.teamTotals[cup.teamA]).toBeCloseTo(8);
-    expect(lb.teamTotals[cup.teamB]).toBeCloseTo(0);
+    expect(lb.unitTotals[cup.teamA]).toBeCloseTo(8);
+    expect(lb.unitTotals[cup.teamB]).toBeCloseTo(0);
   });
 
   it("awards nothing before the bracket is posted, but still counts its pool", async () => {
@@ -421,8 +421,8 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
     const lb = await board(cup);
     expect(lb.games.find((g) => g.id === gameId)!.pointsTotal).toBe(8);
     expect(lb.cells.filter((c) => c.gameId === gameId)).toHaveLength(0);
-    expect(lb.teamTotals[cup.teamA]).toBeCloseTo(0);
-    expect(lb.teamTotals[cup.teamB]).toBeCloseTo(0);
+    expect(lb.unitTotals[cup.teamA]).toBeCloseTo(0);
+    expect(lb.unitTotals[cup.teamB]).toBeCloseTo(0);
   });
 
   /**
@@ -445,9 +445,9 @@ describe("the leaderboard rolls entrant placements up to cup teams", () => {
     expect(await resultsOf(gameId)).toHaveLength(4);
     const lb = await board(cup);
     // A keeps only seed 1's 4; seed 3's tied-third share simply goes unclaimed.
-    expect(lb.teamTotals[cup.teamA]).toBeCloseTo(4);
+    expect(lb.unitTotals[cup.teamA]).toBeCloseTo(4);
     // B keeps 2nd (2) + its tied 3rd (1).
-    expect(lb.teamTotals[cup.teamB]).toBeCloseTo(3);
+    expect(lb.unitTotals[cup.teamB]).toBeCloseTo(3);
   });
 });
 
@@ -566,9 +566,9 @@ describe("a bracket with NO distribution still pays out", () => {
     const lb = await board(cup);
     // Seed 1 wins and is on team A; everyone else gets nothing. Before the fix
     // BOTH teams were 0 and the game contributed nothing at all.
-    expect(lb.teamTotals[cup.teamA]).toBeCloseTo(8);
-    expect(lb.teamTotals[cup.teamB] ?? 0).toBeCloseTo(0);
-    expect((lb.teamTotals[cup.teamA] ?? 0) + (lb.teamTotals[cup.teamB] ?? 0)).toBeCloseTo(8);
+    expect(lb.unitTotals[cup.teamA]).toBeCloseTo(8);
+    expect(lb.unitTotals[cup.teamB] ?? 0).toBeCloseTo(0);
+    expect((lb.unitTotals[cup.teamA] ?? 0) + (lb.unitTotals[cup.teamB] ?? 0)).toBeCloseTo(8);
   });
 
   it("still records every entrant's PLACE — the record is unchanged", async () => {
@@ -599,7 +599,7 @@ describe("a bracket with NO distribution still pays out", () => {
     await ctx.caller().games.finish({ tripId: cup.tripId, gameId });
 
     const lb = await board(cup);
-    expect(lb.teamTotals[cup.teamA]).toBeCloseTo(5);
-    expect(lb.teamTotals[cup.teamB]).toBeCloseTo(3);
+    expect(lb.unitTotals[cup.teamA]).toBeCloseTo(5);
+    expect(lb.unitTotals[cup.teamB]).toBeCloseTo(3);
   });
 });

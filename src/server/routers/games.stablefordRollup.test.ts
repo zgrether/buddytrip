@@ -256,9 +256,9 @@ describe("STABLEFORD — the banked result and the cup", () => {
     const board = (await ctx.caller().competitions.leaderboard({
       tripId,
       competitionId,
-    })) as { teamTotals: Record<string, number> };
+    })) as { unitTotals: Record<string, number> };
 
-    const pointsFor = (id: string) => board.teamTotals[id] ?? 0;
+    const pointsFor = (id: string) => board.unitTotals[id] ?? 0;
     expect(pointsFor(teamB)).toBe(10); // the [10, 0] placement split
     expect(pointsFor(teamA)).toBe(0);
     expect(pointsFor(teamB)).toBeGreaterThan(pointsFor(teamA));
@@ -312,8 +312,8 @@ describe("TRADITIONAL is unchanged — the constraint the timing rests on", () =
     const board = (await ctx.caller().competitions.leaderboard({
       tripId,
       competitionId,
-    })) as { teamTotals: Record<string, number> };
-    const pointsFor = (id: string) => board.teamTotals[id] ?? 0;
+    })) as { unitTotals: Record<string, number> };
+    const pointsFor = (id: string) => board.unitTotals[id] ?? 0;
     expect(pointsFor(teamA)).toBe(10);
     expect(pointsFor(teamB)).toBe(0);
   });

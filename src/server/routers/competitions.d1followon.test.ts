@@ -105,7 +105,7 @@ describe("§1 — tagged shape round-trips through the DB", () => {
 // ── §3/§5: roll-up parity — per_match team totals via synthetic distribution ─
 
 describe("§5 — roll-up parity: per_match game_results feed through competitionPlacement.ts", () => {
-  it("per_match available = value × matchCount (stable); teamTotals from realized points", async () => {
+  it("per_match available = value × matchCount (stable); unitTotals from realized points", async () => {
     const { tripId, competitionId: comp } = await cupTrip("PerMatch Rollup Comp");
     const ta = await ctx.createTeam(comp, "Blue", { shortName: "BLU" });
     const tb = await ctx.createTeam(comp, "Red", { shortName: "RED" });
@@ -148,8 +148,8 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
-    expect(lb.teamTotals[ta]).toBe(2);
-    expect(lb.teamTotals[tb]).toBe(0);
+    expect(lb.unitTotals[ta]).toBe(2);
+    expect(lb.unitTotals[tb]).toBe(0);
     // available = 2: finished, so what it paid (#1425), equal here to value × match rows.
     expect(lb.pointsAvailable).toBe(2);
     expect(lb.winNumber).toBe(1.5); // smallest > half of 2
@@ -200,8 +200,8 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
-    expect(lb.teamTotals[ta]).toBe(1.5); // realized (the 0.5 halve survives numeric)
-    expect(lb.teamTotals[tb]).toBe(0.5);
+    expect(lb.unitTotals[ta]).toBe(1.5); // realized (the 0.5 halve survives numeric)
+    expect(lb.unitTotals[tb]).toBe(0.5);
     expect(lb.pointsAvailable).toBe(2); // finished: what it paid (1.5 + 0.5)
   });
 
@@ -226,7 +226,7 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
     expect(lb.winNumber).toBe(0.5); // winThreshold(0, false) → 0.5 (smallest > 0)
     const teams: { id: string }[] = lb.teams;
     for (const t of teams) {
-      expect(lb.teamTotals[t.id] ?? 0).toBe(0);
+      expect(lb.unitTotals[t.id] ?? 0).toBe(0);
     }
   });
 
@@ -254,8 +254,8 @@ describe("§5 — roll-up parity: per_match game_results feed through competitio
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
-    const aCell = lb.cells.find((c: { gameId: string; teamId: string }) => c.gameId === g.id && c.teamId === ta);
-    const bCell = lb.cells.find((c: { gameId: string; teamId: string }) => c.gameId === g.id && c.teamId === tb);
+    const aCell = lb.cells.find((c: { gameId: string; unitId: string }) => c.gameId === g.id && c.unitId === ta);
+    const bCell = lb.cells.find((c: { gameId: string; unitId: string }) => c.gameId === g.id && c.unitId === tb);
     expect(aCell).toBeDefined();
     expect(bCell).toBeDefined();
     expect(aCell!.points).toBe(5);
@@ -325,7 +325,7 @@ describe("Stage 4 — available counts owner-set totals; configuring doesn't mov
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     expect(lb.pointsAvailable).toBe(2); // 2 paired × value 1 — the empty slot is ignored
-    expect(lb.teamTotals[ta]).toBe(0); // nothing awarded yet
+    expect(lb.unitTotals[ta]).toBe(0); // nothing awarded yet
   });
 });
 

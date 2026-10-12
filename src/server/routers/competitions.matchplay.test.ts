@@ -50,8 +50,8 @@ describe("match_play (default) — non-golf game scores winner-take-all", () => 
     });
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.teamTotals[ta]).toBe(5); // winner takes all
-    expect(lb.teamTotals[tb]).toBe(0);
+    expect(lb.unitTotals[ta]).toBe(5); // winner takes all
+    expect(lb.unitTotals[tb]).toBe(0);
     expect(lb.pointsAvailable).toBe(5); // winner-take-all [5,0] → 5 in play
   });
 
@@ -71,8 +71,8 @@ describe("match_play (default) — non-golf game scores winner-take-all", () => 
     });
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.teamTotals[ta]).toBe(2.5);
-    expect(lb.teamTotals[tb]).toBe(2.5);
+    expect(lb.unitTotals[ta]).toBe(2.5);
+    expect(lb.unitTotals[tb]).toBe(2.5);
   });
 });
 
@@ -96,7 +96,7 @@ describe("points comp — keeps #430's placement model (regression)", () => {
     });
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.teamTotals[ta]).toBe(5); // the configured split — not winner-take-all 8
-    expect(lb.teamTotals[tb]).toBe(3);
+    expect(lb.unitTotals[ta]).toBe(5); // the configured split — not winner-take-all 8
+    expect(lb.unitTotals[tb]).toBe(3);
   });
 });

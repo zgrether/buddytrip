@@ -161,7 +161,7 @@ describe("non-golf Matches — the match arm", () => {
     const done = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     expect(done.pointsAvailable).toBe(4);
     expect(done.winNumber).toBe(2.5);
-    expect(done.teamTotals[teamB]).toBe(4);
+    expect(done.unitTotals[teamB]).toBe(4);
     expect(done.pointsToClinch[teamB]).toBeLessThanOrEqual(0);
 
     // …and ANNOUNCED, by the finalize that caused it. Counted as set, 4 of 4.5
@@ -237,8 +237,8 @@ describe("pick'em individual matches — the pick'em arm", () => {
 
     await ctx.caller().games.finish({ tripId: f.tripId, gameId: f.gameId });
     const done = await computeCompetitionLeaderboard(ctx.admin, f.competitionId);
-    expect(done.teamTotals[f.teamA]).toBe(0);
-    expect(done.teamTotals[f.teamB]).toBe(0);
+    expect(done.unitTotals[f.teamA]).toBe(0);
+    expect(done.unitTotals[f.teamB]).toBe(0);
     expect(done.pointsAvailable).toBe(0);
   });
 
@@ -258,8 +258,8 @@ describe("pick'em individual matches — the pick'em arm", () => {
 
     await ctx.caller().games.finish({ tripId: f.tripId, gameId: f.gameId });
     const done = await computeCompetitionLeaderboard(ctx.admin, f.competitionId);
-    expect(done.teamTotals[f.teamA]).toBe(0);
-    expect(done.teamTotals[f.teamB]).toBe(0);
+    expect(done.unitTotals[f.teamA]).toBe(0);
+    expect(done.unitTotals[f.teamB]).toBe(0);
     expect(done.pointsAvailable).toBe(0);
   });
 });
