@@ -74,7 +74,7 @@ export async function personUnfinishedGames(
       .select("id, name, game_type_id, status")
       .eq("competition_id", competitionId)
       .neq("status", "complete"),
-    "cup's games"
+    "games"
   );
   const out: PersonGames = { blocking: [], moving: [] };
   if (games.length === 0) return out;
@@ -170,7 +170,7 @@ export async function previewRosterChange(
   // The SAME reading of "is this person in this game" the refusal uses
   // (`readPersonParticipation`): participant rows, 2v2 groups, pick'em sheets
   // and bracket entrants.
-  const finishedIds = rowsOrThrow(finished, "cup's finished games").map((g) => g.id as string);
+  const finishedIds = rowsOrThrow(finished, "finished games").map((g) => g.id as string);
   const [played, uneven] = await Promise.all([
     readPersonParticipation(supabase, finishedIds, input.userId),
     unevenAfterChange(supabase, input, games.moving),
@@ -214,10 +214,10 @@ async function unevenAfterChange(
     supabase.from("teams").select("id, name").eq("competition_id", input.competitionId),
   ]);
   const roster = Object.fromEntries(
-    rowsOrThrow(rosterRes, "cup's rosters").map((a) => [a.user_id as string, a.team_id as string])
+    rowsOrThrow(rosterRes, "rosters").map((a) => [a.user_id as string, a.team_id as string])
   );
   const after = recreditedRoster(roster, input.userId, input.toTeamId);
-  const teams = rowsOrThrow(teamsRes, "cup's teams").map((t) => ({ teamId: t.id as string, teamName: t.name as string }));
+  const teams = rowsOrThrow(teamsRes, "teams").map((t) => ({ teamId: t.id as string, teamName: t.name as string }));
   const players = new Map<string, string[]>();
   for (const p of rowsOrThrow(partsRes, "games' players")) {
     const list = players.get(p.game_id as string) ?? [];
@@ -272,7 +272,7 @@ export async function assertTeamDeletable(
       .eq("competition_id", input.competitionId)
       .eq("team_id", input.teamId),
   ]);
-  const inRoster = rowsOrThrow(finished, "cup's finished games").some((g) =>
+  const inRoster = rowsOrThrow(finished, "finished games").some((g) =>
     Object.values((g.credited_roster ?? {}) as Record<string, string>).includes(input.teamId)
   );
   if (countOrThrow(credited, "team's results") > 0 || inRoster) {

@@ -69,13 +69,13 @@ describe("games.create refuses a format its cup cannot hold (#1304)", () => {
   it("Rack-n-Stack in a Points cup — refused, named, not written", async () => {
     const err = await refusal(pointsCup, "gtt_rack_n_stack");
     expect(err.code).toBe("BAD_REQUEST");
-    expect(err.message).toMatch(/^A Points cup can't hold Rack-n-Stack\./);
+    expect(err.message).toMatch(/^A Tournament can't hold Rack-n-Stack\./);
     expect(await gamesIn(pointsCup, "gtt_rack_n_stack")).toBe(0);
   }, 60_000);
 
   it("Stroke Play in a Match Play cup — refused the other way, not written", async () => {
     const err = await refusal(matchCup, "gtt_stroke_play");
-    expect(err.message).toMatch(/^A Match Play cup can't hold Stroke Play\./);
+    expect(err.message).toMatch(/^A Cup can't hold Stroke Play\./);
     expect(await gamesIn(matchCup, "gtt_stroke_play")).toBe(0);
   }, 60_000);
 

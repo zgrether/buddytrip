@@ -118,8 +118,8 @@ export async function prepareTeamMatchPoints(
     supabase.from("teams").select("id").eq("competition_id", competitionId),
     supabase.from("competitions").select("scoring_model").eq("id", competitionId).maybeSingle(),
   ]);
-  const compTeamIds = rowsOrThrow(teamsRes, "cup's teams").map((t) => t.id as string);
-  const isMatchPlayCup = maybeRowOrThrow(compRes, "cup")?.scoring_model === "match_play";
+  const compTeamIds = rowsOrThrow(teamsRes, "teams").map((t) => t.id as string);
+  const isMatchPlayCup = maybeRowOrThrow(compRes, "standings")?.scoring_model === "match_play";
   /**
    * ── A TEAMLESS race pays PEOPLE (PR 7) ─────────────────────────────────────
    *

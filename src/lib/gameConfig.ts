@@ -207,7 +207,7 @@ export function placementRefusalMessage(v: PlacementValidation): string | null {
       );
     }
     return (
-      `${v.places} places configured, ${n} ${n === 1 ? "team" : "teams"} in this competition — ` +
+      `${v.places} places configured, ${n} ${n === 1 ? "team" : "teams"} in this tournament — ` +
       `remove places until there are at most ${n}, or add teams. ` +
       `Places past the last team are never awarded.`
     );

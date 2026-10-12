@@ -82,7 +82,7 @@ export function HomeTab({
           {isOwner && !guideOwnsHeader && (
             <TabHeader
               headline="You're driving this trip"
-              body="Lock in dates and destination, invite the crew, and add logistics as they firm up. You decide what the crew sees — from travel plans to a live competition leaderboard — and everyone stays in sync in real time."
+              body="Lock in dates and destination, invite the crew, and add logistics as they firm up. You decide what the crew sees — from travel plans to live standings — and everyone stays in sync in real time."
               testId="home-owner-intro"
             />
           )}

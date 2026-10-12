@@ -864,9 +864,9 @@ export function RackGameView() {
           <div className="flex items-center justify-center" style={{ width: 56, height: 56, borderRadius: 16, background: "var(--color-bt-card-raised)", marginBottom: 16 }}>
             <Users size={24} style={{ color: "var(--color-bt-text-dim)" }} />
           </div>
-          <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Needs a competition with two teams</div>
+          <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }}>Needs a Cup</div>
           <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)", marginTop: 6, maxWidth: 300 }}>
-            Rack-n-Stack is a team format. Set up a competition and assign players to two teams first, then come back to run the rack.
+            Rack-n-Stack is a team format. Set up a Cup and put players on its two teams first, then come back to run the rack.
           </p>
         </div>
       </Shell>

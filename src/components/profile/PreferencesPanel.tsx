@@ -277,7 +277,7 @@ export function PreferencesPanel({ onClose }: { onClose: () => void }) {
                   />
                 </Section>
 
-                <Section label="Competition preview">
+                <Section label="Team color preview">
                   <div
                     className="rounded-xl px-4 py-4"
                     style={{

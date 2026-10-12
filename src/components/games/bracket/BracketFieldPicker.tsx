@@ -146,7 +146,7 @@ export function BracketFieldPicker({
 
       {teams.length === 0 && (
         <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)" }}>
-          Nobody is on a cup team yet — a bracket entrant needs a team for its points to land in.
+          Nobody is on a team yet — a bracket entrant needs a team for its points to land in.
         </p>
       )}
     </div>

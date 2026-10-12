@@ -67,7 +67,7 @@ const CATALOG: CatalogEntry[] = [
   {
     name: "Teams",
     icon: Trophy,
-    desc: "The team draw, pulled straight from the Competition — you never retype rosters.",
+    desc: "The team draw, pulled straight from the rosters — you never retype them.",
     demo: {
       type: "teams",
       teams: [

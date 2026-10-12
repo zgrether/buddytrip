@@ -58,7 +58,7 @@ export async function readRosterFingerprint(
     await supabase.from("competitions").select("id").eq("id", competitionId).eq("trip_id", tripId).maybeSingle(),
     "competition"
   );
-  if (!comp) throw new TRPCError({ code: "NOT_FOUND", message: "Competition not found" });
+  if (!comp) throw new TRPCError({ code: "NOT_FOUND", message: "That Cup or Tournament wasn't found." });
 
   const [teamsRes, assignRes] = await Promise.all([
     supabase.from("teams").select("id").eq("competition_id", competitionId).order("id", { ascending: true }),
@@ -69,8 +69,8 @@ export async function readRosterFingerprint(
       .order("user_id", { ascending: true }),
   ]);
   const input: RosterFingerprintInput = {
-    teams: rowsOrThrow(teamsRes, "competition's teams").map((t) => (t as { id: string }).id),
-    assignments: rowsOrThrow(assignRes, "competition's rosters").map((a) => ({
+    teams: rowsOrThrow(teamsRes, "teams").map((t) => (t as { id: string }).id),
+    assignments: rowsOrThrow(assignRes, "rosters").map((a) => ({
       user_id: (a as { user_id: string }).user_id,
       team_id: (a as { team_id: string | null }).team_id,
     })),

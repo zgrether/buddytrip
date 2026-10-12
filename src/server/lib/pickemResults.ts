@@ -383,8 +383,8 @@ async function readCompetition(
     readCreditRoster(supabase, gameId, competitionId),
   ]);
 
-  const comp = maybeRowOrThrow(compRes, "cup");
-  const teams = rowsOrThrow(teamRes, "cup's teams");
+  const comp = maybeRowOrThrow(compRes, "standings");
+  const teams = rowsOrThrow(teamRes, "teams");
   const assigns = roster.rows;
 
   const memberIds = new Map<string, string[]>();

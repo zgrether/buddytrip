@@ -388,11 +388,11 @@ export function TripSettingsModal({
                       from the leaderboard/Live face itself), so we hide the whole
                       section rather than show a low-value "open it" row. */}
                   {canEditPlan && !competition && (
-                    <Section label="Competition">
+                    <Section label="Games">
                       <Row
                         testId="settings-competition-row"
                         icon={<Trophy size={17} />}
-                        title="Enable competition"
+                        title="Start a Cup or Tournament"
                         subtitle="Teams, games, and a live leaderboard"
                         onClick={() => {
                           // Same entry the enable card uses — the face hosts the

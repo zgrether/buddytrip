@@ -4,6 +4,8 @@ import { Fragment, useEffect, useRef, useState, useTransition, type ReactNode } 
 import { useRouter } from "next/navigation";
 import { Dice5, Lightbulb, Luggage, PanelLeftClose, PanelLeftOpen, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { EITHER_COMPETITION, competitionWord } from "@/lib/competitionWords";
+import type { ScoringModel } from "@/lib/gameTypes";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";
@@ -120,6 +122,7 @@ interface TripRow {
   updated_at?: string | null;
   created_at?: string | null;
   hasCompetition?: boolean | null;
+  competitionModel?: ScoringModel | null;
   /** Candidates under consideration — folded in by `trips.list`, counted
    *  server-side rather than shipped as rows. */
   ideaCount?: number | null;
@@ -650,17 +653,24 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
  * NOT in row order, so the legend doesn't reshuffle as trips are added.
  */
 export function railKeyMarks(
-  rows: { myRole?: string | null; hasCompetition?: boolean | null }[]
-): { roles: BadgedRole[]; cup: boolean } {
+  rows: { myRole?: string | null; hasCompetition?: boolean | null; competitionModel?: ScoringModel | null }[]
+): { roles: BadgedRole[]; cup: boolean; cupLabel: string } {
   const present = new Set<BadgedRole>();
   let cup = false;
+  // The trophy's key names the kinds actually on screen: "Cup", "Tournament",
+  // or both when the list holds both (or a row whose kind isn't known).
+  const words = new Set<string>();
   for (const t of rows) {
     const r = badgedRole(t.myRole);
     if (r) present.add(r);
-    if (t.hasCompetition === true) cup = true;
+    if (t.hasCompetition === true) {
+      cup = true;
+      words.add(t.competitionModel ? competitionWord(t.competitionModel) : EITHER_COMPETITION);
+    }
   }
   const ordered: BadgedRole[] = (["Owner", "Organizer"] as const).filter((r) => present.has(r));
-  return { roles: ordered, cup };
+  const cupLabel = words.size === 1 ? [...words][0] : EITHER_COMPETITION;
+  return { roles: ordered, cup, cupLabel };
 }
 
 /** The key's swatch — the same 3px edge the rows draw, from the same source,
@@ -754,7 +764,7 @@ function TripsColumn({
   active.sort(compareActive);
   past.sort(comparePast);
 
-  const { roles: rolesPainted, cup: cupPainted } = railKeyMarks([...active, ...past]);
+  const { roles: rolesPainted, cup: cupPainted, cupLabel } = railKeyMarks([...active, ...past]);
   const keyItems: ReactNode[] = [];
   for (const role of rolesPainted) {
     keyItems.push(
@@ -778,7 +788,7 @@ function TripsColumn({
         >
           <Trophy size={7} strokeWidth={2.5} />
         </span>
-        Cup
+        {cupLabel}
       </span>
     );
   }

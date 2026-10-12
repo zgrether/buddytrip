@@ -7,6 +7,7 @@ import { reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { viewerTeamForTrip } from "../lib/viewerTeam";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "../lib/myDelegateGameIds";
 import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
+import { competitionNoun } from "@/lib/competitionWords";
 
 const SCOREBOARD_STYLES = [
   "grid",
@@ -93,7 +94,7 @@ export const competitionsRouter = router({
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to fetch competition: ${error.message}`,
+          message: `Couldn't load the Cup or Tournament: ${error.message}`,
         });
       }
 
@@ -302,7 +303,7 @@ export const competitionsRouter = router({
           .int()
           .min(0)
           .max(MAX_SEED_TEAMS)
-          .refine((n) => n === 0 || n >= 2, "A points race is played as individuals (no teams) or by two or more teams.")
+          .refine((n) => n === 0 || n >= 2, "A tournament is played as individuals (no teams) or by two or more teams.")
           .default(2),
       })
     )
@@ -343,7 +344,7 @@ export const competitionsRouter = router({
       if (existing) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "A competition already exists for this trip",
+          message: "This trip already has a Cup or Tournament.",
         });
       }
 
@@ -365,13 +366,13 @@ export const competitionsRouter = router({
       if (insertErr?.code === "23505" && insertErr.message.includes("competitions_one_per_trip")) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "A competition already exists for this trip",
+          message: "This trip already has a Cup or Tournament.",
         });
       }
       if (insertErr || !inserted) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to create competition: ${insertErr?.message}`,
+          message: `Couldn't create the ${competitionNoun(input.scoringModel)}: ${insertErr?.message}`,
         });
       }
 
@@ -417,7 +418,7 @@ export const competitionsRouter = router({
       if (error || !data) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to read created competition: ${error?.message}`,
+          message: `Created, but couldn't load the ${competitionNoun(input.scoringModel)}: ${error?.message}`,
         });
       }
 
@@ -465,7 +466,7 @@ export const competitionsRouter = router({
       if (error || !data) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to update competition: ${error?.message}`,
+          message: `Couldn't save the change: ${error?.message}`,
         });
       }
 
@@ -497,7 +498,7 @@ export const competitionsRouter = router({
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to delete competition: ${error.message}`,
+          message: `Couldn't delete the Cup or Tournament: ${error.message}`,
         });
       }
 

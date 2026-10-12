@@ -49,8 +49,8 @@ export function headToHeadResultRefusal(
 ): string | null {
   if (resultKindInHeadToHead(gameTypeId, competitionFormat) !== "ranked") return null;
   if (isBracketGame(gameTypeId, competitionFormat)) {
-    return "A Match Play cup is head to head, and a bracket pays by placement. Choose Simple or Matches for this game, or run the bracket in a points cup.";
+    return "A Cup is head to head, and a bracket pays by placement. Choose Simple or Matches for this game, or run the bracket in a Tournament.";
   }
   const name = getGameTypeDefinition(gameTypeId)?.name ?? "This format";
-  return `A Match Play cup is head to head, and ${name} pays by placement. Choose a format that decides a winner between the two teams.`;
+  return `A Cup is head to head, and ${name} pays by placement. Choose a format that decides a winner between the two teams.`;
 }

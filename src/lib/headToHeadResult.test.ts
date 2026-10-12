@@ -61,7 +61,7 @@ describe("resultKindInHeadToHead — what a configuration produces between two t
 describe("headToHeadResultRefusal — the one sentence the picker and the server share", () => {
   it("refuses a bracket, naming what to do instead", () => {
     expect(headToHeadResultRefusal("gtt_generic_card", "bracket")).toBe(
-      "A Match Play cup is head to head, and a bracket pays by placement. Choose Simple or Matches for this game, or run the bracket in a points cup.",
+      "A Cup is head to head, and a bracket pays by placement. Choose Simple or Matches for this game, or run the bracket in a Tournament.",
     );
   });
 
@@ -75,7 +75,7 @@ describe("headToHeadResultRefusal — the one sentence the picker and the server
 
   it.each(RANKED_ONLY.map((d) => [d.id, d.name]))("%s is refused by name", (id, name) => {
     expect(headToHeadResultRefusal(id, null)).toBe(
-      `A Match Play cup is head to head, and ${name} pays by placement. Choose a format that decides a winner between the two teams.`,
+      `A Cup is head to head, and ${name} pays by placement. Choose a format that decides a winner between the two teams.`,
     );
   });
 

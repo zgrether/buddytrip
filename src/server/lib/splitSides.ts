@@ -47,7 +47,7 @@ export async function refuseSplitSides(
     throw new TRPCError({
       code: "BAD_REQUEST",
       message:
-        "This race is played as individuals, so each side of a match is one player until split payouts are supported. Pair them as singles.",
+        "This tournament is played as individuals, so each side of a match is one player until split payouts are supported. Pair them as singles.",
     });
   }
 

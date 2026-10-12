@@ -99,7 +99,7 @@ async function rackResults(
       .order("created_at", { ascending: true }),
     readCreditRoster(supabase, gameId, game.competition_id as string),
   ]);
-  const cupTeams = rowsOrThrow(cupTeamsRes, "cup's teams");
+  const cupTeams = rowsOrThrow(cupTeamsRes, "teams");
   const assigns = roster.rows;
   const sides = rackSides(cupTeams.map((t) => t.id as string));
   if (!sides) return []; // not a two-team cup — not a rack a person can build

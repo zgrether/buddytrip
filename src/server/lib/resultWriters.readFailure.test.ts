@@ -137,10 +137,10 @@ const ENGINES: Engine[] = [
       // Three reads of `games`; the stroke-index one comes first.
       ["games", "game's course"],
       ["match_hole_outcomes", "game's hole results"],
-      ["team_assignments", "cup's rosters"],
+      ["team_assignments", "rosters"],
       ["game_participants", "game's players"],
-      ["teams", "cup's teams"],
-      ["competitions", "cup"],
+      ["teams", "teams"],
+      ["competitions", "standings"],
     ],
   },
   {
@@ -198,8 +198,8 @@ const ENGINES: Engine[] = [
     },
     fails: [
       ["games", "game"],
-      ["teams", "cup's teams"],
-      ["team_assignments", "cup's rosters"],
+      ["teams", "teams"],
+      ["team_assignments", "rosters"],
       ["game_participants", "game's players"],
       ["score_entries", "game's scores"],
     ],
@@ -225,7 +225,7 @@ const ENGINES: Engine[] = [
       ["games", "game"],
       ["game_participants", "game's players"],
       ["score_entries", "game's scores"],
-      ["team_assignments", "cup's rosters"],
+      ["team_assignments", "rosters"],
     ],
   },
   {
@@ -276,7 +276,7 @@ const ENGINES: Engine[] = [
       ["games", "game"],
       ["game_participants", "game's players"],
       ["skins_hole_outcomes", "game's hole results"],
-      ["team_assignments", "cup's rosters"],
+      ["team_assignments", "rosters"],
     ],
   },
   {
@@ -313,9 +313,9 @@ const ENGINES: Engine[] = [
       ["pickem_slate_games", "slate"],
       ["pickem_picks", "sheets"],
       ["game_matches", "game's matches"],
-      ["competitions", "cup"],
-      ["teams", "cup's teams"],
-      ["team_assignments", "cup's rosters"],
+      ["competitions", "standings"],
+      ["teams", "teams"],
+      ["team_assignments", "rosters"],
     ],
   },
 ];

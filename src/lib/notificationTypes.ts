@@ -56,12 +56,12 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     // No stored row ever held the old key (verified against production: 0 of 88
     // users), so the rename needed no jsonb migration.
     key: "game_results",
-    label: "Competition & game alerts",
+    label: "Game & clinch alerts",
     shortLabel: "Game events",
     // Deliberately does NOT say "a result is posted" — that phrasing belongs to
     // `scores.upsertEntry` (a NEVER-marked site), so using it here would promise
     // the one thing this category must never send.
-    description: "A game finishes, or the cup is decided.",
+    description: "A game finishes, or a Cup or Tournament is decided.",
     defaultOn: true,
     excludes:
       "Per-hole score entry (scores.upsertEntry — a ~540/day firehose, NEVER-eligible), " +

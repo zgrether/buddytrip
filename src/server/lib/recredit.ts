@@ -48,7 +48,7 @@ async function readFinishedGames(supabase: SupabaseClient, competitionId: string
       .eq("status", "complete")
       .order("display_order", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true }),
-    "cup's finished games"
+    "finished games"
   );
   return rows.map((g) => ({
     id: g.id as string,
@@ -119,7 +119,7 @@ export async function recreditCandidates(supabase: SupabaseClient, competitionId
     supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", competitionId),
   ]);
   const teamNow = new Map(
-    rowsOrThrow(assigns, "cup's rosters").map((a) => [a.user_id as string, a.team_id as string])
+    rowsOrThrow(assigns, "rosters").map((a) => [a.user_id as string, a.team_id as string])
   );
   const out = new Set<string>();
   for (const g of games) {
@@ -183,7 +183,7 @@ async function plan(
     supabase.from("teams").select("id, name").eq("competition_id", input.competitionId),
     tripDisplayNames(supabase, input.tripId, [input.userId]),
   ]);
-  const teamName = new Map(rowsOrThrow(teams, "cup's teams").map((t) => [t.id as string, t.name as string]));
+  const teamName = new Map(rowsOrThrow(teams, "teams").map((t) => [t.id as string, t.name as string]));
   const played = await readPersonParticipation(supabase, games.map((g) => g.id), input.userId);
   const eligibleGames = games.filter((g) => g.roster && isRecreditEligible(g.game_type_id));
   const rows = await personRowsByGame(supabase, eligibleGames.map((g) => g.id));

@@ -190,7 +190,7 @@ export function InstallBanner() {
               className="mt-0.5 text-[11px] leading-snug"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
-              Get scores, results and cup alerts
+              Get scores, results and clinch alerts
             </p>
           </>
         )}

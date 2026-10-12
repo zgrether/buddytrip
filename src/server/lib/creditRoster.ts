@@ -90,7 +90,7 @@ export async function readCreditRoster(
 
   const assigns = rowsOrThrow(
     await supabase.from("team_assignments").select("user_id, team_id").eq("competition_id", competitionId),
-    "cup's rosters"
+    "rosters"
   );
   const rows = assigns.map((a) => ({ user_id: a.user_id as string, team_id: a.team_id as string }));
   const record: Record<string, string> = {};

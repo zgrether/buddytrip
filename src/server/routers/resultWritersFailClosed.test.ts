@@ -122,7 +122,7 @@ describe("golf match play — games.finish", () => {
     const { gameId } = await decidedGolfMatch("Roster read fails");
     const read = ["team_assignments", "user_id, team_id"] as const;
 
-    await expect(failingFinish(gameId, ...read)).rejects.toThrow(SENTENCE("cup's rosters"));
+    await expect(failingFinish(gameId, ...read)).rejects.toThrow(SENTENCE("rosters"));
     expect(await status(gameId)).not.toBe("complete");
     expect(await teamRows(gameId)).toEqual({});
 

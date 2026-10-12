@@ -111,7 +111,7 @@ describe("the roster lock — a failed games read never opens it on a scored cup
 
   it("a FAILED games read refuses — it does not read as 'no games' and remove the player", async () => {
     const failing = callerFailingRead(ctx, "owner", { table: "games", columns: "id" });
-    await expect(failing.teamAssignments.remove({ tripId, competitionId: cup, userId: member })).rejects.toThrow(SENTENCE("cup's games"));
+    await expect(failing.teamAssignments.remove({ tripId, competitionId: cup, userId: member })).rejects.toThrow(SENTENCE("games"));
     const { count } = await ctx.admin.from("team_assignments").select("user_id", { count: "exact", head: true })
       .eq("competition_id", cup).eq("user_id", member);
     expect(count).toBe(1);

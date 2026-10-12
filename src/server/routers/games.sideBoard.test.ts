@@ -92,7 +92,7 @@ describe("only formats that record a result without a cup can be side games", ()
       ctx.caller().games.create({ tripId, gameTypeId: "gtt_pickem", name: "Sunday slate" })
     ).rejects.toMatchObject({
       code: "BAD_REQUEST",
-      message: "Pick'em records its result against a competition's teams, so it can't be a side game. Add it to the trip's competition.",
+      message: "Pick'em records its result against teams, so it can't be a side game. Add it to the trip's Cup or Tournament.",
     });
     expect(await ctx.caller().games.sideBoard({ tripId })).toEqual([]);
   }, 60_000);

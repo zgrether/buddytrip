@@ -23,7 +23,7 @@ async function assertCupOfTrip(supabase: SupabaseClient, tripId: string, competi
     "competition"
   );
   if (!cup || (cup.trip_id as string) !== tripId) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "Competition not found" });
+    throw new TRPCError({ code: "NOT_FOUND", message: "That Cup or Tournament wasn't found." });
   }
 }
 

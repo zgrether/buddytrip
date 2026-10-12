@@ -521,7 +521,7 @@ export function labelForPath(path: string, tab?: string | null): string {
         schedule: "Schedule",
         crew: "Crew",
         lodging: "Lodging",
-        comp: "Competition",
+        comp: "Games",
         expenses: "Expenses",
       };
       return `Trip · ${TAB_LABELS[tab] ?? tab}`;

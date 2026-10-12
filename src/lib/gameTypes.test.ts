@@ -126,11 +126,11 @@ describe("formatRefusalForScoringModel — the server's half of the same rule (#
 
   it("names the cup, the format, and what the cup DOES take", () => {
     expect(formatRefusalForScoringModel("gtt_rack_n_stack", "points")).toBe(
-      "A Points cup can't hold Rack-n-Stack. It takes: " +
+      "A Tournament can't hold Rack-n-Stack. It takes: " +
         gameTypesForScoringModel("points").map((t) => t.name).join(", ") + "."
     );
     const r = formatRefusalForScoringModel("gtt_stroke_play", "match_play")!;
-    expect(r.startsWith("A Match Play cup can't hold Stroke Play.")).toBe(true);
+    expect(r.startsWith("A Cup can't hold Stroke Play.")).toBe(true);
     // The list is the menu's list, so the reader can act on it.
     expect(r).toContain("Rack-n-Stack");
     expect(r).not.toContain("Scramble");

@@ -15,6 +15,7 @@ const MINI_NAME_SIZES = [14, 13, 12, 11];
 import type { TrophySlot } from "./CupTrophy";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
+import { competitionWord } from "@/lib/competitionWords";
 
 // `useIsoLayoutEffect` lived here to drive StickyCollapseHero's measured pull.
 // That mechanism is gone (see StickyCollapseHero), and with it the only layout
@@ -266,7 +267,7 @@ export function CompetitionHero({
             <button
               type="button"
               onClick={onSettings}
-              aria-label="Competition settings"
+              aria-label={`${competitionWord(scoringModel)} settings`}
               className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg transition-colors"
               // Semi-transparent white pill, matching the trip header's gear on its
               // gradient (rgba over the hero art — same treatment, same values).

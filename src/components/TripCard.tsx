@@ -10,6 +10,8 @@ import { RoleBadge } from "./RoleBadge";
 import { parseLocalDate } from "@/lib/dates";
 import { isGrayscale as checkGrayscale } from "@/lib/tripStatus";
 import { trpc } from "@/lib/trpc-client";
+import { EITHER_COMPETITION, competitionWord } from "@/lib/competitionWords";
+import type { ScoringModel } from "@/lib/gameTypes";
 import type { TripRole } from "@/server/middleware";
 import { getLocationInfo } from "@/lib/locationUtils";
 import { temporalGradient } from "@/lib/temporalGradient";
@@ -31,6 +33,8 @@ interface Trip {
   myRole?: TripRole | null;
   /** True when at least one competitions row exists for this trip. */
   hasCompetition?: boolean | null;
+  /** That competition's scoring model, so the chip can name it. */
+  competitionModel?: ScoringModel | null;
 }
 
 interface TripCardProps {
@@ -196,8 +200,8 @@ export const TripCard: FC<TripCardProps> = ({ trip }) => {
               color: "var(--color-bt-accent)",
               border: "1px solid var(--color-bt-accent-border)",
             }}
-            title="Has competition"
-            aria-label="Competition set up for this trip"
+            title={`Has a ${trip.competitionModel ? competitionWord(trip.competitionModel) : EITHER_COMPETITION}`}
+            aria-label={`This trip has a ${trip.competitionModel ? competitionWord(trip.competitionModel) : EITHER_COMPETITION}`}
           >
             <Trophy size={10} strokeWidth={2.5} />
           </span>

@@ -302,7 +302,7 @@ function CompetitionFormatTiles({
         className="px-1 pb-2"
         style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-bt-text-dim)" }}
       >
-        Competition Format
+        Format
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="competition-format-options">
         {COMP_FORMATS.filter((f) => offers(f.key)).map((f) => {
