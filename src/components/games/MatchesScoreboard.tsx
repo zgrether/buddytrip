@@ -4,6 +4,7 @@ import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import { PointsAtStake } from "./PointsAtStake";
 import type { SidePlayer } from "./MatchSides";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { SETTLED_COLOR } from "@/lib/stateText";
 
 type Result = "a_win" | "b_win" | "halve";
 
@@ -123,7 +124,7 @@ export function MatchesScoreboard({
                   fontWeight: 700,
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
-                  color: m.result != null ? "var(--color-bt-place-1-text)" : "var(--color-bt-text-dim)",
+                  color: m.result != null ? SETTLED_COLOR : "var(--color-bt-text-dim)",
                 }}
               >
                 {m.result != null ? "FINAL" : ""}

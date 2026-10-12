@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatOwnStanding } from "./ownStanding";
+import { formatOwnStanding, ownStandingIsSettled } from "./ownStanding";
 
 /**
  * The words on your live card (#1599), as Zach ruled them 2026-10-12. Each case
@@ -29,15 +29,16 @@ describe("formatOwnStanding — match play, from the viewer's side", () => {
 });
 
 describe("formatOwnStanding — the other formats", () => {
-  it("to par, thru a count or F", () => {
+  it("to par: thru a count while in play, the bare score once finished (no F — the style says it)", () => {
     expect(formatOwnStanding({ kind: "to_par", toPar: 3, thru: "9" })).toBe("+3 thru 9");
     expect(formatOwnStanding({ kind: "to_par", toPar: 0, thru: "9" })).toBe("E thru 9");
-    expect(formatOwnStanding({ kind: "to_par", toPar: -1, thru: "F" })).toBe("−1 F");
+    expect(formatOwnStanding({ kind: "to_par", toPar: -1, thru: "F" })).toBe("−1");
   });
 
   it("Stableford in points", () => {
     expect(formatOwnStanding({ kind: "points", points: 14, thru: "9" })).toBe("14 pts thru 9");
-    expect(formatOwnStanding({ kind: "points", points: 1, thru: "F" })).toBe("1 pt F");
+    expect(formatOwnStanding({ kind: "points", points: 1, thru: "F" })).toBe("1 pt");
+    expect(formatOwnStanding({ kind: "skins", skins: 2, thru: "F" })).toBe("2 skins");
   });
 
   it("skins", () => {
@@ -61,5 +62,30 @@ describe("formatOwnStanding — the other formats", () => {
 
   it("not started", () => {
     expect(formatOwnStanding({ kind: "not_started" })).toBe("Not started");
+  });
+});
+
+/** Which standings wear the SETTLED style (#1607's look): the decided ones. */
+describe("ownStandingIsSettled", () => {
+  it("settled: a match that is over, a finished round, a decided non-golf match, a slate with every result in", () => {
+    expect(ownStandingIsSettled({ kind: "match", lead: 3, thru: 16, over: true, margin: "3&2" })).toBe(true);
+    expect(ownStandingIsSettled({ kind: "match", lead: 0, thru: 18, over: true, margin: "AS" })).toBe(true);
+    expect(ownStandingIsSettled({ kind: "to_par", toPar: 3, thru: "F" })).toBe(true);
+    expect(ownStandingIsSettled({ kind: "points", points: 30, thru: "F" })).toBe(true);
+    expect(ownStandingIsSettled({ kind: "skins", skins: 2, thru: "F" })).toBe(true);
+    expect(ownStandingIsSettled({ kind: "result", result: "won" })).toBe(true);
+    expect(ownStandingIsSettled({ kind: "result", result: "tied" })).toBe(true);
+    expect(ownStandingIsSettled({ kind: "pickem", points: 14, resolved: 16, total: 16 })).toBe(true);
+  });
+
+  it("live: anything still being played or still to be decided", () => {
+    expect(ownStandingIsSettled({ kind: "match", lead: 2, thru: 7, over: false, margin: null })).toBe(false);
+    expect(ownStandingIsSettled({ kind: "to_par", toPar: 3, thru: "9" })).toBe(false);
+    expect(ownStandingIsSettled({ kind: "skins", skins: 2, thru: "7" })).toBe(false);
+    expect(ownStandingIsSettled({ kind: "result", result: "pending" })).toBe(false);
+    expect(ownStandingIsSettled({ kind: "pickem", points: 14, resolved: 11, total: 16 })).toBe(false);
+    // No sheet is not a settled result, however many results are in.
+    expect(ownStandingIsSettled({ kind: "pickem", points: null, resolved: 16, total: 16 })).toBe(false);
+    expect(ownStandingIsSettled({ kind: "not_started" })).toBe(false);
   });
 });

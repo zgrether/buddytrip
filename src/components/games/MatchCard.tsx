@@ -7,6 +7,7 @@ import { NO_GLORIOUS, isGloriousHole, type Weighting } from "@/lib/gloriousHoles
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { SidePlayer } from "./MatchSides";
 import { fitName, CARD_NAME_CAPACITY_EM } from "@/lib/nameLadder";
+import { SETTLED_COLOR } from "@/lib/stateText";
 import type { Participant } from "./types";
 
 /**
@@ -329,7 +330,7 @@ export function MatchCard({
    * one that is done.
    */
   const headerColor = st.over
-    ? "var(--color-bt-place-1-text)"
+    ? SETTLED_COLOR
     : st.dormie
       ? "var(--color-bt-warning)"
       : "var(--color-bt-text-dim)";

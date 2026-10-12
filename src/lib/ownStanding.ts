@@ -38,10 +38,32 @@ export type OwnStanding =
 /** The trailing side's word for a lead (Zach: DN, beside UP). */
 const DOWN = "DN";
 
-/** "+3 thru 9", or "+3 F" once the round is complete. */
-const withThru = (head: string, thru: string) => (thru === "F" ? `${head} F` : `${head} thru ${thru}`);
+/** "+3 thru 9" in play, plain "+3" once the round is complete: the settled
+ *  STYLE says it's finished, so no "F" (Zach, #1607's look). */
+const withThru = (head: string, thru: string) => (thru === "F" ? head : `${head} thru ${thru}`);
 
 const pts = (n: number) => `${n} ${n === 1 ? "pt" : "pts"}`;
+
+/**
+ * Is this standing SETTLED — the game's result for you is decided, so it wears
+ * the settled style (`lib/stateText.ts`)? Otherwise it's live.
+ */
+export function ownStandingIsSettled(s: OwnStanding): boolean {
+  switch (s.kind) {
+    case "match":
+      return s.over;
+    case "to_par":
+    case "points":
+    case "skins":
+      return s.thru === "F";
+    case "pickem":
+      return s.points != null && s.total > 0 && s.resolved === s.total;
+    case "result":
+      return s.result !== "pending";
+    case "not_started":
+      return false;
+  }
+}
 
 export function formatOwnStanding(s: OwnStanding): string {
   switch (s.kind) {

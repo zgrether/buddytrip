@@ -67,10 +67,10 @@ describe("GameRow — a live game that can't project says why", () => {
     expect(html).toContain("Projected results");
   });
 
-  it("no points to award → the reason, in place of 'Underway · scoring', and NO pills", () => {
+  it("no points to award → the reason, with no 'Underway' (the LIVE heading says it), and NO pills", () => {
     const html = render({ cannotProject: "no_points" });
-    expect(html).toContain("Underway · no points to award");
-    expect(html).not.toContain("Underway · scoring");
+    expect(html).toContain("No points to award");
+    expect(html).not.toContain("Underway");
     expect(count(html, PILL)).toBe(0);
   });
 
@@ -79,42 +79,51 @@ describe("GameRow — a live game that can't project says why", () => {
     // results-first PR gave them. This assertion was always the one that had
     // to change on purpose.
     const html = render({ cannotProject: "matches_not_drawn" });
-    expect(html).toContain("Underway · matches not drawn yet");
+    expect(html).toContain("Matches not drawn yet");
     expect(count(html, PILL)).toBe(0);
   });
 
   it("seats vacated → says the state and what fixes it", () => {
     const html = render({ cannotProject: "seats_vacated" });
-    expect(html).toContain("Underway · matches need re-pairing");
+    expect(html).toContain("Matches need re-pairing");
     expect(count(html, PILL)).toBe(0);
   });
 
   it("picks hidden → its own sentence, not the no-points one", () => {
     const html = render({ cannotProject: "picks_hidden" });
-    expect(html).toContain("Underway · picks hidden until reveal");
-    expect(html).not.toContain("no points to award");
-  });
-
-  it("a format with NO projection keeps the plain line — distinct from can't", () => {
-    const html = render({});
-    expect(html).toContain("Underway · scoring");
-  });
-
-  it("a points tournament keeps the plain line for every other reason", () => {
-    const html = render({ cannotProject: "no_points", scoringModel: "points" });
-    expect(html).toContain("Underway · scoring");
-    expect(html).not.toContain("no points to award");
+    expect(html).toContain("Picks hidden until reveal");
+    expect(html).not.toContain("No points to award");
   });
 
   /**
-   * 9c-2 look: in a points tournament the ONE reason that is said is a stroke or
-   * scramble round's — it counts once finished, and the standings' hatched bars
-   * have nothing from it until then. In place of the plain line, not beside it.
+   * #1607's look (Zach): a row under the LIVE heading no longer repeats it, so
+   * "Underway · scoring" is gone; and "counts when finished" is gone everywhere.
+   * Asserted on the subtitle's own element, so the row's other text can't stand
+   * in for it.
    */
-  it("a live stroke or scramble round in a points tournament says it counts when finished", () => {
+  const SUBTITLE = /<span class="text-\[12px\]"[^>]*>([^<]*)<\/span>/;
+
+  it("a format with NO projection says nothing under the name — the LIVE heading already does", () => {
+    const html = render({});
+    expect(html).not.toContain("Underway");
+    expect(html.match(SUBTITLE)).toBeNull();
+  });
+
+  it("a points tournament says nothing for any other reason either", () => {
+    const html = render({ cannotProject: "no_points", scoringModel: "points" });
+    expect(html).not.toContain("No points to award");
+    expect(html.match(SUBTITLE)).toBeNull();
+  });
+
+  it("a live stroke or scramble round says nothing — 'counts when finished' is gone", () => {
     const html = render({ cannotProject: "round_incomplete", scoringModel: "points" });
-    expect(html).toContain("Underway · counts when finished");
-    expect(html).not.toContain("Underway · scoring");
+    expect(html).not.toContain("counts when finished");
+    expect(html.match(SUBTITLE)).toBeNull();
+  });
+
+  it("the control: a reason that IS said shows in the subtitle element itself", () => {
+    // Without this, a SUBTITLE pattern that never matches would pass the three above.
+    expect(render({ cannotProject: "no_points" }).match(SUBTITLE)?.[1]).toBe("No points to award");
   });
 });
 
@@ -141,7 +150,9 @@ describe("cannotProjectCopy — one sentence per reason, none shared", () => {
     ];
     const copies = reasons.map(cannotProjectCopy);
     expect(new Set(copies).size).toBe(reasons.length);
-    for (const c of copies) expect(c).toMatch(/^Underway · /);
-    expect(copies).not.toContain("Underway · scoring");
+    for (const c of copies) expect(c).toMatch(/^[A-Z]/);
+    for (const c of copies) expect(c).not.toMatch(/Underway/);
+    // A round that only counts once complete has no line at all.
+    expect(cannotProjectCopy("round_incomplete")).toBeNull();
   });
 });
