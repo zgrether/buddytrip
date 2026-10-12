@@ -1662,7 +1662,7 @@ export function CoPlannerPanel({
   allVoterIds,
 }: {
   tripId: string;
-  members: Array<{ user_id: string; memberId: string; role: string; status: string; displayName: string; user?: { avatar_icon?: string | null } | null }>;
+  members: Array<{ user_id: string; memberId: string; role: string; displayName: string; user?: { avatar_icon?: string | null } | null }>;
   isOwner: boolean;
   /** Set of user IDs who have voted on any idea */
   allVoterIds: Set<string>;
@@ -1743,7 +1743,6 @@ export function CoPlannerPanel({
           <CrewSearchInput
             tripId={tripId}
             defaultRole="Organizer"
-            defaultStatus="draft"
             allowInvite
             showSearchIcon
             placeholder="Search by email..."

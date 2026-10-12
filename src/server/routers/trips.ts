@@ -184,7 +184,6 @@ export const tripsRouter = router({
           trip_id: input.id,
           user_id: ctx.user.id,
           role: "Owner",
-          status: "in",
         });
 
       if (memberErr) {
@@ -203,7 +202,6 @@ export const tripsRouter = router({
             trip_id: input.id,
             user_id: cp.userId,
             role: cp.role,
-            status: "draft",
           });
         }
       }

@@ -70,7 +70,7 @@ export async function listMembers(
   const { data, error } = await ctx.supabase
     .from("trip_members")
     .select(
-      "id, trip_id, user_id, role, status, joined_at, nickname, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, departure_mode, departure_detail, departure_time, last_emailed_at, email_count",
+      "id, trip_id, user_id, role, joined_at, nickname, travel_mode, travel_detail, flight_airline, flight_number, flight_arrival_time, flight_airport, travel_shared, departure_mode, departure_detail, departure_time, last_emailed_at, email_count",
     )
     .eq("trip_id", tripId)
     .order("joined_at", { ascending: true });
@@ -279,7 +279,6 @@ export const tripMembersRouter = router({
         tripId: z.string(),
         userId: z.string(),
         role: z.enum(["Organizer", "Member"]).default("Member"),
-        status: z.enum(["draft", "in", "likely", "maybe", "out", "invited"]).default("maybe"),
       })
     )
     // #786/#824 — Organizer may manage the roster now that migration 122
@@ -320,7 +319,6 @@ export const tripMembersRouter = router({
           trip_id: ctx.tripId,
           user_id: input.userId,
           role: input.role,
-          status: input.status,
           // History floor: a member added now shouldn't see Crew chat
           // banter from before they joined.
           chat_visible_from: new Date().toISOString(),
@@ -371,18 +369,8 @@ export const tripMembersRouter = router({
         });
       }
 
-      // When promoting to Organizer, also mark as invited if still in draft
       const update: Record<string, string> = { role: input.role };
       if (input.role === "Organizer") {
-        const { data: current } = await ctx.supabase
-          .from("trip_members")
-          .select("status")
-          .eq("trip_id", ctx.tripId)
-          .eq("user_id", input.userId)
-          .single();
-        if (current?.status === "draft") {
-          update.status = "invited";
-        }
         // History floor: a newly-promoted organizer shouldn't see the
         // Organizers chat from before they were promoted.
         update.planning_visible_from = new Date().toISOString();
@@ -659,7 +647,6 @@ export const tripMembersRouter = router({
               trip_id: ctx.tripId,
               user_id: existing.id,
               role: input.role,
-              status: "in",
               chat_visible_from: new Date().toISOString(),
             },
             { count: "exact" }
@@ -773,7 +760,6 @@ export const tripMembersRouter = router({
             trip_id: ctx.tripId,
             user_id: guestUserId,
             role: input.role,
-            status: "invited",
             chat_visible_from: new Date().toISOString(),
           },
           { count: "exact" }

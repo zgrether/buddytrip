@@ -26,7 +26,6 @@ export type Member = {
   memberId: string;
   user_id: string | null;
   role: string;
-  status: string | null;
   displayName: string;
   isGuest: boolean;
   /** When this member was last emailed (invite or follow-up). Null until

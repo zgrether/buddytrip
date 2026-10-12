@@ -188,7 +188,7 @@ export function TripSettingsModal({
     { ...STRUCTURE_QUERY, enabled: view === "transfer" },
   );
   const transferCandidates = members.filter(
-    (m) => m.role !== "Owner" && !m.isGuest && m.status === "in",
+    (m) => m.role !== "Owner" && !m.isGuest,
   );
 
   const transferMutation = trpc.trips.transferOwnership.useMutation({

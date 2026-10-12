@@ -10,7 +10,6 @@ import { Avatar } from "@/components/Avatar";
 export interface CrewSearchInputProps {
   tripId: string;
   defaultRole?: "Organizer" | "Member";
-  defaultStatus?: "draft" | "in" | "likely" | "maybe" | "out" | "invited";
   /** Show "Send invite" path when no account found */
   allowInvite?: boolean;
   placeholder?: string;
@@ -29,7 +28,6 @@ type SearchState =
 export function CrewSearchInput({
   tripId,
   defaultRole = "Member",
-  defaultStatus = "draft",
   allowInvite = true,
   showSearchIcon = false,
   placeholder = "email@example.com",
@@ -91,7 +89,7 @@ export function CrewSearchInput({
   }
 
   function handleAddFound(userId: string) {
-    addMember.mutate({ tripId, userId, role: defaultRole, status: defaultStatus });
+    addMember.mutate({ tripId, userId, role: defaultRole });
   }
 
   async function handleInvite() {

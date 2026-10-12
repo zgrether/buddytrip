@@ -466,7 +466,7 @@ function FloatingChatPanelInner({
     { ...STRUCTURE_QUERY, enabled: canSeeOrganizers }
   );
   const organizers = allMembers.filter(
-    (m) => (m.role === "Owner" || m.role === "Organizer") && m.status === "in"
+    (m) => (m.role === "Owner" || m.role === "Organizer") && !m.isGuest
   );
 
   // Merge in any not-yet-confirmed optimistic messages for a channel.
