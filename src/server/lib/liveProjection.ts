@@ -25,6 +25,8 @@ import { picksRevealed, type PickemClock } from "@/lib/pickemLifecycle";
 import { pickemFinalize, pickemResolution } from "@/lib/pickemFinalize";
 import { buildPickemFinalizeInput, type PickemFinalizeRows } from "@/server/lib/pickemResults";
 import { tallyMatchAwards } from "@/lib/matchAwards";
+import type { OwnStanding } from "@/lib/ownStanding";
+import { computeOwnStanding } from "@/server/lib/ownStanding";
 
 /**
  * Live-game projected-points, server-side (leaderboard grid Phase 2, Path A).
@@ -196,6 +198,9 @@ export interface LiveProjectionResult {
   projections: LiveProjections;
   /** gameId → why it can't project. Disjoint from `projections` by construction. */
   cannotProject: Record<string, CannotProjectReason>;
+  /** gameId → the VIEWER's own standing (#1599), only for games they're playing
+   *  in. Independent of the two above: a game that can't project still has one. */
+  ownStanding: Record<string, OwnStanding>;
 }
 
 const projected = (byTeam: Record<string, number>): ProjectionOutcome => ({ kind: "projected", byTeam });
@@ -298,11 +303,12 @@ export async function computeLiveProjections(
   supabase: SupabaseClient,
   competitionId: string,
   games: LiveProjectionInput[],
-  opts: { pointsMode?: boolean; cupTeamIds?: readonly string[]; teamless?: boolean } = {}
+  opts: { pointsMode?: boolean; cupTeamIds?: readonly string[]; teamless?: boolean; viewerId?: string | null } = {}
 ): Promise<LiveProjectionResult> {
   const out: LiveProjections = {};
   const cannotProject: Record<string, CannotProjectReason> = {};
-  if (games.length === 0) return { projections: out, cannotProject };
+  const ownStanding: Record<string, OwnStanding> = {};
+  if (games.length === 0) return { projections: out, cannotProject, ownStanding };
   const gameIds = games.map((g) => g.id);
   // Pick'em's own tables, read only when a pick'em game is live — the common
   // board has none and should not pay three empty queries for it.
@@ -375,7 +381,8 @@ export async function computeLiveProjections(
   // fixed handful of extra queries regardless of live-game count.
   const [gamesMetaRes, matchRowsRes, participantRowsRes, playGroupRowsRes, entryRowsRes, outcomeRowsRes, assignRes] =
     await Promise.all([
-      supabase.from("games").select("id, scorecard_schema, modifiers").in("id", gameIds),
+      // `config` holds stroke play's Stableford rubric, for the viewer's own standing.
+      supabase.from("games").select("id, scorecard_schema, modifiers, config").in("id", gameIds),
       supabase.from("game_matches").select("id, game_id, side_a, side_b, point_value, result").in("game_id", gameIds),
       supabase
         .from("game_participants")
@@ -397,11 +404,12 @@ export async function computeLiveProjections(
   const userTeam = new Map<string, string>();
   for (const a of assignRes.data ?? []) userTeam.set(a.user_id as string, a.team_id as string);
 
-  const metaByGame = new Map<string, { schema: SchemaShape | null; modifiers: ModifiersMap | null }>();
+  const metaByGame = new Map<string, { schema: SchemaShape | null; modifiers: ModifiersMap | null; config: unknown }>();
   for (const g of gamesMetaRes.data ?? []) {
     metaByGame.set(g.id as string, {
       schema: (g.scorecard_schema as SchemaShape | null) ?? null,
       modifiers: (g.modifiers as ModifiersMap | null) ?? null,
+      config: g.config ?? null,
     });
   }
 
@@ -467,7 +475,7 @@ export async function computeLiveProjections(
 
   for (const g of games) {
     const meta = metaByGame.get(g.id);
-    const proj = projectGame(g, {
+    const data: GameProjectionData = {
       schema: meta?.schema ?? null,
       modifiers: meta?.modifiers ?? null,
       matches: matchesByGame.get(g.id) ?? [],
@@ -481,11 +489,18 @@ export async function computeLiveProjections(
       pointsMode: opts.pointsMode ?? false,
       teamless: opts.teamless ?? false,
       skins: skinsByGame.get(g.id),
-    });
+    };
+    const proj = projectGame(g, data);
     if (proj?.kind === "projected") out[g.id] = proj.byTeam;
     else if (proj?.kind === "cannot") cannotProject[g.id] = proj.reason;
+    // The viewer's own standing rides the same data, OUTSIDE the projection's
+    // early returns: a game that pays nothing still has a standing to show.
+    if (opts.viewerId) {
+      const mine = computeOwnStanding(g, { ...data, config: meta?.config ?? null }, opts.viewerId);
+      if (mine) ownStanding[g.id] = mine;
+    }
   }
-  return { projections: out, cannotProject };
+  return { projections: out, cannotProject, ownStanding };
 }
 
 /** Match singles/doubles → build each match's current standing (the same

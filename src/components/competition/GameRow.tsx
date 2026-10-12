@@ -2,6 +2,8 @@
 
 import { createElement } from "react";
 import { resultTiles } from "@/lib/standingsRows";
+import { formatOwnStanding, ownStandingIsSettled } from "@/lib/ownStanding";
+import { stateText } from "@/lib/stateText";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Table2 } from "lucide-react";
@@ -77,52 +79,53 @@ function openScorecardOverlay(pathname: string, gameId: string) {
  * surface that ever shows a live game words it the way the board does.
  *
  *  - "Projected results" when the row's team cells carry projection pills;
- *  - why it can't project, in a match-play cup, or for a stroke or scramble
- *    round in a points tournament ("counts when finished", 9c-2 look) — instead
- *    of the same "Underway" a format with no projection at all gets (3c);
- *  - otherwise "Underway · scoring".
+ *  - why it can't project, in a match-play cup (3c);
+ *  - otherwise NOTHING. These rows sit under the LIVE heading, which already
+ *    says the game is underway, so "Underway · scoring" said it twice (Zach,
+ *    #1607's look). A stroke or scramble round still in play says nothing
+ *    either: "counts when finished" is gone everywhere.
  * A surface with no pills to label passes `showProjectionPills: false`.
  */
 export function liveSubtitle(p: {
   showProjectionPills: boolean;
   scoringModel: ScoringModel;
   cannotProject?: CannotProjectReason | null;
-}): string {
+}): string | null {
   if (p.showProjectionPills) return "Projected results";
-  if ((p.scoringModel === "match_play" && p.cannotProject) || p.cannotProject === "round_incomplete") {
-    return cannotProjectCopy(p.cannotProject!);
-  }
-  return "Underway · scoring";
+  if (p.scoringModel === "match_play" && p.cannotProject) return cannotProjectCopy(p.cannotProject);
+  return null;
 }
 
 /**
  * The row's sentence for a live game that can't project (3c). Each names what
  * is actually missing, and says it as a fact about the GAME — the whole crew
- * reads this row, and most of them can't change a setting.
+ * reads this row, and most of them can't change a setting. No "Underway ·"
+ * prefix: the row is under the LIVE heading (#1607's look). Null for a round
+ * that only counts once complete: that line is gone everywhere.
  */
-export function cannotProjectCopy(reason: CannotProjectReason): string {
+export function cannotProjectCopy(reason: CannotProjectReason): string | null {
   switch (reason) {
     case "no_points":
-      return "Underway · no points to award";
+      return "No points to award";
     case "picks_hidden":
-      return "Underway · picks hidden until reveal";
+      return "Picks hidden until reveal";
     case "no_course":
-      return "Underway · no course to project against";
+      return "No course to project against";
     case "no_teams":
-      return "Underway · needs two teams to project";
+      return "Needs two teams to project";
     // Worded by the results-first PR, which made "results in, matches not drawn
     // yet" an ordinary step (3c withheld the words until then, on purpose).
     // Progress on one side, a fix to make on the other — Zach's copy for the
     // second says the STATE and what clears it rather than what happened.
     case "matches_not_drawn":
-      return "Underway · matches not drawn yet";
+      return "Matches not drawn yet";
     case "seats_vacated":
-      return "Underway · matches need re-pairing";
+      return "Matches need re-pairing";
     // A live stroke or scramble round in a points tournament (Zach's words,
     // 9c-2 look). It counts once finished; until then it adds nothing to the
     // hatched bars.
     case "round_incomplete":
-      return "Underway · counts when finished";
+      return null;
   }
 }
 
@@ -491,6 +494,18 @@ export function GameRow({
             />
           )}
         </div>
+        {/* Your own standing (#1599), on your live game only: the line you came
+            to read, so it sits above the live subtitle in full-strength text. */}
+        {section === "on-tap" && game.standing && (
+          <span
+            className="truncate text-[13px]"
+            style={stateText(ownStandingIsSettled(game.standing))}
+            data-testid="game-row-standing"
+            data-settled={ownStandingIsSettled(game.standing) ? "true" : "false"}
+          >
+            {formatOwnStanding(game.standing)}
+          </span>
+        )}
         {subtitle && (
           <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
             {subtitle}

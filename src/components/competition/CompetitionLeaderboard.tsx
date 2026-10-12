@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Trophy, CloudOff, RefreshCw, Plus, ArrowUpDown } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/router";
+import type { OwnStanding } from "@/lib/ownStanding";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY, SIDE_BOARD_QUERY } from "@/lib/queryConfig";
 import { useVisibleEnabled } from "@/lib/surfaceVisibility";
@@ -42,6 +43,9 @@ export interface LBGame {
    *  boolean, nobody's id. A live game that is yours takes the filled card
    *  (`GameRow`), the same "filled means yours" as your standings row. */
   yours?: boolean;
+  /** The VIEWER's own standing in this game (#1599): set only on a live game
+   *  they're playing in, computed on the server, worded by `formatOwnStanding`. */
+  standing?: OwnStanding | null;
   /** Finished side games: everyone at first (a tie lists them all). */
   winners?: string[];
   /** Position in the trip's ONE game order (PR 6b: per trip, not per cup). */

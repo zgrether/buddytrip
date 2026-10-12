@@ -67,6 +67,34 @@ describe("board rows say which games are the viewer's", () => {
     expect(JSON.stringify(asMember.games)).not.toContain(outsider);
   });
 
+  /**
+   * #1599: a live game's row carries the VIEWER's own standing, and only theirs.
+   * Through the real procedures: scores entered with `scores.upsertEntry`, the
+   * board read as three different people. The decisive arm is the two players
+   * reading DIFFERENT values off the same game: a build that sent one standing
+   * per game (the first player's, say) passes the member's case and fails here.
+   */
+  it("a live cup game carries each player's OWN standing, and nobody else's", async () => {
+    const { tripId, competitionId } = await ctx.createCupTrip({
+      name: "Yours · standing", scoringModel: "points", members: ["member", "outsider"],
+    });
+    const gameId = await round(tripId, competitionId, "Standing round", [member, outsider], true);
+    // Hole 1 is a par 4 on the default card: the member makes 5, the outsider 3.
+    await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: member, unitLabel: "1", value: 5 });
+    await ctx.caller().scores.upsertEntry({ tripId, gameId, participantId: outsider, unitLabel: "1", value: 3 });
+
+    const standingFor = async (as: "member" | "outsider" | null) => {
+      const board = as
+        ? await ctx.callerAs(as).competitions.leaderboard({ tripId, competitionId })
+        : await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+      return (board.games.find((g) => g.id === gameId) as { standing?: unknown }).standing;
+    };
+    expect(await standingFor("member")).toEqual({ kind: "to_par", toPar: 1, thru: "1" });
+    expect(await standingFor("outsider")).toEqual({ kind: "to_par", toPar: -1, thru: "1" });
+    // The Owner runs the trip but isn't playing in this game: no standing.
+    expect(await standingFor(null)).toBeNull();
+  });
+
   it("side games carry the same flag", async () => {
     const tripId = await ctx.createTrip("Yours · side");
     await ctx.addTripMember(tripId, "member", "Member");

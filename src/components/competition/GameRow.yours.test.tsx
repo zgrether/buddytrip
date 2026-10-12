@@ -51,21 +51,58 @@ describe("GameRow — a live card is filled only when it is yours", () => {
   });
 });
 
+/**
+ * #1607's look (Zach): your standing shows its STATE by styling, not words.
+ * Live is primary text, semibold; settled is the FINAL green, regular weight.
+ * The two differ ONLY in paint, so this asserts the paint, on the standing's own
+ * element (its testid), and checks BOTH properties: never colour alone.
+ */
+const STANDING = /<span[^>]*style="([^"]*)"[^>]*data-testid="game-row-standing"[^>]*>([^<]*)<\/span>/;
+const standingOf = (game: LBGame) => {
+  const m = render(game).match(STANDING);
+  return m ? { style: m[1], text: m[2].replace(/&amp;/g, "&") } : null;
+};
+
+describe("your standing — live or settled, by weight AND colour", () => {
+  it("in play: primary text, semibold", () => {
+    const s = standingOf(live({ yours: true, standing: { kind: "match", lead: 2, thru: 7, over: false, margin: null } }));
+    expect(s?.text).toBe("2 UP thru 7");
+    expect(s?.style).toContain("color:var(--color-bt-text)");
+    expect(s?.style).toContain("font-weight:600");
+  });
+
+  it("settled: the FINAL green, regular weight", () => {
+    const s = standingOf(live({ yours: true, standing: { kind: "match", lead: 3, thru: 16, over: true, margin: "3&2" } }));
+    expect(s?.text).toBe("Won 3&2");
+    expect(s?.style).toContain("color:var(--color-bt-place-1-text)");
+    expect(s?.style).toContain("font-weight:400");
+  });
+
+  it("a finished round reads '+3' — the settled style says it's done, so no F", () => {
+    const s = standingOf(live({ yours: true, standing: { kind: "to_par", toPar: 3, thru: "F" } }));
+    expect(s?.text).toBe("+3");
+    expect(s?.style).toContain("font-weight:400");
+  });
+
+  it("someone else's live game has no standing line at all", () => {
+    expect(standingOf(live({ yours: false }))).toBeNull();
+  });
+});
+
 describe("liveSubtitle — the shared live-row rule", () => {
-  it("a stroke or scramble round in a points tournament counts when finished", () => {
-    expect(liveSubtitle({ showProjectionPills: false, scoringModel: "points", cannotProject: "round_incomplete" })).toBe(
-      "Underway · counts when finished"
-    );
+  it("a stroke or scramble round still in play says nothing ('counts when finished' is gone)", () => {
+    expect(liveSubtitle({ showProjectionPills: false, scoringModel: "points", cannotProject: "round_incomplete" })).toBeNull();
   });
 
   it("a match-play cup says why it can't project", () => {
     expect(liveSubtitle({ showProjectionPills: false, scoringModel: "match_play", cannotProject: "no_points" })).toBe(
-      "Underway · no points to award"
+      "No points to award"
     );
   });
 
-  it("otherwise the plain line, and 'Projected results' only with pills to label", () => {
-    expect(liveSubtitle({ showProjectionPills: false, scoringModel: "points", cannotProject: "no_points" })).toBe("Underway · scoring");
+  it("otherwise NOTHING (the LIVE heading says it), and 'Projected results' only with pills to label", () => {
+    expect(liveSubtitle({ showProjectionPills: false, scoringModel: "points", cannotProject: "no_points" })).toBeNull();
+    expect(liveSubtitle({ showProjectionPills: false, scoringModel: "match_play" })).toBeNull();
     expect(liveSubtitle({ showProjectionPills: true, scoringModel: "match_play" })).toBe("Projected results");
   });
 });
