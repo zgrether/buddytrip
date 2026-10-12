@@ -2002,6 +2002,19 @@ didn't apply.
 
 ## Local Dev Troubleshooting
 
+**AN E2E FAILURE STARTS WITH `scripts/reproduce-ci-e2e.sh`, NOT WITH THE DEV
+SERVER.** CI builds a FRESH database from the migrations every run and serves a
+PRODUCTION build; local dev is `next dev` on a long-lived database. #1590's shell
+remount failed every CI attempt and almost never locally — until a fresh scratch
+stack + a prod build + `CI=1` reproduced it 9 times in 12. The script does exactly
+that on its own project id and ports (the shared dev stack is never touched), reads
+CI's CLI pin and container list from `ci.yml`, and takes Playwright args
+(`--project=chat-action --retries=0 --repeat-each=4`); `test` re-runs on the same
+build, `reset` gives a fresh database, `stop` tears it down. Stop the dev server
+first and `rm -rf .next` after: the build replaces `.next` with the scratch URL
+baked in. The `[retries]` line (`e2e/retryReporter.ts`) names every test that only
+passed on retry — the first run of it found a real flake nobody had seen.
+
 **Confirm the working directory and branch of a dev server before trusting the
 browser** — verify it's up to date with `origin`. An observation from the wrong
 tree is worse than no observation: it already cost one long debugging session.

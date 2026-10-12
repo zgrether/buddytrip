@@ -25,7 +25,12 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "html",
+  // `retryReporter` always prints one `[retries] N e2e tests needed a retry`
+  // line (and, in CI, an annotation + job-summary row per retried test): a test
+  // that only passes on retry is otherwise green and invisible (#1552, #1590).
+  reporter: process.env.CI
+    ? [["github"], ["html", { open: "never" }], ["./e2e/retryReporter.ts"]]
+    : [["html"], ["./e2e/retryReporter.ts"]],
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",

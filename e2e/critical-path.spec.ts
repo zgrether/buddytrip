@@ -210,6 +210,14 @@ test("scoring spine (competition-attached, real path) — stroke game: create vi
   //
   // So: walk every ancestor that clips, and sample the row's own TOP EDGE rather
   // than its centre (the centre stayed painted through both regressions).
+  //
+  // WAIT FOR THE ROW FIRST. This used to measure straight after the tap, and on
+  // a slow first attempt the panel had not rendered yet: the probe returned its
+  // -1 "row absent" sentinel and the failure read "game header clipped by an
+  // ancestor" — a confident wrong cause. It passed on retry, so nothing showed
+  // until the e2e `[retries]` reporter named it (2026-10-11). Absence and
+  // clipping are now separate failures with their own messages.
+  await expect(page.getByTestId("game-action-row"), "the game header row rendered").toBeVisible({ timeout: 20_000 });
   const clip = await page.evaluate(() => {
     const row = document.querySelector('[data-testid="game-action-row"]') as HTMLElement | null;
     if (!row) return { worstCut: -1, topEdgePainted: false };
