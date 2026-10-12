@@ -510,6 +510,17 @@ seam, never on a calendar.
   and is not covered. A test file that states its own limit is worth more than
   one that implies coverage it does not have.
 
+- **A FIX THAT HELPS IS EVIDENCE, NOT PROOF.** The cause is confirmed when the
+  explanation accounts for EVERY failure, including the leftover ones. Lived
+  2026-10-11 (#1590): waiting for hydration before each click cut the chat E2E
+  failures from 9 of 12 to 1 of 12, and read as confirming a hydration race. It
+  only helped because the wait happened to outlast the real cause — the trip
+  page's shell being REMOUNTED when the trip loaded. Refusing to call the one
+  remaining failure a flake is what found it; the remount fix alone took the
+  specs to 12 of 12 with no wait at all. **How to apply:** when a fix improves
+  the numbers and leaves a residual, the residual is the lead, not noise — ask
+  whether your explanation predicts IT, and keep going if it does not.
+
 - **ONLY A RULE ENFORCED IN THE DATABASE KEEPS FIXTURES HONEST.** Fixtures insert rows directly and never touch app code, so app-level guards cannot see them; three sightings of test data built in states the app forbids (#1402's forty impossible cups, #1428's live games with finished rows, twelve files migration 193's trigger refused) were caught only when a rule moved into the database.
 
 - **BEFORE REMOVING A GUARD, ENUMERATE WHAT IT WAS MAKING UNREACHABLE.** Lifting one exposes everything behind it at once, and nothing lists what that is: the roster lock was silently holding up rulings 15–17, because every result writer re-credits through today's roster and only the lock kept a trade from reaching a re-finalize (PR 8a, migration 203).
