@@ -1492,6 +1492,22 @@ wrap, the tiles must stay aligned. Tournaments of individuals keep their winners
 - **A live stroke or scramble round in a tournament** reads *Underway · counts when
   finished* in place of *Underway · scoring* (`round_incomplete`). No extra line.
 
+**9d, as answered (2026-10-12):** Live now reads the board's OWN two queries and subscriptions
+(no new kind of query); "yours" is one per-viewer boolean computed on the server, nobody's
+id sent. Its three look questions were read as: keep the filled card for yours (the same
+signal as your standings row), keep Live now above the setup guide (it only shows when
+something is live), and defer each row's own standing to #1599 — the first item after PR 9.
+
+**9e, as built.** Deleted from `GameTypeDefinition`, verified unread on `main` first:
+`entrySchema`, `supportsFreeForAll`, `supportsSides`, `requiresSides`, `maxPlayersPerSide`
+(their `game_type_templates` columns are untouched). `allowedContainers` lost its unread
+`head_to_head` half; a list that could only be `["points_race"]` or empty became the
+boolean `allowedInPointsRace` (rack `false`), and its only reader,
+`canPlayInTeamlessRace`, reads that. **Kept: `scoreTables`.** Found while verifying, and
+open: `allowedInPointsRace` is exactly "compatibleScoringModels is null or includes
+points" for all ten formats, and removing its check from the reader changes no answer —
+the same fact declared twice. Deleting it was not in ruling 6, so it is Zach's call.
+
 ---
 
 ## Vocabulary
