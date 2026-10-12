@@ -36,6 +36,7 @@
  */
 
 import { useState } from "react";
+import type { BuilderTeam } from "@/lib/builderPool";
 import { createPortal } from "react-dom";
 import { Plus, X, GripVertical } from "lucide-react";
 import {
@@ -512,6 +513,7 @@ export function PlayerSelector({
   nameOf,
   onPick,
   onClose,
+  notOnATeam,
 }: {
   matchIdx: number;
   slot: "a" | "b";
@@ -532,6 +534,18 @@ export function PlayerSelector({
   nameOf: Map<string, string>;
   onPick: (userId: string) => void;
   onClose: () => void;
+  /**
+   * The cup's crew on no team, and the teams THIS viewer may add them to
+   * (`builderPool.ts`). Rendered only when there is someone to list AND a team
+   * to add them to: a section of names nobody here can act on is a list of
+   * things the screen cannot do (the Copy rule). Omitted by a side game, a
+   * teamless race and pick'em.
+   */
+  notOnATeam?: {
+    ids: string[];
+    targets: BuilderTeam[];
+    onAdd: (userId: string, teamId: string) => void;
+  };
 }) {
   // Map user → the match they currently occupy (if any) — across all members of
   // both sides, so a player already placed shows as "taken" / moves when chosen.
@@ -568,7 +582,15 @@ export function PlayerSelector({
         </div>
         <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 14 }}>Available</div>
         <div className="mt-2 flex flex-col gap-1.5">
-          {available.length === 0 && <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>Everyone&apos;s assigned.</span>}
+          {available.length === 0 && (
+            <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
+              {/* An EMPTY pool is not "everyone's assigned" — that line was
+                  true only when the pool had people and they were all placed. */}
+              {crew.length === 0
+                ? teamLabel ? `No one on ${teamLabel} yet.` : "No one on a team yet."
+                : <>Everyone&apos;s assigned.</>}
+            </span>
+          )}
           {available.map((id) => (
             <SelectorRow key={id} name={nameOf.get(id) ?? "Player"} teamColor={colorOf?.(id) ?? teamColor} onClick={() => onPick(id)} />
           ))}
@@ -584,6 +606,22 @@ export function PlayerSelector({
             <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 12 }}>
               Choosing someone already in a match moves them here and clears that match&apos;s handicap.
             </p>
+          </>
+        )}
+        {notOnATeam && notOnATeam.ids.length > 0 && notOnATeam.targets.length > 0 && (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 16 }}>Not on a team</div>
+            <div className="mt-2 flex flex-col gap-1.5" data-testid="selector-not-on-a-team">
+              {notOnATeam.ids.map((id) => (
+                <NotOnATeamRow
+                  key={id}
+                  userId={id}
+                  name={nameOf.get(id) ?? "Player"}
+                  targets={notOnATeam.targets}
+                  onAdd={notOnATeam.onAdd}
+                />
+              ))}
+            </div>
           </>
         )}
       </div>
@@ -615,6 +653,38 @@ function Slot({ player, onTap }: { player: Participant | null; onTap?: () => voi
     <button onClick={onTap} className="block w-full text-left" style={{ minWidth: 0, padding: 0, border: "none", background: "none" }}>
       <PlayerChip name={player.name} teamColor={player.color} />
     </button>
+  );
+}
+
+/**
+ * A crew member on no team: their name, and one "Add to {team}" per team this
+ * viewer may add them to. Adding does not place them — they join the team and
+ * appear in the list above, where a tap places them like anyone else. After
+ * results the add opens the before-and-after preview first.
+ */
+function NotOnATeamRow({ userId, name, targets, onAdd }: { userId: string; name: string; targets: BuilderTeam[]; onAdd: (userId: string, teamId: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2" style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }} data-testid={`not-on-a-team-${userId}`}>
+      <span className="flex min-w-0 items-center gap-2.5">
+        <Avatar name={name} sizePx={30} collapse />
+        <span style={{ fontSize: 15, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+      </span>
+      <span className="flex flex-wrap justify-end gap-1.5">
+        {targets.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onAdd(userId, t.id)}
+            data-testid={`add-to-team-${userId}-${t.id}`}
+            className="flex items-center gap-1.5"
+            style={{ padding: "5px 10px", borderRadius: 999, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", fontSize: 13, fontWeight: 600, color: "var(--color-bt-text)" }}
+          >
+            <span className="inline-block h-2 w-2 rounded-full" style={{ background: t.color }} />
+            Add to {t.name}
+          </button>
+        ))}
+      </span>
+    </div>
   );
 }
 

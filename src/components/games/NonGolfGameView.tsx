@@ -5,6 +5,12 @@ import { Settings } from "lucide-react";
 import {useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useTripRole } from "@/hooks/useTripRole";
+import { isTeamCaptain } from "@/hooks/useCanEditTeam";
+import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
+import { useRosterChangeGate } from "@/components/competition/RosterChangeGate";
+import { builderAddTargets, notOnATeamIds } from "@/lib/builderPool";
 import { useDepartedNames } from "@/hooks/useDepartedNames";
 import { withDeparted } from "@/lib/departedNames";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY } from "@/lib/queryConfig";
@@ -379,6 +385,16 @@ export function NonGolfGameView() {
     { tripId: tripId!, competitionId: competitionId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId },
   );
+  // "Add to {team}" from the Matches picker (PR 9b) — the Rosters screen's own
+  // path and rights, same as golf match play (`builderPool.ts`).
+  const rosterViewer = useCurrentUser();
+  const { canEdit: rosterStaff } = useTripRole(tripId);
+  const rosterPreview = useRosterChangeGate();
+  const hasResultsQ = trpc.teamAssignments.hasResults.useQuery(
+    { tripId: tripId!, competitionId: competitionId! },
+    { enabled: !!tripId && !!competitionId },
+  );
+  const { assign: assignToTeam } = useTeamAssignmentMutations(tripId ?? "", competitionId ?? "");
   const crewQ = trpc.tripMembers.list.useQuery(
     { tripId: tripId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId },
@@ -1253,6 +1269,23 @@ export function NonGolfGameView() {
                   onToggle={() => setMatchesRowExpanded((o) => !o)}
                   selector={matchesSelector}
                   setSelector={setMatchesSelector}
+                  notOnATeamFor={(slotTeamId) => {
+                    if (!tripId || !competitionId) return undefined;
+                    const crewIds = ((crewQ.data ?? []) as { user_id: string | null }[]).flatMap((c) => (c.user_id ? [c.user_id] : []));
+                    return {
+                      // MatchesBuilder renders only for a cup with teams, so rosters apply.
+                      ids: notOnATeamIds({ rostersApply: true, crewIds, teamOf: (id) => teamByUser[id] ?? undefined }),
+                      targets: builderAddTargets({
+                        teams,
+                        slotTeamId,
+                        staff: rosterStaff,
+                        captainOf: (teamId) => isTeamCaptain(assignQ.data as { user_id: string; team_id: string; is_captain?: boolean }[] | undefined, rosterViewer?.id, teamId),
+                        hasResults: !!hasResultsQ.data,
+                        previewAvailable: !!rosterPreview,
+                      }),
+                      onAdd: (userId, teamId) => assignToTeam.mutate({ tripId, competitionId, userId, teamId }),
+                    };
+                  }}
                 />
               ) : null
             }
