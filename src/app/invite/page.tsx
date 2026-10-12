@@ -55,7 +55,11 @@ export default async function InvitePage({
   const failed = (
     <InviteMessage
       title="Couldn't load this invite"
-      body="This is a connection problem, not a problem with your invite."
+      // The cause can't be known (a network blip or the server having a bad
+      // moment look the same from here), so the body says the one thing that is
+      // true either way, which is the one that keeps a new person from giving up
+      // or asking for a fresh link (Zach, on #1612's look).
+      body="Your invite is fine — try again in a moment."
       action={{ href: `/invite?token=${encodeURIComponent(token ?? "")}`, label: "Try again" }}
     />
   );
