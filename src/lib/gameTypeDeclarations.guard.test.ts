@@ -4,6 +4,7 @@ import {
   GAME_TYPE_LIST,
   canBeSideGame,
   canPlayInTeamlessRace,
+  isGameTypeForScoringModel,
   type GameTypeDefinition,
   type ResultKind,
 } from "./gameTypes";
@@ -15,7 +16,7 @@ import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
  * ── What this guards that `tsc` does not ───────────────────────────────────
  *
  * The compiler already refuses a format missing `resultKinds`, `teamDependent`
- * or `allowedInPointsRace` — adding the fields produced ten errors naming ten
+ * or `allowedContainers` (deleted in PR 9e) — adding the fields produced ten errors naming ten
  * formats, which is the presence check done for free. **A runtime test that
  * only re-asserts presence would be inert**: it could never fail on a tree that
  * compiles, and it would look exactly like protection.
@@ -42,11 +43,11 @@ import { BROADCAST_TABLES, type BroadcastTable } from "./broadcastTables";
 
 const RESULT_KINDS: ResultKind[] = ["head_to_head", "ranked"];
 /**
- * No list check for `allowedInPointsRace`. It was `allowedContainers`, a list,
- * until PR 9e deleted its unread `head_to_head` half; a boolean cannot be empty
- * or hold a duplicate, so the checks below would be the type system's job
- * restated — inert by construction. Its one invariant that a value can break
- * (rack) is asserted over the real catalog further down.
+ * No container check: `allowedContainers` was deleted in PR 9e. Its
+ * `head_to_head` half was never read, and its `points_race` half said the same
+ * as `compatibleScoringModels` for all ten formats once PR 5 landed — so the
+ * scoring-model list is the one source, and its invariant (rack) is asserted
+ * over the real catalog further down, through the add-game filter's own rule.
  */
 /**
  * `scoreTables` (#1432): any broadcasting table EXCEPT `games`. `tsc` already
@@ -146,14 +147,14 @@ describe("declared format properties", () => {
    */
   it("rack lives in a head-to-head cup only: never a points tournament, never a side game (rulings 12, 27)", () => {
     const rack = GAME_TYPE_LIST.find((d) => d.id === "gtt_rack_n_stack")!;
-    expect(rack.allowedInPointsRace).toBe(false);
+    expect(isGameTypeForScoringModel(rack, "points")).toBe(false);
     expect(canBeSideGame(rack.id)).toBe(false);
   });
 
   /** And it is the ONLY one: every other format may be played in a points
    *  tournament. Stated as the set, so a format losing it is named here. */
   it("rack is the only format barred from a points tournament", () => {
-    expect(GAME_TYPE_LIST.filter((d) => !d.allowedInPointsRace).map((d) => d.id)).toEqual(["gtt_rack_n_stack"]);
+    expect(GAME_TYPE_LIST.filter((d) => !isGameTypeForScoringModel(d, "points")).map((d) => d.id)).toEqual(["gtt_rack_n_stack"]);
   });
 
   /**
