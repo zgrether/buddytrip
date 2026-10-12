@@ -159,3 +159,52 @@ test("mobile: opening chat from Cup keeps Cup selected; back closes it and retur
   await expect(cupTab).toHaveAttribute("aria-selected", "true");
   await expect(chatAction).toHaveAttribute("aria-pressed", "false");
 });
+
+/**
+ * THE LOAD WINDOW, ACTED IN ON PURPOSE — the bug CI actually hit.
+ *
+ * Until its trip read answers, the trip page renders a LOADING shell; then the
+ * loaded one. #1583 wrapped only the loaded one in TripSettingsOpenerProvider,
+ * so the moment the trip landed React saw a different root and threw the whole
+ * shell away — and chat, whose open state lives in AppShell, closed itself. The
+ * desktop chat specs failed every attempt in CI on exactly this (2026-10-11).
+ *
+ * So: hold the trip read, open chat INSIDE the window, release it, and chat
+ * must still be open once the trip has landed. Waiting for the button to be
+ * hydrated first is deliberate and is not the "polite wait" that hides the
+ * window — it is a real person's tap, made after the page responds and BEFORE
+ * the trip read answers, which is the window itself.
+ */
+test("desktop: chat opened while the trip is still loading stays open when the trip lands", async ({ page }) => {
+  test.setTimeout(45_000);
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  let release!: () => void;
+  const released = new Promise<void>((r) => (release = r));
+  let held = 0;
+  await page.route(/\/api\/trpc\/[^?]*trips\.getById/, async (route) => {
+    held += 1;
+    await released;
+    await route.continue();
+  });
+
+  await page.goto(`/trips/${tripId}?view=cup`);
+  await expect.poll(() => held, { timeout: 10_000 }).toBeGreaterThan(0);
+  await page.waitForFunction(() => {
+    const el = document.querySelector('[data-testid="chat-button"]');
+    return !!el && Object.keys(el).some((k) => k.startsWith("__reactProps"));
+  }, undefined, { timeout: 20_000 });
+  await page.getByTestId("chat-button").click();
+  await expect(page.getByTestId("chat-column")).toBeVisible({ timeout: 10_000 });
+
+  // The trip lands now — the shell swap happens with chat open.
+  // No `page.unroute` here: it would settle the held request itself and make
+  // the handler's own `route.continue()` throw. Released, the handler passes
+  // everything straight through.
+  release();
+  // Loaded: the trip read has answered (the Trip tab reads its title).
+  await expect(page.getByTestId("desktop-tab-trip")).toBeVisible({ timeout: 20_000 });
+  await page.waitForLoadState("networkidle");
+
+  await expect(page.getByTestId("chat-column")).toBeVisible();
+});

@@ -329,6 +329,16 @@ function TripDetailBody({ tripId }: { tripId: string }) {
    */
   if (dataLoading || error || !trip) {
     return (
+      // SAME WRAPPER AS THE LOADED RETURN BELOW, and that is load-bearing. React
+      // keeps a component's state only while the element above it is the same
+      // TYPE at the same position. #1583 wrapped the loaded `AppShell` in this
+      // provider and not this one, so the moment trip data landed the root
+      // changed from `AppShell` to the provider and React threw the whole shell
+      // away and mounted a new one — losing chat (`chatOpen` lives in
+      // AppShell) and anything open on the Cup board this loading shell already
+      // renders. The E2E chat and match-play specs failed on exactly that
+      // window. `null`: nothing can open settings before the trip has loaded.
+      <TripSettingsOpenerProvider value={null}>
       <AppShell
         tripId={tripId}
         defaultView="trip"
@@ -352,6 +362,7 @@ function TripDetailBody({ tripId }: { tripId: string }) {
           </div>
         }
       />
+      </TripSettingsOpenerProvider>
     );
   }
 
