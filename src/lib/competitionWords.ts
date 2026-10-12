@@ -47,5 +47,14 @@ export const COMPETITION_CHOICE_WORD = {
   points: "Tournament",
 } as const satisfies Record<ScoringModel, string>;
 
+/**
+ * THE UMBRELLA WORD — the create panel's title, "Start a Competition" (Zach,
+ * 2026-10-12). It sits above the two kinds before either is picked, where
+ * "Start a Head-to-Head Cup or Tournament" wrapped to two lines on a phone and
+ * repeated the options right below it. The one place the code's word is copy;
+ * `competitionWords.guard.test.ts` admits it only from this file.
+ */
+export const COMPETITION_UMBRELLA = "Competition";
+
 /** A starting point that offers both kinds. */
 export const EITHER_CHOICE = `${COMPETITION_CHOICE_WORD.match_play} or ${COMPETITION_CHOICE_WORD.points}`;

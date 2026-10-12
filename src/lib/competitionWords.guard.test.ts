@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import ts from "typescript";
-import { COMPETITION_CHOICE_WORD, COMPETITION_WORD, EITHER_CHOICE, competitionNoun, competitionWord } from "./competitionWords";
+import { COMPETITION_CHOICE_WORD, COMPETITION_UMBRELLA, COMPETITION_WORD, EITHER_CHOICE, competitionNoun, competitionWord } from "./competitionWords";
 
 /**
  * On screen a competition is a **Cup** (head to head) or a **Tournament**
@@ -103,6 +103,10 @@ describe("the words a competition goes by on screen", () => {
     expect(EITHER_CHOICE).toBe("Head-to-Head Cup or Tournament");
   });
 
+  it("the create panel's title is the umbrella word", () => {
+    expect(COMPETITION_UMBRELLA).toBe("Competition");
+  });
+
   it("reads an unset model as head to head, the column's own default", () => {
     expect(competitionWord(null)).toBe("Cup");
     expect(competitionWord(undefined)).toBe("Cup");
@@ -138,7 +142,8 @@ describe("no screen uses a retired word or the code's word", () => {
 
   it("no copy names the container 'competition' — it says Cup, Tournament, or both", () => {
     const hits = files
-      .filter((f) => !PLAIN_ENGLISH.has(f.rel))
+      // The words' own home defines the umbrella word, the one sanctioned use.
+      .filter((f) => !PLAIN_ENGLISH.has(f.rel) && f.rel !== path.join("lib", "competitionWords.ts"))
       .flatMap((f) => copyMatches(f.source, f.rel, CODE_WORD).map((h) => ({ rel: f.rel, ...h })));
     expect(report(hits)).toEqual([]);
   });

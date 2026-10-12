@@ -5,7 +5,7 @@ import { Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { COMPETITION_CHOICE_WORD, EITHER_CHOICE, competitionNoun, competitionWord } from "@/lib/competitionWords";
+import { COMPETITION_CHOICE_WORD, COMPETITION_UMBRELLA, competitionNoun, competitionWord } from "@/lib/competitionWords";
 import { Stepper } from "@/components/games/Stepper";
 import { MAX_SEED_TEAMS } from "@/lib/teamColors";
 
@@ -78,10 +78,10 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
   // structure is something you add, not something you are made to build.
   const [playAs, setPlayAs] = useState<"individuals" | "teams">("individuals");
   // Edit mode names the competition that exists; create mode follows the shape
-  // being picked, so the name field and button change with it. The heading and
-  // the shape options are where the type is CHOSEN, so they use the choosing
-  // form (Head-to-Head Cup); the name field and button come after the choice
-  // and say plain Cup.
+  // being picked, so the name field and button change with it. The title is
+  // the umbrella word ("Start a Competition"); the shape options are where the
+  // type is CHOSEN, so they use the choosing form (Head-to-Head Cup); the name
+  // field and button come after the choice and say plain Cup.
   const kind = isEdit ? competition?.scoring_model ?? null : scoringModel;
   const word = competitionWord(kind);
   const noun = competitionNoun(kind);
@@ -201,11 +201,8 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
           </div>
           <div>
             <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-              {isEdit ? `Edit ${noun}` : `Start a ${EITHER_CHOICE}`}
+              {isEdit ? `Edit ${noun}` : `Start a ${COMPETITION_UMBRELLA}`}
             </h2>
-            <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
-              Pick a shape, name it, and you&rsquo;re set.
-            </p>
           </div>
         </div>
       )}
@@ -213,7 +210,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       <div className="space-y-4">
         {/* Shape chooser — create only (the shape is frozen after creation). */}
         {!isEdit && (
-          <FieldShell label="How are you competing?" required>
+          <div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid="shape-chooser">
               {SHAPE_OPTIONS.map((opt) => (
                 <ShapeCard
@@ -224,7 +221,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
                 />
               ))}
             </div>
-          </FieldShell>
+          </div>
         )}
 
         {/* Play as — a points race only (ruling 21). Individuals is the default and
