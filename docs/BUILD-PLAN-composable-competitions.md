@@ -1384,7 +1384,7 @@ clauses); reset and merge carry their new lines. No rows yet.
 - **The `AS` chip** — an unplayed match renders "AS" identically to a halved result
   (`MatchCard.tsx:275`). The data distinguishes them; the display should.
 - **A live game surfaces on the trip home — moved here from PR 6 (ruling 28's second half,
-  2026-09-27).** It was written to mirror "as a live competition game does", and PR 6's
+  2026-09-27). DROPPED 2026-10-12; see "9d" below.** It was written to mirror "as a live competition game does", and PR 6's
   verify-first pass found **nothing on the trip home surfaces a live game at all** today:
   Home shows linked games only as name chips on agenda items (`ItineraryView.tsx:1402`),
   never their status. So this is a new surface to design, for competition and side games
@@ -1433,15 +1433,17 @@ clauses); reset and merge carry their new lines. No rows yet.
    yet earned — the game name and the points, nothing more. **For the standings bars
    (9c-2):** projected points are a HATCHED segment in the team's own colour, banked points
    solid — the Presidents Cup legend.
-5. **Live now on Home:** every live game, yours first; games not matches, so it stays short.
-   Reads the board's existing data and live subscriptions, no new query.
+5. ~~**Live now on Home:** every live game, yours first; games not matches, so it stays short.
+   Reads the board's existing data and live subscriptions, no new query.~~ **DROPPED
+   2026-10-12** — see "9d" below.
 6. **Deletions, as the last PR:** the five unread properties and the `head_to_head` half of
    `allowedContainers`. **Keep `scoreTables`** — read only by a test BY DESIGN: it is
    #1432's declaration that makes the compiler force every format to name its score tables
    so the guard can check the broadcast registry covers them.
 
 **Split, in order:** 9a AS chip → 9b match builder → 9c-1 projection arms + teamless keying
-(no surface; closes #1120) → 9c-2 standings → 9d Live now on Home → 9e deletions.
+(no surface; closes #1120) → 9c-2 standings → ~~9d Live now on Home~~ (dropped; its salvage
+shipped instead) → 9e deletions.
 
 **After 9e, as its own sweep: *Cup* and *Tournament* on screen (Zach, 2026-10-12).** *Cup* is
 head to head; a points-based competition, teams or individuals, is a **Tournament** — never
@@ -1492,11 +1494,25 @@ wrap, the tiles must stay aligned. Tournaments of individuals keep their winners
 - **A live stroke or scramble round in a tournament** reads *Underway · counts when
   finished* in place of *Underway · scoring* (`round_incomplete`). No extra line.
 
-**9d, as answered (2026-10-12):** Live now reads the board's OWN two queries and subscriptions
-(no new kind of query); "yours" is one per-viewer boolean computed on the server, nobody's
-id sent. Its three look questions were read as: keep the filled card for yours (the same
-signal as your standings row), keep Live now above the setup guide (it only shows when
-something is live), and defer each row's own standing to #1599 — the first item after PR 9.
+**9d: the trip-home live surface is DROPPED (Zach, 2026-10-12).** Ruling 5 and the "a live
+game surfaces on the trip home" item above are not built: *Live now* on Home (#1598) was built
+and closed unmerged. **Why:** the Games tab's Live section and the itinerary already cover it,
+and nobody has had trouble finding a live game — a second place to find one answered a
+question nobody was asking. Do not rebuild it on the strength of ruling 5; it was overtaken
+by use, not by a design flaw.
+
+**Salvaged from it, in their own PR:**
+- **The server's per-viewer `yours`** (one boolean in the board's existing read — playing in
+  it or running it — nobody's id sent; under the viewer's own session, so it never knows more
+  than they may read).
+- **Filled means yours on the Games tab.** A live card is filled only when it is yours, the
+  same fill as your standings row. This changes §A2's "act now" fill, which used to go on
+  every live card; someone else's live game is now a solid card, still under the LIVE header
+  with its "Underway" subtitle and armed icon.
+- **The shared `liveSubtitle` helper**, one rule for wording a live game.
+- **#1599 is retargeted** from Live now's row to your live card on the Games tab: where your
+  own game stands is still the most-wanted fact on a trip day, and that card now says "yours"
+  without saying how it is going. The first item after PR 9.
 
 **9e, as built.** Deleted from `GameTypeDefinition`, verified unread on `main` first:
 `entrySchema`, `supportsFreeForAll`, `supportsSides`, `requiresSides`, `maxPlayersPerSide`

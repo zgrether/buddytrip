@@ -73,6 +73,29 @@ function openScorecardOverlay(pathname: string, gameId: string) {
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
 
 /**
+ * A LIVE game's subtitle — ONE rule, as an exported pure function, so any
+ * surface that ever shows a live game words it the way the board does.
+ *
+ *  - "Projected results" when the row's team cells carry projection pills;
+ *  - why it can't project, in a match-play cup, or for a stroke or scramble
+ *    round in a points tournament ("counts when finished", 9c-2 look) — instead
+ *    of the same "Underway" a format with no projection at all gets (3c);
+ *  - otherwise "Underway · scoring".
+ * A surface with no pills to label passes `showProjectionPills: false`.
+ */
+export function liveSubtitle(p: {
+  showProjectionPills: boolean;
+  scoringModel: ScoringModel;
+  cannotProject?: CannotProjectReason | null;
+}): string {
+  if (p.showProjectionPills) return "Projected results";
+  if ((p.scoringModel === "match_play" && p.cannotProject) || p.cannotProject === "round_incomplete") {
+    return cannotProjectCopy(p.cannotProject!);
+  }
+  return "Underway · scoring";
+}
+
+/**
  * The row's sentence for a live game that can't project (3c). Each names what
  * is actually missing, and says it as a fact about the GAME — the whole crew
  * reads this row, and most of them can't change a setting.
@@ -344,17 +367,7 @@ export function GameRow({
   //  - completed → none; the compressed row + outer result speak for it.
   const subtitle =
     section === "on-tap"
-      ? showProjectionPills
-        ? "Projected results" // the cells now carry projections → the subtitle says so
-        : // A live game whose format projects but can't: say WHY, instead of
-          // the same "Underway" a format with no projection at all gets (3c).
-          // Match-play cups, like the pills this stands in for. In a points
-          // tournament only a stroke or scramble round says why: its standing
-          // banks when the round is done, and the hatched bars above have
-          // nothing from it until then (9c-2 look).
-          (scoringModel === "match_play" && cannotProject) || cannotProject === "round_incomplete"
-          ? cannotProjectCopy(cannotProject)
-          : "Underway · scoring"
+      ? liveSubtitle({ showProjectionPills, scoringModel, cannotProject })
       : section === "ready"
       ? // Pick'em has no "play" to be ready for — the next thing that happens
         // is people filling in sheets, so the row says that instead.
@@ -389,22 +402,31 @@ export function GameRow({
       : null;
 
   // Panel surface — each game is its own standalone card (not a row inside a
-  // shared panel). On Tap carries the one reserved accent-faint "act now" fill
-  // (§A2); Ready for Play + Preparing are solid cards ("built + waiting");
-  // Skeleton and Completed get NO fill — skeleton is an outline-only dashed shell
-  // ("not built yet"), completed a recessed, dimmed record. The border lives on
-  // the panel so the inner content never shifts.
+  // shared panel). Ready for Play + Preparing are solid cards ("built +
+  // waiting"); Skeleton and Completed get NO fill — skeleton is an outline-only
+  // dashed shell ("not built yet"), completed a recessed, dimmed record. The
+  // border lives on the panel so the inner content never shifts.
+  //
+  // ── FILLED MEANS YOURS (9d salvage) ──────────────────────────────────────
+  // On Tap used to carry the reserved accent-faint "act now" fill on EVERY live
+  // card (§A2). It now goes only to a live game that is YOURS — you are playing
+  // in it or running it (`game.yours`, the server's per-viewer flag) — the same
+  // fill as your own standings row, so "filled means yours" holds across the
+  // board. Someone else's live game is a solid card; the LIVE section header, its
+  // "Underway" subtitle and the armed icon still say it is live.
+  const yoursLive = section === "on-tap" && game.yours === true;
   const panelStyle: React.CSSProperties = {
-    background:
-      section === "ready" || section === "preparing"
+    background: yoursLive
+      ? "var(--color-bt-accent-faint)"
+      : section === "ready" || section === "preparing" || section === "on-tap"
         ? "var(--color-bt-card)"
-        : section === "on-tap"
-        ? "var(--color-bt-accent-faint)"
         : undefined, // skeleton + completed: no fill
     border:
       section === "skeleton"
         ? "1.5px dashed var(--color-bt-border)"
-        : "1px solid var(--color-bt-border)",
+        : yoursLive
+          ? "1px solid var(--color-bt-accent-border)"
+          : "1px solid var(--color-bt-border)",
   };
   const rowStyle: React.CSSProperties = {
     // Completed is a quiet record — recess the whole tile (§A3 "recessed").

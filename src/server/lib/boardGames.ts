@@ -39,6 +39,14 @@ export interface BoardInputs {
   /** The latest re-credit of each finished game (PR 8c): who, by their trip
    *  name, and when. Empty on the side board — a side game has no teams. */
   recreditByGame: Map<string, { byName: string; at: string }>;
+  /**
+   * The games that are THE VIEWER'S (PR 9d, ruling 5's "yours first"): ones
+   * they are playing in, or running as a delegate. Computed here, on the
+   * server, from rows the viewer's own session can read — and only the
+   * boolean leaves (`boardRow`'s `yours`). Other players' ids are never
+   * sent to the client to work it out (Zach, 9d). Empty with no viewer.
+   */
+  viewerGameIds: Set<string>;
 }
 
 type GameRow = Record<string, unknown> & { id: unknown; game_type_id: unknown; competition_format?: unknown };
@@ -59,7 +67,10 @@ export async function readBoardInputs(
   owner: "cup's" | "trip's",
   /** The trip whose names a re-credit note uses. Null skips the read (the side
    *  board: no competition, so nothing can have been re-credited). */
-  recreditsTripId: string | null = null
+  recreditsTripId: string | null = null,
+  /** Whose board this is — for `yours`. Null (a server-side caller with no
+   *  viewer: the finish push, re-credit) marks nothing. */
+  viewerId: string | null = null
 ): Promise<BoardInputs> {
   const gameIds = games.map((g) => g.id as string);
   // A game's bracket-ness is resolved the way `games.finish` resolves it, so the
@@ -69,13 +80,15 @@ export async function readBoardInputs(
     .filter((g) => isBracketGame(g.game_type_id as string | null, (g.competition_format as string | null) ?? null))
     .map((g) => g.id as string);
 
-  const [matchRowsRes, participantRowsRes, startedRowsRes, entrantRowsRes] = await Promise.all([
+  const [matchRowsRes, participantRowsRes, startedRowsRes, entrantRowsRes, delegateRowsRes] = await Promise.all([
     gameIds.length
       ? supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[], error: null }),
     gameIds.length
-      ? supabase.from("game_participants").select("game_id, play_group_id").in("game_id", gameIds)
-      : Promise.resolve({ data: [] as { game_id: string; play_group_id: string | null }[], error: null }),
+      // `user_id` is read for `viewerGameIds` and goes no further than this
+      // function: no participant's id reaches the payload.
+      ? supabase.from("game_participants").select("game_id, play_group_id, user_id").in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string; play_group_id: string | null; user_id: string }[], error: null }),
     // Has it begun producing results? ONE read of `game_started` (migration
     // 161): the view carries every format's arm, so a new format adds an arm
     // there rather than a query here.
@@ -86,6 +99,10 @@ export async function readBoardInputs(
       // `team_id` is left in the select so the shape still matches `bracketPool`.
       ? supabase.from("bracket_entrants").select("id, game_id, team_id").in("game_id", bracketGameIds)
       : Promise.resolve({ data: [] as { id: string; game_id: string; team_id: string | null }[], error: null }),
+    // The games the viewer RUNS (a delegate), for `yours`. Their own rows only.
+    viewerId && gameIds.length
+      ? supabase.from("game_delegates").select("game_id").eq("user_id", viewerId).in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { game_id: string }[], error: null }),
   ]);
 
   const entrantCountByGame = new Map<string, number>();
@@ -99,7 +116,9 @@ export async function readBoardInputs(
   // tracked separately — the same bar the server enable guard uses.
   const participantCountByGame = new Map<string, number>();
   const groupedParticipantCountByGame = new Map<string, number>();
-  for (const r of rowsOrThrow(participantRowsRes, `${owner} participants`) as { game_id: string; play_group_id: string | null }[]) {
+  const viewerGameIds = new Set<string>();
+  for (const r of rowsOrThrow(participantRowsRes, `${owner} participants`) as { game_id: string; play_group_id: string | null; user_id: string }[]) {
+    if (viewerId && r.user_id === viewerId) viewerGameIds.add(r.game_id);
     participantCountByGame.set(r.game_id, (participantCountByGame.get(r.game_id) ?? 0) + 1);
     if (r.play_group_id != null) {
       groupedParticipantCountByGame.set(r.game_id, (groupedParticipantCountByGame.get(r.game_id) ?? 0) + 1);
@@ -123,6 +142,10 @@ export async function readBoardInputs(
     entrantCountByGame,
     startedByGame,
     recreditByGame: await readRecredits(supabase, games, owner, recreditsTripId),
+    viewerGameIds: (() => {
+      for (const r of rowsOrThrow(delegateRowsRes, `${owner} delegations`) as { game_id: string }[]) viewerGameIds.add(r.game_id);
+      return viewerGameIds;
+    })(),
   };
 }
 
@@ -215,6 +238,8 @@ export function boardRow(g: GameRow, inputs: BoardInputs, pointsTotal: number | 
     scoringEnabled: g.scoring_enabled === true,
     // Has begun producing results — splits `active` into Live vs Ready.
     started: inputs.startedByGame.has(gid),
+    // The viewer is playing in it or running it (PR 9d) — ONE boolean, nobody's id.
+    yours: inputs.viewerGameIds.has(gid),
     // Re-opened for a score correction; only meaningful once `status` is
     // "complete". Not role-gated: members correct their own scores in it.
     correctionsOpen: g.corrections_open === true,
