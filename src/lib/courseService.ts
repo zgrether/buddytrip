@@ -72,7 +72,12 @@ export function teeColor(name: string): string {
   return "var(--color-bt-text-dim)";
 }
 
-/** Search the provider for courses. Returns [] on any failure (→ manual entry). */
+/**
+ * Search the provider for courses. THROWS when the search couldn't run
+ * (network, upstream, no key); `[]` means it ran and found nothing (#1611).
+ * It used to return `[]` for both, and the pickers showed a failure as "No
+ * courses found". Callers catch it and say they couldn't search.
+ */
 export async function searchCourses(
   query: string,
   opts?: { country?: string; state?: string }
@@ -82,13 +87,9 @@ export async function searchCourses(
   const params = new URLSearchParams({ q });
   if (opts?.country) params.set("country", opts.country);
   if (opts?.state) params.set("state", opts.state);
-  try {
-    const res = await fetch(`/api/golf-courses/search?${params}`);
-    if (!res.ok) return [];
-    return (await res.json()) as CourseSummary[];
-  } catch {
-    return [];
-  }
+  const res = await fetch(`/api/golf-courses/search?${params}`);
+  if (!res.ok) throw new Error(`course search failed (${res.status})`);
+  return (await res.json()) as CourseSummary[];
 }
 
 /** Pull full scorecard detail for a course. Returns null on any failure. */
