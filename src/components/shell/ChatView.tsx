@@ -61,7 +61,7 @@ export function ChatView({ tripId, canPost }: { tripId: string; canPost: boolean
     memberId: string;
     displayName: string;
     role: "Owner" | "Organizer" | "Member";
-    status?: string;
+    isGuest?: boolean;
     user: { avatar_icon: string | null } | null;
   }[];
 

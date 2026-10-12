@@ -87,7 +87,6 @@ export const ghostCrewRouter = router({
               trip_id: ctx.tripId,
               user_id: existingUser.id,
               role: input.role,
-              status: "in",
               // New members only see crew chat from when they were added.
               chat_visible_from: new Date().toISOString(),
             });
@@ -146,7 +145,6 @@ export const ghostCrewRouter = router({
               trip_id: ctx.tripId,
               user_id: existingUser.id,
               role: input.role,
-              status: "in",
               // New members only see crew chat from when they were added.
               chat_visible_from: new Date().toISOString(),
             });
@@ -217,7 +215,6 @@ export const ghostCrewRouter = router({
           trip_id: ctx.tripId,
           user_id: guest.id,
           role: input.role,
-          status: "in",
           // New members only see crew chat from when they were added.
           chat_visible_from: new Date().toISOString(),
         });
@@ -381,9 +378,8 @@ export const ghostCrewRouter = router({
           //
           // ORDER MATTERS: the merge moves trip_members itself, and the
           // wrapper's guard checks the guest is on THIS trip — both of which
-          // require the ghost's membership row to still exist. So merge first,
-          // then set status on the row it just repointed. (Role rides along
-          // untouched, since the merge only rewrites user_id.)
+          // require the ghost's membership row to still exist. (Role rides
+          // along untouched, since the merge only rewrites user_id.)
           // #999 — a placeholder that is a DELETED ACCOUNT may not be linked.
           // `link_guest_to_account` refuses this itself (migration 132) and is
           // the authority; this check exists so the normal path gets a sentence
@@ -425,20 +421,6 @@ export const ghostCrewRouter = router({
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
               message: `Failed to link existing account: ${mergeErr.message}`,
-            });
-          }
-
-          // A real account is Active; guests are always "in" anyway.
-          const { error: statusErr } = await ctx.supabase
-            .from("trip_members")
-            .update({ status: "in" })
-            .eq("trip_id", ctx.tripId)
-            .eq("user_id", existingUser.id);
-
-          if (statusErr) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: `Linked the account but failed to set status: ${statusErr.message}`,
             });
           }
 

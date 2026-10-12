@@ -51,17 +51,22 @@ export function parseChatSegment(v: string | null): ChatSegment {
  * the segment would just be an empty room — it stays hidden even for them
  * until an Organizer exists.
  *
- * "Designated" means actually in — `status === "in"`, matching
- * FloatingChatPanel's own organizers-roster filter. A member merely
- * `invited` with role Organizer hasn't accepted yet, so they aren't really
- * on the trip to plan with; counting them would show Planning to the Owner
- * for an Organizer seat nobody's actually filled.
+ * "Designated" means actually on the trip — NOT A GUEST, matching
+ * FloatingChatPanel's own organizers-roster filter. An Organizer who was
+ * invited and hasn't joined is still a guest row, so they aren't really on the
+ * trip to plan with; counting them would show Planning to the Owner for an
+ * Organizer seat nobody's actually filled.
+ *
+ * This read `status === "in"` until #1568 retired the column. The column never
+ * excluded anyone (every row read `in`, guests included), so `isGuest` is the
+ * fact the rule always meant. Production on the day of the change: no
+ * Organizer is a guest, so no trip's Planning segment moves.
  */
 export function canSeePlanningSegment(
   myRole: TripRoleValue,
-  members: { role: TripRoleValue; status?: string }[]
+  members: { role: TripRoleValue; isGuest?: boolean }[]
 ): boolean {
-  const hasOrganizers = members.some((m) => m.role === "Organizer" && m.status === "in");
+  const hasOrganizers = members.some((m) => m.role === "Organizer" && !m.isGuest);
   return hasOrganizers && (myRole === "Owner" || myRole === "Organizer");
 }
 

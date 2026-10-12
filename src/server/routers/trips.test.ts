@@ -69,12 +69,11 @@ describe("trips router", () => {
 
     const { data: memberRow } = await ctx.admin
       .from("trip_members")
-      .select("role, status")
+      .select("role")
       .eq("trip_id", id)
       .eq("user_id", ctx.user.id)
       .single();
     expect(memberRow?.role).toBe("Owner");
-    expect(memberRow?.status).toBe("in");
   });
 
   it("list — returns trips for the current user", async () => {

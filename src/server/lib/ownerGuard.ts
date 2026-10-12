@@ -35,7 +35,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export interface OrphanBlocker {
   tripId: string;
   title: string;
-  /** A non-Owner, non-guest, status-"in" member exists to hand the trip to.
+  /** A non-Owner, non-guest member exists to hand the trip to.
    *  Mirrors `TripSettingsModal`'s `transferCandidates` filter exactly — if the
    *  two drift, the refusal message points at a transfer the UI won't offer. */
   hasTransferTarget: boolean;
@@ -74,7 +74,7 @@ export async function findOrphanBlockers(
   // stays two queries regardless of how many trips the user owns.
   const { data: rosters, error: rosterErr } = await supabase
     .from("trip_members")
-    .select("trip_id, user_id, role, status, users!inner(is_guest)")
+    .select("trip_id, user_id, role, users!inner(is_guest)")
     .in("trip_id", tripIds);
   if (rosterErr) throw new Error(`Failed to read trip rosters: ${rosterErr.message}`);
 
@@ -89,7 +89,6 @@ export async function findOrphanBlockers(
     trip_id: string;
     user_id: string;
     role: string;
-    status: string | null;
     users: { is_guest: boolean } | { is_guest: boolean }[] | null;
   };
   const isGuest = (r: Row) => {
@@ -109,7 +108,7 @@ export async function findOrphanBlockers(
       tripId,
       title: titleOf.get(tripId) ?? "Untitled trip",
       hasOtherMembers: others.length > 0,
-      hasTransferTarget: others.some((r) => r.role !== "Owner" && !isGuest(r) && r.status === "in"),
+      hasTransferTarget: others.some((r) => r.role !== "Owner" && !isGuest(r)),
     });
   }
   return blockers;

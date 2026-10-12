@@ -8,17 +8,18 @@ import {
 
 describe("canSeePlanningSegment", () => {
   const withOrganizer = [
-    { role: "Owner" as const, status: "in" },
-    { role: "Organizer" as const, status: "in" },
-    { role: "Member" as const, status: "in" },
+    { role: "Owner" as const, isGuest: false },
+    { role: "Organizer" as const, isGuest: false },
+    { role: "Member" as const, isGuest: false },
   ];
   const noOrganizer = [
-    { role: "Owner" as const, status: "in" },
-    { role: "Member" as const, status: "in" },
+    { role: "Owner" as const, isGuest: false },
+    { role: "Member" as const, isGuest: false },
   ];
+  // Invited, not joined yet: still a guest row (#1568 — this was status "invited").
   const pendingOrganizerInvite = [
-    { role: "Owner" as const, status: "in" },
-    { role: "Organizer" as const, status: "invited" },
+    { role: "Owner" as const, isGuest: false },
+    { role: "Organizer" as const, isGuest: true },
   ];
 
   it("a plain member never sees Planning, even when organizers exist", () => {
