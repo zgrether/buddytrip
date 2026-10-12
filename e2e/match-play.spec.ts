@@ -347,10 +347,17 @@ test("Cancel button always leaves — discards the draft and closes, no prompt",
 async function driveToSetupWithHandicapViaPanel(page: Page) {
   const title = "E2E Match Spine";
 
-  // 1. Competition board → "Add a game" (the empty-state CTA — this
-  //    competition starts with zero games) → GameSheet modal.
+  // 1. Competition board → "Add a game" → GameSheet modal. EITHER of the board's
+  //    two add buttons: the empty-state CTA when the board has no games, the
+  //    "Add a game" row when it has some. This used to click the CTA alone, on
+  //    the claim "this competition starts with zero games" — false since PR 6b
+  //    put side games on the board: the two tests above create SIDE games
+  //    (the standalone route) in this same trip, so by the time this runs the
+  //    board is not empty, the CTA never renders, and the click waited out the
+  //    test timeout. It passed in CI only on retry, after a worker restart gave
+  //    it a fresh, empty trip.
   await page.goto(`/trips/${tripId}/leaderboard`);
-  await page.getByTestId("comp-games-empty-cta").click();
+  await page.getByTestId("comp-games-empty-cta").or(page.getByTestId("comp-add-game")).click();
 
   // 2. This competition's scoring_model ("match_play") offers Match Play AND
   //    Rack-n-Stack in the format picker — Match Play doesn't default-select,
@@ -480,4 +487,64 @@ test("match-play spine (competition-attached, real path) — create via board �
   const hcap = await handicapByUser(await latestGameId());
   expect(hcap.get(memberId)).toBe(1);
   expect(hcap.get(ownerId) ?? 0).toBe(0);
+});
+
+/**
+ * THE LOAD WINDOW: "Add a game" cannot be reached before the cup has answered,
+ * and the game made once it has is a CUP game (E2E load-window fix, Zach).
+ *
+ * The trip page renders a LOADING shell until its own trip read
+ * (`trips.getById`) answers, and that shell already mounts the Cup board.
+ * "Add a game" decides cup-or-side ONCE, at creation, so an add made while the
+ * cup was merely unknown would bake in a side game — unknown read as none.
+ *
+ * This acts IN the window rather than waiting it out: hold the trip read (the
+ * batch link carries the board's own leaderboard read with it), and check what
+ * the page offers while it is held. Measured on the fresh-database repro: the
+ * board is mounted and empty, with NO add button — so the add cannot be made
+ * blind. Then release, add a game, and check the database: a cup game.
+ *
+ * If a change ever offered an add while the cup was unknown (a side-games board
+ * standing in for an unanswered read), the first expectation fails.
+ */
+test("the load window offers no Add a game until the cup has answered, and the game made after is a CUP game", async ({ page }) => {
+  test.setTimeout(60_000);
+  const title = `E2E Load Window ${Date.now()}`;
+
+  let release!: () => void;
+  const released = new Promise<void>((r) => (release = r));
+  let held = 0;
+  await page.route(/\/api\/trpc\/[^?]*trips\.getById/, async (route) => {
+    held += 1;
+    await released;
+    await route.continue();
+  });
+
+  await page.goto(`/trips/${tripId}?view=cup`);
+  // Premise: IN the window — the board is mounted while the trip read is held.
+  await expect.poll(() => held, { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect(page.getByTestId("competition-leaderboard")).toBeAttached({ timeout: 10_000 });
+
+  // Nothing can add a game yet: neither of the board's add buttons exists.
+  const add = page.getByTestId("comp-games-empty-cta").or(page.getByTestId("comp-add-game"));
+  await expect(add).toHaveCount(0);
+
+  // Not `page.unroute`: unrouting while a held request is still inside the
+  // handler makes Playwright settle it itself, and the handler's own
+  // `route.continue()` then throws "already handled". Once released, the
+  // handler passes every request straight through anyway.
+  release();
+
+  await expect(add).toBeVisible({ timeout: 20_000 });
+  await add.click();
+  await page.getByRole("button", { name: "Match Play", exact: true }).click();
+  await page.getByPlaceholder("e.g. Day 1 Scramble").fill(title);
+  await page.getByTestId("save-game").click();
+
+  await expect
+    .poll(async () => {
+      const { data } = await admin.from("games").select("competition_id").eq("trip_id", tripId).eq("name", title).maybeSingle();
+      return data ? (data.competition_id as string | null) ?? "SIDE GAME" : "not created";
+    }, { timeout: 20_000 })
+    .toBe(compId);
 });
