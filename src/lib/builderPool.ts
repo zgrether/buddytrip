@@ -80,6 +80,9 @@ export function notOnATeamIds(p: {
  * The exception names a place instead: an Owner or Organizer with results in
  * but no preview mounted (a game opened on its standalone route). "An
  * organizer can add them" would send them looking for themselves.
+ *
+ * That exception is a WORKAROUND, not the design: the real fix is the preview
+ * working wherever an add can happen, which deletes the "rosters" arm (#1594).
  */
 export const NOT_ON_A_TEAM_NOTE = "An organizer can add them to a team.";
 /** "Add them to a team in [Rosters]." — the word is a LINK that opens Rosters:
