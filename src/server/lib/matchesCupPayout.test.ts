@@ -208,8 +208,8 @@ describe("non-golf Matches in a match-play cup", () => {
 
     // …and the read. Under the bug this was exactly reversed: 0 and 35.
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(lb.teamTotals[winning]).toBe(35);
-    expect(lb.teamTotals[losing]).toBe(0);
+    expect(lb.unitTotals[winning]).toBe(35);
+    expect(lb.unitTotals[losing]).toBe(0);
   });
 
   it("pays NOBODY when every result is cleared — not half the pot each", async () => {
@@ -271,7 +271,7 @@ describe("non-golf Matches in a match-play cup", () => {
     await ctx.caller().games.finish({ tripId, gameId: g.id });
 
     const decided = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(decided.teamTotals[teamB]).toBe(35);
+    expect(decided.unitTotals[teamB]).toBe(35);
 
     // Now clear all three, the way the reporter did — corrections open, every
     // result unset, finalize again.
@@ -282,8 +282,8 @@ describe("non-golf Matches in a match-play cup", () => {
     await ctx.caller().games.finish({ tripId, gameId: g.id });
 
     const cleared = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(cleared.teamTotals[teamA]).toBe(0);
-    expect(cleared.teamTotals[teamB]).toBe(0);
+    expect(cleared.unitTotals[teamA]).toBe(0);
+    expect(cleared.unitTotals[teamB]).toBe(0);
   });
 });
 
@@ -334,8 +334,8 @@ describe("ranking-convention reconciliation", () => {
     }
 
     // The payout: the side that scored 35 gets 35, the side that scored 0 gets 0.
-    expect(lb.teamTotals[teamB]).toBe(35);
-    expect(lb.teamTotals[teamA]).toBe(0);
+    expect(lb.unitTotals[teamB]).toBe(35);
+    expect(lb.unitTotals[teamA]).toBe(0);
 
     // The EVIDENCE, not the conclusion. Exactly one line, naming this game, the
     // arm's direction, and the values it ranked — every instrument failure this
@@ -381,8 +381,8 @@ describe("ranking-convention reconciliation", () => {
     } finally {
       console.warn = realWarn;
     }
-    expect(lb.teamTotals[teamA]).toBe(8);
-    expect(lb.teamTotals[teamB]).toBe(0);
+    expect(lb.unitTotals[teamA]).toBe(8);
+    expect(lb.unitTotals[teamB]).toBe(0);
     expect(warns.filter((w) => w.includes("ranking-convention"))).toEqual([]);
   });
 });

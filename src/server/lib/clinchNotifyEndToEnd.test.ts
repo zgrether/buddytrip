@@ -2,6 +2,14 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { notifyCupClinchedIfDecided } from "./gameFinishNotify";
+import { sendPushToUsers } from "./sendPushToUsers";
+
+// The REAL sender, wrapped so a test can read the message it was handed. Every
+// other case here behaves exactly as before: the wrapper calls straight through.
+vi.mock("./sendPushToUsers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./sendPushToUsers")>();
+  return { ...actual, sendPushToUsers: vi.fn(actual.sendPushToUsers) };
+});
 
 /**
  * The clinch notification, END TO END: a decided cup must DETECT a clincher and
@@ -119,7 +127,7 @@ describe("cup clinched — the assembled notify path", () => {
   it("the leaderboard reports the cup as decided", async () => {
     const { compId, winner, loser } = await decidedCup("board");
     const board = await computeCompetitionLeaderboard(ctx.admin, compId);
-    const totals = (board.teamTotals ?? {}) as Record<string, number>;
+    const totals = (board.unitTotals ?? {}) as Record<string, number>;
     const toClinch = (board.pointsToClinch ?? {}) as Record<string, number>;
 
     expect(board.pointsAvailable).toBe(3);
@@ -176,6 +184,24 @@ describe("cup clinched — the assembled notify path", () => {
       .map((l) => l.replace("[push] clinch check: ", ""));
     expect(verdicts).toEqual(["entry", "already_claimed"]);
     expect(await storedClaim(cup.compId)).toBe(cup.winner);
+  }, 120_000);
+
+  /**
+   * The push quotes the standings AT the clinch, read from the board's own
+   * payload, so the notification and the board can't quote different numbers.
+   * Nothing checked the line, so when #1503 removed the payload's legacy
+   * `teamTotals` a reader still on that name would have sent an empty margin
+   * with every test green. This is the check that would have said so.
+   */
+  it("the clinch push quotes the board's margin (2 – 1)", async () => {
+    const cup = await decidedCup("margin");
+    const spy = vi.mocked(sendPushToUsers);
+    spy.mockClear();
+    await notify(cup);
+
+    const clinch = spy.mock.calls.find(([, , msg]) => (msg as { title?: string }).title === "Team Winner clinched");
+    expect(clinch, "a clinch push was sent").toBeDefined();
+    expect((clinch![2] as { body: string }).body).toBe(`Decided Cup margin · 2 – 1`);
   }, 120_000);
 
   it("an UNDECIDED cup claims nothing", async () => {

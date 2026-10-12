@@ -90,7 +90,7 @@ describe("Phase-1 shell + leaderboard (§3/§6)", () => {
     const lb = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
     expect(lb.pointsAvailable).toBe(15); // sum(dist[0..1]) for 2 teams
     expect(lb.winNumber).toBe(8); // > half of 15
-    expect(lb.teamTotals[cup.teamA]).toBe(0); // nothing awarded yet
+    expect(lb.unitTotals[cup.teamA]).toBe(0); // nothing awarded yet
   });
 });
 
@@ -109,8 +109,8 @@ describe("manual adapter → universal roll-up (§5)", () => {
       ],
     });
     const lb = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
-    expect(lb.teamTotals[cup.teamA]).toBe(9); // 1st
-    expect(lb.teamTotals[cup.teamB]).toBe(6); // 2nd
+    expect(lb.unitTotals[cup.teamA]).toBe(9); // 1st
+    expect(lb.unitTotals[cup.teamB]).toBe(6); // 2nd
   });
 
   it("averaged ties flow through the stack (two teams tie 1st on [9,6] → 7.5 each)", async () => {
@@ -129,8 +129,8 @@ describe("manual adapter → universal roll-up (§5)", () => {
       placements: [{ entityId: tA, position: 1 }, { entityId: tB, position: 1 }],
     });
     const lb = await ctx.caller().competitions.leaderboard({ tripId: tieTripId, competitionId: comp2 });
-    expect(lb.teamTotals[tA]).toBe(7.5); // (9+6)/2
-    expect(lb.teamTotals[tB]).toBe(7.5);
+    expect(lb.unitTotals[tA]).toBe(7.5); // (9+6)/2
+    expect(lb.unitTotals[tB]).toBe(7.5);
     expect(lb.pointsAvailable).toBe(15); // invariant under the tie
   });
 });

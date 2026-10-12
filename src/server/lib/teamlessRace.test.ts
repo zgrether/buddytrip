@@ -269,10 +269,6 @@ describe("a TEAMED race is unchanged (the control)", () => {
     expect(lb.teamless).toBe(false);
     expect(lb.units.map((u) => [u.kind, u.id])).toEqual([["team", blue], ["team", red]]);
     expect(lb.unitTotals).toEqual({ [blue]: 6, [red]: 3 });
-    // The one-release names carry the same values (version skew, see the payload).
-    expect(lb.teamTotals).toEqual(lb.unitTotals);
-    expect(lb.projectedTeamTotals).toEqual(lb.projectedUnitTotals);
-    expect(lb.cells.every((c) => c.teamId === c.unitId)).toBe(true);
     expect(lb.pointsAvailable).toBe(9);
   }, 120_000);
 });

@@ -97,7 +97,7 @@ describe("games.finish — a failed placement write leaves the previous results"
 
     // And the board still pays the order it had.
     const board = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(board.teamTotals[blue]).toBe(5);
-    expect(board.teamTotals[red]).toBe(3);
+    expect(board.unitTotals[blue]).toBe(5);
+    expect(board.unitTotals[red]).toBe(3);
   }, 60000);
 });

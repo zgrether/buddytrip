@@ -184,8 +184,8 @@ describe("rack-n-stack — per-match points (Stage 3)", () => {
     // Leaderboard: available = value(2) × matchCount(min team size 2) = 4; Blue takes all.
     const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     expect(lb.pointsAvailable).toBe(4);
-    expect(lb.teamTotals[ta]).toBe(4);
-    expect(lb.teamTotals[tb]).toBe(0);
+    expect(lb.unitTotals[ta]).toBe(4);
+    expect(lb.unitTotals[tb]).toBe(0);
   });
 });
 

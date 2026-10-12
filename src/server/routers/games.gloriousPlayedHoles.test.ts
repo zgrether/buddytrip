@@ -248,7 +248,7 @@ describe("a PERMITTED change recomputes — the freeze must not swallow it", () 
 
     expect(await matchRow(f)).toMatchObject({ status: "complete", result: "a_win", margin: "4&3" });
     const decided = await ctx.caller().competitions.leaderboard({ tripId: f.tripId, competitionId: f.compId });
-    expect(decided.teamTotals[f.teamA]).toBe(10);
+    expect(decided.unitTotals[f.teamA]).toBe(10);
 
     // Through 15 → maxN = 3, so N=3 is permitted rather than refused.
     await ctx.caller().games.openCorrection({ tripId: f.tripId, gameId: f.gameId });
@@ -256,8 +256,8 @@ describe("a PERMITTED change recomputes — the freeze must not swallow it", () 
 
     expect(await matchRow(f)).toMatchObject({ status: "active", result: null, margin: null });
     const reopened = await ctx.caller().competitions.leaderboard({ tripId: f.tripId, competitionId: f.compId });
-    expect(reopened.teamTotals[f.teamA]).toBe(0);
-    expect(reopened.teamTotals[f.teamB]).toBe(0);
+    expect(reopened.unitTotals[f.teamA]).toBe(0);
+    expect(reopened.unitTotals[f.teamB]).toBe(0);
   });
 
   /**

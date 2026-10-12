@@ -110,11 +110,11 @@ describe("match play — a decided match banked by a mid-round edit", () => {
     const live = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
 
     // 1. Nothing banked for a live game…
-    expect(live.teamTotals[blue]).toBe(0);
+    expect(live.unitTotals[blue]).toBe(0);
     // …the decided match is PROJECTED…
     expect(live.projections[gameId]?.[blue]).toBe(3);
     // …and counted ONCE in "if today holds". Before the fix: 6 — banked 3 + projected 3.
-    expect(live.projectedTeamTotals[blue]).toBe(3);
+    expect(live.projectedUnitTotals[blue]).toBe(3);
 
     // 2. Not clinched mid-round. Before the fix: 3 available, first to 2,
     // Blue banked 3 → clinched — with no push, because setHandicap never calls
@@ -125,7 +125,7 @@ describe("match play — a decided match banked by a mid-round edit", () => {
     // The finalize banks it, clinches, and ANNOUNCES — one event, one moment.
     await ctx.caller().games.finish({ tripId, gameId });
     const done = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(done.teamTotals[blue]).toBe(3);
+    expect(done.unitTotals[blue]).toBe(3);
     expect(done.pointsToClinch[blue]).toBeLessThanOrEqual(0);
     expect(await claimOf(comp)).toBe(blue);
   }, 60000);
@@ -173,8 +173,8 @@ describe("points cup — a live placement game's rows", () => {
     expect(st!.status).not.toBe("complete");
 
     const live = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(live.teamTotals[blue]).toBe(0);
-    expect(live.teamTotals[red]).toBe(0);
+    expect(live.unitTotals[blue]).toBe(0);
+    expect(live.unitTotals[red]).toBe(0);
     // The matrix renders `cells`; a live game must contribute none.
     expect(live.cells.filter((c) => c.gameId === g.id)).toEqual([]);
     // The target is unaffected either way — the owner-set total, as #1425 keeps
@@ -190,8 +190,8 @@ describe("points cup — a live placement game's rows", () => {
       ],
     });
     const done = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(done.teamTotals[blue]).toBe(5);
-    expect(done.teamTotals[red]).toBe(3);
+    expect(done.unitTotals[blue]).toBe(5);
+    expect(done.unitTotals[red]).toBe(3);
     expect(done.cells.filter((c) => c.gameId === g.id)).toHaveLength(2);
   }, 60000);
 });

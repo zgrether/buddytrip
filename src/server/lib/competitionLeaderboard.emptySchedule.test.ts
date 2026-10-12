@@ -80,7 +80,7 @@ async function cellsFor(game: Parameters<typeof client>[0]) {
   const out = await computeCompetitionLeaderboard(client(game) as any, COMP);
   return out.cells
     .filter((c) => c.gameId === GAME)
-    .map((c) => ({ teamId: c.teamId, place: c.place, points: c.points }));
+    .map((c) => ({ teamId: c.unitId, place: c.place, points: c.points }));
 }
 
 describe("a schedule that pays nothing emits NO cells (#1410)", () => {

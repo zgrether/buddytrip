@@ -148,8 +148,8 @@ async function payoutIn(env: "production" | "test", distribution: unknown, overr
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const out = await computeCompetitionLeaderboard(fakeClient(distribution, overrides) as any, COMPETITION);
-    const cell = (teamId: string) => out.cells.find((c) => c.gameId === GAME && c.teamId === teamId)?.points ?? null;
-    return { winner: cell(WINNER), loser: cell(LOSER), totals: out.teamTotals, errors, warns };
+    const cell = (teamId: string) => out.cells.find((c) => c.gameId === GAME && c.unitId === teamId)?.points ?? null;
+    return { winner: cell(WINNER), loser: cell(LOSER), totals: out.unitTotals, errors, warns };
   } finally {
     console.error = realError;
     console.warn = realWarn;

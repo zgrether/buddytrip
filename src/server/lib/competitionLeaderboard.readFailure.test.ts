@@ -109,7 +109,7 @@ const board = (o: Opts) => computeCompetitionLeaderboard(client(o) as any, COMP)
 describe("the board is computed from successful reads, or not at all", () => {
   it("CONTROL: every read succeeding gives the board where Blue has clinched", async () => {
     const b = await board({ state: "blueWon" });
-    expect(b.teamTotals[BLUE]).toBe(4);
+    expect(b.unitTotals[BLUE]).toBe(4);
     expect(b.pointsToClinch[BLUE]).toBeLessThanOrEqual(0);
   });
 
