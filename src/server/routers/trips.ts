@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { assertAffected } from "@/server/lib/assertAffected";
+import { rowsOrThrow } from "@/server/lib/rowOrThrow";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
@@ -9,14 +10,17 @@ export const tripsRouter = router({
   // list — all trips for the current user
   // -----------------------------------------------------------------------
   list: authedProcedure.query(async ({ ctx }) => {
-    const { data: memberships, error: memErr } = await ctx.supabase
-      .from("trip_members")
-      .select("trip_id, role")
-      .eq("user_id", ctx.user.id);
-
-    if (memErr || !memberships || memberships.length === 0) {
-      return [];
-    }
+    // A FAILED read is not "you have no trips". It used to return [] here, so a
+    // bad network moment showed someone the app's empty state for an account
+    // full of trips: the app telling them something false. It now throws, and
+    // both readers already render a failed load as "Couldn't load your trips"
+    // with a retry (#764), checked BEFORE their empty state. The same fix the
+    // leaderboard got (#1467). Only a SUCCESSFUL empty read is "no trips".
+    const memberships = rowsOrThrow(
+      await ctx.supabase.from("trip_members").select("trip_id, role").eq("user_id", ctx.user.id),
+      "trips"
+    );
+    if (memberships.length === 0) return [];
 
     const tripIds = memberships.map((m) => m.trip_id);
     const [tripsRes, competitionsRes, ideasRes] = await Promise.all([
