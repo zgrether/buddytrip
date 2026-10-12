@@ -5,6 +5,8 @@ import {
   buildDecidedFromOutcomes,
   matchState,
   matchHasScores,
+  matchLevel,
+  MATCH_LEVEL_WORD,
   outcomeBottomState,
   matchTrack,
   type HoleResult,
@@ -499,5 +501,45 @@ describe("matchTrack — the per-hole track (was OutcomeScorecard.computeLeadTra
     const { track } = matchTrack(decided, 18, NO_GLORIOUS);
     expect(track.slice(0, 3).map((c) => c.result)).toEqual(["W", "H", "L"]);
     expect(track.slice(0, 3).map((c) => c.lead)).toEqual([1, 1, 0]);
+  });
+});
+
+/**
+ * PR 9a — a match nobody leads is one of three states, and only one of them is
+ * a result. Each case drives the REAL `matchState`, so a build that decides
+ * from `leader` alone (the old chip) collapses the first and third into the
+ * second and fails here.
+ */
+describe("matchLevel — not started, level, halved", () => {
+  it("nothing played is NOT STARTED", () => {
+    expect(matchLevel(matchState([]))).toBe("not_started");
+  });
+
+  it("level with holes to play is LEVEL", () => {
+    expect(matchLevel(matchState(seq(["W", "L"])))).toBe("level");
+  });
+
+  it("level after the last hole is HALVED", () => {
+    const st = matchState(seq(Array.from({ length: 18 }, (_, i): HoleResult => (i % 2 ? "L" : "W"))));
+    expect(st.over).toBe(true);
+    expect(matchLevel(st)).toBe("halved");
+  });
+
+  it("somebody leading is none of them", () => {
+    expect(matchLevel(matchState(seq(["W"])))).toBeNull();
+  });
+
+  /**
+   * A match with no units is over by arithmetic and halved by nothing. Checked
+   * on the real engine, not a hand-built state: `over` really is true here.
+   */
+  it("an EMPTY match is not started even though it is over", () => {
+    const st = matchState([], 0);
+    expect(st.over).toBe(true);
+    expect(matchLevel(st)).toBe("not_started");
+  });
+
+  it("the words are the ruled ones", () => {
+    expect(MATCH_LEVEL_WORD).toEqual({ not_started: "Not started", level: "AS", halved: "Halved" });
   });
 });

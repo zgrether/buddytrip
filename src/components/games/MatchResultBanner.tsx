@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { MATCH_LEVEL_WORD } from "@/lib/matchPlay";
 
 /**
  * "Matt Facchine def. JD Shumpert · 3&2" — the green band under a decided match.
@@ -73,8 +74,11 @@ export function MatchResultBanner({
 /**
  * Golf's sentence, shared by the two entry views so they cannot drift.
  *
- * A halved match names no winner — "Match halved · AS" — which is why this is a
+ * A halved match names no winner — "Match halved" — which is why this is a
  * function over an optional pair rather than a template with a winner in it.
+ * It used to read "Match halved · AS", the margin repeating the verdict in
+ * notation; "Halved" is the level word for a match that is over
+ * (`MATCH_LEVEL_WORD`), so it says it once.
  *
  * ── Four callers now, and the separator is why it is a parameter ───────────
  *
@@ -100,5 +104,5 @@ export function matchDefeatText(
 ): string {
   return winner && loser
     ? `${winner.name} def. ${loser.name} ${separator} ${margin}`
-    : `Match halved ${separator} ${margin}`;
+    : `Match ${MATCH_LEVEL_WORD.halved.toLowerCase()}`;
 }
