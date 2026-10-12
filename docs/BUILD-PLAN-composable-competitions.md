@@ -1453,6 +1453,13 @@ tier: code identifiers, the `competitions` table and `scoring_model` keep their 
 vocabulary is already recorded in the CLAUDE.md glossary (*Container*); the sweep changes the
 screens. Not before 9e, so no PR 9 surface is renamed mid-build.
 
+**The sweep, as built (2026-10-12):** the words come from `competitionWord(model)`
+(`src/lib/competitionWords.ts`); a surface that can't know the kind says "Cup or
+Tournament". Zach added one rule when he scheduled it: no real event's name on screen, so the
+setup blurb lost "Ryder Cup style". `trips.list` now carries each trip's scoring model so the
+trip card and the rail's key can name it. Database refusals that still say "competition" need
+a migration, so they are a follow-up (#1603), not part of this copy-only sweep.
+
 **9b, refined on its look:** everyone who can build matches sees *Not on a team*. Only
 roster editors get an add; anyone else reads "An organizer can add them to a team."
 (hiding the section brought back the silent-missing bug for delegates, who often build
