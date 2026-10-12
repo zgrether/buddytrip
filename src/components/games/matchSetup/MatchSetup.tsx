@@ -36,7 +36,14 @@
  */
 
 import { useState } from "react";
-import type { BuilderTeam } from "@/lib/builderPool";
+import Link from "next/link";
+import {
+  NOT_ON_A_TEAM_NOTE,
+  NOT_ON_A_TEAM_ROSTERS_LEAD,
+  NOT_ON_A_TEAM_ROSTERS_LINK,
+  type BuilderTeam,
+  type NotOnATeamNote,
+} from "@/lib/builderPool";
 import { createPortal } from "react-dom";
 import { Plus, X, GripVertical } from "lucide-react";
 import {
@@ -544,7 +551,9 @@ export function PlayerSelector({
   notOnATeam?: {
     ids: string[];
     targets: BuilderTeam[];
-    note: string | null;
+    note: NotOnATeamNote;
+    /** Where "Rosters" in the note links (`rostersHref`). */
+    rostersHref: string;
     onAdd: (userId: string, teamId: string) => void;
   };
 }) {
@@ -612,11 +621,7 @@ export function PlayerSelector({
         {notOnATeam && notOnATeam.ids.length > 0 && (
           <>
             <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 16 }}>Not on a team</div>
-            {notOnATeam.note && (
-              <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 6 }} data-testid="not-on-a-team-note">
-                {notOnATeam.note}
-              </p>
-            )}
+            <NotOnATeamNoteLine note={notOnATeam.note} rostersHref={notOnATeam.rostersHref} />
             <div className="mt-2 flex flex-col gap-1.5" data-testid="selector-not-on-a-team">
               {notOnATeam.ids.map((id) => (
                 <NotOnATeamRow
@@ -659,6 +664,27 @@ function Slot({ player, onTap }: { player: Participant | null; onTap?: () => voi
     <button onClick={onTap} className="block w-full text-left" style={{ minWidth: 0, padding: 0, border: "none", background: "none" }}>
       <PlayerChip name={player.name} teamColor={player.color} />
     </button>
+  );
+}
+
+/** What a viewer with no add is told — exported so its copy and link are
+ *  testable by static render (the selector itself portals to `document`). */
+export function NotOnATeamNoteLine({ note, rostersHref }: { note: NotOnATeamNote; rostersHref: string }) {
+  if (!note) return null;
+  return (
+    <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 6 }} data-testid="not-on-a-team-note">
+      {note === "rosters" ? (
+        <>
+          {NOT_ON_A_TEAM_ROSTERS_LEAD}{" "}
+          <Link href={rostersHref} data-testid="not-on-a-team-rosters-link" style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>
+            {NOT_ON_A_TEAM_ROSTERS_LINK}
+          </Link>
+          .
+        </>
+      ) : (
+        NOT_ON_A_TEAM_NOTE
+      )}
+    </p>
   );
 }
 

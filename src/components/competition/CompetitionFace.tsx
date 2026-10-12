@@ -102,7 +102,6 @@ export function CompetitionFace({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const openSettings = () => setSettingsOpen(true);
   const [addingGame, setAddingGame] = useState(false);
-  const [rostersOpen, setRostersOpen] = useState(false);
   const pathname = usePathname();
   // Leaderboard team-name tap → a STANDALONE identity editor (owner / captain-of-
   // that-team), NOT the overlay; non-permitted taps fall to the read-only overlay.
@@ -127,6 +126,10 @@ export function CompetitionFace({
   // the side-game board, and closes itself once the competition exists. Starts
   // OPEN on `?setup=1` — the trip settings' "Enable competition" entry (PR 6b).
   const [setupOpen, setSetupOpen] = useState(() => search.get("setup") === "1");
+  // Starts OPEN on `?rosters=1` (`rostersHref`): a message that names Rosters as
+  // the fix links here — the match builder's note on a standalone game route,
+  // which cannot mount the roster preview itself (9b look).
+  const [rostersOpen, setRostersOpen] = useState(() => search.get("rosters") === "1");
   const router = useRouter();
   const openGameId = search.get("game");
   // The scorecard OVERLAY over the board (leaderboard caller): a golf game's

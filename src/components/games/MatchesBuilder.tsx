@@ -6,7 +6,7 @@ import type { DraftMatchConfig } from "@/lib/configDraft";
 import { assignInDraft } from "@/lib/matchDraft";
 import type { LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 import { slotPool } from "@/lib/pairingShape";
-import type { BuilderTeam } from "@/lib/builderPool";
+import type { BuilderTeam, NotOnATeamNote } from "@/lib/builderPool";
 
 /**
  * Non-golf Matches' pairing, in settings — the non-golf ADAPTER over
@@ -80,7 +80,8 @@ export function MatchesBuilder({
     | {
         ids: string[];
         targets: BuilderTeam[];
-        note: string | null;
+        note: NotOnATeamNote;
+        rostersHref: string;
         /** Join the team; `onRun` fires when the change runs (after the
          *  preview, once results are in) — the builder places the person then. */
         add: (userId: string, teamId: string, onRun: () => void) => void;
@@ -161,6 +162,7 @@ export function MatchesBuilder({
               ids: section.ids,
               targets: section.targets,
               note: section.note,
+              rostersHref: section.rostersHref,
               onAdd: (userId: string, teamId: string) =>
                 section.add(userId, teamId, () => {
                   setDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId));

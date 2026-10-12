@@ -90,7 +90,7 @@ import { showToast } from "@/lib/toast";
 import type { OutcomeOverwrite } from "@/lib/outcomeReconcile";
 import { outcomeOverwriteNotice } from "@/components/games/outcomeOverwriteNotice";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
-import { gamesPageHref } from "@/lib/gameRoutes";
+import { gamesPageHref, rostersHref } from "@/lib/gameRoutes";
 
 // One unified match-play type (Refactor A1). 1v1-vs-2v2 is per-match, derived from
 // each match's side type — not the game type. `MATCH_PLAY_DOUBLES` is retired.
@@ -2505,6 +2505,7 @@ export function MatchGameView() {
                     ids: notOnATeamIds({ rostersApply, crewIds, teamOf: (id) => teamOfUser.get(id) }),
                     targets: addTargets,
                     note: notOnATeamNote({ targets: addTargets, staff: rosterStaff, hasResults: !!hasResultsQ.data, previewAvailable: !!rosterPreview }),
+                    rostersHref: rostersHref(tripId),
                     // Join the team AND fill this slot — after results, only once
                     // the preview is confirmed (`onRun`).
                     onAdd: (userId, teamId) =>

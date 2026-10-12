@@ -67,7 +67,7 @@ import { placementsFrom, pointsForPlacements } from "@/lib/placementGroups";
 import { reconcileOrderDraft } from "@/lib/teamDraft";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { gameLockState } from "@/lib/gameLifecycle";
-import { gamesPageHref } from "@/lib/gameRoutes";
+import { gamesPageHref, rostersHref } from "@/lib/gameRoutes";
 import type { GameRow, LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 
 
@@ -1286,6 +1286,7 @@ export function NonGolfGameView() {
                       ids: notOnATeamIds({ rostersApply: true, crewIds, teamOf: (id) => teamByUser[id] ?? undefined }),
                       targets,
                       note: notOnATeamNote({ targets, staff: rosterStaff, hasResults, previewAvailable: !!rosterPreview }),
+                      rostersHref: rostersHref(tripId),
                       add: (userId, teamId, onRun) => assignToTeam.mutate({ tripId, competitionId, userId, teamId }, { onRun }),
                     };
                   }}

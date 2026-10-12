@@ -102,15 +102,15 @@ describe("notOnATeamNote — what a viewer with no add is told", () => {
   });
 
   it("a delegate or member is told an organizer can", () => {
-    expect(notOnATeamNote(base)).toBe("An organizer can add them to a team.");
+    expect(notOnATeamNote(base)).toBe("organizer");
   });
 
   it("a captain locked out by results is told the same", () => {
-    expect(notOnATeamNote({ ...base, hasResults: true })).toBe("An organizer can add them to a team.");
+    expect(notOnATeamNote({ ...base, hasResults: true })).toBe("organizer");
   });
 
   /** An Organizer with no preview mounted must not be sent looking for themselves. */
   it("an organizer with results in and no preview is sent to Rosters", () => {
-    expect(notOnATeamNote({ ...base, staff: true, hasResults: true, previewAvailable: false })).toBe("Add them to a team in Rosters.");
+    expect(notOnATeamNote({ ...base, staff: true, hasResults: true, previewAvailable: false })).toBe("rosters");
   });
 });

@@ -82,17 +82,23 @@ export function notOnATeamIds(p: {
  * organizer can add them" would send them looking for themselves.
  */
 export const NOT_ON_A_TEAM_NOTE = "An organizer can add them to a team.";
-export const NOT_ON_A_TEAM_ROSTERS_NOTE = "Add them to a team in Rosters.";
+/** "Add them to a team in [Rosters]." — the word is a LINK that opens Rosters:
+ *  a message that names the fix takes you there (9b look; same lesson as
+ *  "Open {game}" on the roster preview's blocked sheet). */
+export const NOT_ON_A_TEAM_ROSTERS_LEAD = "Add them to a team in";
+export const NOT_ON_A_TEAM_ROSTERS_LINK = "Rosters";
+
+export type NotOnATeamNote = "organizer" | "rosters" | null;
 
 export function notOnATeamNote(p: {
   targets: BuilderTeam[];
   staff: boolean;
   hasResults: boolean;
   previewAvailable: boolean;
-}): string | null {
+}): NotOnATeamNote {
   if (p.targets.length > 0) return null;
-  if (p.staff && p.hasResults && !p.previewAvailable) return NOT_ON_A_TEAM_ROSTERS_NOTE;
-  return NOT_ON_A_TEAM_NOTE;
+  if (p.staff && p.hasResults && !p.previewAvailable) return "rosters";
+  return "organizer";
 }
 
 export function builderAddTargets(p: {
