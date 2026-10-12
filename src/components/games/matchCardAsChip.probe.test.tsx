@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MatchCard } from "./MatchCard";
+import type { DecidedHole } from "@/lib/matchPlay";
 
 /**
  * THE `AS` CHIP USES ONE SOURCE ON BOTH PATHS.
@@ -22,8 +23,13 @@ import { MatchCard } from "./MatchCard";
  * team path its own halved treatment they must do it deliberately, and this
  * fails when they do.
  *
- * Both cards below are ALL SQUARE (`results: []`), so neither side leads and
- * `Margin` renders its inactive arm on both sides of both cards.
+ * Both cards below are LEVEL IN PLAY — one hole each — so neither side leads
+ * and `Margin` renders its inactive arm on both sides of both cards.
+ *
+ * They were `results: []` until PR 9a. An unplayed match is no longer "AS":
+ * it is Not started, with both chips EMPTY (`matchLevel`), so that fixture
+ * stopped exercising the chip this file is about. Level is the state the
+ * chip's colour still has to hold for.
  */
 
 const A = { id: "a", name: "Amber Squad", color: "#f59e0b" };
@@ -33,12 +39,19 @@ const B = { id: "b", name: "Cyan Crew", color: "#06b6d4" };
  *  reaches the DOM, not imported — the point is what renders. */
 const HALVED = "var(--color-bt-match-halved)";
 
+/** One hole each: level, with sixteen to play. No HALVED hole, so the token
+ *  can only reach the DOM through the chip. */
+const LEVEL: DecidedHole[] = [
+  { hole: 1, result: "W" },
+  { hole: 2, result: "L" },
+];
+
 const render = (withTeams: boolean) =>
   renderToStaticMarkup(
     <MatchCard
       a={A}
       b={B}
-      results={[]}
+      results={LEVEL}
       {...(withTeams ? { leftColor: "#f59e0b", rightColor: "#06b6d4" } : {})}
     />,
   );
@@ -46,13 +59,13 @@ const render = (withTeams: boolean) =>
 describe("the AS chip resolves the same source on both paths", () => {
   it("neutral path paints AS through --color-bt-match-halved", () => {
     const html = render(false);
-    expect(html).toContain("AS");
+    expect(html).toContain(">AS<");
     expect(html).toContain(HALVED);
   });
 
   it("TEAM path does too — the measured claim", () => {
     const html = render(true);
-    expect(html).toContain("AS");
+    expect(html).toContain(">AS<");
     expect(html).toContain(HALVED);
   });
 
