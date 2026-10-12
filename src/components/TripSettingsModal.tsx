@@ -17,6 +17,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
+import { EITHER_CHOICE } from "@/lib/competitionWords";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
@@ -392,7 +393,7 @@ export function TripSettingsModal({
                       <Row
                         testId="settings-competition-row"
                         icon={<Trophy size={17} />}
-                        title="Start a Cup or Tournament"
+                        title={`Start a ${EITHER_CHOICE}`}
                         subtitle="Teams, games, and a live leaderboard"
                         onClick={() => {
                           // Same entry the enable card uses — the face hosts the

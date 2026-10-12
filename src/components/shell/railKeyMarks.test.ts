@@ -67,24 +67,7 @@ describe("railKeyMarks", () => {
       .toEqual([]);
   });
 
-  it("the trophy's key names the kinds on the list (Cup / Tournament)", () => {
-    expect(railKeyMarks([{ hasCompetition: true, competitionModel: "match_play" }]).cupLabel).toBe("Cup");
-    expect(railKeyMarks([{ hasCompetition: true, competitionModel: "points" }]).cupLabel).toBe("Tournament");
-    // Both kinds on the list, or one whose kind isn't known: both words.
-    expect(
-      railKeyMarks([
-        { hasCompetition: true, competitionModel: "match_play" },
-        { hasCompetition: true, competitionModel: "points" },
-      ]).cupLabel
-    ).toBe("Cup or Tournament");
-    expect(railKeyMarks([{ hasCompetition: true }]).cupLabel).toBe("Cup or Tournament");
-    // A trip WITHOUT one never contributes a word.
-    expect(
-      railKeyMarks([{ hasCompetition: false, competitionModel: "points" }, { hasCompetition: true, competitionModel: "match_play" }]).cupLabel
-    ).toBe("Cup");
-  });
-
   it("no rows → no key", () => {
-    expect(railKeyMarks([])).toMatchObject({ roles: [], cup: false });
+    expect(railKeyMarks([])).toEqual({ roles: [], cup: false });
   });
 });

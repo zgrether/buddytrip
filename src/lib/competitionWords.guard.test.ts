@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import ts from "typescript";
-import { COMPETITION_WORD, competitionNoun, competitionWord } from "./competitionWords";
+import { COMPETITION_CHOICE_WORD, COMPETITION_WORD, EITHER_CHOICE, competitionNoun, competitionWord } from "./competitionWords";
 
 /**
  * On screen a competition is a **Cup** (head to head) or a **Tournament**
@@ -95,6 +95,12 @@ describe("the words a competition goes by on screen", () => {
     expect(COMPETITION_WORD).toEqual({ match_play: "Cup", points: "Tournament" });
     expect(competitionWord("points")).toBe("Tournament");
     expect(competitionNoun("match_play")).toBe("cup");
+  });
+
+  it("where someone is choosing, the head-to-head kind says so; Tournament is the same word", () => {
+    expect(COMPETITION_CHOICE_WORD).toEqual({ match_play: "Head-to-Head Cup", points: "Tournament" });
+    expect(COMPETITION_CHOICE_WORD.points).toBe(COMPETITION_WORD.points);
+    expect(EITHER_CHOICE).toBe("Head-to-Head Cup or Tournament");
   });
 
   it("reads an unset model as head to head, the column's own default", () => {

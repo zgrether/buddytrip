@@ -32,5 +32,20 @@ export function competitionNoun(model: ScoringModel | null | undefined): string 
   return competitionWord(model).toLowerCase();
 }
 
-/** For a surface that can't know the kind: before one exists, or across trips. */
+/** For a surface that can't know the kind, after the choice: a refusal, a
+ *  notification setting, the rail's key for the trophy. */
 export const EITHER_COMPETITION = "Cup or Tournament";
+
+/**
+ * THE CHOOSING FORM (Zach, 2026-10-12). Where someone is choosing a type — the
+ * create flow, a starting point, help that explains the two — the head-to-head
+ * kind says what it is: **Head-to-Head Cup**. Everywhere after the choice it is
+ * plain **Cup**. Tournament is the same word in both places.
+ */
+export const COMPETITION_CHOICE_WORD = {
+  match_play: "Head-to-Head Cup",
+  points: "Tournament",
+} as const satisfies Record<ScoringModel, string>;
+
+/** A starting point that offers both kinds. */
+export const EITHER_CHOICE = `${COMPETITION_CHOICE_WORD.match_play} or ${COMPETITION_CHOICE_WORD.points}`;

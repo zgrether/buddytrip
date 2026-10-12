@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { assertAffected } from "@/server/lib/assertAffected";
-import type { ScoringModel } from "@/lib/gameTypes";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
@@ -28,11 +27,12 @@ export const tripsRouter = router({
         .order("created_at", { ascending: false }),
       // hasCompetition flag drives the dashboard card icon. One row per trip
       // is fine for the MVP one-comp-per-trip rule; we just need to know
-      // whether any competition exists for each trip — and its scoring model,
-      // so the card and the rail can name it (Cup / Tournament).
+      // whether any competition exists for each trip — and its own name, which
+      // the card's trophy chip shows. Not its type: a trip list doesn't need to
+      // tell a Cup from a Tournament, and "Turkey Cup · Cup" says it twice.
       ctx.supabase
         .from("competitions")
-        .select("trip_id, scoring_model")
+        .select("trip_id, name")
         .in("trip_id", tripIds),
       // ideaCount drives the desktop rail's Ideas row ("4 ideas"), which is the
       // ONLY thing that meaningfully varies about a trip with no destination.
@@ -60,8 +60,8 @@ export const tripsRouter = router({
     const membershipByTripId = new Map(
       memberships.map((m) => [m.trip_id, m])
     );
-    const competitionModelByTrip = new Map(
-      (competitionsRes.data ?? []).map((c) => [c.trip_id as string, (c.scoring_model ?? null) as ScoringModel | null])
+    const competitionNameByTrip = new Map(
+      (competitionsRes.data ?? []).map((c) => [c.trip_id as string, (c.name as string | null) ?? null])
     );
     // Counted here rather than shipped as rows. `ideasRes` failing is NOT fatal:
     // a missing count degrades the rail's Ideas row to "0 ideas", where a thrown
@@ -79,8 +79,8 @@ export const tripsRouter = router({
       ...trip,
       myRole: membershipByTripId.get(trip.id)?.role ?? null,
       myStatus: membershipByTripId.get(trip.id)?.status ?? null,
-      hasCompetition: competitionModelByTrip.has(trip.id),
-      competitionModel: competitionModelByTrip.get(trip.id) ?? null,
+      hasCompetition: competitionNameByTrip.has(trip.id),
+      competitionName: competitionNameByTrip.get(trip.id) ?? null,
       ideaCount: ideaCountByTripId.get(trip.id) ?? 0,
     }));
   }),

@@ -5,7 +5,7 @@ import { Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { COMPETITION_WORD, EITHER_COMPETITION, competitionNoun, competitionWord } from "@/lib/competitionWords";
+import { COMPETITION_CHOICE_WORD, EITHER_CHOICE, competitionNoun, competitionWord } from "@/lib/competitionWords";
 import { Stepper } from "@/components/games/Stepper";
 import { MAX_SEED_TEAMS } from "@/lib/teamColors";
 
@@ -46,13 +46,13 @@ const SHAPE_OPTIONS: ShapeOption[] = [
   {
     model: "match_play",
     icon: <Swords size={18} />,
-    title: COMPETITION_WORD.match_play,
-    blurb: "Head to head: two teams play matches against each other, and it knows when a side has clinched.",
+    title: COMPETITION_CHOICE_WORD.match_play,
+    blurb: "Two teams play matches against each other, and it knows when a side has clinched.",
   },
   {
     model: "points",
     icon: <Users size={18} />,
-    title: COMPETITION_WORD.points,
+    title: COMPETITION_CHOICE_WORD.points,
     blurb: "Everyone earns points across the games you add. Play as individuals, or split into teams.",
   },
 ];
@@ -78,7 +78,10 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
   // structure is something you add, not something you are made to build.
   const [playAs, setPlayAs] = useState<"individuals" | "teams">("individuals");
   // Edit mode names the competition that exists; create mode follows the shape
-  // being picked, so the name field and button change with it.
+  // being picked, so the name field and button change with it. The heading and
+  // the shape options are where the type is CHOSEN, so they use the choosing
+  // form (Head-to-Head Cup); the name field and button come after the choice
+  // and say plain Cup.
   const kind = isEdit ? competition?.scoring_model ?? null : scoringModel;
   const word = competitionWord(kind);
   const noun = competitionNoun(kind);
@@ -198,7 +201,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
           </div>
           <div>
             <h2 className="text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-              {isEdit ? `Edit ${noun}` : `Start a ${EITHER_COMPETITION}`}
+              {isEdit ? `Edit ${noun}` : `Start a ${EITHER_CHOICE}`}
             </h2>
             <p className="text-xs" style={{ color: "var(--color-bt-text-dim)" }}>
               Pick a shape, name it, and you&rsquo;re set.
