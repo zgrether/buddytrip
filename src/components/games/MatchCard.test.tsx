@@ -228,7 +228,8 @@ describe("MatchCard — not started, AS and Halved are three different cards", (
     const at = html.indexOf(`data-testid="${testId}"`);
     if (at === -1) throw new Error(`no ${testId}`);
     const open = html.indexOf(">", at) + 1;
-    return html.slice(open, html.indexOf(close, open)).replace(/<[^>]*>/g, "");
+    // Static markup escapes `&` — "3&2" arrives as "3&amp;2".
+    return html.slice(open, html.indexOf(close, open)).replace(/<[^>]*>/g, "").split("&amp;").join("&");
   }
   const read = (results: DecidedHole[], holeCount = 18, dialect?: "slate") => {
     const html = renderToStaticMarkup(
@@ -267,11 +268,24 @@ describe("MatchCard — not started, AS and Halved are three different cards", (
     expect(c.chipB).toBe("AS");
   });
 
-  it("halved: Halved on both chips under FINAL", () => {
+  /**
+   * A tie belongs to neither side, so it is said ONCE, in the middle — where
+   * FINAL would sit — and on neither side's edge (Zach's look on 9a, after the
+   * Ryder Cup and Presidents Cup boards).
+   */
+  it("halved: the header says Halved in place of FINAL and both chips are EMPTY", () => {
     const c = read(seq(Array.from({ length: 18 }, (_, i) => (i % 2 ? "L" : "W"))));
+    expect(c.word).toBe("Halved");
+    expect(c.centre).toBe("F");
+    expect(c.chipA).toBe("");
+    expect(c.chipB).toBe("");
+  });
+
+  it("a win keeps FINAL and its margin on the winner's edge only", () => {
+    const c = read(seq(Array.from({ length: 10 }, (): "W" => "W")));
     expect(c.word).toBe("FINAL");
-    expect(c.chipA).toBe("Halved");
-    expect(c.chipB).toBe("Halved");
+    expect(c.chipA).toBe("10&8");
+    expect(c.chipB).toBe("");
   });
 
   it("a lead is unchanged: the leader's chip carries it, the other is empty", () => {

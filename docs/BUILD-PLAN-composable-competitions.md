@@ -1413,7 +1413,10 @@ clauses); reset and merge carry their new lines. No rows yet.
 **Ruled (Zach):**
 1. **AS chip:** *Not started* for an unplayed match, *AS* while level in play, *Halved* once
    over — empty versus unknown, fixed on screen. ONE shared label helper for all six
-   surfaces, in the same change.
+   surfaces, in the same change. **Refined on the 9a look** (Ryder Cup and Presidents Cup
+   as references): a win keeps its margin chip on the winner's edge; a halve says its word
+   ONCE, in the header's centre label where FINAL sits, and leaves both chips empty — a tie
+   belongs to neither side, so both broadcasts put it in the middle.
 2. **Match builder:** a *Not on a team* section; *Add to {team}* offered to whoever the
    server allows — Owner, Organizers, and captains for their own team before results.
    After results the add goes through the 8b preview, never a bare add. **Remove the
@@ -1424,7 +1427,9 @@ clauses); reset and merge carry their new lines. No rows yet.
    upgrade, but it compounds with the uneven-teams sum, so not in this PR. **Confirm and
    fix the teamless keying bug in 9c-1**, before 9c-2 is the first surface to render it.
 4. **Expanded row:** game by game, banked and projected, projected clearly marked as not
-   yet earned — the game name and the points, nothing more.
+   yet earned — the game name and the points, nothing more. **For the standings bars
+   (9c-2):** projected points are a HATCHED segment in the team's own colour, banked points
+   solid — the Presidents Cup legend.
 5. **Live now on Home:** every live game, yours first; games not matches, so it stays short.
    Reads the board's existing data and live subscriptions, no new query.
 6. **Deletions, as the last PR:** the five unread properties and the `head_to_head` half of

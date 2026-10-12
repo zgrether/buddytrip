@@ -273,13 +273,17 @@ export function MatchCard({
   const aLeads = st.leader === "A";
   const bLeads = st.leader === "B";
   /**
-   * Nobody leads is three states, not one (`matchLevel`). Only LEVEL and
-   * HALVED put a word in the chips: an unplayed match has no score to show, so
-   * its chips stay empty and the header says why.
+   * Nobody leads is three states, not one (`matchLevel`), and only LEVEL puts
+   * a word in the chips. An unplayed match has no score to show. A HALVED one
+   * says so ONCE, in the header's centre label where FINAL would sit, and
+   * leaves both chips empty: a tie belongs to neither side, so it does not go
+   * on either side's edge. Zach's look on 9a, after the Ryder Cup and
+   * Presidents Cup boards, which both put a tie in the middle. A win keeps its
+   * margin chip on the winner's edge.
    */
   const level = matchLevel(st);
-  const square = level === "level" || level === "halved";
-  const squareText = level ? MATCH_LEVEL_WORD[level] : "";
+  const square = level === "level";
+  const squareText = square ? MATCH_LEVEL_WORD.level : "";
   /**
    * ── TWO DELIBERATE DIVERGENCES, ONE REASON, ONE PROP ──────────────────────
    *
@@ -309,7 +313,9 @@ export function MatchCard({
   const notStarted = level === "not_started";
   const headerWord = notStarted
     ? MATCH_LEVEL_WORD.not_started
-    : st.over ? "FINAL" : st.dormie ? "DORMIE" : slate ? "LEFT" : "THRU";
+    : level === "halved"
+      ? MATCH_LEVEL_WORD.halved
+      : st.over ? "FINAL" : st.dormie ? "DORMIE" : slate ? "LEFT" : "THRU";
   /**
    * DORMIE IS NOT FINAL, AND THEY NO LONGER SHARE A COLOUR.
    *
@@ -535,16 +541,14 @@ export function MatchCard({
 }
 
 /** Outer status margin — solid emphasis color iff this side leads; the grey
- *  level word (`MATCH_LEVEL_WORD`) on both when level or halved; empty
- *  otherwise, which includes a match nobody has started.
- *
- *  "Halved" is a WORD in a chip sized for notation ("AS", "3&2"): at 15px it
- *  overruns the 46px floor, so a word drops to 11px and keeps the chip width. */
+ *  "AS" (`MATCH_LEVEL_WORD.level`) on both while level in play; empty
+ *  otherwise, which includes an unplayed match and a halved one (the header
+ *  says those). */
 function Margin({ side, active, square, text, color, closed }: { side: "a" | "b"; active: boolean; square: boolean; text: string; color: string; closed: boolean }) {
   return (
     <div className="flex items-center justify-center" data-testid={`match-margin-${side}`} style={{ width: MARGIN_CHIP_W, flexShrink: 0, background: active ? color : "transparent" }}>
       {(active || square) && (
-        <span style={{ fontSize: !active && text.length > 3 ? 11 : closed && active ? 14 : 15, fontWeight: 800, color: active ? teamTextColor(color) : NEU_HALF, whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: closed && active ? 14 : 15, fontWeight: 800, color: active ? teamTextColor(color) : NEU_HALF, whiteSpace: "nowrap" }}>
           {text}
         </span>
       )}
