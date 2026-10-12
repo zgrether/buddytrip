@@ -2,6 +2,7 @@
 
 import { createElement } from "react";
 import { resultTiles } from "@/lib/standingsRows";
+import { formatOwnStanding } from "@/lib/ownStanding";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Table2 } from "lucide-react";
@@ -491,6 +492,17 @@ export function GameRow({
             />
           )}
         </div>
+        {/* Your own standing (#1599), on your live game only: the line you came
+            to read, so it sits above the live subtitle in full-strength text. */}
+        {section === "on-tap" && game.standing && (
+          <span
+            className="truncate text-[13px] font-semibold"
+            style={{ color: "var(--color-bt-text)" }}
+            data-testid="game-row-standing"
+          >
+            {formatOwnStanding(game.standing)}
+          </span>
+        )}
         {subtitle && (
           <span className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
             {subtitle}

@@ -1123,6 +1123,8 @@ export async function computeCompetitionLeaderboard(
     // A teamless race's units are people, so the match arms credit people —
     // the board's own decision above, handed in rather than re-derived (9c-1).
     teamless,
+    // #1599: the viewer's own standing on each live game they play in.
+    viewerId: opts.viewerId ?? null,
   });
   const cannotProject = live.cannotProject;
   // Every cup team, explicitly, on every projected game. An arm reports only the
@@ -1196,7 +1198,11 @@ export async function computeCompetitionLeaderboard(
     defendingTeamId: (comp?.defending_team_id as string | null) ?? null,
     // One derivation of a board row, shared with the side-game board (PR 6b).
     games: allGames.map((g) => {
-      const row = boardRow(g, board, ptsInPlayByGame.get(g.id as string) ?? null);
+      const row = {
+        ...boardRow(g, board, ptsInPlayByGame.get(g.id as string) ?? null),
+        // #1599: only the viewer's own value, and only on a live game they play in.
+        standing: live.ownStanding[g.id as string] ?? null,
+      };
       return winnersByGame && g.status === "complete" ? { ...row, winners: winnersByGame.get(g.id as string) ?? [] } : row;
     }),
     cells,
