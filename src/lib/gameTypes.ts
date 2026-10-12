@@ -674,11 +674,21 @@ export function canBeSideGame(gameTypeId: string | null | undefined): boolean {
  * teams, whose units are people (rulings 5, 22)? The SAME per-person fact a side
  * game rests on (PR 7 ruling 1), plus the format fitting a points competition —
  * by the add-game filter's own rule, so the two cannot answer differently.
+ *
+ * Over a DEFINITION, so a test can hand it one no catalog entry is: the
+ * points-fit check decides no current format (every per-person format today
+ * fits a points tournament), and a guard only a future format can trip is one a
+ * tidy-up would delete unnoticed. `gameTypeDeclarations.guard.test.ts` pins it
+ * with a synthetic per-person format that is barred from points.
  */
+export function teamlessRaceAdmits(def: Pick<GameTypeDefinition, "recordsPerPersonResults" | "compatibleScoringModels">): boolean {
+  if (!def.recordsPerPersonResults) return false;
+  return isGameTypeForScoringModel(def, "points");
+}
+
 export function canPlayInTeamlessRace(gameTypeId: string | null | undefined): boolean {
   const def = getGameTypeDefinition(gameTypeId);
-  if (!def || !def.recordsPerPersonResults) return false;
-  return isGameTypeForScoringModel(def, "points");
+  return !!def && teamlessRaceAdmits(def);
 }
 
 /** The formats a SIDE game may be (PR 6b), for the add-game picker. */

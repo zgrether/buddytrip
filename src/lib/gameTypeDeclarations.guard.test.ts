@@ -5,6 +5,7 @@ import {
   canBeSideGame,
   canPlayInTeamlessRace,
   isGameTypeForScoringModel,
+  teamlessRaceAdmits,
   type GameTypeDefinition,
   type ResultKind,
 } from "./gameTypes";
@@ -149,6 +150,23 @@ describe("declared format properties", () => {
     const rack = GAME_TYPE_LIST.find((d) => d.id === "gtt_rack_n_stack")!;
     expect(isGameTypeForScoringModel(rack, "points")).toBe(false);
     expect(canBeSideGame(rack.id)).toBe(false);
+  });
+
+  /**
+   * THE GUARD NO CURRENT FORMAT CAN TRIP, made visible. A tournament of
+   * individuals refuses a format that records per-person results but does not
+   * fit a points competition. No catalog entry is both today — every per-person
+   * format fits points — so the check decides nothing on the real catalog, and a
+   * guard nothing can see fail is one a tidy-up deletes unnoticed (Zach, #1600).
+   * A synthetic declaration is the only way to exercise it; the control beside it
+   * proves the same declaration IS admitted once points is allowed, so the
+   * refusal is the scoring-model check and nothing else.
+   */
+  it("refuses a per-person format that is barred from points tournaments", () => {
+    const barred = { recordsPerPersonResults: true, compatibleScoringModels: ["match_play"] as GameTypeDefinition["compatibleScoringModels"] };
+    expect(teamlessRaceAdmits(barred)).toBe(false);
+    expect(teamlessRaceAdmits({ ...barred, compatibleScoringModels: ["match_play", "points"] })).toBe(true);
+    expect(teamlessRaceAdmits({ ...barred, compatibleScoringModels: null })).toBe(true);
   });
 
   /** And it is the ONLY one: every other format may be played in a points
