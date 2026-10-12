@@ -6,6 +6,7 @@ import IdeaZonePanel from "../components/IdeaZonePanel";
 import { ItineraryPanel as LegacyItineraryPanel } from "../components/ItineraryPanel";
 import { ItineraryPanel } from "./components/panels/ItineraryPanel";
 import { TabHeader } from "@/components/TabHeader";
+import { LiveNow } from "@/components/competition/LiveNow";
 import type { TabProps } from "./types";
 
 // ── HomeTab ──────────────────────────────────────────────────────────────
@@ -76,6 +77,12 @@ export function HomeTab({
     <div className="space-y-4 px-4 pt-1">
       {showFullPanels && (
         <>
+          {/* LIVE NOW (PR 9d) — every live game, the viewer's first, read from the
+              board's own queries. First on Home, above the owner intro and the
+              itinerary, so it shows whichever itinerary branch renders (the setup
+              guide replaces the itinerary). Renders nothing when nothing is live. */}
+          <LiveNow tripId={trip.id} />
+
           {/* Owner intro — only shown when FreshTripGuide isn't (because
               the guide carries its own welcoming header that already
               announces context). */}

@@ -73,6 +73,29 @@ function openScorecardOverlay(pathname: string, gameId: string) {
 // ── Row helpers (own the board-row primitives) ────────────────────────────────
 
 /**
+ * A LIVE game's subtitle — ONE rule, read by the board's row and by Home's
+ * Live now (PR 9d), so the two can never word the same game differently.
+ *
+ *  - "Projected results" when the row's team cells carry projection pills;
+ *  - why it can't project, in a match-play cup, or for a stroke or scramble
+ *    round in a points tournament ("counts when finished", 9c-2 look) — instead
+ *    of the same "Underway" a format with no projection at all gets (3c);
+ *  - otherwise "Underway · scoring".
+ * Home has no pills to label, so it always passes `showProjectionPills: false`.
+ */
+export function liveSubtitle(p: {
+  showProjectionPills: boolean;
+  scoringModel: ScoringModel;
+  cannotProject?: CannotProjectReason | null;
+}): string {
+  if (p.showProjectionPills) return "Projected results";
+  if ((p.scoringModel === "match_play" && p.cannotProject) || p.cannotProject === "round_incomplete") {
+    return cannotProjectCopy(p.cannotProject!);
+  }
+  return "Underway · scoring";
+}
+
+/**
  * The row's sentence for a live game that can't project (3c). Each names what
  * is actually missing, and says it as a fact about the GAME — the whole crew
  * reads this row, and most of them can't change a setting.
@@ -344,17 +367,7 @@ export function GameRow({
   //  - completed → none; the compressed row + outer result speak for it.
   const subtitle =
     section === "on-tap"
-      ? showProjectionPills
-        ? "Projected results" // the cells now carry projections → the subtitle says so
-        : // A live game whose format projects but can't: say WHY, instead of
-          // the same "Underway" a format with no projection at all gets (3c).
-          // Match-play cups, like the pills this stands in for. In a points
-          // tournament only a stroke or scramble round says why: its standing
-          // banks when the round is done, and the hatched bars above have
-          // nothing from it until then (9c-2 look).
-          (scoringModel === "match_play" && cannotProject) || cannotProject === "round_incomplete"
-          ? cannotProjectCopy(cannotProject)
-          : "Underway · scoring"
+      ? liveSubtitle({ showProjectionPills, scoringModel, cannotProject })
       : section === "ready"
       ? // Pick'em has no "play" to be ready for — the next thing that happens
         // is people filling in sheets, so the row says that instead.

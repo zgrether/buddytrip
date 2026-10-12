@@ -38,6 +38,9 @@ export interface LBGame {
    * cup game, which is every row the leaderboard itself returns.
    */
   sideGame?: boolean;
+  /** The VIEWER is playing in it or running it (PR 9d) — computed on the
+   *  server, one boolean, nobody's id. Home's Live now lists these first. */
+  yours?: boolean;
   /** Finished side games: everyone at first (a tie lists them all). */
   winners?: string[];
   /** Position in the trip's ONE game order (PR 6b: per trip, not per cup). */
