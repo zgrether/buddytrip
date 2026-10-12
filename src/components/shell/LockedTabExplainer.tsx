@@ -2,6 +2,7 @@
 
 import { type FC } from "react";
 import { Calendar, Trophy, MessageCircle, type LucideIcon } from "lucide-react";
+import { EITHER_CHOICE } from "@/lib/competitionWords";
 
 /**
  * What a tab (or the Chat action) says when there's no trip selected.
@@ -27,7 +28,7 @@ const COPY: Record<LockedExplainerView, { Icon: LucideIcon; head: string; body: 
   cup: {
     Icon: Trophy,
     head: "Games live here",
-    body: "The practice round, skins on the back nine, or a whole Head-to-Head Cup or Tournament — every game the crew plays on this trip.",
+    body: `The practice round, skins on the back nine, or a whole ${EITHER_CHOICE} — every game the crew plays on this trip.`,
   },
   chat: {
     Icon: MessageCircle,

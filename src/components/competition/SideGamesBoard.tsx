@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { SIDE_BOARD_QUERY } from "@/lib/queryConfig";
-import { EITHER_CHOICE } from "@/lib/competitionWords";
+import { COMPETITION_UMBRELLA } from "@/lib/competitionWords";
 import { useVisibleEnabled } from "@/lib/surfaceVisibility";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { GamesSection, useGameRowContext, type LBGame, type LBCell } from "./CompetitionLeaderboard";
@@ -98,7 +98,7 @@ function StartCompetitionCard({ onStart }: { onStart: () => void }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
-          Start a {EITHER_CHOICE}
+          Start a {COMPETITION_UMBRELLA}
         </p>
         <p className="text-[12px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
           Teams or individuals, scored across your games.

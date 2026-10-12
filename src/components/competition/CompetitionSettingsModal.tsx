@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
-import { COMPETITION_WORD, competitionNoun, competitionWord, type CompetitionWord } from "@/lib/competitionWords";
+import { COMPETITION_NAME_EXAMPLE, COMPETITION_WORD, competitionNoun, competitionWord, type CompetitionWord } from "@/lib/competitionWords";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 
@@ -440,7 +440,7 @@ export function CompetitionSettingsModal({
                     }}
                     onBlur={commitName}
                     readOnly={!canEdit}
-                    placeholder="e.g. BBMI 2026, The Yert Open"
+                    placeholder={COMPETITION_NAME_EXAMPLE[model]}
                     maxLength={200}
                     style={{ ...fieldStyle, opacity: canEdit ? 1 : 0.7 }}
                     data-testid="comp-settings-name"

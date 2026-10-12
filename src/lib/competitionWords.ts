@@ -32,13 +32,19 @@ export function competitionNoun(model: ScoringModel | null | undefined): string 
   return competitionWord(model).toLowerCase();
 }
 
+/** A name field's example, following the type (Zach, on #1604's look). */
+export const COMPETITION_NAME_EXAMPLE = {
+  match_play: "e.g. The Turkey Cup",
+  points: "e.g. The Yert Open",
+} as const satisfies Record<ScoringModel, string>;
+
 /** For a surface that can't know the kind, after the choice: a refusal, a
  *  notification setting, the rail's key for the trophy. */
 export const EITHER_COMPETITION = "Cup or Tournament";
 
 /**
  * THE CHOOSING FORM (Zach, 2026-10-12). Where someone is choosing a type — the
- * create flow, a starting point, help that explains the two — the head-to-head
+ * create panel's shape options, help that explains the two — the head-to-head
  * kind says what it is: **Head-to-Head Cup**. Everywhere after the choice it is
  * plain **Cup**. Tournament is the same word in both places.
  */
@@ -48,13 +54,16 @@ export const COMPETITION_CHOICE_WORD = {
 } as const satisfies Record<ScoringModel, string>;
 
 /**
- * THE UMBRELLA WORD — the create panel's title, "Start a Competition" (Zach,
- * 2026-10-12). It sits above the two kinds before either is picked, where
- * "Start a Head-to-Head Cup or Tournament" wrapped to two lines on a phone and
- * repeated the options right below it. The one place the code's word is copy;
- * `competitionWords.guard.test.ts` admits it only from this file.
+ * THE UMBRELLA WORD — every starting point says "Start a Competition": the
+ * create panel's title, the side games board's start card and the trip
+ * settings row (Zach, 2026-10-12, on #1604's look). It sits above the two kinds
+ * before either is picked, where "Start a Head-to-Head Cup or Tournament"
+ * wrapped to two lines on a phone and repeated the options right below it. The
+ * one place the code's word is copy; `competitionWords.guard.test.ts` admits it
+ * only from this file.
  */
 export const COMPETITION_UMBRELLA = "Competition";
 
-/** A starting point that offers both kinds. */
+/** Help that explains both kinds (the Games tab's empty-state explainer). The
+ *  starting points themselves say "Start a Competition". */
 export const EITHER_CHOICE = `${COMPETITION_CHOICE_WORD.match_play} or ${COMPETITION_CHOICE_WORD.points}`;

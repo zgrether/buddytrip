@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "fs";
 import path from "path";
 import ts from "typescript";
-import { COMPETITION_CHOICE_WORD, COMPETITION_UMBRELLA, COMPETITION_WORD, EITHER_CHOICE, competitionNoun, competitionWord } from "./competitionWords";
+import { COMPETITION_CHOICE_WORD, COMPETITION_NAME_EXAMPLE, COMPETITION_UMBRELLA, COMPETITION_WORD, EITHER_CHOICE, competitionNoun, competitionWord } from "./competitionWords";
 
 /**
  * On screen a competition is a **Cup** (head to head) or a **Tournament**
@@ -101,6 +101,10 @@ describe("the words a competition goes by on screen", () => {
     expect(COMPETITION_CHOICE_WORD).toEqual({ match_play: "Head-to-Head Cup", points: "Tournament" });
     expect(COMPETITION_CHOICE_WORD.points).toBe(COMPETITION_WORD.points);
     expect(EITHER_CHOICE).toBe("Head-to-Head Cup or Tournament");
+  });
+
+  it("a name field's example follows the type", () => {
+    expect(COMPETITION_NAME_EXAMPLE).toEqual({ match_play: "e.g. The Turkey Cup", points: "e.g. The Yert Open" });
   });
 
   it("the create panel's title is the umbrella word", () => {

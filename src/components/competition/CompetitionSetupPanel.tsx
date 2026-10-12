@@ -5,7 +5,7 @@ import { Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { COMPETITION_CHOICE_WORD, COMPETITION_UMBRELLA, competitionNoun, competitionWord } from "@/lib/competitionWords";
+import { COMPETITION_CHOICE_WORD, COMPETITION_NAME_EXAMPLE, COMPETITION_UMBRELLA, competitionNoun, competitionWord } from "@/lib/competitionWords";
 import { Stepper } from "@/components/games/Stepper";
 import { MAX_SEED_TEAMS } from "@/lib/teamColors";
 
@@ -47,7 +47,7 @@ const SHAPE_OPTIONS: ShapeOption[] = [
     model: "match_play",
     icon: <Swords size={18} />,
     title: COMPETITION_CHOICE_WORD.match_play,
-    blurb: "Two teams play matches against each other, and it knows when a side has clinched.",
+    blurb: "Two teams play matches against each other. First to the target wins.",
   },
   {
     model: "points",
@@ -277,7 +277,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. BBMI 2026, The Yert Open"
+            placeholder={COMPETITION_NAME_EXAMPLE[kind ?? "match_play"]}
             maxLength={200}
             className="w-full rounded-lg px-3 py-2 text-sm outline-none"
             style={{
