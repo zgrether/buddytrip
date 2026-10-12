@@ -9,7 +9,7 @@ import { projectedTeamTotals } from "@/lib/gameProjection";
 import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
-import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
+import { MATCH_PLAY_TYPES, RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE } from "@/server/lib/gameReadiness";
 import { readBoardInputs, boardRow } from "@/server/lib/boardGames";
 import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
 import { tripDisplayNames } from "./tripDisplayNames";
@@ -1081,7 +1081,14 @@ export async function computeCompetitionLeaderboard(
       return (
         g.status === "active" &&
         startedByGame.has(g.id as string) &&
-        ((t != null && MATCH_PLAY_TYPES.has(t)) || t === RACK_TYPE || isMatchesGame(t, cf) || isPickemGame(t, cf))
+        ((t != null && MATCH_PLAY_TYPES.has(t)) ||
+          t === RACK_TYPE ||
+          // PR 9c-1: skins projects; stroke and scramble report `round_incomplete`.
+          t === SKINS_TYPE ||
+          t === "gtt_stroke_play" ||
+          t === SCRAMBLE_TYPE ||
+          isMatchesGame(t, cf) ||
+          isPickemGame(t, cf))
       );
     })
     .map((g) => {

@@ -262,20 +262,32 @@ describe("projectGame — Matches", () => {
   });
 });
 
-describe("projectGame — no projection", () => {
-  it("returns null for a format without a live projection (stroke play)", () => {
-    const input: LiveProjectionInput = { id: "g3", gameTypeId: "gtt_stroke_play", pointsTotal: null, isPerMatch: false };
-    const data: GameProjectionData = {
-      schema: null,
-      modifiers: null,
-      matches: [],
-      parts: [],
-      playGroups: [],
-      gross: new Map(),
-      outcomes: [],
-      userTeam: new Map(),
-    };
-    expect(projectGame(input, data)).toBeNull();
+describe("projectGame — formats that cannot project, and one with no arm at all", () => {
+  const empty = (): GameProjectionData => ({
+    schema: null,
+    modifiers: null,
+    matches: [],
+    parts: [],
+    playGroups: [],
+    gross: new Map(),
+    outcomes: [],
+    userTeam: new Map(),
+  });
+
+  /**
+   * PR 9 ruling 3: stroke play and scramble rank only a COMPLETE round, so they
+   * say so — a reason, not the silent `null` they returned before 9c-1, which
+   * read the same as a format that has no projection at all.
+   */
+  it.each(["gtt_stroke_play", "gtt_scramble"])("%s cannot project until the round is complete", (gameTypeId) => {
+    const input: LiveProjectionInput = { id: "g3", gameTypeId, pointsTotal: 10, isPerMatch: false };
+    expect(projectGame(input, empty())).toEqual({ kind: "cannot", reason: "round_incomplete" });
+  });
+
+  /** ABSENT stays distinct from cannot: non-golf placement never runs live. */
+  it("returns null for a format with no live projection (non-golf placement)", () => {
+    const input: LiveProjectionInput = { id: "g4", gameTypeId: "gtt_generic_card", pointsTotal: 10, isPerMatch: false };
+    expect(projectGame(input, empty())).toBeNull();
   });
 });
 

@@ -94,6 +94,11 @@ export function cannotProjectCopy(reason: CannotProjectReason): string {
       return "Underway · matches not drawn yet";
     case "seats_vacated":
       return "Underway · matches need re-pairing";
+    // PR 9c-1. Rendered nowhere yet — stroke and scramble live only in points
+    // tournaments, and this row shows cannot-copy in match-play cups only; 9c-2
+    // brings projections to points tournaments, and its look settles the words.
+    case "round_incomplete":
+      return "Underway · placed when the round is complete";
   }
 }
 

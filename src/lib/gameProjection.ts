@@ -23,8 +23,8 @@ import { awardMatches, type MatchAwardResult } from "./gameAward";
  * and hid an inverted payout until finalize.
  *
  * And distinct from ABSENT, which means the format has no live projection at
- * all (stroke, scramble and skins until PR 9; non-golf placement, which never
- * runs live).
+ * all (non-golf placement, which never runs live). Skins projects and stroke and
+ * scramble say `round_incomplete` since PR 9c-1.
  *
  *  - `no_points` — nothing to pay: no total, a total of 0, no per-match value
  *    and no override. Whatever happens, this game awards nothing.
@@ -43,6 +43,12 @@ import { awardMatches, type MatchAwardResult } from "./gameAward";
  *    Both are actionable: the app saves pairings via `save_game_config`, whose
  *    only pairing freeze is a match with a recorded result — which pick'em
  *    never writes — and `FINAL_LOCKED` only once the game is finished.
+ *  - `round_incomplete` — stroke play and scramble (PR 9 ruling 3). Their
+ *    standings need the whole round: the finalize ranks only players who have
+ *    finished every hole, and refuses to run until somebody has. A projection
+ *    of "the order right now" would rank a player thru 9 against one thru 18,
+ *    so they say so instead. (Skins is different: a skin won is won, so the
+ *    order so far is a real standing.)
  *  - `picks_hidden` — a pick'em game whose sheets are not yet revealed. The
  *    board is computed under the VIEWER's RLS, so before reveal it would see
  *    only their own sheet (or, for a captain, sheets it may proxy) and project
@@ -56,7 +62,8 @@ export type CannotProjectReason =
   | "seats_vacated"
   | "no_course"
   | "no_teams"
-  | "picks_hidden";
+  | "picks_hidden"
+  | "round_incomplete";
 
 /** One match's current on-page standing, as the scoreboard already shows it. */
 export interface ProjMatch {
