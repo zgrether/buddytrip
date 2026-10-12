@@ -51,6 +51,40 @@ export interface MatchState {
   margin: string | null; // "3&2" | "2 UP" | "AS" | null (in progress)
 }
 
+/**
+ * ── A MATCH NOBODY LEADS IS IN ONE OF THREE STATES, AND THEY ARE NAMED HERE ──
+ *
+ * "Nobody leads" used to be the whole test, so a match nobody had started, one
+ * level in play and one halved at the end all wore the same "AS" chip. Those
+ * are empty, level and decided: the first is not a score at all, and only the
+ * last is a result. Empty rendering as a value is this file's recurring
+ * mistake (CLAUDE.md, "EMPTY IS NOT UNKNOWN").
+ *
+ * Six surfaces say these words, and each used to format its own: the match
+ * card, two scorecards' per-hole cells, the result banner, the Quick Play
+ * subtitle and the pick'em match note. Six private formatters are how they
+ * drifted apart (ruling PR 9 #1), so the words have ONE home and every one of
+ * them reads it.
+ *
+ * Nothing played wins over "over". A match with no units at all is over by
+ * arithmetic and halved by nothing; saying "Halved" there would turn an empty
+ * match into a result.
+ */
+export type MatchLevel = "not_started" | "level" | "halved";
+
+export const MATCH_LEVEL_WORD: Record<MatchLevel, string> = {
+  not_started: "Not started",
+  level: "AS",
+  halved: "Halved",
+};
+
+/** Which of the three it is, or null when somebody leads. */
+export function matchLevel(st: Pick<MatchState, "thru" | "over" | "leader">): MatchLevel | null {
+  if (st.leader !== null) return null;
+  if (st.thru === 0) return "not_started";
+  return st.over ? "halved" : "level";
+}
+
 const HOLES = 18;
 
 /**

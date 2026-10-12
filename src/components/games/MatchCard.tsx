@@ -2,7 +2,7 @@
 
 import { PointsAtStake } from "./PointsAtStake";
 import { Table2 } from "lucide-react";
-import { matchState, type DecidedHole, type SideUpside } from "@/lib/matchPlay";
+import { matchLevel, matchState, MATCH_LEVEL_WORD, type DecidedHole, type SideUpside } from "@/lib/matchPlay";
 import { NO_GLORIOUS, isGloriousHole, type Weighting } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { SidePlayer } from "./MatchSides";
@@ -272,7 +272,14 @@ export function MatchCard({
 
   const aLeads = st.leader === "A";
   const bLeads = st.leader === "B";
-  const square = st.leader === null;
+  /**
+   * Nobody leads is three states, not one (`matchLevel`). Only LEVEL and
+   * HALVED put a word in the chips: an unplayed match has no score to show, so
+   * its chips stay empty and the header says why.
+   */
+  const level = matchLevel(st);
+  const square = level === "level" || level === "halved";
+  const squareText = level ? MATCH_LEVEL_WORD[level] : "";
   /**
    * ── TWO DELIBERATE DIVERGENCES, ONE REASON, ONE PROP ──────────────────────
    *
@@ -299,7 +306,10 @@ export function MatchCard({
    * with games left, and `st.closed` still says so. Only the notation changes.
    */
   const slate = dialect === "slate";
-  const headerWord = st.over ? "FINAL" : st.dormie ? "DORMIE" : slate ? "LEFT" : "THRU";
+  const notStarted = level === "not_started";
+  const headerWord = notStarted
+    ? MATCH_LEVEL_WORD.not_started
+    : st.over ? "FINAL" : st.dormie ? "DORMIE" : slate ? "LEFT" : "THRU";
   /**
    * DORMIE IS NOT FINAL, AND THEY NO LONGER SHARE A COLOUR.
    *
@@ -314,7 +324,9 @@ export function MatchCard({
     : st.dormie
       ? "var(--color-bt-warning)"
       : "var(--color-bt-text-dim)";
-  const centerNum = st.over ? "F" : String(slate ? st.holesLeft : st.thru);
+  // Not started: the number would sit under a header that no longer labels
+  // it, and an unlabelled 0 between two names reads as a score.
+  const centerNum = notStarted ? "–" : st.over ? "F" : String(slate ? st.holesLeft : st.thru);
   // Leader margin text: closed margin ("3&2") or won-18 ("2 UP") from matchState,
   // else the live lead while in progress.
   const leadText = slate
@@ -365,6 +377,7 @@ export function MatchCard({
         <span
           className="flex-1 text-center"
           style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: headerColor }}
+          data-testid="match-status-word"
         >
           {headerWord}
         </span>
@@ -393,15 +406,15 @@ export function MatchCard({
       {/* 2 · Row — `minHeight` (not a fixed 50) so a 2v2's stacked SideChips grow
           the strip instead of clipping (item 3); a 1v1 keeps the 50px single-name row. */}
       <div className="flex" style={{ minHeight: 50, alignItems: "stretch" }}>
-        <Margin active={aLeads} square={square} text={aLeads ? leadText : "AS"} color={lc} closed={st.closed} />
+        <Margin side="a" active={aLeads} square={square} text={aLeads ? leadText : squareText} color={lc} closed={st.closed} />
         <NameCell name={a.name} players={aPlayers} align="right" tinted={aLeads} color={lc} note={aNote} muted={aMuted} />
         <div style={{ width: 3, background: wonL }} />
-        <div className="flex items-center justify-center" style={{ width: CENTRE_W, flexShrink: 0, background: "var(--color-bt-card-raised)", fontSize: 19, fontWeight: 700, color: "var(--color-bt-text)" }}>
+        <div className="flex items-center justify-center" data-testid="match-centre" style={{ width: CENTRE_W, flexShrink: 0, background: "var(--color-bt-card-raised)", fontSize: 19, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {centerNum}
         </div>
         <div style={{ width: 3, background: wonR }} />
         <NameCell name={b.name} players={bPlayers} align="left" tinted={bLeads} color={rc} note={bNote} muted={bMuted} />
-        <Margin active={bLeads} square={square} text={bLeads ? leadText : "AS"} color={rc} closed={st.closed} />
+        <Margin side="b" active={bLeads} square={square} text={bLeads ? leadText : squareText} color={rc} closed={st.closed} />
       </div>
 
       {/* 3 · History */}
@@ -521,13 +534,17 @@ export function MatchCard({
   );
 }
 
-/** Outer status margin — solid emphasis color iff this side leads; grey "AS" on
- *  both when square; empty otherwise. */
-function Margin({ active, square, text, color, closed }: { active: boolean; square: boolean; text: string; color: string; closed: boolean }) {
+/** Outer status margin — solid emphasis color iff this side leads; the grey
+ *  level word (`MATCH_LEVEL_WORD`) on both when level or halved; empty
+ *  otherwise, which includes a match nobody has started.
+ *
+ *  "Halved" is a WORD in a chip sized for notation ("AS", "3&2"): at 15px it
+ *  overruns the 46px floor, so a word drops to 11px and keeps the chip width. */
+function Margin({ side, active, square, text, color, closed }: { side: "a" | "b"; active: boolean; square: boolean; text: string; color: string; closed: boolean }) {
   return (
-    <div className="flex items-center justify-center" style={{ width: MARGIN_CHIP_W, flexShrink: 0, background: active ? color : "transparent" }}>
+    <div className="flex items-center justify-center" data-testid={`match-margin-${side}`} style={{ width: MARGIN_CHIP_W, flexShrink: 0, background: active ? color : "transparent" }}>
       {(active || square) && (
-        <span style={{ fontSize: closed && active ? 14 : 15, fontWeight: 800, color: active ? teamTextColor(color) : NEU_HALF, whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: !active && text.length > 3 ? 11 : closed && active ? 14 : 15, fontWeight: 800, color: active ? teamTextColor(color) : NEU_HALF, whiteSpace: "nowrap" }}>
           {text}
         </span>
       )}

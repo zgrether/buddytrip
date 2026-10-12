@@ -215,3 +215,68 @@ describe("MatchCard — three shapes for a unit that moved nobody", () => {
     expect(html).not.toContain("match-history-nostake-");
   });
 });
+
+/**
+ * PR 9a — the chips used to say "AS" whenever nobody led, so an unplayed
+ * match, a level one and a halved one were the same card. Each assertion reads
+ * ONE node by its testid: a substring over the whole card would be satisfied by
+ * the other chip, or by the header saying the same word.
+ */
+describe("MatchCard — not started, AS and Halved are three different cards", () => {
+  /** Text content of the first element carrying `testId`, tags stripped. */
+  function textOf(html: string, testId: string, close: string): string {
+    const at = html.indexOf(`data-testid="${testId}"`);
+    if (at === -1) throw new Error(`no ${testId}`);
+    const open = html.indexOf(">", at) + 1;
+    return html.slice(open, html.indexOf(close, open)).replace(/<[^>]*>/g, "");
+  }
+  const read = (results: DecidedHole[], holeCount = 18, dialect?: "slate") => {
+    const html = renderToStaticMarkup(
+      <MatchCard a={a} b={b} results={results} holeCount={holeCount} dialect={dialect} />
+    );
+    return {
+      html,
+      word: textOf(html, "match-status-word", "</span>"),
+      centre: textOf(html, "match-centre", "</div>"),
+      chipA: textOf(html, "match-margin-a", "</div>"),
+      chipB: textOf(html, "match-margin-b", "</div>"),
+    };
+  };
+  const seq = (rs: ("W" | "L" | "H")[]): DecidedHole[] => rs.map((result, i) => ({ hole: i + 1, result }));
+
+  it("unplayed: the header says Not started and both chips are EMPTY", () => {
+    const c = read([]);
+    expect(c.word).toBe("Not started");
+    expect(c.chipA).toBe("");
+    expect(c.chipB).toBe("");
+    // An unlabelled 0 between two names reads as a score.
+    expect(c.centre).toBe("–");
+  });
+
+  it("unplayed on a slate too — LEFT 16 is not a start", () => {
+    const c = read([], 16, "slate");
+    expect(c.word).toBe("Not started");
+    expect(c.chipA).toBe("");
+  });
+
+  it("level in play: AS on both chips, the round still counting", () => {
+    const c = read(seq(["W", "L"]));
+    expect(c.word).toBe("THRU");
+    expect(c.centre).toBe("2");
+    expect(c.chipA).toBe("AS");
+    expect(c.chipB).toBe("AS");
+  });
+
+  it("halved: Halved on both chips under FINAL", () => {
+    const c = read(seq(Array.from({ length: 18 }, (_, i) => (i % 2 ? "L" : "W"))));
+    expect(c.word).toBe("FINAL");
+    expect(c.chipA).toBe("Halved");
+    expect(c.chipB).toBe("Halved");
+  });
+
+  it("a lead is unchanged: the leader's chip carries it, the other is empty", () => {
+    const c = read(seq(["W"]));
+    expect(c.chipA).toBe("1 UP");
+    expect(c.chipB).toBe("");
+  });
+});

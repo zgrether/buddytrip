@@ -226,7 +226,7 @@ export function PickemHeadToHead({
    * Two ways to be decided and they need different sentences:
    *
    *   - every game is in (`remaining === 0`), which `matchNote` already words
-   *     as "Ty takes it by 12" or "Dead even — half a point each";
+   *     as "Ty takes it by 12" or "Halved — half a point each";
    *   - somebody never submitted, which ends the match before the games do.
    *
    * The second is the one that needs its reason attached. `matchNote` shortens

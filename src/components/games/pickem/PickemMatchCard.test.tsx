@@ -54,7 +54,7 @@ describe("matchNote — precedence, because these states share their numbers", (
   it("separates DEAD EVEN from NOTHING PLAYED — both read 0-0", () => {
     // The empty-versus-unknown split, in copy. A finished 0-0 and an unplayed
     // 0-0 are opposite facts about what is left.
-    expect(matchNote(st({ remaining: 0, margin: 0 }), 8, "Zach", BOTH, NAMES)).toContain("Dead even");
+    expect(matchNote(st({ remaining: 0, margin: 0 }), 8, "Zach", BOTH, NAMES)).toBe("Halved — half a point each");
     expect(matchNote(st({ remaining: 8, margin: 0 }), 0, "Zach", BOTH, NAMES)).toBe("No games in yet");
   });
 

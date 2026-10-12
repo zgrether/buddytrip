@@ -70,8 +70,10 @@ describe("matchDefeatText — one sentence, four surfaces, two separators", () =
    * one, which is the worse failure.
    */
   it("says 'Match halved' when there is no winner", () => {
-    expect(matchDefeatText(null, null, "AS")).toBe("Match halved · AS");
-    expect(matchDefeatText(w, null, "AS")).toBe("Match halved · AS");
+    // Once: "Match halved · AS" said the verdict and then repeated it in
+    // notation. The level word is the whole verdict (PR 9a).
+    expect(matchDefeatText(null, null, "AS")).toBe("Match halved");
+    expect(matchDefeatText(w, null, "AS")).toBe("Match halved");
   });
 
   /**
@@ -86,6 +88,6 @@ describe("matchDefeatText — one sentence, four surfaces, two separators", () =
     expect(matchDefeatText(w, l, "3&2")).toContain(" · ");
     expect(matchDefeatText(w, l, "3&2", "—")).toContain(" — ");
     expect(matchDefeatText(w, l, "3&2", "—")).not.toContain(" · ");
-    expect(matchDefeatText(null, null, "AS", "—")).toBe("Match halved — AS");
+    expect(matchDefeatText(null, null, "AS", "—")).toBe("Match halved");
   });
 });
