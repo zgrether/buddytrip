@@ -12,9 +12,14 @@ import {
   liveRackPointsPerSlot,
   projectableMatchShare,
   payingSchedule,
+  isPlacement,
   type PointsDistribution,
 } from "@/lib/pointsDistribution";
-import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
+import { MATCH_PLAY_TYPES, RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE } from "@/server/lib/gameReadiness";
+import { computeSkinsStandings, skinsGloriousConfig, tallySkins, type SkinsOutcomeRow } from "@/lib/skins";
+import { computeStrokeTeamStandings } from "@/lib/strokePlay";
+import { unitsFromSchema } from "@/lib/strokePlayConfig";
+import { placementPoints } from "@/lib/competitionPlacement";
 import { isMatchesGame, isPickemGame } from "@/lib/resultStrategy";
 import { picksRevealed, type PickemClock } from "@/lib/pickemLifecycle";
 import { pickemFinalize, pickemResolution } from "@/lib/pickemFinalize";
@@ -139,6 +144,36 @@ export interface GameProjectionData {
   /** The COMPETITION is a points cup (`scoring_model = 'points'`). Pick'em
    *  resolves by placement there and by head-to-head otherwise. */
   pointsMode?: boolean;
+  /**
+   * A TEAMLESS race (PR 7): a points competition with no teams, whose units are
+   * PEOPLE. The match arms then credit a side's person, as the finalize pays
+   * them (`matchAwards.ts`, `personOf`) — before 9c-1 they resolved every side
+   * through `userTeam`, which is empty here, so a race being played projected
+   * nobody anything. Handed in by the board, which already decides this for its
+   * own units (`competitionLeaderboard.ts`), so the two cannot disagree.
+   */
+  teamless?: boolean;
+  /** Skins only: this game's recorded hole results, by grouping — the rows the
+   *  finalize reads (`skins_hole_outcomes`). */
+  skins?: Record<string, SkinsOutcomeRow[]>;
+}
+
+/** Stroke play — no exported constant names it; `ROSTER_TYPES` spells it too. */
+const STROKE_TYPE = "gtt_stroke_play";
+
+/**
+ * The unit a match SIDE is credited to. In a team competition, the side's team
+ * (a 2v2 side through its members, by the one pair rule `sideUnit`). In a
+ * teamless race, the side's PERSON — and a two-person side nobody, as the
+ * finalize pays it (2v2 is refused there before it is saved, PR 7 ruling 3).
+ */
+function sideUnitResolver(parts: GameProjectionData["parts"], userTeam: Map<string, string>, teamless: boolean | undefined) {
+  if (teamless) return (s: SideRef | null): string | null => (s?.id && s.type === "user" ? s.id : null);
+  const pgTeam = playGroupUnits(parts, (id) => userTeam.get(id));
+  return (s: SideRef | null): string | null => {
+    if (!s?.id) return null;
+    return (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? null;
+  };
 }
 
 /** gameId → (teamId → projected points). Only games with a projection appear. */
@@ -216,14 +251,54 @@ export function projectGame(input: LiveProjectionInput, data: GameProjectionData
   if (isMatchesGame(t, input.competitionFormat)) return projectMatches(input, data);
   if (t && MATCH_PLAY_TYPES.has(t)) return projectMatch(input, data);
   if (t === RACK_TYPE) return projectRack(input, data);
+  if (t === SKINS_TYPE) return projectSkins(input, data);
+  // PR 9 ruling 3: these rank only a COMPLETE round (see `round_incomplete`).
+  if (t === STROKE_TYPE || t === SCRAMBLE_TYPE) return cannot("round_incomplete");
   return null;
+}
+
+/**
+ * Skins → what the board would pay if the round ended NOW (PR 9 ruling 3:
+ * skins won so far are final, so the order so far is a real standing).
+ *
+ * Not a re-derivation: the finalize's own chain (`server/lib/skins.ts`) —
+ * `tallySkins` → `computeSkinsStandings`, only groupings that have recorded
+ * something, → `computeStrokeTeamStandings(…, "skins")` for a team competition
+ * — and then the board's own payout, `placementPoints` over the game's paying
+ * schedule, ranked by position, which is how the board pays the rank rows that
+ * finalize writes. In a teamless race the people are the units, as the
+ * finalize's user rows are.
+ */
+function projectSkins(g: LiveProjectionInput, data: GameProjectionData): ProjectionOutcome {
+  // The board pays a skins game by its placement schedule and nothing else
+  // (`competitionLeaderboard.ts`: a non-placement distribution pays nothing).
+  const schedule = payingSchedule(isPlacement(g.pointsDistribution) ? g.pointsDistribution.values : null);
+  if (!schedule) return cannot("no_points");
+
+  const participants = data.parts
+    .filter((p) => p.play_group_id != null)
+    .map((p) => ({ userId: p.user_id, groupingId: p.play_group_id as string }));
+  const holeCount = unitsFromSchema(data.schema as Parameters<typeof unitsFromSchema>[0]).length || 18;
+  const glorious = skinsGloriousConfig(g.gameTypeId, data.modifiers);
+  const groupingIds = [...new Set(participants.map((p) => p.groupingId))];
+  const tallies = tallySkins(groupingIds, data.skins ?? {}, holeCount, glorious);
+  const standings = computeSkinsStandings(participants, tallies).filter((s) => s.started);
+
+  const ranked = data.teamless
+    ? standings.map((s) => ({ entityId: s.entityId, value: s.position }))
+    : computeStrokeTeamStandings(
+        standings.map((s) => ({ entityId: s.entityId, rawScore: s.skins, position: s.position })),
+        Object.fromEntries(data.userTeam),
+        "skins"
+      ).map((t) => ({ entityId: t.teamId, value: t.position }));
+  return projected(Object.fromEntries(placementPoints(schedule, ranked, "low_wins")));
 }
 
 export async function computeLiveProjections(
   supabase: SupabaseClient,
   competitionId: string,
   games: LiveProjectionInput[],
-  opts: { pointsMode?: boolean; cupTeamIds?: readonly string[] } = {}
+  opts: { pointsMode?: boolean; cupTeamIds?: readonly string[]; teamless?: boolean } = {}
 ): Promise<LiveProjectionResult> {
   const out: LiveProjections = {};
   const cannotProject: Record<string, CannotProjectReason> = {};
@@ -259,6 +334,24 @@ export async function computeLiveProjections(
     }
     return m;
   };
+  // Skins' own outcomes, read only when a skins game is live (same reasoning).
+  const skinsIds = games.filter((g) => g.gameTypeId === SKINS_TYPE).map((g) => g.id);
+  const skinsRes =
+    skinsIds.length === 0
+      ? { data: [] as Record<string, unknown>[] }
+      : await supabase
+          .from("skins_hole_outcomes")
+          .select("game_id, grouping_id, hole_number, result, winner_user_id")
+          .in("game_id", skinsIds);
+  const skinsByGame = new Map<string, Record<string, SkinsOutcomeRow[]>>();
+  for (const o of (skinsRes.data ?? []) as Record<string, unknown>[]) {
+    const byGrouping = skinsByGame.get(o.game_id as string) ?? skinsByGame.set(o.game_id as string, {}).get(o.game_id as string)!;
+    (byGrouping[o.grouping_id as string] ??= []).push({
+      hole: o.hole_number as number,
+      result: o.result as SkinsOutcomeRow["result"],
+      winnerId: (o.winner_user_id as string | null) ?? null,
+    });
+  }
   const pickemCfgByGame = byGame(pickemCfgRes.data as Record<string, unknown>[] | null);
   const pickemSlateByGame = byGame(pickemSlateRes.data as Record<string, unknown>[] | null);
   const pickemPicksByGame = byGame(pickemPicksRes.data as Record<string, unknown>[] | null);
@@ -386,6 +479,8 @@ export async function computeLiveProjections(
       cupTeamIds: opts.cupTeamIds ?? [],
       pickem: pickemIds.includes(g.id) ? pickemDataFor(g.id) : null,
       pointsMode: opts.pointsMode ?? false,
+      teamless: opts.teamless ?? false,
+      skins: skinsByGame.get(g.id),
     });
     if (proj?.kind === "projected") out[g.id] = proj.byTeam;
     else if (proj?.kind === "cannot") cannotProject[g.id] = proj.reason;
@@ -419,13 +514,9 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Project
   for (const p of parts) hcap.set(p.user_id, effectiveStrokes(p));
   for (const pg of playGroups) hcap.set(pg.id, effectiveStrokes(pg));
 
-  // play_group → its unit (2v2), by the ONE rule the finalize and both game pages
-  // use (`sideUnit`): the members' team only when they all share it.
-  const pgTeam = playGroupUnits(parts, (id) => userTeam.get(id));
-  const sideTeam = (s: SideRef | null): string | null => {
-    if (!s?.id) return null;
-    return (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? null;
-  };
+  // A side's unit: its team (2v2 through the ONE pair rule `sideUnit`), or in a
+  // teamless race its person — `sideUnitResolver`, shared with `projectMatches`.
+  const sideTeam = sideUnitResolver(parts, userTeam, data.teamless);
 
   // Refactor B3: outcome-mode matches source decided holes from recorded
   // outcomes, grouped by match id — mirrors MatchGameView's decidedFor branch.
@@ -487,10 +578,9 @@ function projectMatch(g: LiveProjectionInput, data: GameProjectionData): Project
 function projectMatches(g: LiveProjectionInput, data: GameProjectionData): ProjectionOutcome {
   const { matches, parts, userTeam } = data;
 
-  // The ONE pair rule (`sideUnit`), as in `projectMatch` above.
-  const pgTeam = playGroupUnits(parts, (id) => userTeam.get(id));
-  const sideTeam = (s: SideRef): string | undefined =>
-    (s.type === "play_group" ? pgTeam.get(s.id) : userTeam.get(s.id)) ?? undefined;
+  // The same side → unit rule as `projectMatch` above, teamless race included.
+  const unitOf = sideUnitResolver(parts, userTeam, data.teamless);
+  const sideTeam = (s: SideRef): string | undefined => unitOf(s) ?? undefined;
 
   // #1031's rule, same as golf's projectMatch: the even share is derived LIVE
   // from the CURRENT assigned matches, never a persisted snapshot.

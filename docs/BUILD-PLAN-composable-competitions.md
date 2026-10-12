@@ -1459,6 +1459,24 @@ only once the preview is confirmed. One control per row: *Add to {team}* where t
 single team (head to head), else *Add to team…*, which opens the choice. The narrow
 reading of "no assignments" stands: side games and teamless races keep the whole crew.
 
+**9c-1, as built.** The teamless keying bug was CONFIRMED before any fix: in a teamless race
+both match arms (golf match play, non-golf Matches) returned `{ kind: "projected", byTeam: {} }`,
+and the board filled every person with 0. They now credit a side's person, as the finalize
+pays them, with the board handing in its own `teamless` decision. Skins projects through
+the finalize's own chain and the board's own payout, proven by parity: the projection read
+just before `games.finish` equals what the board banks just after. Stroke and scramble report
+`round_incomplete`. #1120's pick'em gap had already closed in 3c.
+
+**9c-2, added to scope (Zach, 2026-10-12) — completed rows:** each team's result is a SQUARE
+TILE, tinted in the team's colour: points on top (larger, white), dot + team abbreviation
+underneath (smaller, light grey). Every tile the same size, in a FIXED team order on every
+row, so each team forms a column you can scan down. The winner's tile gets the stronger
+tint and the others stay muted — no reordering. Check four teams at 390px: game names may
+wrap, the tiles must stay aligned. Tournaments of individuals keep their winners line.
+**And find out why Cornhole's completed row shows no result** — if it paid none, say
+"no points" rather than nothing. Also settled in 9c-2's look: the words for `round_incomplete`
+("Underway · placed when the round is complete" until then).
+
 ---
 
 ## Vocabulary

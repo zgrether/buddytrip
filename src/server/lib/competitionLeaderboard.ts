@@ -9,7 +9,7 @@ import { projectedTeamTotals } from "@/lib/gameProjection";
 import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 // isConfigured (+ the type sets) moved to gameReadiness.ts (A2-core) so the same
 // "is it configured?" signal backs both this display AND the server enable guard.
-import { MATCH_PLAY_TYPES, RACK_TYPE } from "@/server/lib/gameReadiness";
+import { MATCH_PLAY_TYPES, RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE } from "@/server/lib/gameReadiness";
 import { readBoardInputs, boardRow } from "@/server/lib/boardGames";
 import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
 import { tripDisplayNames } from "./tripDisplayNames";
@@ -1081,7 +1081,14 @@ export async function computeCompetitionLeaderboard(
       return (
         g.status === "active" &&
         startedByGame.has(g.id as string) &&
-        ((t != null && MATCH_PLAY_TYPES.has(t)) || t === RACK_TYPE || isMatchesGame(t, cf) || isPickemGame(t, cf))
+        ((t != null && MATCH_PLAY_TYPES.has(t)) ||
+          t === RACK_TYPE ||
+          // PR 9c-1: skins projects; stroke and scramble report `round_incomplete`.
+          t === SKINS_TYPE ||
+          t === "gtt_stroke_play" ||
+          t === SCRAMBLE_TYPE ||
+          isMatchesGame(t, cf) ||
+          isPickemGame(t, cf))
       );
     })
     .map((g) => {
@@ -1110,6 +1117,9 @@ export async function computeCompetitionLeaderboard(
     pointsMode: scoringModel === "points",
     // Rack's two sides are the cup's two teams (ruling 12).
     cupTeamIds: teamIds,
+    // A teamless race's units are people, so the match arms credit people —
+    // the board's own decision above, handed in rather than re-derived (9c-1).
+    teamless,
   });
   const cannotProject = live.cannotProject;
   // Every cup team, explicitly, on every projected game. An arm reports only the

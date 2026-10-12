@@ -276,3 +276,40 @@ describe("a TEAMED race is unchanged (the control)", () => {
     expect(lb.pointsAvailable).toBe(9);
   }, 120_000);
 });
+
+/**
+ * PR 9c-1 — a teamless race's LIVE projection, through the real board.
+ *
+ * The board's units here are people, and before 9c-1 the projection arms
+ * resolved every side through `team_assignments` (empty in a teamless race), so
+ * a match being played projected `{}` and the board filled everyone with 0. The
+ * unit test (`liveProjection.teamless.test.ts`) pins the arms; this pins the
+ * WIRING — the board handing its own `teamless` decision to the projection —
+ * which no unit test can see.
+ */
+describe("a teamless race — live projection (PR 9c-1)", () => {
+  it("a match being played projects to the PEOPLE in it, not 0 for everyone", async () => {
+    const { tripId, competitionId } = await ctx.createCupTrip({
+      name: "Teamless live", scoringModel: "points", members: ["member"],
+    });
+    const match = (await ctx.caller().games.create({
+      tripId, gameTypeId: "gtt_match_play", name: "Live singles", competitionId,
+      pointsDistribution: { type: "per_match", value: 4 },
+    })) as { id: string };
+    await ctx.admin.from("games").update({ entry_mode: "outcome" }).eq("id", match.id);
+    const matches = await ctx.caller().matches.setPairings({
+      tripId, gameId: match.id,
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
+    });
+    const matchId = (matches as { id: string }[])[0].id;
+    await ctx.caller().games.enableScoring({ tripId, gameId: match.id });
+    // One hole to the owner: live, started, the owner up.
+    await ctx.caller().matchOutcomes.upsertOutcome({ tripId, gameId: match.id, matchId, holeNumber: 1, result: "side_a" });
+
+    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    expect(lb.teamless).toBe(true);
+    // The leader takes the match's full value if today holds; the trailer 0.
+    expect(lb.projections[match.id]).toEqual({ [owner]: 4, [member]: 0 });
+    expect(lb.hasLiveProjection).toBe(true);
+  });
+});
