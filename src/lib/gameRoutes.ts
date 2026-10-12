@@ -144,6 +144,13 @@ export function gamesPageHref(tripId: string): string {
   return `/trips/${tripId}?view=cup`;
 }
 
+/** The Games page with its Rosters overlay open — read by `CompetitionFace`
+ *  on mount, the way `?setup=1` opens the create flow. For a message that
+ *  names Rosters as the fix and has to take you there (9b look). */
+export function rostersHref(tripId: string): string {
+  return `${gamesPageHref(tripId)}&rosters=1`;
+}
+
 /** One game opened as a PANEL over its trip's Games page, for formats where
  *  `opensAsPanel` holds, with or without a competition: the panel host reads every
  *  game on the trip. */

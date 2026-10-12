@@ -6,6 +6,7 @@ import type { DraftMatchConfig } from "@/lib/configDraft";
 import { assignInDraft } from "@/lib/matchDraft";
 import type { LBTeamLite } from "@/components/competition/CompetitionGamesPanel";
 import { slotPool } from "@/lib/pairingShape";
+import type { BuilderTeam, NotOnATeamNote } from "@/lib/builderPool";
 
 /**
  * Non-golf Matches' pairing, in settings — the non-golf ADAPTER over
@@ -45,6 +46,7 @@ export function MatchesBuilder({
   onToggle,
   selector,
   setSelector,
+  notOnATeamFor,
 }: {
   draft: DraftMatchConfig[];
   setDraft: (fn: (prev: DraftMatchConfig[]) => DraftMatchConfig[]) => void;
@@ -71,6 +73,20 @@ export function MatchesBuilder({
   onToggle: () => void;
   selector: { matchIdx: number; slot: "a" | "b"; memberIdx: number } | null;
   setSelector: (s: { matchIdx: number; slot: "a" | "b"; memberIdx: number } | null) => void;
+  /** The picker's "Not on a team" section for a slot bound to `slotTeamId`
+   *  (undefined in a points race) — built by the view, which holds the roster
+   *  rights (`builderPool.ts`). Omitted: no section. */
+  notOnATeamFor?: (slotTeamId: string | undefined) =>
+    | {
+        ids: string[];
+        targets: BuilderTeam[];
+        note: NotOnATeamNote;
+        rostersHref: string;
+        /** Join the team; `onRun` fires when the change runs (after the
+         *  preview, once results are in) — the builder places the person then. */
+        add: (userId: string, teamId: string, onRun: () => void) => void;
+      }
+    | undefined;
 }) {
   // This used to take `const [a, b] = teams` in EVERY cup, so in a points race
   // with three teams, team 3 could never be paired and counted as roster-invalid,
@@ -139,6 +155,21 @@ export function MatchesBuilder({
             setSelector(null);
           }}
           onClose={() => setSelector(null)}
+          notOnATeam={(() => {
+            const section = notOnATeamFor?.(teamForSlot(selector.slot)?.id);
+            if (!section) return undefined;
+            return {
+              ids: section.ids,
+              targets: section.targets,
+              note: section.note,
+              rostersHref: section.rostersHref,
+              onAdd: (userId: string, teamId: string) =>
+                section.add(userId, teamId, () => {
+                  setDraft((prev) => assignInDraft(prev, selector.matchIdx, selector.slot, selector.memberIdx, userId));
+                  setSelector(null);
+                }),
+            };
+          })()}
         />
       )}
     </>
