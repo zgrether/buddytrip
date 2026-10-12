@@ -124,3 +124,42 @@ describe("skins — the live projection is what the board banks", () => {
     expect(added).toEqual(projected);
   });
 });
+
+/**
+ * A grouping that has not teed off is ABSENT, not on 0 skins.
+ *
+ * The finalize banks only groupings that have recorded something (its comment
+ * names the incident: unplayed players all on 0 tied for a place and took
+ * points they never played for). The live projection must agree, or a round
+ * in progress would hand a share of the places to people who have not started.
+ * Both fixtures above have every grouping playing, so they cannot see this.
+ */
+describe("skins — an unstarted grouping projects nothing", () => {
+  it("in a teamless race, only the grouping that has played takes places", async () => {
+    const { tripId, competitionId } = await ctx.createCupTrip({
+      name: "Skins parity — one grouping out", scoringModel: "points",
+      members: [["planner", "Organizer"], ["member", "Member"], ["outsider", "Member"]],
+    });
+    const game = (await ctx.caller().games.create({
+      tripId, gameTypeId: SKINS, name: "Skins", competitionId,
+      pointsDistribution: { type: "placement", values: [6, 3, 1] },
+    })) as { id: string };
+    await ctx.caller().games.addParticipants({ tripId, gameId: game.id, userIds: [owner, planner, member, outsider] });
+    const g1 = await ctx.groupStrokeParticipants(game.id, [owner, planner]);
+    await ctx.groupStrokeParticipants(game.id, [member, outsider]); // not yet teed off
+    await ctx.caller().games.enableScoring({ tripId, gameId: game.id });
+    await play(tripId, game.id, [[g1, 1, owner], [g1, 2, owner], [g1, 3, planner]]);
+
+    const live = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    // owner 2 skins (1st, 6), planner 1 (2nd, 3). The second grouping takes no
+    // place — on 0 they would have tied 3rd–4th and shared the 1.
+    expect(live.projections[game.id]).toEqual({ [owner]: 6, [planner]: 3, [member]: 0, [outsider]: 0 });
+
+    await ctx.caller().games.finish({ tripId, gameId: game.id });
+    const banked = await ctx.caller().competitions.leaderboard({ tripId, competitionId });
+    const before = live.unitTotals as Record<string, number>;
+    const after = banked.unitTotals as Record<string, number>;
+    const added = Object.fromEntries([owner, planner, member, outsider].map((id) => [id, after[id] - (before[id] ?? 0)]));
+    expect(added).toEqual(live.projections[game.id]);
+  });
+});
