@@ -73,7 +73,7 @@ describe("completed tiles — No points, and the name that wraps", () => {
   it("the game name WRAPS beside tiles, and still truncates on a match-play row", () => {
     const points = render(new Map([["a", cell(2)]]));
     const name = (html: string) => html.slice(html.indexOf('class="block text-[13px]'), html.indexOf(">Cornhole<"));
-    expect(name(points)).toContain("[overflow-wrap:anywhere]");
+    expect(name(points)).toContain("[overflow-wrap:break-word]");
     expect(name(points)).not.toContain("truncate");
     const match = render(new Map([["a", cell(2)]]), "match_play", TEAMS.slice(0, 2));
     expect(name(match)).toContain("truncate");

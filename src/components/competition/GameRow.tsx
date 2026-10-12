@@ -849,7 +849,7 @@ export function CompletedRow({
       })}
       <span className="min-w-0 flex-1">
         <span
-          className={`block text-[13px] font-medium ${showsTiles ? "[overflow-wrap:anywhere]" : "truncate"}`}
+          className={`block text-[13px] font-medium ${showsTiles ? "[overflow-wrap:break-word]" : "truncate"}`}
           style={{ color: "var(--color-bt-text)" }}
         >
           {game.name}
@@ -1080,10 +1080,11 @@ function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<stri
   );
 }
 
-/** A tile's side, and the gap between tiles. Four tiles and three gaps fit a
- *  390px row beside a wrapping game name (9c-2's check). */
-const TILE = 48;
-const TILE_GAP = 6;
+/** A tile's side, and the gap between tiles. Four tiles and three gaps leave a
+ *  390px row ~105px for the game name — enough that a long word ("Championship")
+ *  wraps whole rather than breaking mid-word, which 48px tiles forced (9c-2's check). */
+const TILE = 42;
+const TILE_GAP = 4;
 function tilesWidth(n: number): number {
   return n * TILE + Math.max(0, n - 1) * TILE_GAP;
 }

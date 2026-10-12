@@ -119,9 +119,9 @@ describe("CompletedRow — IN REVIEW replaces the result", () => {
         onPrefetch={() => {}}
       />
     );
-    // PR 9c-2: a points tournament's result is a row of 48px tiles 6px apart,
-    // and the badge spans what it stands in for: 4 × 48 + 3 × 6.
-    expect(html).toContain("width:210px");
+    // PR 9c-2: a points tournament's result is a row of 42px tiles 4px apart,
+    // and the badge spans what it stands in for: 4 × 42 + 3 × 4.
+    expect(html).toContain("width:180px");
   });
 
   it("a match-play cup's badge spans its grid columns", () => {
