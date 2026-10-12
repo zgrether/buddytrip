@@ -1,0 +1,25 @@
+-- Build every local database under the post-2026-10-30 rules (#1440).
+--
+-- From 2026-10-30 Supabase no longer grants `anon` / `authenticated` /
+-- `service_role` on new tables in `public` — in production, in preview branches,
+-- and in a fresh local database. This file makes that true HERE, today: the CLI
+-- runs `supabase/roles.sql` after the platform's own setup and BEFORE the
+-- migrations, on every `supabase start` and `supabase db reset` — CI's test and
+-- E2E jobs included. So every CI run builds the schema the way the 31st will,
+-- and a table that forgets its grants fails on the PR that adds it instead of
+-- on every PR at once on that morning.
+--
+-- `postgres` only. Every table in `public` is owned by `postgres` (the
+-- migrations create them), so its default ACL is the one that applies. The
+-- `supabase_admin` entry cannot be changed from here — the file does not run
+-- with that right (measured: "permission denied to change default privileges")
+-- — and nothing of ours is created as `supabase_admin`.
+--
+-- Production never runs this file: `supabase db push` applies migrations only.
+-- Measured on a separate local stack (CLI 2.78.1, CI's pin): with this revoke
+-- and without migration 211, 49 relations came up with no Data API grant; with
+-- 211, the grants were identical to production's (154 of 154 rows) and the full
+-- suite passed. CI checks that the revoke took effect (`ci.yml`), so a CLI that
+-- stopped running this file could not quietly put the automatic grants back.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE ALL ON TABLES FROM anon, authenticated, service_role;
