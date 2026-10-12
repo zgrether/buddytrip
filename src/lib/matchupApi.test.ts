@@ -10,6 +10,7 @@ import {
   teamsUrl,
   upcomingFirst,
   type MatchupTeam,
+  scheduleLine,
 } from "./matchupApi";
 import fixture from "./espnFixture.test-fixture.json";
 
@@ -413,5 +414,16 @@ describe("the index a caller holds", () => {
       "leagueId",
       "shortName",
     ]);
+  });
+});
+
+describe("scheduleLine — #1611: 'couldn't load' is not 'no games'", () => {
+  it("a failed load says so and keeps the type-it-in way out", () => {
+    expect(scheduleLine({ failed: true })).toBe(
+      "Couldn't load this team's games just now — try again, or type the game in below."
+    );
+  });
+  it("a schedule that really is empty", () => {
+    expect(scheduleLine({ failed: false })).toBe("No games found — type the game in below.");
   });
 });
