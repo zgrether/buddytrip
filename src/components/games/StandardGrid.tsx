@@ -3,6 +3,7 @@
 import { useState, Fragment } from "react";
 import { ChevronDown, Flag, Check } from "lucide-react";
 import { useTeeVisibility } from "@/hooks/useTeeVisibility";
+import { MATCH_LEVEL_WORD } from "@/lib/matchPlay";
 import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, type RawStrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
 import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
@@ -1403,7 +1404,7 @@ function HoleMarkCell({ mark, color }: { mark: HoleMark | null; color: string })
   if (mark === "level")
     return (
       <span style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-text-dim)" }} data-testid="outcome-as">
-        AS
+        {MATCH_LEVEL_WORD.level}
       </span>
     );
   return <LeadPill value={mark.lead} color={color} />;

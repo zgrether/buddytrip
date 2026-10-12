@@ -734,7 +734,26 @@ describe("quickGameSubtitle — format-aware", () => {
 
   it("an all-square match says so", () => {
     const s = matchGame({ entryMode: "outcome", outcomes: { "1": "side_a", "2": "side_b" } });
-    expect(quickGameSubtitle(s)).toBe("All square thru 2");
+    // The match card's level word (`MATCH_LEVEL_WORD`), not a private phrase.
+    expect(quickGameSubtitle(s)).toBe("AS thru 2");
+  });
+
+  /**
+   * A score with no hole DECIDED: one side has putted out on 1, the other has
+   * not. That is "a score exists" to the shared unscored line above it, so the
+   * match formatter does see it — and used to call it "All square thru 0".
+   */
+  it("a score with no hole decided is Not started, never AS thru 0", () => {
+    // Keyed by SIDE: a match scores sides (`scoringEntityIds`), not players.
+    const s = matchGame({ values: { sA: { "1": 4 } } });
+    expect(quickGameSubtitle(s)).toBe("Not started");
+  });
+
+  it("a match level after the last hole is Halved", () => {
+    const outcomes = Object.fromEntries(
+      Array.from({ length: 18 }, (_, i) => [String(i + 1), i % 2 === 0 ? "side_a" : "side_b"] as const)
+    );
+    expect(quickGameSubtitle(matchGame({ entryMode: "outcome", outcomes }))).toBe("Halved after 18");
   });
 
   it("a 2v2 side is named by both partners", () => {

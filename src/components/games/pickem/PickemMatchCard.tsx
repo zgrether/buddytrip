@@ -3,6 +3,7 @@
 import { PickemAbsenceNotice, NO_PICKS } from "./PickemAbsenceNotice";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import type { MatchStanding } from "@/lib/pickemBoard";
+import { MATCH_LEVEL_WORD } from "@/lib/matchPlay";
 
 /** Identity for one side, in the shape `avatarFor` already returns. */
 export interface SideAvatar {
@@ -88,7 +89,8 @@ export function matchPill(
 }
 
 const PILL_LABEL: Record<MatchPill, string> = {
-  "not-started": "Not started",
+  // The match card's word for the same state (`matchLevel`), not a copy of it.
+  "not-started": MATCH_LEVEL_WORD.not_started,
   live: "Live",
   clinched: "Clinched",
   final: "Final",
@@ -113,7 +115,7 @@ export function matchNote(
 
   if (s.remaining === 0) {
     return s.margin === 0
-      ? "Dead even — half a point each"
+      ? `${MATCH_LEVEL_WORD.halved} — half a point each`
       : `${leaderName} takes it by ${lead}`;
   }
 
@@ -162,6 +164,12 @@ export function matchNote(
     return `${other} takes it`;
   }
 
+  /* NOT the level words, on purpose. Both screens render this beside
+     `matchPill`, and the pill already says "Not started" from
+     `MATCH_LEVEL_WORD` — the note saying it too would be one fact twice. The
+     pill is the label; this is the sentence after it. Only the halved verdict
+     above takes the shared word, because there the pill says "Final" and the
+     note is the only place the result is named. */
   if (resolvedCount === 0) return "No games in yet";
   if (s.margin === 0) return `Level with ${s.remaining} to play`;
   if (s.clinched) {

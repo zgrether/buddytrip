@@ -1,59 +1,67 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MatchCard } from "./MatchCard";
+import type { DecidedHole } from "@/lib/matchPlay";
 
 /**
- * THE `AS` CHIP USES ONE SOURCE ON BOTH PATHS.
+ * `AS` USES ONE SOURCE ON BOTH PATHS.
  *
  * Written first as an instrument, then kept as a guard.
  *
- * The survey found the all-square `AS` chip renders at 2.95 : 1 on a light
- * card. That was measured — but on the NEUTRAL path (Quick Match Play, no team
- * colours). The claim that the TEAM path renders identically was READ, from
- * `Margin`'s expression having no `teams` term:
+ * The survey found the all-square `AS` CHIP rendered at 2.95 : 1 on a light
+ * card. That was measured on the NEUTRAL path (Quick Match Play, no team
+ * colours), and the claim that the TEAM path rendered identically was READ, so
+ * it was measured before building rather than after. It held.
  *
- *     color: active ? teamTextColor(color) : NEU_HALF
- *
- * That distinction mattered: C's priority rested on `AS` being below the bar on
- * the main BBMI path, not just in Quick Play. So it was measured before
- * building rather than after. It held — both paths resolve the same source.
- *
- * The file stays because the invariant is worth holding: if someone gives the
- * team path its own halved treatment they must do it deliberately, and this
- * fails when they do.
- *
- * Both cards below are ALL SQUARE (`results: []`), so neither side leads and
- * `Margin` renders its inactive arm on both sides of both cards.
+ * PR 9a then took `AS` out of the chips altogether (Zach's looks: a tie belongs
+ * to neither side, so it is said once, in the header's centre label — "AS ·
+ * THRU" — and both chips stay empty). The invariant moved with it and is still
+ * worth holding: the word reaches the screen through the HEADER's colour, with
+ * no `teams` term, so giving the team path its own treatment has to be done
+ * deliberately and fails here when it is.
  */
 
 const A = { id: "a", name: "Amber Squad", color: "#f59e0b" };
 const B = { id: "b", name: "Cyan Crew", color: "#06b6d4" };
 
-/** The token both paths must resolve `AS` through. Asserted as the string that
- *  reaches the DOM, not imported — the point is what renders. */
-const HALVED = "var(--color-bt-match-halved)";
+/** One hole each: level, with sixteen to play. */
+const LEVEL: DecidedHole[] = [
+  { hole: 1, result: "W" },
+  { hole: 2, result: "L" },
+];
 
 const render = (withTeams: boolean) =>
   renderToStaticMarkup(
     <MatchCard
       a={A}
       b={B}
-      results={[]}
+      results={LEVEL}
       {...(withTeams ? { leftColor: "#f59e0b", rightColor: "#06b6d4" } : {})}
     />,
   );
 
-describe("the AS chip resolves the same source on both paths", () => {
-  it("neutral path paints AS through --color-bt-match-halved", () => {
-    const html = render(false);
-    expect(html).toContain("AS");
-    expect(html).toContain(HALVED);
+/** The header word's opening tag plus its text — ONE node, by testid. */
+function statusWord(html: string): { tag: string; text: string } {
+  const at = html.indexOf('data-testid="match-status-word"');
+  const start = html.lastIndexOf("<", at);
+  const open = html.indexOf(">", at) + 1;
+  return { tag: html.slice(start, open), text: html.slice(open, html.indexOf("</span>", open)) };
+}
+
+/** The header's in-play colour — asserted as the string that reaches the DOM. */
+const DIM = "color:var(--color-bt-text-dim)";
+
+describe("AS resolves the same source on both paths", () => {
+  it("neutral path: AS is in the header, in the header's dim", () => {
+    const w = statusWord(render(false));
+    expect(w.text).toBe("AS · THRU");
+    expect(w.tag).toContain(DIM);
   });
 
   it("TEAM path does too — the measured claim", () => {
-    const html = render(true);
-    expect(html).toContain("AS");
-    expect(html).toContain(HALVED);
+    const w = statusWord(render(true));
+    expect(w.text).toBe("AS · THRU");
+    expect(w.tag).toContain(DIM);
   });
 
   it("the team colours ARE reaching the card — the team path is genuinely taken", () => {

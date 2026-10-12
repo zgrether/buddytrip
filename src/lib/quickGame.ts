@@ -8,7 +8,9 @@ import {
   strokeHoles,
   buildDecided,
   buildDecidedFromOutcomes,
+  matchLevel,
   matchState,
+  MATCH_LEVEL_WORD,
   type DecidedHole,
   type HoleOutcomeResult,
   type MatchState,
@@ -1230,9 +1232,12 @@ function quickMatchSubtitle(state: QuickMatchState): string {
   const st = quickMatchState(state);
   if (st.over && st.margin) {
     const winner = st.leader === "A" ? state.sideA : st.leader === "B" ? state.sideB : null;
-    return winner ? `${quickSideName(state, winner)} won ${st.margin}` : `Halved after ${st.thru}`;
+    return winner ? `${quickSideName(state, winner)} won ${st.margin}` : `${MATCH_LEVEL_WORD.halved} after ${st.thru}`;
   }
-  if (st.diff === 0) return `All square thru ${st.thru}`;
+  // The level words are the match card's (`matchLevel`): an unplayed match is
+  // "Not started", never "All square thru 0".
+  const level = matchLevel(st);
+  if (level) return level === "level" ? `${MATCH_LEVEL_WORD.level} thru ${st.thru}` : MATCH_LEVEL_WORD[level];
   const leadSide = st.leader === "A" ? state.sideA : state.sideB;
   const dormie = st.dormie ? " · dormie" : "";
   return `${quickSideName(state, leadSide)} ${st.up} up thru ${st.thru}${dormie}`;
