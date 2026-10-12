@@ -23,8 +23,6 @@ const render = (over: Partial<Parameters<typeof StandingsRows>[0]> = {}) =>
       units={units}
       unitTotals={{ blue: 6, red: 2 }}
       projections={{ live: { blue: 0, red: 4, green: 0 } }}
-      bankedByGame={new Map()}
-      games={[{ id: "live", name: "Day 3" }]}
       viewerUnitId="red"
       {...over}
     />

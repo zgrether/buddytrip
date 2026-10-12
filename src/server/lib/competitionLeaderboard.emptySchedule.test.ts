@@ -9,9 +9,9 @@ import { payingSchedule } from "@/lib/pointsDistribution";
  * truthy. Handed to `placementDetail`, it assigns every team a real PLACE worth
  * zero, and the board's Game-by-game table printed `0 | 0` where "no payout
  * configured" belonged — a decided prize of nothing. Reproduced before this fix
- * by driving the real leaderboard into the real `PointsMatrix` (#1410's RUN
- * comment); `1st · 0 pts`, the symptom the issue was filed with, is printed by
- * no surface at all.
+ * by driving the real leaderboard into the then `PointsMatrix` (#1410's RUN
+ * comment; that table was removed in PR 9c-2, and the cells now feed the
+ * completed TILES, where a schedule paying nothing reads "No points").
  *
  * The fix is at the SEAM — `reconcileConvention`, which every positions arm
  * passes through — not in the pick'em arm where it was caught. So the cases

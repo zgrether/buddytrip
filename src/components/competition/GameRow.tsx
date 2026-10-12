@@ -95,11 +95,11 @@ export function cannotProjectCopy(reason: CannotProjectReason): string {
       return "Underway · matches not drawn yet";
     case "seats_vacated":
       return "Underway · matches need re-pairing";
-    // PR 9c-1. Rendered nowhere yet — stroke and scramble live only in points
-    // tournaments, and this row shows cannot-copy in match-play cups only; 9c-2
-    // brings projections to points tournaments, and its look settles the words.
+    // A live stroke or scramble round in a points tournament (Zach's words,
+    // 9c-2 look). It counts once finished; until then it adds nothing to the
+    // hatched bars.
     case "round_incomplete":
-      return "Underway · placed when the round is complete";
+      return "Underway · counts when finished";
   }
 }
 
@@ -348,9 +348,11 @@ export function GameRow({
         ? "Projected results" // the cells now carry projections → the subtitle says so
         : // A live game whose format projects but can't: say WHY, instead of
           // the same "Underway" a format with no projection at all gets (3c).
-          // Match-play cups only, like the pills this stands in for — a points
-          // cup shows no projection anywhere yet (PR 9 builds that surface).
-          scoringModel === "match_play" && cannotProject
+          // Match-play cups, like the pills this stands in for. In a points
+          // tournament only a stroke or scramble round says why: its standing
+          // banks when the round is done, and the hatched bars above have
+          // nothing from it until then (9c-2 look).
+          (scoringModel === "match_play" && cannotProject) || cannotProject === "round_incomplete"
           ? cannotProjectCopy(cannotProject)
           : "Underway · scoring"
       : section === "ready"
@@ -730,8 +732,8 @@ export function ProjectionPill({
  * top-pinned across sections: the sections below (Live/Ready/Configuring/New)
  * either don't award team points yet or are still being set up, so there's no
  * team-column meaning to label there — header lives where team-vs-team scoring
- * lives. match_play only (points cups get their own team-column header inside
- * `PointsMatrix`'s game-by-game table — no duplicate header here).
+ * lives. match_play only: a points tournament's completed TILES carry each
+ * team's abbreviation themselves (9c-2).
  */
 export function GridColumnHeader({ teams }: { teams: LBTeam[] }) {
   return (
@@ -772,10 +774,14 @@ export function GridColumnHeader({ teams }: { teams: LBTeam[] }) {
  *                team-colored number in a column that aligns to
  *                `GridColumnHeader` above. Winner gets a faint team-tinted
  *                chip; loser is dimmed; a tie gives both equal weight (no chip).
- *   points     → the existing horizontal placement podium (1st/2nd/3rd…) — left
- *                as-is; `PointsMatrix` (the collapsible games×teams audit table)
- *                already gives points cups the full per-game team-column grid,
- *                so this compact row isn't duplicating that.
+ *   points     → CompletedTiles — one square tile per team in a FIXED team
+ *                order (9c-2); the completed list IS the game-by-game view.
+ *
+ * TWO PRESENTATIONS ON PURPOSE, FOR NOW (Zach, 9c-2 look). A cup keeps its own
+ * presentation — team names ONCE in the header, the winner's number tinted —
+ * and tiles are for tournaments. To be revisited once tournaments have been used
+ * for real: if the tiles prove the better design in practice, head-to-head can
+ * follow them then. Until that decision, this is not drift to tidy up.
  */
 /** "Re-credited by Zach · Oct 4". */
 export function recreditedNoteText(r: { byName: string; at: string }): string {

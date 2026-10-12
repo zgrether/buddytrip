@@ -17,7 +17,6 @@ import type { ScoringModel } from "@/lib/gameTypes";
 import type { CannotProjectReason } from "@/lib/gameProjection";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
-import { PointsMatrix } from "./PointsMatrix";
 import { ReorderableSection } from "./ReorderableGames";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -416,8 +415,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           name each game's winners instead. The bars are PR 9's. */}
       {/* PR 9c-2: ONE standings component for a points tournament, teams or
           people — banked solid, projected hatched, no points yet rather than 0,
-          the viewer's row filled, and each row opens game by game. Team names
-          stay editable from the hero. */}
+          the viewer's row filled. The game-by-game view is the COMPLETED TILES
+          below (Zach's 9c-2 look dropped both the Game by game matrix and the
+          row expansion: three views of one set of numbers). Team names stay
+          editable from the hero. */}
       {scoringModel === "points" && (
         <StandingsRows
           kind={data.teamless ? "players" : "teams"}
@@ -431,13 +432,8 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           }))}
           unitTotals={unitTotals}
           projections={data.projections}
-          bankedByGame={cellsByGame}
-          games={liveGames.map((g) => ({ id: g.id, name: g.name }))}
           viewerUnitId={data.teamless ? me?.id : myTeamId}
         />
-      )}
-      {scoringModel === "points" && !data.teamless && (
-        <PointsMatrix games={liveGames} teams={teams} cellsByGame={cellsByGame} teamTotals={teamTotals} />
       )}
 
       {/* Bones copy — the calm setup voice, only while the board is empty and
@@ -965,8 +961,8 @@ function SessionBreakdown({
               <span className="tabular-nums" style={{ color: "var(--color-bt-text)" }}>{sectionGames.length}</span>
             </p>
             {/* Team short-name column header — sits directly above COMPLETED
-                only (§1.2), match_play only (points cups get their own
-                team-column header inside PointsMatrix). */}
+                only (§1.2), match_play only: a points tournament's completed
+                tiles carry each team's abbreviation themselves (9c-2). */}
             {key === "completed" && scoringModel === "match_play" && (
               <GridColumnHeader teams={teams} />
             )}

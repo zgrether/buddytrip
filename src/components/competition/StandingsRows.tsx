@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown } from "lucide-react";
-import { standingsRows, type StandingsGame, type StandingsUnit } from "@/lib/standingsRows";
+import { standingsRows, type StandingsUnit } from "@/lib/standingsRows";
 import { teamInk } from "@/lib/teamTextColor";
 import { fmtPts } from "./GameRow";
 
@@ -19,9 +17,10 @@ import { fmtPts } from "./GameRow";
  *    unit that has played and banked nothing shows its real 0, ranked.
  *  - The viewer's own row (their team, or themselves) takes the accent fill,
  *    the same "your own one is the filled card" the pick'em board uses.
- *  - Tap a row: game by game, banked and projected, the projected lines marked
- *    with the same hatch as not yet earned (ruling 4: the game name and the
- *    points, nothing more).
+ *  - A unit with no finished game but a live projection shows its hatched bar
+ *    and a dash for rank: not ranked yet, something coming. No extra words
+ *    (Zach's 9c-2 look).
+ *  - No game-by-game expansion: the completed tiles are that view (9c-2 look).
  */
 
 /** The hatch — the unit's colour, striped over a faded copy of itself. The first
@@ -36,21 +35,16 @@ export function StandingsRows({
   units,
   unitTotals,
   projections,
-  bankedByGame,
-  games,
   viewerUnitId,
   kind,
 }: {
   units: StandingsUnit[];
   unitTotals: Record<string, number>;
   projections: Record<string, Record<string, number>>;
-  bankedByGame: Map<string, Map<string, { points: number }>>;
-  games: StandingsGame[];
   viewerUnitId: string | null | undefined;
   kind: "teams" | "players";
 }) {
-  const rows = standingsRows({ units, unitTotals, projections, bankedByGame, games, viewerUnitId });
-  const [open, setOpen] = useState<string | null>(null);
+  const rows = standingsRows({ units, unitTotals, projections, viewerUnitId });
   const anyProjected = rows.some((r) => r.projected > 0);
   const noun = kind === "teams" ? (units.length === 1 ? "team" : "teams") : units.length === 1 ? "player" : "players";
 
@@ -79,7 +73,6 @@ export function StandingsRows({
         )}
         {rows.map((r, idx) => {
           const color = r.color ?? PERSON_COLOR;
-          const expanded = open === r.id;
           const isLeader = idx === 0 && r.hasResult && r.banked > 0;
           return (
             <div
@@ -89,12 +82,7 @@ export function StandingsRows({
               data-testid={`standings-row-${r.id}`}
               data-viewer={r.isViewer ? "true" : undefined}
             >
-              <button
-                type="button"
-                onClick={() => setOpen(expanded ? null : r.id)}
-                aria-expanded={expanded}
-                className="flex w-full items-center gap-3 px-2 py-1.5 text-left"
-              >
+              <div className="flex w-full items-center gap-3 px-2 py-1.5">
                 <span className="w-4 shrink-0 text-[12px] font-semibold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
                   {r.rank ?? "–"}
                 </span>
@@ -128,35 +116,7 @@ export function StandingsRows({
                 >
                   {r.hasResult ? fmtPts(r.banked) : ""}
                 </span>
-                <ChevronDown
-                  size={14}
-                  className="shrink-0 transition-transform"
-                  style={{ color: "var(--color-bt-text-dim)", transform: expanded ? "rotate(180deg)" : undefined }}
-                />
-              </button>
-              {expanded && (
-                <div className="space-y-1 pb-2 pl-9 pr-8" data-testid={`standings-breakdown-${r.id}`}>
-                  {r.breakdown.length === 0 && (
-                    <p className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                      No games yet.
-                    </p>
-                  )}
-                  {r.breakdown.map((line) => (
-                    <div key={line.gameId} className="flex items-center gap-2 text-[12.5px]" data-testid={`standings-line-${r.id}-${line.gameId}`} data-projected={line.projected ? "true" : "false"}>
-                      <span
-                        className="inline-block h-2 w-3 shrink-0 rounded-sm"
-                        style={{ background: line.projected ? hatch(color) : color }}
-                      />
-                      <span className="min-w-0 flex-1" style={{ color: line.projected ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
-                        {line.name}
-                      </span>
-                      <span className="shrink-0 font-semibold tabular-nums" style={{ color: line.projected ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
-                        {fmtPts(line.points)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              </div>
             </div>
           );
         })}

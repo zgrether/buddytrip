@@ -14,6 +14,10 @@
  *    nothing (ruling 30).
  *  - The bars share ONE scale: the largest banked + projected on the board, so a
  *    team's hatched segment can reach past the leader's solid one.
+ *
+ * There is no game-by-game breakdown here. It was built (ruling 4) and dropped on
+ * Zach's 9c-2 look: the completed TILES are the game-by-game view, one row per
+ * game with the teams in fixed columns, and the projected total is on the bar.
  */
 
 export interface StandingsUnit {
@@ -23,19 +27,6 @@ export interface StandingsUnit {
   /** A team's colour; null for a person. */
   color: string | null;
   hasResult: boolean;
-}
-
-export interface StandingsGame {
-  id: string;
-  name: string;
-}
-
-export interface BreakdownLine {
-  gameId: string;
-  name: string;
-  points: number;
-  /** A live game's "if today holds" — not yet earned. */
-  projected: boolean;
 }
 
 export interface StandingsRow {
@@ -52,8 +43,6 @@ export interface StandingsRow {
   /** The two bar segments as % of the shared scale. */
   bankedPct: number;
   projectedPct: number;
-  /** Game by game, in the board's game order: banked first-class, projected marked. */
-  breakdown: BreakdownLine[];
 }
 
 export function standingsRows(p: {
@@ -61,32 +50,17 @@ export function standingsRows(p: {
   unitTotals: Record<string, number>;
   /** gameId → unitId → projected points, live games only. */
   projections: Record<string, Record<string, number>>;
-  /** gameId → unitId → the finished game's banked points. */
-  bankedByGame: Map<string, Map<string, { points: number }>>;
-  /** Every game on the board, in its order. */
-  games: StandingsGame[];
   /** The viewer's unit: their team, or in a teamless race themselves. */
   viewerUnitId: string | null | undefined;
 }): StandingsRow[] {
   const projectedOf = (unitId: string) =>
     Object.values(p.projections).reduce((sum, byUnit) => sum + Math.max(0, byUnit[unitId] ?? 0), 0);
 
-  const base = p.units.map((u) => {
-    const banked = u.hasResult ? p.unitTotals[u.id] ?? 0 : 0;
-    const breakdown: BreakdownLine[] = [];
-    for (const g of p.games) {
-      const cell = p.bankedByGame.get(g.id)?.get(u.id);
-      if (cell) {
-        breakdown.push({ gameId: g.id, name: g.name, points: cell.points, projected: false });
-        continue;
-      }
-      // A live game fills every unit, 0 included, so a 0 here also means "not
-      // in this game". A line for it would list games the unit is not playing.
-      const live = p.projections[g.id]?.[u.id];
-      if (live != null && live > 0) breakdown.push({ gameId: g.id, name: g.name, points: live, projected: true });
-    }
-    return { u, banked, projected: projectedOf(u.id), breakdown };
-  });
+  const base = p.units.map((u) => ({
+    u,
+    banked: u.hasResult ? p.unitTotals[u.id] ?? 0 : 0,
+    projected: projectedOf(u.id),
+  }));
 
   const scored = base
     .filter((r) => r.u.hasResult)
@@ -115,7 +89,6 @@ export function standingsRows(p: {
     isViewer: p.viewerUnitId != null && r.u.id === p.viewerUnitId,
     bankedPct: pct(r.banked),
     projectedPct: pct(r.projected),
-    breakdown: r.breakdown,
   }));
 }
 

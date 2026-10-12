@@ -12,8 +12,6 @@ describe("standingsRows — order and rank are BANKED", () => {
       unitTotals: { a: 10, b: 6, c: 6, d: 2 },
       // d would lead on projection — it stays last: a projection is not a result.
       projections: { live: { a: 0, b: 0, c: 0, d: 20 } },
-      bankedByGame: new Map(),
-      games: [{ id: "live", name: "Day 3" }],
       viewerUnitId: null,
     });
     expect(rows.map((r) => [r.id, r.rank])).toEqual([["a", 1], ["b", 2], ["c", 2], ["d", 4]]);
@@ -24,8 +22,6 @@ describe("standingsRows — order and rank are BANKED", () => {
       units: [unit("waiting", false), unit("a"), unit("zero")],
       unitTotals: { a: 3, zero: 0 },
       projections: {},
-      bankedByGame: new Map(),
-      games: [],
       viewerUnitId: null,
     });
     expect(rows.map((r) => [r.id, r.rank, r.hasResult])).toEqual([
@@ -42,8 +38,6 @@ describe("standingsRows — the bar's two segments share one scale", () => {
       units: [unit("a"), unit("b")],
       unitTotals: { a: 6, b: 4 },
       projections: { live: { a: 0, b: 4 } },
-      bankedByGame: new Map(),
-      games: [{ id: "live", name: "Day 3" }],
       viewerUnitId: null,
     });
     // scale = max(6 + 0, 4 + 4) = 8.
@@ -52,32 +46,15 @@ describe("standingsRows — the bar's two segments share one scale", () => {
   });
 
   it("everything at zero draws empty bars, not NaN", () => {
-    const [a] = standingsRows({ units: [unit("a")], unitTotals: { a: 0 }, projections: {}, bankedByGame: new Map(), games: [], viewerUnitId: null });
+    const [a] = standingsRows({ units: [unit("a")], unitTotals: { a: 0 }, projections: {}, viewerUnitId: null });
     expect([a.bankedPct, a.projectedPct]).toEqual([0, 0]);
   });
 });
 
-describe("standingsRows — the viewer and the breakdown", () => {
+describe("standingsRows — the viewer", () => {
   it("marks the viewer's own unit, and only it", () => {
-    const rows = standingsRows({ units: [unit("a"), unit("b")], unitTotals: { a: 1, b: 2 }, projections: {}, bankedByGame: new Map(), games: [], viewerUnitId: "a" });
+    const rows = standingsRows({ units: [unit("a"), unit("b")], unitTotals: { a: 1, b: 2 }, projections: {}, viewerUnitId: "a" });
     expect(rows.map((r) => [r.id, r.isViewer])).toEqual([["b", false], ["a", true]]);
-  });
-
-  it("game by game in board order: banked lines, then a live game's projection marked as such; a live 0 is no line", () => {
-    const [a] = standingsRows({
-      units: [unit("a")],
-      unitTotals: { a: 6 },
-      projections: { day3: { a: 2 }, day4: { a: 0 } },
-      bankedByGame: cells({ day1: { a: 6 }, day2: { a: 0 } }),
-      games: [{ id: "day1", name: "Day 1" }, { id: "day2", name: "Day 2" }, { id: "day3", name: "Day 3" }, { id: "day4", name: "Day 4" }],
-      viewerUnitId: null,
-    });
-    expect(a.breakdown).toEqual([
-      { gameId: "day1", name: "Day 1", points: 6, projected: false },
-      { gameId: "day2", name: "Day 2", points: 0, projected: false }, // played, scored 0
-      { gameId: "day3", name: "Day 3", points: 2, projected: true },
-    ]);
-    expect(a.projected).toBe(2);
   });
 });
 
