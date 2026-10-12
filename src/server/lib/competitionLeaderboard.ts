@@ -308,6 +308,9 @@ export function reconcileConvention(
  * Absent (every other caller), the board is computed exactly as before.
  */
 export interface LeaderboardOptions {
+  /** Whose board this is: marks each game row's `yours` (PR 9d). Absent for a
+   *  server-side read with no viewer, which marks nothing. */
+  viewerId?: string | null;
   teamRowsOverride?: ReadonlyMap<string, readonly { entity_id: string; position: number | null; raw_score: number | null }[]>;
 }
 
@@ -479,7 +482,7 @@ export async function computeCompetitionLeaderboard(
           // being credited twice (as themselves AND through their team).
           .in("entity_type", teamless ? ["team", "entrant", "user"] : ["team", "entrant"])
       : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[], error: null }),
-    readBoardInputs(supabase, allGames, "cup's", (comp?.trip_id as string | null) ?? null),
+    readBoardInputs(supabase, allGames, "cup's", (comp?.trip_id as string | null) ?? null, opts.viewerId ?? null),
     // The race's PLAYERS (teamless only): a person is a unit from the first game
     // they are IN, before they have a result — "no points yet" (ruling 22).
     teamless && gameIds.length
