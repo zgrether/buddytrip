@@ -14,6 +14,7 @@ import {
   type CourseSummary,
 } from "@/lib/courseService";
 import { validateStrokeIndex, applyStrokeIndexSwap, type IndexEntry } from "@/lib/courseIndex";
+import { courseSearchLine } from "@/lib/courseSearchWords";
 import { NavArrow, HoleProgress } from "../entryChrome";
 
 /**
@@ -86,6 +87,8 @@ export function CoursePicker({
   const [apiResults, setApiResults] = useState<CourseSummary[]>([]);
   const [apiSearching, setApiSearching] = useState(false);
   const [apiSearched, setApiSearched] = useState(false);
+  // The search couldn't run (#1611): a different fact from "found nothing".
+  const [apiFailed, setApiFailed] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => blankDraft(18));
   const [activeTee, setActiveTee] = useState(0);
   const [hole, setHole] = useState(1);
@@ -125,6 +128,7 @@ export function CoursePicker({
     setQuery(v);
     setApiResults([]);
     setApiSearched(false);
+    setApiFailed(false);
   };
 
   // LOCAL typeahead against our own courses table — the common path, zero API
@@ -147,8 +151,13 @@ export function CoursePicker({
       setApiSearching(false); // hit the cap between render and click — button now disables
       return;
     }
-    const r = await searchCourses(q);
-    setApiResults(r);
+    try {
+      setApiResults(await searchCourses(q));
+      setApiFailed(false);
+    } catch {
+      setApiResults([]);
+      setApiFailed(true);
+    }
     setApiSearched(true);
     setApiSearching(false);
   }
@@ -371,6 +380,7 @@ export function CoursePicker({
           apiResults={apiResults}
           apiSearching={apiSearching}
           apiSearched={apiSearched}
+          apiFailed={apiFailed}
           onSearchFull={searchFullDatabase}
           atCap={atCap}
           recent={(recent.data as RecentCourse[]) ?? []}
@@ -458,6 +468,7 @@ function SearchScreen({
   apiResults,
   apiSearching,
   apiSearched,
+  apiFailed,
   onSearchFull,
   atCap,
   recent,
@@ -473,6 +484,7 @@ function SearchScreen({
   apiResults: CourseSummary[];
   apiSearching: boolean;
   apiSearched: boolean;
+  apiFailed: boolean;
   onSearchFull: () => void;
   atCap: boolean;
   recent: RecentCourse[];
@@ -557,7 +569,9 @@ function SearchScreen({
               </p>
               <div className="flex flex-col gap-2">
                 {apiResults.length === 0 ? (
-                  <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>No matches in the database.</p>
+                  <p data-testid="course-search-line" style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
+                    {courseSearchLine({ failed: apiFailed, found: 0, shown: 0 })}
+                  </p>
                 ) : (
                   apiResults.map((c) => <CourseRow key={c.id} name={c.name} sub={c.location} onClick={() => onPick(c)} />)
                 )}

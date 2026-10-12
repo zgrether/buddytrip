@@ -1,13 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET } from "./route";
 import { normalizeSearch } from "@/lib/golfCourseApi";
 
 /**
- * Confirms the graceful no-key fallback for the golf course search route, plus
- * the golfcourseapi → normalized-list mapping (the provider-swap contract).
- * The UI relies on `[]` rather than an error so it can swap to manual entry
- * without flashing a failure state.
+ * The search route's contract, plus the golfcourseapi → normalized-list mapping.
+ *
+ * A search that COULDN'T RUN is an error status; `[]` means it ran and found
+ * nothing (#1611). This REVERSES the route's first design, which returned `[]`
+ * for a missing key and for any upstream failure "so the UI can swap to manual
+ * entry without flashing a failure state". The pickers rendered that `[]` as
+ * "No courses found", which was false, and Zach ruled that a failure must be
+ * named (2026-10-12). Manual entry is still offered either way.
  */
 
 describe("GET /api/golf-courses/search", () => {
@@ -24,12 +28,38 @@ describe("GET /api/golf-courses/search", () => {
     }
   });
 
-  it("returns empty array when GOLFCOURSE_API_KEY is not set", async () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("no API key: 503, not an empty list", async () => {
     const req = new NextRequest("http://localhost/api/golf-courses/search?q=Pebble");
     const res = await GET(req);
+    expect(res.status).toBe(503);
+  });
+
+  it("the upstream refuses: 502, not an empty list", async () => {
+    process.env.GOLFCOURSE_API_KEY = "test-key";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 500 })));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await GET(new NextRequest("http://localhost/api/golf-courses/search?q=Pebble"));
+    expect(res.status).toBe(502);
+  });
+
+  it("the fetch itself fails: 502, not an empty list", async () => {
+    process.env.GOLFCOURSE_API_KEY = "test-key";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await GET(new NextRequest("http://localhost/api/golf-courses/search?q=Pebble"));
+    expect(res.status).toBe(502);
+  });
+
+  it("control: the upstream answers with nothing — 200 and an empty list (that IS 'found nothing')", async () => {
+    process.env.GOLFCOURSE_API_KEY = "test-key";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ courses: [] }), { status: 200 })));
+    const res = await GET(new NextRequest("http://localhost/api/golf-courses/search?q=Pebble"));
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual([]);
+    expect(await res.json()).toEqual([]);
   });
 
   it("returns empty array when query is too short", async () => {

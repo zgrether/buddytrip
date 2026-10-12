@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, AlertTriangle, PencilLine, ChevronRight, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { searchCourses, teeColor, type CourseSummary } from "@/lib/courseService";
+import { courseSearchLine } from "@/lib/courseSearchWords";
 import { manualEntryVisible, dedupeApiCourses } from "@/lib/courseSearch";
 import type { RecentCourse } from "./CoursePicker";
 
@@ -44,6 +45,8 @@ export function CourseSearchPanel({
   const [apiResults, setApiResults] = useState<CourseSummary[]>([]);
   const [apiSearching, setApiSearching] = useState(false);
   const [apiSearched, setApiSearched] = useState(false);
+  // The search couldn't run (#1611): a different fact from "found nothing".
+  const [apiFailed, setApiFailed] = useState(false);
   // The saved course whose tee chooser is expanded (multi-tee select-before-apply).
   const [teePickFor, setTeePickFor] = useState<RecentCourse | null>(null);
   // The tee label currently being applied — drives the per-tee spinner (feedback).
@@ -62,7 +65,7 @@ export function CourseSearchPanel({
 
   const localSearch = trpc.courses.search.useQuery({ q: debounced, limit: 10 }, { enabled: debounced.length >= 2 });
 
-  const onQueryChange = (v: string) => { setQuery(v); setApiResults([]); setApiSearched(false); setTeePickFor(null); };
+  const onQueryChange = (v: string) => { setQuery(v); setApiResults([]); setApiSearched(false); setApiFailed(false); setTeePickFor(null); };
 
   async function searchFullDatabase() {
     const q = query.trim();
@@ -71,8 +74,13 @@ export function CourseSearchPanel({
     const gate = await recordApiCall.mutateAsync().catch(() => ({ permitted: false }));
     await utils.courses.apiUsage.invalidate();
     if (!gate.permitted) { setApiSearching(false); return; }
-    const r = await searchCourses(q).catch(() => []);
-    setApiResults(r);
+    try {
+      setApiResults(await searchCourses(q));
+      setApiFailed(false);
+    } catch {
+      setApiResults([]);
+      setApiFailed(true);
+    }
     setApiSearched(true);
     setApiSearching(false);
   }
@@ -186,11 +194,11 @@ export function CourseSearchPanel({
               <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-bt-text-dim)" }}>From the course database</p>
               {apiDeduped.length === 0 ? (
                 // Empty (§10 / pin #4): no dead end — the manual-entry button
-                // surfaces directly below (gated on apiSearched). Distinguish a
-                // truly-empty return from "all matches already saved above". Copy
-                // is honest placeholder; final voice pending Zach.
-                <p style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
-                  {apiResults.length === 0 ? "No courses found — add it manually below." : "Everything matching is already in your courses above."}
+                // surfaces directly below (gated on apiSearched). The line tells
+                // "couldn't search" from "found nothing" from "all already saved
+                // above", in the one shared wording (#1611).
+                <p data-testid="course-search-line" style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }}>
+                  {courseSearchLine({ failed: apiFailed, found: apiResults.length, shown: apiDeduped.length })}
                 </p>
               ) : (
                 // Picking an API result NAVIGATES to the entry page (it needs a pull

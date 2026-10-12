@@ -19,8 +19,11 @@ export const maxDuration = 60;
  *
  * Cached for 24h via Next's `revalidate` — golf course metadata barely moves.
  *
- * If GOLFCOURSE_API_KEY is not set we return [] (not an error) so the UI can
- * gracefully fall back to manual entry without the user seeing a failure.
+ * A search that COULDN'T RUN is an error status, never `[]` (#1611): no API
+ * key (503), the upstream refusing (502), or the fetch failing (502). `[]` used
+ * to stand for all three, and the pickers rendered it as "No courses found",
+ * which was false. They now say they couldn't search and keep manual entry.
+ * `[]` means the search ran and found nothing.
  *
  * NOTE: golfcourseapi.com's free tier is 50 requests/day. The daily counter +
  * local-first search that protect that cap live one layer up (the picker only
@@ -33,7 +36,7 @@ const REVALIDATE_SECONDS = 60 * 60 * 24; // 24h
 export async function GET(req: NextRequest) {
   const apiKey = process.env.GOLFCOURSE_API_KEY;
   if (!apiKey) {
-    return NextResponse.json([] satisfies CourseSearchResult[]);
+    return NextResponse.json({ error: "course search unavailable" }, { status: 503 });
   }
 
   const q = req.nextUrl.searchParams.get("q")?.trim() ?? "";
@@ -53,15 +56,14 @@ export async function GET(req: NextRequest) {
     });
 
     if (!res.ok) {
-      // Soft-fail: log but return empty so the UI can fall back to manual entry.
       console.error("golfcourseapi search error:", res.status, await res.text());
-      return NextResponse.json([] satisfies CourseSearchResult[]);
+      return NextResponse.json({ error: "course search failed" }, { status: 502 });
     }
 
     const payload = (await res.json()) as { courses?: RawSearchCourse[] };
     return NextResponse.json(normalizeSearch(payload.courses ?? []));
   } catch (err) {
     console.error("golfcourseapi search fetch error:", err);
-    return NextResponse.json([] satisfies CourseSearchResult[]);
+    return NextResponse.json({ error: "course search failed" }, { status: 502 });
   }
 }
