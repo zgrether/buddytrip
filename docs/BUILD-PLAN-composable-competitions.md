@@ -1500,13 +1500,23 @@ something is live), and defer each row's own standing to #1599 — the first ite
 
 **9e, as built.** Deleted from `GameTypeDefinition`, verified unread on `main` first:
 `entrySchema`, `supportsFreeForAll`, `supportsSides`, `requiresSides`, `maxPlayersPerSide`
-(their `game_type_templates` columns are untouched). `allowedContainers` lost its unread
-`head_to_head` half; a list that could only be `["points_race"]` or empty became the
-boolean `allowedInPointsRace` (rack `false`), and its only reader,
-`canPlayInTeamlessRace`, reads that. **Kept: `scoreTables`.** Found while verifying, and
-open: `allowedInPointsRace` is exactly "compatibleScoringModels is null or includes
-points" for all ten formats, and removing its check from the reader changes no answer —
-the same fact declared twice. Deleting it was not in ruling 6, so it is Zach's call.
+(their `game_type_templates` columns are untouched). **`allowedContainers` is gone
+entirely**: its `head_to_head` half was never read (ruling 6), and verifying that showed its
+`points_race` half was exactly "`compatibleScoringModels` is null or includes points" for
+all ten formats — removing its check from its one reader changed no answer. Zach, on #1600:
+delete it here, because a fact declared in two places is what drifts. **Kept: `scoreTables`.**
+
+**This reverses a PR 1 decision, and the reason is recorded rather than implied.** PR 1 kept
+`allowedContainers` deliberately separate from `compatibleScoringModels` ("`allowedContainers`
+declares the target, not today's enforcement", above): its `points_race` entries described
+where formats were HEADED — head-to-head formats that could not legally go into a points race
+until PR 5 opened them — so the two disagreed on purpose. That reason expired when PR 5
+landed; from then they said the same thing. PR 1 also committed the field to going "under the
+delete-by-PR-9 commitment" if it became a false claim; it became a duplicate instead, which is
+the same debt. `compatibleScoringModels` is now the single source, read through
+`isGameTypeForScoringModel(type, "points")` by the add-game filter and `canPlayInTeamlessRace`
+alike. (That predicate's scoring-model check decides no current format — every per-person
+format fits a points tournament — and stays as the guard for a future one that does not.)
 
 ---
 
