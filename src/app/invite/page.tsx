@@ -20,7 +20,7 @@ import { buildAuthHandoff } from "./authHandoff";
  *
  * ── There is no accept step, and building one would have been wrong ────────
  * An invited person is already on the roster: `tripMembers.inviteByEmail`
- * inserts their `trip_members` row (status `invited`) BEFORE the email is sent.
+ * inserts their `trip_members` row BEFORE the email is sent.
  * The invite is a notification that you've been added, not an offer. So this
  * page has exactly one job — work out the shortest path from wherever this
  * person is to the trip, and put them on it.

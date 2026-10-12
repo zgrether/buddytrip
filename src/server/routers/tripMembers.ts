@@ -739,7 +739,7 @@ export const tripMembersRouter = router({
         });
       }
 
-      // Add to trip_members with status 'invited'. The chat floor is set
+      // Add to trip_members. The chat floor is set
       // now so once they accept + sign in they only see Crew chat from
       // this point forward.
       //
