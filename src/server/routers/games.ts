@@ -383,28 +383,31 @@ async function writeManualResults(
  * Returns null for a STANDALONE game (no competition) so the caller skips the
  * check rather than refusing: a split with no teams to apply it to isn't
  * decidable here, and refusing would block a legitimately-incomplete setup.
+ *
+ * A FAILED read is not that case: it THROWS (#1611). Both reads used to answer a
+ * failure by skipping the check, the guard failing open: a failed game read
+ * looked "standalone", a failed count looked "unknown", and a placement split
+ * with more places than teams went through on the strength of a read that never
+ * happened. Fail closed is the rule for safeguards (#1469, Zach): the save is
+ * refused with the retryable read-failure sentence and is never half-checked.
  */
 async function teamCountForGame(
   supabase: SupabaseClient,
   tripId: string,
   gameId: string
 ): Promise<number | null> {
-  const { data: game } = await supabase
-    .from("games")
-    .select("competition_id")
-    .eq("id", gameId)
-    .eq("trip_id", tripId)
-    .maybeSingle();
+  const game = maybeRowOrThrow(
+    await supabase.from("games").select("competition_id").eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
+    "game"
+  );
   const competitionId = game?.competition_id as string | null | undefined;
   if (!competitionId) return null;
-  const { count, error } = await supabase
-    .from("teams")
-    .select("id", { count: "exact", head: true })
-    .eq("competition_id", competitionId);
-  // A failed count must not silently become "0 teams" — that would refuse every
-  // split. Null skips the check, matching the standalone case.
-  if (error) return null;
-  return count ?? null;
+  // A failed count is neither "0 teams" (that would refuse every split) nor
+  // "unknown" (that skips the check): it throws.
+  return countOrThrow(
+    await supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", competitionId),
+    "team count"
+  );
 }
 
 /**
@@ -439,15 +442,16 @@ async function placeCapacityForGame(
       ? bracketPlaceCapacity(incomingEntrantCount)
       : teamPlaceCapacity(await teamCountForGame(supabase, tripId, gameId));
   }
-  const { count: entrants, error } = await supabase
-    .from("bracket_entrants")
-    .select("id", { count: "exact", head: true })
-    .eq("game_id", gameId);
-  // A failed read must not silently become "no entrants" and fall through to the
-  // team count — that would apply the WRONG ceiling to a bracket rather than none.
-  // An unknown capacity never refuses, which is the safe direction here.
-  if (error) return { count: null, source: "teams" };
-  if ((entrants ?? 0) > 0) return bracketPlaceCapacity(entrants);
+  // A failed read must not become "no entrants" and fall through to the team
+  // count (the WRONG ceiling for a bracket), and since #1611 it doesn't become
+  // "unknown capacity" either. That answer never refused, which this comment
+  // used to call the safe direction; for a safeguard it is the guard failing
+  // open (Zach, fail closed). It throws, and the save is refused.
+  const entrants = countOrThrow(
+    await supabase.from("bracket_entrants").select("id", { count: "exact", head: true }).eq("game_id", gameId),
+    "bracket's entrant count"
+  );
+  if (entrants > 0) return bracketPlaceCapacity(entrants);
   return teamPlaceCapacity(await teamCountForGame(supabase, tripId, gameId));
 }
 
