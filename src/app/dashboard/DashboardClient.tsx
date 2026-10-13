@@ -400,7 +400,7 @@ export default function DashboardClient({
               Couldn&apos;t load your trips.
             </p>
             <p className="mt-1 text-sm" style={{ color: "var(--color-bt-text-dim)" }}>
-              This is a connection problem, not a change to your trips.
+              Your trips are fine — try again in a moment.
             </p>
             <button
               type="button"
