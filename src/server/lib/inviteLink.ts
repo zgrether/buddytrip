@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase-admin";
+import { maybeRowOrThrow } from "@/server/lib/rowOrThrow";
 import type { LinkAddressee, LinkTarget } from "@/lib/accessRoute";
 
 /**
@@ -93,15 +94,22 @@ export async function resolveInviteLink(
 
   const admin = createAdminClient();
 
-  const { data: invite, error } = await admin
-    .from("invites")
-    .select(
-      "token, trip_id, email, created_by, accepted_at, trips(title), inviter:users!invites_created_by_fkey(name)"
-    )
-    .eq("token", token)
-    .maybeSingle();
+  // A FAILED read throws (#1611). It used to return null here, which the page
+  // renders as "This invite link isn't valid": a network blip told someone,
+  // often before they had ever used the app, that their invite was bad. Only a
+  // read that SUCCEEDS and finds no row is "names nothing".
+  const invite = maybeRowOrThrow(
+    await admin
+      .from("invites")
+      .select(
+        "token, trip_id, email, created_by, accepted_at, trips(title), inviter:users!invites_created_by_fkey(name)"
+      )
+      .eq("token", token)
+      .maybeSingle(),
+    "invite"
+  );
 
-  if (error || !invite) return null;
+  if (!invite) return null;
 
   // A trip deleted after the invite went out cascades the invite row away, so
   // this is belt-and-braces — but a null join here would render "join null",
@@ -162,22 +170,21 @@ async function lookupAddressee(
   hasAccount: boolean;
   placeholder: { name: string } | null;
 }> {
-  const { data } = await admin
-    .from("users")
-    .select("id, name, is_guest, deleted_at")
-    .eq("email", email)
-    .maybeSingle();
+  // Failed reads throw, as above: a failed lookup used to read as "nobody holds
+  // this address" and offered SIGN-UP to someone who already has an account.
+  const data = maybeRowOrThrow(
+    await admin.from("users").select("id, name, is_guest, deleted_at").eq("email", email).maybeSingle(),
+    "invited address"
+  );
 
   if (!data) return { exists: false, hasAccount: false, placeholder: null };
   if (data.is_guest === false) return { exists: true, hasAccount: true, placeholder: null };
   if (data.deleted_at) return { exists: true, hasAccount: false, placeholder: null };
 
-  const { data: membership } = await admin
-    .from("trip_members")
-    .select("nickname")
-    .eq("trip_id", tripId)
-    .eq("user_id", data.id)
-    .maybeSingle();
+  const membership = maybeRowOrThrow(
+    await admin.from("trip_members").select("nickname").eq("trip_id", tripId).eq("user_id", data.id).maybeSingle(),
+    "invite's crew"
+  );
 
   return {
     exists: true,
@@ -203,11 +210,11 @@ async function lookupAddressee(
  */
 export async function viewerCanSeeTrip(userId: string, tripId: string): Promise<boolean> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("trip_members")
-    .select("user_id")
-    .eq("trip_id", tripId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  return Boolean(data);
+  // A failed read is not "not a member": that answer can route to "You're not
+  // on this trip". It throws, and the page says it couldn't load (#1611).
+  const row = maybeRowOrThrow(
+    await admin.from("trip_members").select("user_id").eq("trip_id", tripId).eq("user_id", userId).maybeSingle(),
+    "trip membership"
+  );
+  return Boolean(row);
 }

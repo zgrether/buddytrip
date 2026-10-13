@@ -11,6 +11,7 @@ import {
 import { createClient } from "@/lib/supabase-server";
 import { resolveAccessRoute } from "@/lib/accessRoute";
 import { resolveInviteLink, viewerCanSeeTrip } from "@/server/lib/inviteLink";
+import { QueryFailedError } from "@/server/lib/rowOrThrow";
 import IdentityChoice from "./IdentityChoice";
 import InviteMessage from "./InviteMessage";
 import { buildAuthHandoff } from "./authHandoff";
@@ -48,7 +49,28 @@ export default async function InvitePage({
 }) {
   const { token } = await searchParams;
 
-  const invite = await resolveInviteLink(token);
+  // A FAILED read says it couldn't load, with Try again on this same link —
+  // never "This invite link isn't valid" (#1611). That sentence used to greet a
+  // network blip, often for someone who had never used the app.
+  const failed = (
+    <InviteMessage
+      title="Couldn't load this invite"
+      // The cause can't be known (a network blip or the server having a bad
+      // moment look the same from here), so the body says the one thing that is
+      // true either way, which is the one that keeps a new person from giving up
+      // or asking for a fresh link (Zach, on #1612's look).
+      body="Your invite is fine — try again in a moment."
+      action={{ href: `/invite?token=${encodeURIComponent(token ?? "")}`, label: "Try again" }}
+    />
+  );
+
+  let invite: Awaited<ReturnType<typeof resolveInviteLink>>;
+  try {
+    invite = await resolveInviteLink(token);
+  } catch (e) {
+    if (e instanceof QueryFailedError) return failed;
+    throw e;
+  }
 
   const supabase = await createClient();
   /**
@@ -86,8 +108,15 @@ export default async function InvitePage({
   const user = resolved.timedOut ? null : resolved.value.data.user;
 
   const viewer = user ? { id: user.id, email: user.email ?? null } : null;
-  const viewerCanSeeTarget =
-    viewer && invite ? await viewerCanSeeTrip(viewer.id, invite.tripId) : false;
+  // Same rule: a failed membership read is not "not a member", which can route
+  // to "You're not on this trip".
+  let viewerCanSeeTarget = false;
+  try {
+    viewerCanSeeTarget = viewer && invite ? await viewerCanSeeTrip(viewer.id, invite.tripId) : false;
+  } catch (e) {
+    if (e instanceof QueryFailedError) return failed;
+    throw e;
+  }
 
   const route = resolveAccessRoute({
     target: invite?.target ?? null,

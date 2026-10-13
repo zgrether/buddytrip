@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import LoginClient, { type DeepLinkContext } from "./LoginClient";
 import { safeNextPath } from "@/lib/nextPath";
 import { resolveInviteLink } from "@/server/lib/inviteLink";
+import { QueryFailedError } from "@/server/lib/rowOrThrow";
+import { redirect } from "next/navigation";
 
 export default async function LoginPage({
   searchParams,
@@ -17,7 +19,21 @@ export default async function LoginPage({
   // `invites` at all (RLS), and display copy taken from the URL would be
   // attacker-authored text on an auth screen — "Zach invited you to X, sign in"
   // is a phishing template if anyone can write the X.
-  const invite = params.invite ? await resolveInviteLink(params.invite) : null;
+  // A failed invite read goes back to the invite page, which says it couldn't
+  // load and offers Try again (#1611). Rendering sign-in without the invite's
+  // context would lose the trip it was for, and the one place that names the
+  // failure is the invite page.
+  let invite: Awaited<ReturnType<typeof resolveInviteLink>> = null;
+  if (params.invite) {
+    let failed = false;
+    try {
+      invite = await resolveInviteLink(params.invite);
+    } catch (e) {
+      if (!(e instanceof QueryFailedError)) throw e;
+      failed = true;
+    }
+    if (failed) redirect(`/invite?token=${encodeURIComponent(params.invite)}`);
+  }
 
   // `?next=` — where to go once authed. Generic and pre-existing: an involuntary
   // session expiry (authExpiry.ts) and the middleware bounce both set it, and an
