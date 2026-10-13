@@ -50,14 +50,30 @@ describe("gameLifecycle", () => {
     expect(live.canFinalize).toBe(true);
   });
 
-  it("does NOT gate correcting or re-locking on completeness", () => {
-    // The deliberate asymmetry. A correction exists precisely because the
-    // recorded result is wrong; requiring `allComplete` would strand a game
-    // whose scores were cleared or whose roster grew after the lock — which is
-    // the same dead end #769 is about, reintroduced one level down.
+  it("opens a correction on an incomplete game, but won't relock one (#1431)", () => {
+    // Correcting stays ungated: a correction exists because the recorded result
+    // is wrong, and refusing to open one would be #769's dead end again.
+    //
+    // Relocking is gated, which REVERSES what this case asserted from #800
+    // until #1431. The reason it gave was that the gate would strand a game
+    // whose scores were cleared or whose roster grew after the lock. It
+    // doesn't: a correction reopens score entry, and every format's
+    // `allComplete` is derived from what is entered, so the cleared score or
+    // the new player's holes are entered the same way the game was first
+    // completed. Ungated, the relock (`games.finish` again) recorded a
+    // half-round as final through the one door the first finalize guards.
     const s = { ...base, status: "complete", allComplete: false };
     expect(gameLifecycle({ ...s, correctionsOpen: false }).canCorrect).toBe(true);
-    expect(gameLifecycle({ ...s, correctionsOpen: true }).canRelock).toBe(true);
+    expect(gameLifecycle({ ...s, correctionsOpen: true }).canRelock).toBe(false);
+  });
+
+  it("relocks a complete correction — pick'em's revealed clock counts as complete", () => {
+    // The control for the case above: the gate refuses an incomplete relock, not
+    // every relock. Pick'em passes `picksRevealed` as `allComplete`, which stays
+    // true through a correction, so its relock is offered as before.
+    const s = { ...base, status: "complete", correctionsOpen: true, allComplete: true };
+    expect(gameLifecycle(s).canRelock).toBe(true);
+    expect(gameLifecycle({ ...s, canEdit: false }).canRelock).toBe(false);
   });
 
   it("hides every action from a non-editor, in every state", () => {

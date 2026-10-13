@@ -174,12 +174,19 @@ export function gameLifecycle({
     // would quietly record a half-round as the result. "Complete" is each
     // format's own decision: pick'em passes `picksRevealed`, so it finalizes
     // early ON PURPOSE (a multi-day slate may need calling before every game is
-    // played) — that is not a missing check. (`canRelock` below is not gated on
-    // this at all — #1431.)
+    // played) — that is not a missing check.
     canFinalize: canEdit && !isFinal && allComplete,
     // NOT gated on `allComplete`: the whole point of a correction is that the
     // recorded result is wrong, and a locked game is complete by construction.
     canCorrect: canEdit && isLocked,
-    canRelock: canEdit && isCorrecting,
+    // Gated on `allComplete`, for the same reason `canFinalize` is (#1431). The
+    // relock calls the same `games.finish`, so a correction that clears a score
+    // or un-decides a match and then relocks would record a half-round as final
+    // through the one door the first finalize guards. This can't strand a game:
+    // a correction reopens score entry, and every format's input is derived from
+    // what is entered (non-golf placements seed from the server), so the way back
+    // to complete is the way the game got there. Pick'em's `picksRevealed` stays
+    // true through a correction, so its relock is unaffected.
+    canRelock: canEdit && isCorrecting && allComplete,
   };
 }
