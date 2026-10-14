@@ -21,6 +21,15 @@
 -- The block's comment cited CLAUDE.md #25 as "the three move TOGETHER", which
 -- #25 has since retracted; the comment is corrected in place.
 --
+-- ALSO HERE — the point-value refusal gets a code (ruled in PR 6b: "the proper code
+-- lands the next time save_game_config is redefined"). Its RAISE now carries
+-- HINT = 'point_value', which PostgREST passes through as the error's `hint`, so
+-- `games.saveConfig` keys the side-game advice on the code instead of matching
+-- the sentence. The message text is unchanged, so a reader of the text still works.
+--
+-- Checked and NOT here: #1603's refusal wording. None of this function's
+-- messages says "competition"; #1603's five functions are elsewhere.
+--
 -- NOT HERE: match status on a live game (the first half of #1430) is the app's
 -- recompute and matches.setResult, in TypeScript, in the same PR.
 
@@ -1087,8 +1096,11 @@ BEGIN
     IF v_competition_id IS NOT NULL AND NOT v_was_live THEN
       SELECT points_total INTO v_points_total FROM public.games WHERE id = p_game_id;
       IF COALESCE(v_points_total, 0) <= 0 THEN
+        -- 214: a code for the one refusal the app gives its own advice for (the
+        -- side-game route), so the app keys on HINT and not on this sentence.
+        -- The message text is unchanged.
         RAISE EXCEPTION 'NOT_READY: set a point value before enabling scoring'
-          USING ERRCODE = 'check_violation';
+          USING ERRCODE = 'check_violation', HINT = 'point_value';
       END IF;
     END IF;
 

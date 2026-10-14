@@ -1,17 +1,18 @@
 import { canBeSideGame } from "@/lib/gameTypes";
 
 /**
- * The go-live refusal `save_game_config` raises for a competition game worth 0
- * points, EXACTLY as the database words it (the text after `NOT_READY:`).
+ * The CODE `save_game_config` attaches to its go-live refusal for a competition
+ * game worth 0 points: `RAISE … USING HINT = 'point_value'` (migration 214),
+ * which PostgREST passes through as the error's `hint`.
  *
- * Keyed on the TEXT because the refusal has no code of its own yet, and
- * redefining a function that size for one code is not worth it (ruling, PR 6b).
- * The proper code lands the next time `save_game_config` is redefined anyway.
- * Until then this string is a two-sided contract with the SQL, and
- * `games.saveConfig.test.ts` pins it against the real database message: a
- * rewording there fails CI instead of silently reverting the copy below.
+ * This used to be keyed on the refusal's TEXT, because it had no code of its own
+ * and redefining a function that size for one code wasn't worth it (ruling, PR
+ * 6b): "the proper code lands the next time `save_game_config` is redefined".
+ * 214 was that redefinition. The database's wording can now change without the
+ * advice below silently reverting. `games.saveConfig.test.ts` pins the hint
+ * end to end against the real refusal.
  */
-export const POINT_VALUE_NOT_READY = "set a point value before enabling scoring";
+export const POINT_VALUE_HINT = "point_value";
 
 /**
  * What the Save banner says for a NOT_READY refusal.
@@ -27,8 +28,12 @@ export const POINT_VALUE_NOT_READY = "set a point value before enabling scoring"
  * Every other refusal passes through as before (093): the RPC's text is
  * specific when it has something specific to say.
  */
-export function notReadyMessage(detail: string | undefined, gameTypeId: string | null): string {
-  if (detail === POINT_VALUE_NOT_READY) {
+export function notReadyMessage(
+  detail: string | undefined,
+  hint: string | null | undefined,
+  gameTypeId: string | null
+): string {
+  if (hint === POINT_VALUE_HINT) {
     return canBeSideGame(gameTypeId)
       ? "Set a point value, or delete this game and add it again as a side game."
       : "Set a point value before enabling scoring.";
