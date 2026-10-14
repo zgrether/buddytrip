@@ -54,13 +54,24 @@ export interface ReconnectTargets {
   timers?: { setInterval: typeof setInterval; clearInterval: typeof clearInterval };
 }
 
+/**
+ * The real timers, called as PLAIN functions. Not `{ setInterval, clearInterval }`:
+ * that calls the browser's `setInterval` with the object as `this`, and browsers
+ * throw "Illegal invocation" for it (Node does not, so only a browser saw it —
+ * the first version crashed every game view on mount).
+ */
+const realTimers = {
+  setInterval: ((fn: () => void, ms?: number) => setInterval(fn, ms)) as typeof setInterval,
+  clearInterval: ((id?: ReturnType<typeof setInterval>) => clearInterval(id)) as typeof clearInterval,
+};
+
 /** Attach the three triggers; returns the detach function. */
 export function attachReconnectTriggers({
   win,
   doc,
   onTrigger,
   intervalMs = RETRY_INTERVAL_MS,
-  timers = { setInterval, clearInterval },
+  timers = realTimers,
 }: ReconnectTargets): () => void {
   const onOnline = () => onTrigger();
   const onVisibility = () => {

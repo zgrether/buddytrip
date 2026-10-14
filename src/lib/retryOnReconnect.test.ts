@@ -100,6 +100,30 @@ describe("attachReconnectTriggers — when a retry is attempted", () => {
   it("defaults to a 30-second interval", () => {
     expect(RETRY_INTERVAL_MS).toBe(30_000);
   });
+
+  it("the DEFAULT timers are called as plain functions, never with a foreign `this`", () => {
+    // Browsers throw "Illegal invocation" when setInterval runs with `this` set
+    // to anything but the window. Node does not, which is how the first version
+    // — `timers = { setInterval, clearInterval }` — passed every case here and
+    // crashed every game view in a browser on mount. Reproduce the browser's
+    // rule in node: a stand-in that throws on a foreign `this`.
+    const realSet = globalThis.setInterval;
+    const realClear = globalThis.clearInterval;
+    const strict = (name: string) =>
+      function (this: unknown) {
+        if (this !== undefined && this !== globalThis) throw new TypeError(`Illegal invocation (${name})`);
+        return 1;
+      };
+    globalThis.setInterval = strict("setInterval") as unknown as typeof setInterval;
+    globalThis.clearInterval = strict("clearInterval") as unknown as typeof clearInterval;
+    try {
+      const detach = attachReconnectTriggers({ win: new EventTarget(), doc: fakeDoc("visible"), onTrigger: () => {} });
+      detach();
+    } finally {
+      globalThis.setInterval = realSet;
+      globalThis.clearInterval = realClear;
+    }
+  });
 });
 
 describe("a simulated saver: unsynced → reconnect → synced", () => {
