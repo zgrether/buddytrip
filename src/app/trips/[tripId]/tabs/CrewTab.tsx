@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { TRIP_ROLE_WORD } from "@/lib/vocabulary";
 import { Mail, Plus, ShieldCheck, UserPlus, X } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { trpc } from "@/lib/trpc-client";
@@ -500,7 +501,7 @@ function EmptyOrganizersInvitation() {
         </div>
         <p className="mt-0.5 text-[11px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
           Promote a crew member to{" "}
-          <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>Organizer</strong>{" "}
+          <strong className="font-semibold" style={{ color: "var(--color-bt-text)" }}>{TRIP_ROLE_WORD.Organizer}</strong>{" "}
           to share lodging, schedule, and budget.
         </p>
       </div>

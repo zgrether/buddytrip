@@ -1,4 +1,5 @@
-import { MATCH_LEVEL_WORD } from "./matchPlay";
+import { MATCH_LEVEL_WORD } from "./vocabulary";
+import { RESULT_WORD } from "@/lib/vocabulary";
 import { fmtToPar } from "./rackNStack";
 import { fmtSkins } from "./quickGame";
 
@@ -75,7 +76,7 @@ export function formatOwnStanding(s: OwnStanding): string {
         // matchState's margin is the leader's: "3&2" reads the same for both
         // sides, "2 UP" (won on the last hole) is "2 DN" for the side that lost.
         const margin = s.margin ?? `${Math.abs(s.lead)} UP`;
-        return s.lead > 0 ? `Won ${margin}` : `Lost ${margin.replace(/ UP$/, ` ${DOWN}`)}`;
+        return s.lead > 0 ? `${RESULT_WORD.won} ${margin}` : `${RESULT_WORD.lost} ${margin.replace(/ UP$/, ` ${DOWN}`)}`;
       }
       if (s.lead > 0) return `${s.lead} UP thru ${s.thru}`;
       if (s.lead < 0) return `${-s.lead} ${DOWN} thru ${s.thru}`;
@@ -90,6 +91,6 @@ export function formatOwnStanding(s: OwnStanding): string {
     case "pickem":
       return s.points == null ? "Nothing submitted" : `${pts(s.points)} · ${s.resolved} of ${s.total} in`;
     case "result":
-      return { won: "Won", lost: "Lost", tied: "Tied", pending: "Not decided" }[s.result];
+      return RESULT_WORD[s.result];
   }
 }

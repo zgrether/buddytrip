@@ -33,7 +33,7 @@
 
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { BroadcastTable } from "@/lib/broadcastTables";
-import { competitionWord } from "@/lib/competitionWords";
+import { competitionWord } from "@/lib/vocabulary";
 
 /** The scoring engines a format can dispatch to. `null` = manual / non-engine
  *  (finishing order entered by hand — cornhole, trivia, generic games). */

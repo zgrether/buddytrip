@@ -16,6 +16,7 @@
  */
 
 import { matchKey, type ResolvedMatch } from "./bracketAdvance";
+import { BRACKET_ROUND_WORD } from "./vocabulary";
 
 export interface MatchDisplay {
   /** 1-based, sequential across the WHOLE draw — the number printed on the
@@ -95,8 +96,8 @@ export function bracketDisplay(resolved: ResolvedMatch[]): Map<string, MatchDisp
  *  it the Semi-finals, then Quarter-finals. Anything deeper is numbered, because
  *  "Round of 32" is what people actually say once the named rounds run out. */
 export function roundName(round: number, lastRound: number): string {
-  if (round === lastRound) return "Final";
-  if (round === lastRound - 1) return "Semi-finals";
-  if (round === lastRound - 2) return "Quarter-finals";
+  if (round === lastRound) return BRACKET_ROUND_WORD.final;
+  if (round === lastRound - 1) return BRACKET_ROUND_WORD.semifinals;
+  if (round === lastRound - 2) return BRACKET_ROUND_WORD.quarterfinals;
   return `Round ${round}`;
 }

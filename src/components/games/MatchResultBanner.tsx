@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { MATCH_LEVEL_WORD } from "@/lib/matchPlay";
+import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 
 /**
  * "Matt Facchine def. JD Shumpert · 3&2" — the green band under a decided match.

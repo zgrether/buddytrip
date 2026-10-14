@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TRIP_ROLE_WORD } from "@/lib/vocabulary";
 import { createPortal } from "react-dom";
 import { Pin, Pencil, MoreHorizontal, Trash2, ChevronUp, ChevronDown, HelpCircle, BellRing } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -65,11 +66,11 @@ export function NewsPanel({ tripId, isOpen, canPost, authors }: NewsPanelProps) 
 function roleLine(role: NewsAuthorMeta["role"]): { label: string; color: string } {
   switch (role) {
     case "Owner":
-      return { label: "Owner", color: "var(--color-bt-owner)" };
+      return { label: TRIP_ROLE_WORD.Owner, color: "var(--color-bt-owner)" };
     case "Organizer":
-      return { label: "Organizer", color: "var(--color-bt-accent)" };
+      return { label: TRIP_ROLE_WORD.Organizer, color: "var(--color-bt-accent)" };
     default:
-      return { label: "Member", color: "var(--color-bt-text-dim)" };
+      return { label: TRIP_ROLE_WORD.Member, color: "var(--color-bt-text-dim)" };
   }
 }
 

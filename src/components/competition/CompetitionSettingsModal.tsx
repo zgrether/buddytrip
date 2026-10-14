@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
-import { COMPETITION_NAME_EXAMPLE, COMPETITION_WORD, competitionNoun, competitionWord, type CompetitionWord } from "@/lib/competitionWords";
+import { COMPETITION_NAME_EXAMPLE, COMPETITION_WORD, competitionNoun, competitionWord, type CompetitionWord } from "@/lib/vocabulary";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 

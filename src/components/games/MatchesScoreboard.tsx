@@ -1,6 +1,7 @@
 "use client";
 
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
+import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 import { PointsAtStake } from "./PointsAtStake";
 import type { SidePlayer } from "./MatchSides";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
@@ -149,7 +150,7 @@ export function MatchesScoreboard({
                 selected={m.result === "halve"}
                 dim={m.result != null && m.result !== "halve"}
                 neutral
-                label="Halved"
+                label={MATCH_LEVEL_WORD.halved}
                 onClick={() => pick("halve")}
                 disabled={!canEdit}
                 testId={`match-${m.id}-draw`}

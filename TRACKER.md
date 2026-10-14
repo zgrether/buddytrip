@@ -94,7 +94,7 @@ R1's shape has changed under it — see §2. What remains:
 - ~~**PR 7's vocabulary sweep has strings waiting for it.**~~ **DONE in the Cup / Tournament
   sweep (2026-10-12, #1604):** the words settled as **Cup** and **Tournament**, not "head to
   head" / "points race", and every string listed below now reads from
-  `src/lib/competitionWords.ts`. `SCORING_MODEL_LABEL` is gone. Kept for the history:
+  `src/lib/competitionWords.ts` (since #1619, `src/lib/vocabulary.ts`). `SCORING_MODEL_LABEL` is gone. Kept for the history:
   PR 7 settles the user-facing names
   (**head to head**, **points race**). PR 4 (#1447) added user-facing copy in today's words, which
   the rename has to find, or a screen will say "Match Play cup" next to one that says "head to

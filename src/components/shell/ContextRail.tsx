@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState, useTransition, type ReactNode } 
 import { useRouter } from "next/navigation";
 import { Dice5, Lightbulb, Luggage, PanelLeftClose, PanelLeftOpen, Plus, Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { EITHER_COMPETITION } from "@/lib/competitionWords";
+import { EITHER_COMPETITION } from "@/lib/vocabulary";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { getEffectiveStatus } from "@/lib/tripStatus";
 import { compareActive, comparePast, compareIdea } from "@/lib/tripSort";

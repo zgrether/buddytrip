@@ -1,4 +1,5 @@
 import { Home, Wifi, Plane, Car, Flag, Clock, Navigation } from "lucide-react";
+import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { DatePollGrid } from "./HeroSection";
 
 /**
@@ -293,7 +294,7 @@ function FeatureVisualCompete() {
         </div>
         <div className="bt-mkt-live-badge">
           <span className="bt-mkt-live-dot" />
-          Live
+          {GAME_STATE_WORD.live}
         </div>
       </div>
 

@@ -17,7 +17,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { COMPETITION_UMBRELLA } from "@/lib/competitionWords";
+import { COMPETITION_UMBRELLA } from "@/lib/vocabulary";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";

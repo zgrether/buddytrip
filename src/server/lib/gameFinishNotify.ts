@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { competitionNoun } from "@/lib/competitionWords";
+import { competitionNoun, GAME_STATE_WORD } from "@/lib/vocabulary";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { gameHref, gamePanelHref, gamesPageHref, opensAsPanel } from "@/lib/gameRoutes";
 import { readSideGameWinners } from "./sideBoard";
@@ -364,7 +364,7 @@ const COPY = {
    * with nothing to report) the body says so plainly rather than inventing one.
    */
   gameFinal: (gameName: string | null, summary: string) => ({
-    title: gameName ? `Final: ${gameName}` : "A game is final",
+    title: gameName ? `${GAME_STATE_WORD.final}: ${gameName}` : "A game is final",
     body: summary || "Results are in.",
   }),
   /** The highest-value push in the app — ~1-3 per trip. */

@@ -7,7 +7,7 @@ import { reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { viewerTeamForTrip } from "../lib/viewerTeam";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "../lib/myDelegateGameIds";
 import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
-import { competitionNoun } from "@/lib/competitionWords";
+import { competitionNoun, EITHER_COMPETITION } from "@/lib/vocabulary";
 
 const SCOREBOARD_STYLES = [
   "grid",
@@ -94,7 +94,7 @@ export const competitionsRouter = router({
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Couldn't load the Cup or Tournament: ${error.message}`,
+          message: `Couldn't load the ${EITHER_COMPETITION}: ${error.message}`,
         });
       }
 
@@ -344,7 +344,7 @@ export const competitionsRouter = router({
       if (existing) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "This trip already has a Cup or Tournament.",
+          message: `This trip already has a ${EITHER_COMPETITION}.`,
         });
       }
 
@@ -366,7 +366,7 @@ export const competitionsRouter = router({
       if (insertErr?.code === "23505" && insertErr.message.includes("competitions_one_per_trip")) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "This trip already has a Cup or Tournament.",
+          message: `This trip already has a ${EITHER_COMPETITION}.`,
         });
       }
       if (insertErr || !inserted) {
@@ -498,7 +498,7 @@ export const competitionsRouter = router({
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: `Couldn't delete the Cup or Tournament: ${error.message}`,
+          message: `Couldn't delete the ${EITHER_COMPETITION}: ${error.message}`,
         });
       }
 

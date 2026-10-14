@@ -2,7 +2,8 @@
 
 import { PointsAtStake } from "./PointsAtStake";
 import { Table2 } from "lucide-react";
-import { matchLevel, matchState, MATCH_LEVEL_WORD, type DecidedHole, type SideUpside } from "@/lib/matchPlay";
+import { matchLevel, matchState, type DecidedHole, type SideUpside } from "@/lib/matchPlay";
+import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 import { NO_GLORIOUS, isGloriousHole, type Weighting } from "@/lib/gloriousHoles";
 import { teamTextColor } from "@/lib/teamTextColor";
 import type { SidePlayer } from "./MatchSides";

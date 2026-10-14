@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 import { MatchResultBanner, matchDefeatText } from "@/components/games/MatchResultBanner";
 import { ChevronLeft, Table2, Check, Settings } from "lucide-react";
 import { buildDecidedFromOutcomes, matchState, outcomeBottomState, type HoleOutcomeResult } from "@/lib/matchPlay";
@@ -344,7 +345,7 @@ export function MatchOutcomeEntryView({
             selected={selected === "halved"}
             dim={selected != null && selected !== "halved"}
             neutral
-            label="Halved"
+            label={MATCH_LEVEL_WORD.halved}
             onClick={() => pick("halved")}
             testId="outcome-choice-halved"
             saveState={selected === "halved" ? cellSaveState : undefined}

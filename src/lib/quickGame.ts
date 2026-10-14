@@ -10,11 +10,11 @@ import {
   buildDecidedFromOutcomes,
   matchLevel,
   matchState,
-  MATCH_LEVEL_WORD,
   type DecidedHole,
   type HoleOutcomeResult,
   type MatchState,
 } from "@/lib/matchPlay";
+import { MATCH_LEVEL_WORD, RESULT_WORD } from "@/lib/vocabulary";
 import { clampStrokes, effectiveStrokes } from "@/lib/handicap";
 import { fmtToPar, playerStats, computeRack, type RackPlayer, type RackResult, type Team } from "@/lib/rackNStack";
 import { gloriousConfig } from "@/lib/gloriousHoles";
@@ -1250,7 +1250,7 @@ function quickRackSubtitle(state: QuickRackState): string {
     0,
     ...state.players.map((p) => Object.keys(state.values[p.id] ?? {}).length)
   );
-  if (points.A === points.B) return `Tied ${fmtPointsPair(points.A, points.B)} thru ${thru}`;
+  if (points.A === points.B) return `${RESULT_WORD.tied} ${fmtPointsPair(points.A, points.B)} thru ${thru}`;
   const lead = points.A > points.B ? "Team A" : "Team B";
   const hi = Math.max(points.A, points.B);
   const lo = Math.min(points.A, points.B);

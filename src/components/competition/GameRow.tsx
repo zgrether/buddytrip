@@ -1,6 +1,7 @@
 "use client";
 
 import { createElement } from "react";
+import { PROJECTED_RESULTS, RECREDIT_WORD, GAME_STATE_WORD, SIDE_GAME_WORD } from "@/lib/vocabulary";
 import { resultTiles } from "@/lib/standingsRows";
 import { formatOwnStanding, ownStandingIsSettled } from "@/lib/ownStanding";
 import { stateText } from "@/lib/stateText";
@@ -91,7 +92,7 @@ export function liveSubtitle(p: {
   scoringModel: ScoringModel;
   cannotProject?: CannotProjectReason | null;
 }): string | null {
-  if (p.showProjectionPills) return "Projected results";
+  if (p.showProjectionPills) return PROJECTED_RESULTS;
   if (p.scoringModel === "match_play" && p.cannotProject) return cannotProjectCopy(p.cannotProject);
   return null;
 }
@@ -823,7 +824,7 @@ export function GridColumnHeader({ teams }: { teams: LBTeam[] }) {
 /** "Re-credited by Zach · Oct 4". */
 export function recreditedNoteText(r: { byName: string; at: string }): string {
   const day = new Date(r.at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  return `Re-credited by ${r.byName} · ${day}`;
+  return `${RECREDIT_WORD.by} ${r.byName} · ${day}`;
 }
 
 /**
@@ -1008,7 +1009,7 @@ function InReviewBadge({ width }: { width: number | undefined }) {
           border: "1px solid var(--color-bt-warning-border)",
         }}
       >
-        In review
+        {GAME_STATE_WORD.inReview}
       </span>
     </span>
   );
@@ -1046,7 +1047,7 @@ function SideGameTag() {
       style={{ ...EYEBROW, border: "1px solid var(--color-bt-border)" }}
       data-testid="side-game-tag"
     >
-      Side game
+      {SIDE_GAME_WORD}
     </span>
   );
 }
@@ -1061,7 +1062,7 @@ function SideGameWinners({ winners }: { winners: string[] }) {
   return (
     <span className="flex shrink-0 items-center gap-2" data-testid="side-game-winners">
       <span style={{ ...EYEBROW, border: "1px solid var(--color-bt-border)" }} className="rounded-md px-1.5 py-0.5">
-        Side game
+        {SIDE_GAME_WORD}
       </span>
       <WinnersText winners={winners} />
     </span>

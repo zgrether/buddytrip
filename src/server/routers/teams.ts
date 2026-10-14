@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EITHER_COMPETITION } from "@/lib/vocabulary";
 import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
@@ -80,7 +81,7 @@ async function headToHeadTeamCount(
     .eq("id", competitionId)
     .maybeSingle();
   if (error) {
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the Cup or Tournament: ${error.message}` });
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the ${EITHER_COMPETITION}: ${error.message}` });
   }
   if (!comp || comp.scoring_model !== "match_play") return null;
   const { count, error: countErr } = await supabase

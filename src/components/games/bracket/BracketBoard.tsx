@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import { WITHDREW_WORD } from "@/lib/vocabulary";
 import { Check } from "lucide-react";
 import { matchKey, type ResolvedMatch } from "@/lib/bracketAdvance";
 import type { BracketSide } from "@/lib/bracket";
@@ -719,7 +720,7 @@ function Slot({
             padding: "1px 4px", lineHeight: 1.2,
           }}
         >
-          Withdrew
+          {WITHDREW_WORD}
         </span>
       )}
       {/* MUST-WIN — the GRAND FINAL only (T5).

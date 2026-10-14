@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { Users, Settings, SlidersHorizontal } from "lucide-react";
@@ -915,7 +916,7 @@ export function RackGameView() {
         onCellTap={readOnly ? undefined : (label) => { setCurrentHole(Number(label) || 1); back(); }}
       />
     );
-    const scorecardTitle = `${groupName ?? "Group"}${locked ? " · Final" : " · Scorecard"}`;
+    const scorecardTitle = `${groupName ?? "Group"}${locked ? ` · ${GAME_STATE_WORD.final}` : " · Scorecard"}`;
     if (readOnly) {
       // Locked/posted OR a viewer who can't score this cart lands on the read-only
       // scorecard — now an overlay; dismiss returns to the rack hub (#7).

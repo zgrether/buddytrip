@@ -21,6 +21,7 @@
  */
 
 export type NotificationKey = "game_results" | "planning" | "invites" | "chat" | "news" | "organizer";
+import { EITHER_COMPETITION } from "@/lib/vocabulary";
 
 export interface NotificationTypeDef {
   key: NotificationKey;
@@ -61,7 +62,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeDef[] = [
     // Deliberately does NOT say "a result is posted" — that phrasing belongs to
     // `scores.upsertEntry` (a NEVER-marked site), so using it here would promise
     // the one thing this category must never send.
-    description: "A game finishes, or a Cup or Tournament is decided.",
+    description: `A game finishes, or a ${EITHER_COMPETITION} is decided.`,
     defaultOn: true,
     excludes:
       "Per-hole score entry (scores.upsertEntry — a ~540/day firehose, NEVER-eligible), " +

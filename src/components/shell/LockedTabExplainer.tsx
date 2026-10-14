@@ -2,7 +2,7 @@
 
 import { type FC } from "react";
 import { Calendar, Trophy, MessageCircle, type LucideIcon } from "lucide-react";
-import { EITHER_CHOICE } from "@/lib/competitionWords";
+import { EITHER_CHOICE } from "@/lib/vocabulary";
 
 /**
  * What a tab (or the Chat action) says when there's no trip selected.

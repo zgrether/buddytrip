@@ -3,7 +3,7 @@
 import { useState, Fragment } from "react";
 import { ChevronDown, Flag, Check } from "lucide-react";
 import { useTeeVisibility } from "@/hooks/useTeeVisibility";
-import { MATCH_LEVEL_WORD } from "@/lib/matchPlay";
+import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, type RawStrokeEntry } from "@/lib/strokePlay";
 import type { TeeRow } from "@/lib/teeRows";
 import { isGloriousHole, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";

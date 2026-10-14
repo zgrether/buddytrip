@@ -15,7 +15,7 @@ const MINI_NAME_SIZES = [14, 13, 12, 11];
 import type { TrophySlot } from "./CupTrophy";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { competitionWord } from "@/lib/competitionWords";
+import { competitionWord, GAME_STATE_WORD } from "@/lib/vocabulary";
 
 // `useIsoLayoutEffect` lived here to drive StickyCollapseHero's measured pull.
 // That mechanism is gone (see StickyCollapseHero), and with it the only layout
@@ -374,7 +374,7 @@ export function CompetitionHero({
             <p className="mt-2 text-center" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
               {clincher
                 ? cupComplete
-                  ? `Final · ${clincher.name} wins`
+                  ? `${GAME_STATE_WORD.final} · ${clincher.name} wins`
                   : `${clincher.name} has clinched · ${gamesRemaining} game${gamesRemaining === 1 ? "" : "s"} remain${gamesRemaining === 1 ? "s" : ""}`
                 : pointsAvailable > 0
                 ? `First to ${fmtPts(winNumber)} wins`
