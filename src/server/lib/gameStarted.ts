@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { rowsOrThrow } from "./rowOrThrow";
 
 /**
  * "Which of these games have begun producing results?" — the ONE read of
@@ -57,17 +58,18 @@ export async function startedGameIds(
   gameIds: string[]
 ): Promise<Set<string>> {
   if (gameIds.length === 0) return new Set();
-  const { data, error } = await supabase
-    .from("game_started")
-    .select("game_id")
-    .in("game_id", gameIds);
   // Loud. A swallowed error here reads as "no game has started", which is the
-  // permissive answer for both callers — a removal guard that lets everything
-  // through, and a roster lock that unlocks. That is exactly the shape of the
+  // permissive answer for every caller — a roster lock that unlocks, a course
+  // lock that opens under recorded results. That is exactly the shape of the
   // `.from("matches")` landmine (CLAUDE.md #16), where a checked-but-ignored
-  // error disabled cross-device sync for six weeks.
-  if (error) throw new Error(`Failed to read started games: ${error.message}`);
-  return new Set((data ?? []).map((r) => r.game_id as string));
+  // error disabled cross-device sync for six weeks. Through `rowsOrThrow`
+  // (#1474), so the failure is the family's retryable sentence rather than a
+  // raw PostgREST message.
+  const rows = rowsOrThrow(
+    await supabase.from("game_started").select("game_id").in("game_id", gameIds),
+    "scores"
+  );
+  return new Set(rows.map((r) => r.game_id as string));
 }
 
 /** Has ANY of these games begun producing results? */
