@@ -48,6 +48,7 @@ import { computePickemResults } from "@/server/lib/pickemResults";
 import { computeSideBoard } from "@/server/lib/sideBoard";
 import { notReadyMessage, POINT_VALUE_NOT_READY } from "@/server/lib/notReadyMessage";
 import { writeTeamMatchPoints } from "../lib/matchAwards";
+import { anyGameStarted } from "../lib/gameStarted";
 import { RELOCK_BLOCKED_MATCHES } from "@/lib/gameLifecycle";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "@/server/lib/myDelegateGameIds";
@@ -1071,16 +1072,13 @@ export const gamesRouter = router({
 
       // Freeze boundary: once any score is in, the par/index the game is being
       // played on is fixed — re-applying a course would silently rescore it.
-      // #1469: a failed count must not read as "no scores" — the freeze would
-      // open and change par/index under entered scores.
-      const count = countOrThrow(
-        await ctx.supabase
-          .from("score_entries")
-          .select("id", { count: "exact", head: true })
-          .eq("game_id", input.gameId),
-        "game's scores"
-      );
-      if (count > 0) {
+      // #1474: "has this game been scored?" is `game_started`'s question, not a
+      // count of one table. `score_entries` alone is blind to outcome-mode match
+      // play and skins (CLAUDE.md #27), so their course could change under
+      // recorded results. The view covers every format's arm, including the next.
+      // #1469: a failed read throws (startedGameIds → rowsOrThrow); it must not
+      // read as "no scores" and open the freeze.
+      if (await anyGameStarted(ctx.supabase, [input.gameId])) {
         throw new TRPCError({
           code: "CONFLICT",
           message: "Scores are already entered — the course can't be changed now.",
@@ -1141,16 +1139,13 @@ export const gamesRouter = router({
         .maybeSingle();
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
-      // #1469: a failed count must not read as "no scores" — the freeze would
-      // open and change par/index under entered scores.
-      const count = countOrThrow(
-        await ctx.supabase
-          .from("score_entries")
-          .select("id", { count: "exact", head: true })
-          .eq("game_id", input.gameId),
-        "game's scores"
-      );
-      if (count > 0) {
+      // #1474: "has this game been scored?" is `game_started`'s question, not a
+      // count of one table. `score_entries` alone is blind to outcome-mode match
+      // play and skins (CLAUDE.md #27), so their course could change under
+      // recorded results. The view covers every format's arm, including the next.
+      // #1469: a failed read throws (startedGameIds → rowsOrThrow); it must not
+      // read as "no scores" and open the freeze.
+      if (await anyGameStarted(ctx.supabase, [input.gameId])) {
         throw new TRPCError({
           code: "CONFLICT",
           message: "Scores are already entered — the course can't be changed now.",
