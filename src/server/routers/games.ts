@@ -19,8 +19,7 @@ import { GLORIOUS_HOLES_DEFAULT } from "@/lib/modifiers";
 import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { type ScorecardSchema } from "@/lib/courseIndex";
-import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
+import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { isPlacement, liveMatchPointsPerMatch, awardsPerMatch } from "@/lib/pointsDistribution";
 import { GAME_TYPES, canBeSideGame, canPlayInTeamlessRace, gameTypesForTeamlessRace, getGameTypeDefinition, formatRefusalForScoringModel, type ScoringModel } from "@/lib/gameTypes";
@@ -1106,7 +1105,8 @@ export const gamesRouter = router({
       }
       const snapshot = snap.schema;
       // Applying a (fresh) front course resets any prior two-nines back ref — a
-      // 9-hole course lands as a lone front "needs a back nine" until setBackNine.
+      // 9-hole course lands as a lone front "needs a back nine" until the settings
+      // page composes a back onto it.
       const { error } = await ctx.supabase
         .from("games")
         .update({ scorecard_schema: snapshot, course_id: input.courseId, back_course_id: null })
@@ -1117,140 +1117,6 @@ export const gamesRouter = router({
           message: `Failed to apply course: ${error.message}`,
         });
       }
-
-      const { data } = await ctx.supabase.from("games").select("*").eq("id", input.gameId).single();
-      return data;
-    }),
-
-  // clearCourse — Owner/Organizer. The inverse of applyCourse: drop the course
-  // (course_id → null) and revert the scorecard_schema snapshot to the game
-  // type's template default (no course par/index). FROZEN once scores exist —
-  // same boundary as applyCourse (changing par/index after scoring would
-  // silently rescore).
-  clearCourse: authedProcedure
-    .input(z.object({ tripId: z.string(), gameId: z.string() }))
-    .use(requireGameEdit())
-    .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id, game_type_id")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-
-      // #1474: "has this game been scored?" is `game_started`'s question, not a
-      // count of one table. `score_entries` alone is blind to outcome-mode match
-      // play and skins (CLAUDE.md #27), so their course could change under
-      // recorded results. The view covers every format's arm, including the next.
-      // #1469: a failed read throws (startedGameIds → rowsOrThrow); it must not
-      // read as "no scores" and open the freeze.
-      if (await anyGameStarted(ctx.supabase, [input.gameId])) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Scores are already entered — the course can't be changed now.",
-        });
-      }
-
-      // Revert to the format's CODE-defined base schema (W-PERF-01) — the
-      // template default with no course par/index.
-      const baseSchema = getGameTypeDefinition(game.game_type_id as string)?.scorecardSchema ?? null;
-
-      const { error } = await ctx.supabase
-        .from("games")
-        .update({ scorecard_schema: baseSchema, course_id: null, back_course_id: null })
-        .eq("id", input.gameId);
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to clear course: ${error.message}`,
-        });
-      }
-
-      const { data } = await ctx.supabase.from("games").select("*").eq("id", input.gameId).single();
-      return data;
-    }),
-
-  // setBackNine — compose (or SWAP) the BACK nine of a retained two-nines 18
-  // (W-9HOLE-01). The FRONT (course_id) must be a 9-hole course; its frozen 9 is
-  // read from the existing snapshot (provenance: the front never changes on a
-  // back swap). The back is a 9-hole course supplied here. The two nines compose
-  // into an 18 (interleaved stroke index) snapshotted onto the game.
-  //
-  // Unlike applyCourse, this does NOT freeze on front scores — a back swap is a
-  // legitimate day-of move. It CLEARS only holes 10-18 (the back's scores belong
-  // to the old nine), leaving holes 1-9 (front) + their scores untouched. Net and
-  // back-nine handicap allocation re-derive on read from the new index for free.
-  setBackNine: authedProcedure
-    .input(z.object({ tripId: z.string(), gameId: z.string(), backCourseId: z.string().min(1), backTeeSetName: z.string().optional() }))
-    .use(requireGameEdit())
-    .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id, game_type_id, course_id, back_course_id, scorecard_schema")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-      if (!game.course_id) throw new TRPCError({ code: "BAD_REQUEST", message: "Set a front nine first." });
-
-      const { data: back } = await ctx.supabase
-        .from("courses")
-        .select("hole_count, par, handicap_index, has_stroke_index, tee_sets")
-        .eq("id", input.backCourseId)
-        .maybeSingle();
-      if (!back) throw new TRPCError({ code: "NOT_FOUND", message: "Back-nine course not found" });
-
-      // The compose derivation is the shared pure fn (courseSnapshot.ts): the
-      // two-nines gate, the back-index validation, the front de-interleave, the
-      // tee inheritance, and the P-F0a back-tee-name capture. The settings draft
-      // pre-computes the SAME composed 18 client-side and hands it to
-      // save_game_config, so a composed course and a drafted one can't drift.
-      const composedSnap = buildComposedCourseSnapshot(
-        {
-          frontSchema: game.scorecard_schema as ScorecardSchema | null,
-          hasBackRef: !!game.back_course_id,
-          backCourse: back as CourseSnapshotInput,
-        },
-        game.game_type_id as string,
-        input.backTeeSetName
-      );
-      if (!composedSnap.ok) {
-        throw new TRPCError(
-          composedSnap.reason === "no_front" || composedSnap.reason === "not_two_nines"
-            ? { code: "BAD_REQUEST", message: "This isn't a 9-hole front — it doesn't take a back nine." }
-            : composedSnap.reason === "back_not_nine"
-              ? { code: "BAD_REQUEST", message: "The back nine must be a 9-hole course." }
-              : composedSnap.reason === "bad_back_index"
-                ? { code: "BAD_REQUEST", message: "Back-nine stroke index is not a valid permutation." }
-                : { code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema." }
-        );
-      }
-      const snapshot = composedSnap.schema;
-
-      // Clear the BACK nine's scores (holes 10-18) — they were the old nine's. The
-      // front (1-9) is left intact. (A no-op on the first compose.)
-      //
-      // #782 — error-checked, and a count assertion here would be WRONG: the
-      // comment above is the spec, and zero rows is the first-compose case. The
-      // audit originally implied this needed a count and that entry has been
-      // corrected — this is the over-correction the "legitimate zero-row" bucket
-      // exists to prevent. A real failure leaves the old nine's scores under a
-      // new stroke index, which does corrupt net scoring.
-      assertNoError(
-        await ctx.supabase
-          .from("score_entries")
-          .delete()
-          .eq("game_id", input.gameId)
-          .in("unit_label", ["10", "11", "12", "13", "14", "15", "16", "17", "18"]),
-        "clear the previous back nine's scores"
-      );
-
-      const { error } = await ctx.supabase
-        .from("games")
-        .update({ scorecard_schema: snapshot, back_course_id: input.backCourseId })
-        .eq("id", input.gameId);
-      if (error) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to set back nine: ${error.message}` });
 
       const { data } = await ctx.supabase.from("games").select("*").eq("id", input.gameId).single();
       return data;

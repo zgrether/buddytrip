@@ -2132,7 +2132,6 @@ export function MatchGameView() {
                   courseOpen={openRows.has("course")}
                   onOpenCourse={() => toggleRow("course")}
                   onCloseEditor={() => closeRow("course")}
-                  onChanged={onSetupChanged}
                   onApplyFront={applyFrontToDraft}
                   onApplyBack={applyBackToDraft}
                   onRemoveBackNine={removeBackNineFromDraft}

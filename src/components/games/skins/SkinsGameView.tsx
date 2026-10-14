@@ -652,7 +652,6 @@ export function SkinsGameView() {
       game: draftGameRow,
       canEdit,
       locked: false,
-      onChanged: () => void refreshGame(),
       onApplyFront: applyFrontToDraft,
       onApplyBack: applyBackToDraft,
       onRemoveBackNine: removeBackNineFromDraft,

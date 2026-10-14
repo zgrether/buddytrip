@@ -109,11 +109,10 @@ export type ComposeSnapshotResult =
  *
  * Lifted VERBATIM out of the server's `games.setBackNine` (the same de-interleave
  * → `composeTwoNines` → `buildScorecardSchema` chain, the same tee-inheritance
- * fallback) so BOTH sides run it, exactly like `buildCourseSnapshot`:
- *
- *  - `games.setBackNine` (server) — the immediate-apply path.
- *  - the settings draft (client) — draft-then-save pre-computes the composed 18
- *    and hands it to `save_game_config` ready-to-write.
+ * fallback). Its one caller now is the settings draft (client): draft-then-save
+ * pre-computes the composed 18 and hands it to `save_game_config` ready-to-write.
+ * (`games.setBackNine` itself, the old immediate-apply path, had no caller left
+ * and was retired in #1624; its tests moved to this module's.)
  *
  * The composed tee NAME stays the FRONT's (the round is played off one tee set);
  * `backTeeSetName` only picks which of the back course's tees supplies the back-9

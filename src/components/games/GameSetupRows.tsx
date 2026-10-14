@@ -26,15 +26,13 @@ import { evenShare, type PointsDistribution } from "@/lib/pointsDistribution";
  * one-panel-at-a-time rule spans EVERY row. Every OTHER consumer (stroke/rack/new/
  * config-view) omits the props and self-manages (the accordion opens/closes
  * locally) — so the conversion fixes the modal leak on all of them without a
- * ripple. `onChanged` refetches the game so the Course row summary updates; the
- * Format·Points panel persists + invalidates itself.
+ * ripple. The Format·Points panel persists + invalidates itself.
  */
 export function GameSetupRows({
   tripId,
   competitionId,
   game,
   canEdit,
-  onChanged,
   slot = "both",
   matchCount,
   defaultTotal,
@@ -59,7 +57,6 @@ export function GameSetupRows({
   competitionId: string | null;
   game: GameRow;
   canEdit: boolean;
-  onChanged: () => void;
   /** Which rows to render (W-9HOLE-01 reorder): "course" or "config" lets the
    *  match page place Course BEFORE Handicaps and Format·Points after. Default
    *  "both" — the other surfaces render them together as one block. */
@@ -95,21 +92,16 @@ export function GameSetupRows({
   onOpenCourse?: () => void;
   /** The editor dismissed itself → clear the page's openRow. */
   onCloseEditor?: () => void;
-  /** Course ACTION controlled-mode (draft-then-save) — a DIFFERENT axis from the
-   *  `courseOpen`/`configOpen` open-state control above. Passing `onApplyFront` flips
-   *  `CourseRowContent` out of self-persisting mode: it then reports the action and
-   *  the page decides what it means (staging it in the settings draft, pre-computing
-   *  the snapshot with the shared `buildCourseSnapshot`). Omit them all and the body
-   *  keeps its own applyCourse/setBackNine/clearCourse mutations, which is what every
-   *  other consumer (stroke/rack/config-view) still wants.
-   *
-   *  Pass them TOGETHER or not at all: `onApplyFront` alone flips the mode and the
-   *  remaining actions would silently no-op. */
-  onApplyFront?: (courseId: string, teeName?: string) => void;
-  onApplyBack?: (backCourseId: string, backTeeName?: string) => void;
-  onRemoveBackNine?: () => void;
-  onClearCourse?: () => void;
-  /** Controlled mode: the page's course write is in flight (drives the tee chooser). */
+  /** The course ACTIONS — a DIFFERENT axis from the `courseOpen`/`configOpen`
+   *  open-state control above. `CourseRowContent` reports each action and the page
+   *  decides what it means (staging it in the settings draft, pre-computing the
+   *  snapshot with the shared `buildCourseSnapshot`). Required: the row's old
+   *  self-persisting mode, used when these were omitted, was retired in #1624. */
+  onApplyFront: (courseId: string, teeName?: string) => void;
+  onApplyBack: (backCourseId: string, backTeeName?: string) => void;
+  onRemoveBackNine: () => void;
+  onClearCourse: () => void;
+  /** The page's course write is in flight (drives the tee chooser). */
   courseBusy?: boolean;
   /**
    * THIS GAME NEVER READS A HANDICAP, so the Course row must not claim it does.
@@ -249,14 +241,11 @@ export function GameSetupRows({
         >
           {/* W-9HOLE-01: front picker → a 9-hole course "needs a back nine" → the
               back picker composes a retained two-nines 18, swappable day-of.
-              The course-action props pass STRAIGHT through: undefined for every
-              self-persisting consumer (so the body keeps its own mutations), and the
-              full set for the draft-then-save settings page. */}
+              The course-action props pass STRAIGHT through to the page's draft. */}
           <CourseRowContent
             tripId={tripId}
             game={game}
             canEdit={canEdit}
-            onChanged={onChanged}
             onApplyFront={onApplyFront}
             onApplyBack={onApplyBack}
             onRemoveBackNine={onRemoveBackNine}

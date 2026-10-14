@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
 import { isNew } from "../lib/gameReadiness";
-import { GAME_TYPES, isGameTypeForScoringModel } from "@/lib/gameTypes";
+import { GAME_TYPES, getGameTypeDefinition, isGameTypeForScoringModel } from "@/lib/gameTypes";
 
 /**
  * NEW vs CONFIGURING — the behavioural half.
@@ -214,6 +214,40 @@ describe("isNew — New vs Configuring", () => {
     return data as Record<string, unknown>;
   }
 
+  /**
+   * Clear the course the way the settings page does: `clearCourseInDraft` stages
+   * no course and the FORMAT'S BASE SCHEMA, and Save sends it through
+   * `save_game_config` with the rest of the game's config echoed unchanged.
+   * (This used to call `games.clearCourse`, which no screen called; #1624 retired
+   * it.)
+   */
+  async function clearCourseAsSettingsDoes(gameId: string) {
+    const tripId = tripOf(gameId);
+    const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown> & {
+      participants?: { user_id: string; handicap_strokes: number | null }[];
+    };
+    const orgs = (await ctx.caller().games.listOrganizers({ tripId, gameId })) as { user_id: string }[];
+    const { hash } = await ctx.caller().games.configHash({ tripId, gameId });
+    await ctx.caller().games.saveConfig({
+      tripId,
+      gameId,
+      baseHash: hash,
+      payload: {
+        name: (g.name as string) ?? "Game",
+        rulesForToday: (g.rules_for_today as string | null) ?? null,
+        scoringEnabled: (g.scoring_enabled as boolean) ?? false,
+        pointsTotal: (g.points_total as number | null) ?? null,
+        pointsDistribution: g.points_distribution ?? null,
+        modifiers: (g.modifiers as Record<string, Record<string, unknown>>) ?? {},
+        delegates: orgs.map((d) => d.user_id),
+        participants: (g.participants ?? []).map((p) => ({ userId: p.user_id, strokes: p.handicap_strokes ?? 0 })),
+        courseId: null,
+        backCourseId: null,
+        scorecardSchema: getGameTypeDefinition(g.game_type_id as string)?.scorecardSchema ?? null,
+      },
+    });
+  }
+
   // ── 4 · loses configuration → Configuring, NOT New ─────────────────────────
 
   it("a game that had a course and lost it reads Configuring, on scorecard_schema", async () => {
@@ -223,7 +257,8 @@ describe("isNew — New vs Configuring", () => {
      * assumption, not an assertion. So it names the SPECIFIC column that still
      * carries the departure and proves the others do not:
      *
-     *   `games.clearCourse` nulls `course_id` AND `back_course_id`, and sets
+     *   Clearing the course (the settings page's clear, saved through
+     *   `save_game_config`) nulls `course_id` AND `back_course_id`, and sets
      *   `scorecard_schema` to the FORMAT'S BASE SCHEMA — non-null for the three
      *   golf formats. That one column is the entire reason this game does not
      *   read New, and if `scorecard_schema` were dropped from the predicate or
@@ -231,7 +266,7 @@ describe("isNew — New vs Configuring", () => {
      *
      * Asserting only `isNewGame === false` would pass on any of the three
      * columns, including on a `course_id` that had NOT been cleared — i.e. it
-     * would pass if `clearCourse` were broken.
+     * would pass if the clear were broken.
      */
     const gameId = await addGameAsModalDoes(STROKE_PLAY, "Course then cleared");
     const course = await ctx.caller().courses.create({
@@ -248,7 +283,7 @@ describe("isNew — New vs Configuring", () => {
     await ctx.caller().games.applyCourse({ tripId: tripOf(gameId), gameId, courseId: course.id as string });
     expect((await sectionInputs(gameId)).isNewGame, "a course was applied").toBe(false);
 
-    await ctx.caller().games.clearCourse({ tripId: tripOf(gameId), gameId });
+    await clearCourseAsSettingsDoes(gameId);
     const row = await rawRow(gameId);
 
     // The course columns really did go back to their creation value — so this is
@@ -256,7 +291,7 @@ describe("isNew — New vs Configuring", () => {
     expect(row.course_id, "course_id returned to null").toBeNull();
     expect(row.back_course_id, "back_course_id returned to null").toBeNull();
     // And THIS is what still says the game was configured.
-    expect(row.scorecard_schema, "the base schema survives clearCourse").not.toBeNull();
+    expect(row.scorecard_schema, "the base schema survives the clear").not.toBeNull();
 
     const g = await sectionInputs(gameId);
     expect(g.isNewGame, "a game that lost a course is Configuring, not New").toBe(false);

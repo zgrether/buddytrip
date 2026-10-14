@@ -174,14 +174,16 @@ describe("the course freeze — a failed scores read never opens it", () => {
     ((await ctx.admin.from("games").select("scorecard_schema").eq("id", scoredGame).single()).data as { scorecard_schema: unknown })
       .scorecard_schema;
 
-  it("CONTROL: real reads — clearing the course of a scored game is refused", async () => {
-    await expect(ctx.caller().games.clearCourse({ tripId, gameId: scoredGame })).rejects.toThrow("Scores are already entered");
+  // `applyCourse` (the live course write; `clearCourse` retired in #1624). The
+  // lock refuses before the course is read, so the id need not exist.
+  it("CONTROL: real reads — applying a course to a scored game is refused", async () => {
+    await expect(ctx.caller().games.applyCourse({ tripId, gameId: scoredGame, courseId: "any-course" })).rejects.toThrow("Scores are already entered");
   }, 60_000);
 
   it("a FAILED read refuses — par/index are not reset under the entered score", async () => {
     const before = await schemaOf();
     const failing = callerFailingRead(ctx, "owner", { table: "game_started", columns: "game_id" });
-    await expect(failing.games.clearCourse({ tripId, gameId: scoredGame })).rejects.toThrow(SENTENCE("scores"));
+    await expect(failing.games.applyCourse({ tripId, gameId: scoredGame, courseId: "any-course" })).rejects.toThrow(SENTENCE("scores"));
     expect(await schemaOf()).toEqual(before);
   }, 60_000);
 });

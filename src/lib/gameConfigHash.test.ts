@@ -260,7 +260,8 @@ const NO_HASH_REFRESH_ALLOWED = [
   // grouping for a game being created — the same new-game exemption as rack.
   "src/components/games/StrokeGameView.tsx",
   "src/components/games/bracket/BracketScoringSurface.tsx",
-  "src/components/games/course/CourseRowContent.tsx",
+  // (`course/CourseRowContent.tsx` was here for its uncontrolled mode's course
+  // writes; #1624 retired that mode, so it writes nothing and left this list.)
   "src/hooks/useGameCorrection.ts",
   "src/hooks/useGameFinalize.ts",
   "src/hooks/useScoreSaver.ts",

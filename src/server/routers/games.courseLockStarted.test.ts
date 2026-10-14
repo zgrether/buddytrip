@@ -5,9 +5,8 @@ import { callerFailingRead } from "../../__tests__/helpers/failingRead";
 /**
  * #1474 — the course lock asks `game_started`, not `score_entries`.
  *
- * `games.applyCourse` / `games.clearCourse` refuse once a game has been scored,
- * because changing par and stroke index under recorded results rescores them.
- * They used to count `score_entries` alone, which is zero rows for an
+ * `games.applyCourse` refuses once a game has been scored, because changing par
+ * and stroke index under recorded results rescores them. It used to count `score_entries` alone, which is zero rows for an
  * outcome-mode match game and for skins however many holes are recorded
  * (CLAUDE.md #27). Both read as unscored and their course could change. The
  * lock now reads `game_started`, the one definition every other "has this been
@@ -15,14 +14,13 @@ import { callerFailingRead } from "../../__tests__/helpers/failingRead";
  *
  * Each case builds its own game, applies a course while unscored (the control:
  * the lock is not simply always shut), records ONE result through the app's own
- * procedure, then asserts both procedures refuse AND the game's course is
- * exactly what it was.
+ * procedure, then asserts the apply is refused AND the game's course is exactly
+ * what it was.
  *
- * Reachability, for the record: no screen calls these today. Every game view
- * renders the course row in its controlled (draft-then-save) mode, which goes
- * through `save_game_config` and its own three-table check. A direct API call
- * reaches them, and they are the procedures a future uncontrolled surface would
- * use.
+ * Reachability: rack's setup screen calls `applyCourse` ("Set up playing
+ * groups"); the settings pages go through `save_game_config` and its own
+ * check. (`games.clearCourse`, tested here alongside it at first, was retired in
+ * #1624; #1627 moves rack onto the settings save so `applyCourse` can follow.)
  */
 
 const LOCKED = "Scores are already entered — the course can't be changed now.";
@@ -64,12 +62,11 @@ async function courseOf(gameId: string) {
   return data;
 }
 
-/** Both procedures refuse with `message`, and the course is untouched. */
+/** The apply refuses with `message`, and the course is untouched. */
 async function expectLocked(tripId: string, gameId: string, message: string, caller = ctx.caller()) {
   const before = await courseOf(gameId);
   expect(before?.course_id, "precondition: a course is applied").toBe(courseA);
   await expect(caller.games.applyCourse({ tripId, gameId, courseId: courseB })).rejects.toThrow(message);
-  await expect(caller.games.clearCourse({ tripId, gameId })).rejects.toThrow(message);
   expect(await courseOf(gameId)).toEqual(before);
 }
 
