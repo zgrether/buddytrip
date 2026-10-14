@@ -57,7 +57,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             if (suppressed) return;
             showToast(
               isConnectivityError(error)
-                ? "Couldn't save — check your connection. We'll keep your data."
+                ? "Couldn't save. Try again."
                 : mutationErrorMessage(error)
             );
           },

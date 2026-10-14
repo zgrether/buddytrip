@@ -1076,7 +1076,7 @@ function LeaderboardLoadError({ onRetry }: { onRetry: () => void }) {
         className="max-w-xs text-[12px] leading-relaxed"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Check your connection — the board will be here when you&apos;re back.
+        Scores are safe — try again.
       </p>
       <button
         type="button"
