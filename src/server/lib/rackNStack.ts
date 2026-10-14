@@ -1,4 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { TRPCError } from "@trpc/server";
+import { allUnitsComplete } from "@/lib/gameCompleteness";
+import { RELOCK_BLOCKED_MATCHES } from "@/lib/gameLifecycle";
 import { playerStats, computeRack, rackSides, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
@@ -46,16 +49,19 @@ export async function computeRackNStackResults(
   gameId: string,
   /** #776 — how a results-write failure surfaces. Defaults to the setup
    *  behaviour; `games.finish` passes "throw". See WriteFailureMode. */
-  { onFailure }: { onFailure?: WriteFailureMode } = {}
+  /** `refuseUndecided` (#1431) — a RELOCK: refuse, before the write, when a
+   *  slot's players aren't both through every hole. */
+  { onFailure, refuseUndecided = false }: { onFailure?: WriteFailureMode; refuseUndecided?: boolean } = {}
 ): Promise<RackTeamOutcome[]> {
   // #1470: a failed read never reaches the write — see `failClosedOnRead`.
-  return failClosedOnRead(gameId, onFailure, [], () => rackResults(supabase, gameId, onFailure));
+  return failClosedOnRead(gameId, onFailure, [], () => rackResults(supabase, gameId, onFailure, refuseUndecided));
 }
 
 async function rackResults(
   supabase: SupabaseClient,
   gameId: string,
-  onFailure: WriteFailureMode | undefined
+  onFailure: WriteFailureMode | undefined,
+  refuseUndecided: boolean
 ): Promise<RackTeamOutcome[]> {
   // Every read below goes through the rowOrThrow family (#1470). Unchecked, a
   // failed game or teams read returned early and a finalize marked the game
@@ -173,7 +179,13 @@ async function rackResults(
     });
   }
 
-  const { points } = computeRack(players, "current", coursePar);
+  const { points, slots } = computeRack(players, "current", coursePar);
+  // A relock with a slot not played out is refused before the write (#1431).
+  // Same predicate as the client's `allThru18` (`allUnitsComplete` over the
+  // slots' thrus), so the disabled button and this refusal can't disagree.
+  if (refuseUndecided && !allUnitsComplete(slots.flatMap((s) => [s.a.thru, s.b.thru]), par.length)) {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: RELOCK_BLOCKED_MATCHES });
+  }
   const teamPoints: Record<string, number> = { [teamIds[0]]: points.A, [teamIds[1]]: points.B };
 
   // position: higher points lead (ties share 1).

@@ -48,6 +48,7 @@ import { computePickemResults } from "@/server/lib/pickemResults";
 import { computeSideBoard } from "@/server/lib/sideBoard";
 import { notReadyMessage, POINT_VALUE_NOT_READY } from "@/server/lib/notReadyMessage";
 import { writeTeamMatchPoints } from "../lib/matchAwards";
+import { RELOCK_BLOCKED_MATCHES } from "@/lib/gameLifecycle";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "@/server/lib/myDelegateGameIds";
 
@@ -1317,7 +1318,7 @@ export const gamesRouter = router({
         // `points_total`/`points_distribution` join for the "matches" arm, which
         // needs them to derive the live even share (`liveMatchPointsPerMatch`) —
         // the same two columns golf match play's own award write reads.
-        .select("id, game_type_id, status, name, competition_id, competition_format, points_total, points_distribution")
+        .select("id, game_type_id, status, name, competition_id, competition_format, points_total, points_distribution, corrections_open")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
         .maybeSingle();
@@ -1327,6 +1328,15 @@ export const gamesRouter = router({
       // Read BEFORE the update: `finish` is deliberately re-runnable, so this is
       // the only point at which "was it already complete?" is still answerable.
       const wasAlreadyComplete = game.status === "complete";
+      // A RELOCK — a correction being saved (#1431). It refuses any undecided
+      // match: the first finalize is gated on completeness by the client, and a
+      // correction that clears a hole or a result would otherwise record a
+      // half-round as final through this same door. Refused BEFORE any write,
+      // in each arm below, so a refusal leaves the correction exactly as it was.
+      // Pick'em is deliberately exempt (its early finalize is the design, and
+      // the client's `picksRevealed` input says so); bracket already refuses an
+      // undecided draw on every finalize; stroke and skins have no matches.
+      const isRelock = wasAlreadyComplete && game.corrections_open === true;
 
       // Result strategy comes from the format definition in CODE (W-PERF-01),
       // resolved together with the game's `competition_format` — a bracket is not
@@ -1401,7 +1411,10 @@ export const gamesRouter = router({
       // The SETUP callers deliberately keep the default ("log") — see
       // WriteFailureMode. `writeGameResults.guard.test.ts` pins all five.
       } else if (strategy === "match_play") {
-        matches = await computeMatchPlayResults(ctx.supabase, input.gameId, { onFailure: "throw" });
+        matches = await computeMatchPlayResults(ctx.supabase, input.gameId, {
+          onFailure: "throw",
+          refuseUndecided: isRelock,
+        });
       // NON-GOLF MATCHES (170) — the sixth engine, and the one whose "compute"
       // is nothing at all: a match's result is DECLARED directly to
       // `game_matches.result` (no holes, no gross scores), so there is no
@@ -1441,6 +1454,12 @@ export const gamesRouter = router({
         }[];
         const assigned = gameMatches.filter((m) => m.side_a?.id && m.side_b?.id);
         const undecidedCount = assigned.filter((m) => m.result == null).length;
+        // A relock refuses where a first finalize only warns (#1431): the
+        // warning's "permitted" is for a match that was never played, and a
+        // correction that leaves one undecided has un-decided a played match.
+        if (isRelock && undecidedCount > 0) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: RELOCK_BLOCKED_MATCHES });
+        }
         if (undecidedCount > 0) {
           warning = `${undecidedCount} of ${assigned.length} match${assigned.length === 1 ? "" : "es"} ${undecidedCount === 1 ? "has" : "have"} no result yet — ${undecidedCount === 1 ? "its" : "their"} points will stay unpaid until entered and re-finalized.`;
         }
@@ -1469,7 +1488,10 @@ export const gamesRouter = router({
           );
         }
       } else if (strategy === "rack_n_stack") {
-        teams = await computeRackNStackResults(ctx.supabase, input.gameId, { onFailure: "throw" });
+        teams = await computeRackNStackResults(ctx.supabase, input.gameId, {
+          onFailure: "throw",
+          refuseUndecided: isRelock,
+        });
       // PICK'EM — the fifth engine, and the third shape of results this dispatch
       // writes. Same split as the four above: the rule is client-safe
       // (`src/lib/pickemFinalize.ts`, composing the board's own functions), the

@@ -83,7 +83,24 @@ export type GameLifecycleState = {
   canCorrect: boolean;
   /** Show the "Save scoring changes" CTA. */
   canRelock: boolean;
+  /**
+   * Show "Save scoring changes" DISABLED, with the line saying what's left
+   * (#1431). An editor mid-correction whose game is no longer complete: the
+   * button stays where they expect it, and the line names the action that
+   * enables it. Never true alongside `canRelock`.
+   */
+  relockBlocked: boolean;
 };
+
+/**
+ * The line under a disabled "Save scoring changes" (#1431, Zach). Matches for
+ * every format that has them (golf match play, rack's slots, non-golf Matches,
+ * bracket), holes for the two that don't (stroke, skins). The server refuses an
+ * undecided-match relock with the match line, so screen and refusal say one
+ * thing.
+ */
+export const RELOCK_BLOCKED_MATCHES = "Decide every match to save.";
+export const RELOCK_BLOCKED_HOLES = "Finish every hole to save.";
 
 /**
  * The LOCK STATE alone — what phase of its life the game is in, with no reference
@@ -188,5 +205,6 @@ export function gameLifecycle({
     // to complete is the way the game got there. Pick'em's `picksRevealed` stays
     // true through a correction, so its relock is unaffected.
     canRelock: canEdit && isCorrecting && allComplete,
+    relockBlocked: canEdit && isCorrecting && !allComplete,
   };
 }

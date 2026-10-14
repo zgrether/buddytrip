@@ -1,7 +1,7 @@
 "use client";
 
 import { TYPE_SCALE } from "@/lib/typeScale";
-import { gameLifecycle, type GameLifecycleInput } from "@/lib/gameLifecycle";
+import { gameLifecycle, RELOCK_BLOCKED_MATCHES, type GameLifecycleInput } from "@/lib/gameLifecycle";
 
 /**
  * GameLifecycleActions — the finalize / correct / re-lock CTAs at the bottom of a
@@ -89,6 +89,7 @@ export function GameLifecycleActions({
   finalizeLabel = "Save results",
   finalizePendingLabel = "Saving results…",
   correctLabel = "Correct a score",
+  relockBlockedLine = RELOCK_BLOCKED_MATCHES,
   finalizePending = false,
   correctPending = false,
   variant = "cta",
@@ -123,6 +124,11 @@ export function GameLifecycleActions({
    * visible as a decision beats a fifth copy of a string that is wrong there.
    */
   correctLabel?: string;
+  /**
+   * The line under a disabled "Save scoring changes" (#1431). Defaults to the
+   * match line; stroke and skins, which have no matches, pass the holes line.
+   */
+  relockBlockedLine?: string;
   finalizePending?: boolean;
   correctPending?: boolean;
   onFinalize: () => void;
@@ -239,25 +245,41 @@ export function GameLifecycleActions({
 
   // Re-lock — warning-toned, because the game is currently OPEN and its result is
   // not counting as final until this is tapped.
-  if (state.canRelock) {
+  //
+  // DISABLED, not absent, when the correction has left the game incomplete
+  // (#1431, Zach): the button stays where the reader expects it, and the line
+  // under it names what enables it. The server refuses the same relock, so the
+  // disabled button is not the only guard.
+  if (state.canRelock || state.relockBlocked) {
     return (
       // Same post-finalize context as the correct arm above — same top padding.
       // (Not in the panel variant, where the row does its own spacing.)
       box(
         "game-relock",
-        <button
-          onClick={onFinalize}
-          disabled={finalizePending}
-          className={panel ? "shrink-0 px-4 disabled:opacity-40" : "w-full disabled:opacity-40"}
-          style={{
-            ...(panel ? PANEL_BTN : { height: 50, borderRadius: 12, fontSize: 15 }),
-            background: "var(--color-bt-warning)",
-            color: "var(--color-bt-on-accent)",
-            fontWeight: 600,
-          }}
-        >
-          {finalizePending ? "Saving changes…" : "Save scoring changes"}
-        </button>
+        <>
+          <button
+            onClick={onFinalize}
+            disabled={finalizePending || state.relockBlocked}
+            className={panel ? "shrink-0 px-4 disabled:opacity-40" : "w-full disabled:opacity-40"}
+            style={{
+              ...(panel ? PANEL_BTN : { height: 50, borderRadius: 12, fontSize: 15 }),
+              background: "var(--color-bt-warning)",
+              color: "var(--color-bt-on-accent)",
+              fontWeight: 600,
+            }}
+          >
+            {finalizePending ? "Saving changes…" : "Save scoring changes"}
+          </button>
+          {state.relockBlocked && (
+            <p
+              data-testid="game-relock-blocked"
+              className="mt-2 text-center"
+              style={{ fontSize: TYPE_SCALE.bodyDense, color: "var(--color-bt-text-dim)" }}
+            >
+              {relockBlockedLine}
+            </p>
+          )}
+        </>
       )
     );
   }
