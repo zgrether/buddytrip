@@ -65,6 +65,8 @@ describe("gameLifecycle", () => {
     const s = { ...base, status: "complete", allComplete: false };
     expect(gameLifecycle({ ...s, correctionsOpen: false }).canCorrect).toBe(true);
     expect(gameLifecycle({ ...s, correctionsOpen: true }).canRelock).toBe(false);
+    // …and the button shows DISABLED instead of vanishing (Zach, #1618).
+    expect(gameLifecycle({ ...s, correctionsOpen: true }).relockBlocked).toBe(true);
   });
 
   it("relocks a complete correction — pick'em's revealed clock counts as complete", () => {
@@ -73,28 +75,33 @@ describe("gameLifecycle", () => {
     // true through a correction, so its relock is offered as before.
     const s = { ...base, status: "complete", correctionsOpen: true, allComplete: true };
     expect(gameLifecycle(s).canRelock).toBe(true);
+    expect(gameLifecycle(s).relockBlocked).toBe(false);
     expect(gameLifecycle({ ...s, canEdit: false }).canRelock).toBe(false);
   });
 
   it("hides every action from a non-editor, in every state", () => {
     // Hidden, not disabled — a member has no business seeing a control they
-    // cannot use, and the server refuses it regardless.
+    // cannot use, and the server refuses it regardless. Includes the disabled
+    // relock: that is for an editor who can finish the game, not a member.
     for (const status of ["active", "complete"]) {
       for (const correctionsOpen of [false, true]) {
-        const s = gameLifecycle({ ...base, canEdit: false, status, correctionsOpen });
-        expect([s.canFinalize, s.canCorrect, s.canRelock]).toEqual([false, false, false]);
+        for (const allComplete of [false, true]) {
+          const s = gameLifecycle({ ...base, canEdit: false, status, correctionsOpen, allComplete });
+          expect([s.canFinalize, s.canCorrect, s.canRelock, s.relockBlocked]).toEqual([false, false, false, false]);
+        }
       }
     }
   });
 
   it("never offers two primary actions at once", () => {
-    // Finalize / correct / re-lock are mutually exclusive by construction; if
-    // that ever stops holding, the scoreboard grows two stacked CTAs.
+    // Finalize / correct / re-lock (live or disabled) are mutually exclusive by
+    // construction; if that ever stops holding, the scoreboard grows two
+    // stacked CTAs.
     for (const status of ["pending", "active", "complete"]) {
       for (const correctionsOpen of [false, true]) {
         for (const allComplete of [false, true]) {
           const s = gameLifecycle({ canEdit: true, status, correctionsOpen, allComplete });
-          const shown = [s.canFinalize, s.canCorrect, s.canRelock].filter(Boolean).length;
+          const shown = [s.canFinalize, s.canCorrect, s.canRelock, s.relockBlocked].filter(Boolean).length;
           expect(shown).toBeLessThanOrEqual(1);
         }
       }
