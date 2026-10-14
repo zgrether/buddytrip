@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { competitionNoun } from "@/lib/competitionWords";
+import { competitionNoun, SIDE_GAME_WORD, DELEGATE_WORD } from "@/lib/vocabulary";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -395,7 +395,7 @@ function CountsToward({
 }) {
   const opts: { v: "competition" | "side"; label: string }[] = [
     { v: "competition", label: competitionName },
-    { v: "side", label: "Side game" },
+    { v: "side", label: SIDE_GAME_WORD },
   ];
   return (
     <div data-testid="counts-toward">
@@ -557,7 +557,7 @@ function DelegationBlock({
     );
   }
   return (
-    <Field label="Delegate">
+    <Field label={DELEGATE_WORD}>
       <DelegatePicker
         tripId={tripId}
         competitionId={competitionId}

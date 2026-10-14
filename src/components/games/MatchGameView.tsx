@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { ChevronRight, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
@@ -1798,7 +1799,7 @@ export function MatchGameView() {
         {readOnly ? (
           // Read-only when locked OR the viewer can't score this match — the
           // scorecard IS the surface, now an overlay; dismiss returns to the hub.
-          <ScorecardSheet title={locked ? "Scorecard · Final" : "Scorecard"} subtitle={scorecardCourseName ?? undefined} onClose={matchBack}>
+          <ScorecardSheet title={locked ? `Scorecard · ${GAME_STATE_WORD.final}` : "Scorecard"} subtitle={scorecardCourseName ?? undefined} onClose={matchBack}>
             {scorecardGrid}
           </ScorecardSheet>
         ) : outcomeMode ? (

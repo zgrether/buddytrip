@@ -67,8 +67,9 @@ export interface MatchState {
  * Six surfaces say these words, and each used to format its own: the match
  * card, two scorecards' per-hole cells, the result banner, the Quick Play
  * subtitle and the pick'em match note. Six private formatters are how they
- * drifted apart (ruling PR 9 #1), so the words have ONE home and every one of
- * them reads it.
+ * drifted apart (ruling PR 9 #1), so the words have ONE home —
+ * `MATCH_LEVEL_WORD` in `src/lib/vocabulary.ts` (#1619) — and every one of them
+ * reads it. The states and `matchLevel()` stay here, in the engine.
  *
  * Nothing played wins over "over". A match with no units at all is over by
  * arithmetic and halved by nothing; saying "Halved" there would turn an empty
@@ -76,11 +77,6 @@ export interface MatchState {
  */
 export type MatchLevel = "not_started" | "level" | "halved";
 
-export const MATCH_LEVEL_WORD: Record<MatchLevel, string> = {
-  not_started: "Not started",
-  level: "AS",
-  halved: "Halved",
-};
 
 /** Which of the three it is, or null when somebody leads. */
 export function matchLevel(st: Pick<MatchState, "thru" | "over" | "leader">): MatchLevel | null {

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { EITHER_COMPETITION } from "@/lib/vocabulary";
 import { TRPCError } from "@trpc/server";
 import { computeConfigHash } from "@/lib/configHash";
 import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
@@ -58,7 +59,7 @@ export async function readRosterFingerprint(
     await supabase.from("competitions").select("id").eq("id", competitionId).eq("trip_id", tripId).maybeSingle(),
     "competition"
   );
-  if (!comp) throw new TRPCError({ code: "NOT_FOUND", message: "That Cup or Tournament wasn't found." });
+  if (!comp) throw new TRPCError({ code: "NOT_FOUND", message: `That ${EITHER_COMPETITION} wasn't found.` });
 
   const [teamsRes, assignRes] = await Promise.all([
     supabase.from("teams").select("id").eq("competition_id", competitionId).order("id", { ascending: true }),

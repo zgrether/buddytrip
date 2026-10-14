@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { RECREDIT_WORD } from "@/lib/vocabulary";
 import { createPortal } from "react-dom";
 import { Check, History } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
@@ -94,7 +95,7 @@ export function RecreditSheet({
               <History size={18} />
             </div>
             <h3 className="mt-3 text-base font-bold" style={{ color: "var(--color-bt-text)" }} data-testid="recredit-title">
-              Re-credit {personName}&rsquo;s games
+              {RECREDIT_WORD.action} {personName}&rsquo;s games
             </h3>
 
             {state.phase === "loading" && (
@@ -256,7 +257,7 @@ export function RecreditSheet({
                   style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
                   data-testid="recredit-confirm"
                 >
-                  {count === 0 ? "Select a game" : `Re-credit ${count} game${count === 1 ? "" : "s"}`}
+                  {count === 0 ? "Select a game" : `${RECREDIT_WORD.action} ${count} game${count === 1 ? "" : "s"}`}
                 </button>
               )
             )}
@@ -302,7 +303,7 @@ export function RecreditButton({
         data-user-id={userId}
       >
         <History size={13} style={{ color: "var(--color-bt-text-dim)" }} />
-        Re-credit {personName}&rsquo;s finished games
+        {RECREDIT_WORD.action} {personName}&rsquo;s finished games
       </button>
       {open && (
         <RecreditFlow

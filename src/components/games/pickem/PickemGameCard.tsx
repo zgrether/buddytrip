@@ -9,7 +9,7 @@ import {
   type SideMarks,
   type StatusTone,
 } from "./slateRowVisual";
-import { SLATE_RESULT_WORD } from "@/lib/pickemResultWords";
+import { SLATE_RESULT_WORD } from "@/lib/vocabulary";
 
 /**
  * ONE card for one contest, wherever it is shown (r7 §12).

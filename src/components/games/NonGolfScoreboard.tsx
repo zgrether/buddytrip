@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 import { trpc } from "@/lib/trpc-client";
 import {
   ManualPlacementEditor,
@@ -347,7 +348,7 @@ function NonGolfMatchControl({
         selected={result === "tie"}
         dim={anySelected && result !== "tie"}
         neutral
-        label="Halved"
+        label={MATCH_LEVEL_WORD.halved}
         onClick={() => pick("tie")}
         disabled={!canEdit}
         testId="match-draw"

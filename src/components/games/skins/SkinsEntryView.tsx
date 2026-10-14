@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { RESULT_WORD } from "@/lib/vocabulary";
 import { ChevronLeft, Table2, Check, Settings } from "lucide-react";
 import { tallyGrouping, type SkinsOutcomeRow } from "@/lib/skins";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
@@ -302,7 +303,7 @@ export function SkinsEntryView({
             selected={selectedTied}
             dim={anySelected && !selectedTied}
             neutral
-            label="Tied"
+            label={RESULT_WORD.tied}
             // Says what happens next rather than restating the word, and it is
             // the only place the consequence is stated before it is chosen.
             sub={

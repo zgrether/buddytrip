@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Trophy } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { SIDE_BOARD_QUERY } from "@/lib/queryConfig";
-import { COMPETITION_UMBRELLA } from "@/lib/competitionWords";
+import { COMPETITION_UMBRELLA } from "@/lib/vocabulary";
 import { useVisibleEnabled } from "@/lib/surfaceVisibility";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { GamesSection, useGameRowContext, type LBGame, type LBCell } from "./CompetitionLeaderboard";

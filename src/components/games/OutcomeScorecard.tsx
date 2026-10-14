@@ -1,6 +1,7 @@
 "use client";
 
-import { buildDecidedFromOutcomes, matchTrack, MATCH_LEVEL_WORD, type DecidedHole, type HoleOutcomeRow, type MatchTrackCell } from "@/lib/matchPlay";
+import { buildDecidedFromOutcomes, matchTrack, type DecidedHole, type HoleOutcomeRow, type MatchTrackCell } from "@/lib/matchPlay";
+import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 import { holeWeight, NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { ScorecardChrome, RightGutter, ScorecardLabelCell, scorecardPeople, LeadPill, SUB_W, TOTAL_W } from "./StandardGrid";
 import { matchDefeatText } from "./MatchResultBanner";

@@ -10,7 +10,7 @@ import { RoleBadge } from "./RoleBadge";
 import { parseLocalDate } from "@/lib/dates";
 import { isGrayscale as checkGrayscale } from "@/lib/tripStatus";
 import { trpc } from "@/lib/trpc-client";
-import { EITHER_COMPETITION } from "@/lib/competitionWords";
+import { EITHER_COMPETITION } from "@/lib/vocabulary";
 import type { TripRole } from "@/server/middleware";
 import { getLocationInfo } from "@/lib/locationUtils";
 import { temporalGradient } from "@/lib/temporalGradient";

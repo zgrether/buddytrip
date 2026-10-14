@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EITHER_COMPETITION } from "@/lib/vocabulary";
 import { TRPCError } from "@trpc/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { router, authedProcedure } from "../trpc";
@@ -23,7 +24,7 @@ async function assertCupOfTrip(supabase: SupabaseClient, tripId: string, competi
     "competition"
   );
   if (!cup || (cup.trip_id as string) !== tripId) {
-    throw new TRPCError({ code: "NOT_FOUND", message: "That Cup or Tournament wasn't found." });
+    throw new TRPCError({ code: "NOT_FOUND", message: `That ${EITHER_COMPETITION} wasn't found.` });
   }
 }
 

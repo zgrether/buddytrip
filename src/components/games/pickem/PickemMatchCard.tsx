@@ -3,7 +3,7 @@
 import { PickemAbsenceNotice, NO_PICKS } from "./PickemAbsenceNotice";
 import { TYPE_SCALE } from "@/lib/typeScale";
 import type { MatchStanding } from "@/lib/pickemBoard";
-import { MATCH_LEVEL_WORD } from "@/lib/matchPlay";
+import { MATCH_LEVEL_WORD, GAME_STATE_WORD } from "@/lib/vocabulary";
 
 /** Identity for one side, in the shape `avatarFor` already returns. */
 export interface SideAvatar {
@@ -91,9 +91,9 @@ export function matchPill(
 const PILL_LABEL: Record<MatchPill, string> = {
   // The match card's word for the same state (`matchLevel`), not a copy of it.
   "not-started": MATCH_LEVEL_WORD.not_started,
-  live: "Live",
+  live: GAME_STATE_WORD.live,
   clinched: "Clinched",
-  final: "Final",
+  final: GAME_STATE_WORD.final,
   "no-sheet": "Nothing submitted",
 };
 

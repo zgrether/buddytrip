@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EITHER_COMPETITION } from "@/lib/vocabulary";
 import { TRPCError } from "@trpc/server";
 import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { refuseSplitSides } from "../lib/splitSides";
@@ -251,7 +252,7 @@ async function refuseRankedFormatInHeadToHead(
     .eq("id", game.competition_id as string)
     .maybeSingle();
   if (compErr) {
-    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the Cup or Tournament: ${compErr.message}` });
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the ${EITHER_COMPETITION}: ${compErr.message}` });
   }
   if (comp?.scoring_model === "match_play") {
     throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
@@ -515,7 +516,7 @@ export const gamesRouter = router({
           .eq("trip_id", ctx.tripId)
           .maybeSingle();
         if (compErr) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the Cup or Tournament: ${compErr.message}` });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the ${EITHER_COMPETITION}: ${compErr.message}` });
         }
         const refusal = comp
           ? formatRefusalForScoringModel(input.gameTypeId, comp.scoring_model as ScoringModel | null)
@@ -552,7 +553,7 @@ export const gamesRouter = router({
         if (def && !canBeSideGame(input.gameTypeId)) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `${def.name} records its result against teams, so it can't be a side game. Add it to the trip's Cup or Tournament.`,
+            message: `${def.name} records its result against teams, so it can't be a side game. Add it to the trip's ${EITHER_COMPETITION}.`,
           });
         }
       }

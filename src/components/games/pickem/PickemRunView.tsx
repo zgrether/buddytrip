@@ -15,7 +15,7 @@ import { PickemGameCard, PickemSegments, segmentStyle } from "./PickemGameCard";
  */
 export { segmentStyle };
 import { resolvedCount, type SlateResult, type ScoredSlateGame } from "@/lib/pickemScoring";
-import { SLATE_RESULT_WORD } from "@/lib/pickemResultWords";
+import { SLATE_RESULT_WORD, GAME_STATE_WORD } from "@/lib/vocabulary";
 
 /**
  * Screen E — the runner enters each slate game's outcome as it finishes.
@@ -113,8 +113,8 @@ export interface RunSlateGame extends ScoredSlateGame {
 /** Exported so the PICKS SHEET can name a settled game with the same word the
  *  runner used. Two surfaces describing one row must not word it differently. */
 export const RESULT_LABEL: Record<SlateResult, string> = {
-  away: "Final",
-  home: "Final",
+  away: GAME_STATE_WORD.final,
+  home: GAME_STATE_WORD.final,
   push: "Pushed",
   cancelled: SLATE_RESULT_WORD.cancelled,
 };

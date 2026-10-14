@@ -6,13 +6,13 @@ import {
   matchState,
   matchHasScores,
   matchLevel,
-  MATCH_LEVEL_WORD,
   outcomeBottomState,
   matchTrack,
   type HoleResult,
   type DecidedHole,
   type HoleOutcomeRow,
 } from "./matchPlay";
+import { MATCH_LEVEL_WORD } from "./vocabulary";
 import { NO_GLORIOUS, type GloriousConfig } from "./gloriousHoles";
 
 // Compact builder: a sequential run of outcomes on holes 1..n (no gaps) — the shape

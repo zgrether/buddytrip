@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { TRIP_ROLE_WORD } from "@/lib/vocabulary";
 import { Calendar, Check, Shield, Users, X, type LucideIcon } from "lucide-react";
 import { ConfirmDeleteButton } from "@/components/ConfirmDeleteButton";
 import { DepartureWarning } from "./DepartureWarning";
@@ -399,10 +400,10 @@ export function MemberEditor({
   //    a single change button below. Owner is never editable here. ─────────
   const isOrganizer = member.role === "Organizer";
   const roleBadge = isOwnerRow
-    ? { label: "Owner", color: "var(--color-bt-owner)", bg: "transparent", border: "1px solid var(--color-bt-owner)" }
+    ? { label: TRIP_ROLE_WORD.Owner, color: "var(--color-bt-owner)", bg: "transparent", border: "1px solid var(--color-bt-owner)" }
     : isOrganizer
-      ? { label: "Organizer", color: "var(--color-bt-accent)", bg: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }
-      : { label: "Member", color: "var(--color-bt-text-dim)", bg: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" };
+      ? { label: TRIP_ROLE_WORD.Organizer, color: "var(--color-bt-accent)", bg: "var(--color-bt-accent-faint)", border: "1px solid var(--color-bt-accent-border)" }
+      : { label: TRIP_ROLE_WORD.Member, color: "var(--color-bt-text-dim)", bg: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" };
   const roleDescription = isOwnerRow
     ? "Created the trip. Change ownership from Trip settings."
     : status !== "active"
@@ -515,7 +516,7 @@ export function MemberEditor({
                 {nickname || member.displayName || "Untitled person"}
               </div>
               <div className="text-[11px]" style={{ color: "var(--color-bt-text-dim)" }}>
-                {member.role !== "Member" && `${member.role === "Organizer" ? "Organizer" : member.role} · `}
+                {member.role !== "Member" && `${member.role === "Organizer" ? TRIP_ROLE_WORD.Organizer : member.role} · `}
                 {statusLabel(status)}
               </div>
             </div>

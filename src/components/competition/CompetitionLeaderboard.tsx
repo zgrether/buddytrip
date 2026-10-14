@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { Trophy, CloudOff, RefreshCw, Plus, ArrowUpDown } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/server/router";
@@ -837,7 +838,7 @@ export function mergeByDisplayOrder(cupGames: LBGame[], sideGames: LBGame[]): LB
 // full GameRow.
 const SECTION_ORDER: { key: GameSection; label: string }[] = [
   { key: "completed", label: "Completed" },
-  { key: "on-tap", label: "Live" },
+  { key: "on-tap", label: GAME_STATE_WORD.live },
   { key: "ready", label: "Ready" },
   { key: "preparing", label: "Configuring" },
   { key: "skeleton", label: "New" },
