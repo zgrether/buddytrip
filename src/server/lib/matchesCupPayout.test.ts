@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
+import { RELOCK_BLOCKED_MATCHES } from "@/lib/gameLifecycle";
 
 /**
  * NON-GOLF MATCHES → CUP POINTS. The board must pay the side that won.
@@ -212,27 +213,23 @@ describe("non-golf Matches in a match-play cup", () => {
     expect(lb.unitTotals[losing]).toBe(0);
   });
 
-  it("pays NOBODY when every result is cleared — not half the pot each", async () => {
-    // Zach's second symptom, and a DIFFERENT failure from the inversion: with
-    // both teams on 0 the old branch saw a tie at "position 0" and averaged
-    // [35, 0] into 17.5 apiece. A game nobody won paid out in full.
-    //
-    // The sequence is his: finalize with results, then clear them and
-    // re-finalize, rather than starting from a game that never had any. Those
-    // are different states — the first has `game_results` rows already written
-    // — and only the first is what was reported.
-    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "Matches Payout Trip", name: "Cleared Cup" });
+  /**
+   * The cup for the two cases below: three matches, a 35-point pot, team B the
+   * side every declared result favors. Built through the app's own writers like
+   * the case above.
+   */
+  async function threeMatchCup(cupName: string) {
+    const { tripId, competitionId: comp } = await ctx.createCupTrip({ title: "Matches Payout Trip", name: cupName });
     const teamA = await ctx.createTeam(comp, "Alpha", { shortName: "ALP" });
     const teamB = await ctx.createTeam(comp, "Bravo", { shortName: "BRV" });
     const owner = ctx.getUser("owner").id;
     const member = ctx.getUser("member").id;
-    // This cup's trip is its own, so the member joins it here (the shared trip
-    // this case used to borrow got them from the case above).
+    // This cup's trip is its own, so the member joins it here.
     await ctx.addTripMemberById(tripId, member, "Member");
-    const clearA =await guest(tripId, "Cleared Ghost A1");
-    const clearB = await guest(tripId, "Cleared Ghost B1");
-    const clearC = await guest(tripId, "Cleared Ghost A2");
-    const clearD = await guest(tripId, "Cleared Ghost B2");
+    const clearA = await guest(tripId, `${cupName} Ghost A1`);
+    const clearB = await guest(tripId, `${cupName} Ghost B1`);
+    const clearC = await guest(tripId, `${cupName} Ghost A2`);
+    const clearD = await guest(tripId, `${cupName} Ghost B2`);
     await ctx.admin.from("team_assignments").insert([
       { competition_id: comp, user_id: owner, team_id: teamA },
       { competition_id: comp, user_id: clearA, team_id: teamA },
@@ -263,27 +260,61 @@ describe("non-golf Matches in a match-play cup", () => {
       { matchNumber: 2, a: owner, b: member, pointValue: 2 },
       { matchNumber: 3, a: clearC, b: clearD, pointValue: null },
     ]);
+    return { tripId, comp, teamA, teamB, gameId: g.id, ids: await matchIds(g.id) };
+  }
 
-    const ids = await matchIds(g.id);
+  it("pays NOBODY when no match has a result — not half the pot each", async () => {
+    // Zach's second symptom, and a DIFFERENT failure from the inversion: with
+    // both teams on 0 the old branch saw a tie at "position 0" and averaged
+    // [35, 0] into 17.5 apiece. A game nobody won paid out in full.
+    //
+    // His sequence reached it by clearing every result in a correction and
+    // re-finalizing. That relock is REFUSED since #1431 (the case below), so
+    // this reaches the same read through the path that remains: a first
+    // finalize with every match undecided, which is permitted with a warning.
+    const { tripId, comp, teamA, teamB, gameId } = await threeMatchCup("Undecided Cup");
+    const res = await ctx.caller().games.finish({ tripId, gameId });
+    expect(res.warning).toMatch(/^3 of 3 matches have no result yet/);
+
+    // The mechanism, before the read: both teams' rows exist and sit on 0. With
+    // no rows the board pays nobody trivially, and this case would pass without
+    // ever reaching the tie the bug lived in.
+    const { data: rows } = await ctx.admin
+      .from("game_results")
+      .select("entity_id, raw_score")
+      .eq("game_id", gameId)
+      .eq("entity_type", "team");
+    const byTeam = new Map((rows ?? []).map((r) => [r.entity_id as string, Number(r.raw_score)]));
+    expect(byTeam.get(teamA)).toBe(0);
+    expect(byTeam.get(teamB)).toBe(0);
+
+    const lb = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    expect(lb.unitTotals[teamA]).toBe(0);
+    expect(lb.unitTotals[teamB]).toBe(0);
+  });
+
+  it("clearing every result in a correction can't be saved — the board keeps the last saved result (#1431)", async () => {
+    // Zach's own sequence from the report above, which this case used to carry
+    // through to a re-finalize. Since #1431 the relock refuses an undecided
+    // match, so the cleared correction is never recorded and the board still
+    // pays what was last saved.
+    const { tripId, comp, teamA, teamB, gameId, ids } = await threeMatchCup("Cleared Cup");
     for (const matchId of ids) {
-      await ctx.caller().matches.setResult({ tripId, gameId: g.id, matchId, result: "b_win" });
+      await ctx.caller().matches.setResult({ tripId, gameId, matchId, result: "b_win" });
     }
-    await ctx.caller().games.finish({ tripId, gameId: g.id });
-
+    await ctx.caller().games.finish({ tripId, gameId });
     const decided = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
     expect(decided.unitTotals[teamB]).toBe(35);
 
-    // Now clear all three, the way the reporter did — corrections open, every
-    // result unset, finalize again.
-    await ctx.caller().games.openCorrection({ tripId, gameId: g.id });
+    await ctx.caller().games.openCorrection({ tripId, gameId });
     for (const matchId of ids) {
-      await ctx.caller().matches.setResult({ tripId, gameId: g.id, matchId, result: null });
+      await ctx.caller().matches.setResult({ tripId, gameId, matchId, result: null });
     }
-    await ctx.caller().games.finish({ tripId, gameId: g.id });
+    await expect(ctx.caller().games.finish({ tripId, gameId })).rejects.toThrow(RELOCK_BLOCKED_MATCHES);
 
-    const cleared = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
-    expect(cleared.unitTotals[teamA]).toBe(0);
-    expect(cleared.unitTotals[teamB]).toBe(0);
+    const after = await ctx.caller().competitions.leaderboard({ tripId, competitionId: comp });
+    expect(after.unitTotals[teamA]).toBe(0);
+    expect(after.unitTotals[teamB]).toBe(35);
   });
 });
 
