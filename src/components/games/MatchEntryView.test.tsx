@@ -72,3 +72,39 @@ describe("MatchEntryView — Glorious banner (gate c)", () => {
     expect(renderAt(16, glor3)).toContain("glorious-entry-banner");
   });
 });
+
+// The keypad's own error line for the cell being entered — the same words as
+// `UnsavedScoresBanner` for the same situation (Zach, 2026-10-14). Anchored on
+// strings only the KEYPAD emits: the player's name in the line, and the keypad
+// Retry's own test id. The banner above it also says "score not synced" and has
+// its own Retry, so a bare substring would be satisfied by the wrong element.
+describe("MatchEntryView — keypad unsaved-score line", () => {
+  const KEY = "a:1"; // scoreCellKey("a", "1") — Alex is the active player on hole 1
+  const renderErr = (refusals?: Record<string, string>) =>
+    renderToStaticMarkup(
+      <MatchEntryView
+        gameName="Test Match"
+        units={units}
+        matches={matches}
+        values={{}}
+        onChange={() => {}}
+        currentHole={1}
+        saveStatus={{ [KEY]: "error" }}
+        onRetryCell={() => {}}
+        refusals={refusals}
+      />
+    );
+
+  it("a score that can still be sent: \"not synced\", with the keypad's Retry", () => {
+    const html = renderErr();
+    expect(html).toContain("Alex’s score not synced");
+    expect(html).toContain('data-testid="keypad-error-retry"');
+  });
+
+  it("a score the server refused: \"wouldn't save\", and no keypad Retry", () => {
+    const html = renderErr({ [KEY]: "This round is posted." });
+    expect(html).toContain("Alex’s score wouldn’t save");
+    expect(html).not.toContain("Alex’s score not synced");
+    expect(html).not.toContain('data-testid="keypad-error-retry"');
+  });
+});

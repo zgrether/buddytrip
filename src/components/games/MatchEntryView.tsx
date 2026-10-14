@@ -524,13 +524,20 @@ export function MatchEntryView({
           /* THIS cell's failure, in the caption's own line — the error outranks
              knowing whose score you are typing, and the Retry comes with it
              rather than being pointed at. See `StrokeKeypad`'s note on why
-             "retry above" could not survive the move. */
+             "retry above" could not survive the move.
+
+             Same words as `UnsavedScoresBanner` for the same situation (Zach,
+             2026-10-14): "not synced" with Retry while the score can still be
+             sent; "wouldn't save" with NO Retry once the server has refused it
+             (#1230), since retrying a refusal can never succeed. */
           error={
             saveStatus[scoreCellKey(activeParticipant.id, label)] === "error"
-              ? {
-                  text: `${activeParticipant.name}’s score didn’t save`,
-                  onRetry: onRetryCell ? () => onRetryCell(activeParticipant.id, label) : undefined,
-                }
+              ? refusals?.[scoreCellKey(activeParticipant.id, label)]
+                ? { text: `${activeParticipant.name}’s score wouldn’t save` }
+                : {
+                    text: `${activeParticipant.name}’s score not synced`,
+                    onRetry: onRetryCell ? () => onRetryCell(activeParticipant.id, label) : undefined,
+                  }
               : undefined
           }
         />
