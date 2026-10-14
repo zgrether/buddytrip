@@ -14,6 +14,7 @@
 /* `holeWeight` is no longer imported here: the engine takes a weight FUNCTION
    and `toUnitWeight` is the one place golf's config becomes one. */
 import { remainingSwing, toUnitWeight, NO_GLORIOUS, type Weighting } from "./gloriousHoles";
+import { HALVED_MARGIN } from "./vocabulary";
 
 export type HoleResult = "W" | "L" | "H"; // A vs B on NET; decided holes only, play order
 
@@ -401,7 +402,7 @@ function finalize(
   // "X > Y is legal" is intentional; do NOT "fix" it to look like standard match play.
   if (closedEarly) margin = `${up}&${holesLeftRaw}`; // "3&2" (raw) / "6&2" (glorious)
   else if (over && up) margin = `${up} UP`; // won through the last hole
-  else if (over) margin = "AS"; // halved through the last hole
+  else if (over) margin = HALVED_MARGIN; // halved through the last hole
   return {
     thru: played,
     diff,

@@ -122,6 +122,32 @@ export const GAME_STATE_WORD = {
   inReview: "In review",
 } as const;
 
+/**
+ * The engine's MARGIN for a match halved through the last hole ("3&2" |
+ * "2 UP" | "AS"). Unlike every other word here it is also DATA: `matchState`
+ * writes it to `game_matches.margin`, so changing it would leave every stored
+ * halved match on the old spelling — a data migration, not a copy change. It
+ * equals `MATCH_LEVEL_WORD.level` today and is kept separate so the label can
+ * change without touching stored margins.
+ */
+export const HALVED_MARGIN = "AS";
+
+// ── Navigation and structure ──────────────────────────────────────────────────
+
+/** A navigation tab's name: the bottom nav's competition tab, when the trip has
+ *  no competition label of its own. A tab, not a game's state (GAME_STATE_WORD). */
+export const NAV_WORD = {
+  live: "Live",
+} as const;
+
+/** A bracket ROUND's name — the draw's structure, not a game's state. The rounds
+ *  past these are numbered ("Round of 32"). */
+export const BRACKET_ROUND_WORD = {
+  final: "Final",
+  semifinals: "Semi-finals",
+  quarterfinals: "Quarter-finals",
+} as const;
+
 // ── Result words ──────────────────────────────────────────────────────────────
 
 /**

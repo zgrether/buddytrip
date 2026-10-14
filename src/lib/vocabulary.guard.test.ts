@@ -15,6 +15,9 @@ import {
   RESULT_WORD,
   PROJECTED_RESULTS,
   RECREDIT_WORD,
+  BRACKET_ROUND_WORD,
+  HALVED_MARGIN,
+  NAV_WORD,
   SIDE_GAME_WORD,
   SLATE_RESULT_WORD,
   TRIP_ROLE_WORD,
@@ -40,9 +43,12 @@ import {
  *  2. DISTINCTIVE terms — anywhere in visible text, outside the module: they
  *     mean one thing wherever they appear (Re-credit, In review, Canceled, …).
  *  3. GENERIC terms — only as an exact standalone literal: "Live", "Final",
- *     "Won" also occur inside ordinary sentences, and "Final" also names a
- *     bracket ROUND, so only a literal that is the bare word is a term. The few
- *     other meanings of the same spelling are listed below, each with why.
+ *     "Won" also occur inside ordinary sentences, so only a literal that is the
+ *     bare word is a term. There is NO exception list: a spelling that means
+ *     something else here is its own named term in the module (a nav tab's
+ *     "Live" is NAV_WORD, a bracket round's "Final" is BRACKET_ROUND_WORD,
+ *     the engine's stored "AS" margin is HALVED_MARGIN), so the way to make
+ *     this pass is to name the meaning, never to excuse a file.
  *
  * NOT CHECKED, stated so nobody reads it as covered:
  *  - ROLES. A role's label ("Organizer") is spelled exactly like the stored
@@ -176,6 +182,12 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
     expect(SIDE_GAME_WORD).toBe("Side game");
     expect(WITHDREW_WORD).toBe("Withdrew");
   });
+
+  it("navigation, structure, and the stored margin", () => {
+    expect(NAV_WORD).toEqual({ live: "Live" });
+    expect(BRACKET_ROUND_WORD).toEqual({ final: "Final", semifinals: "Semi-finals", quarterfinals: "Quarter-finals" });
+    expect(HALVED_MARGIN).toBe("AS");
+  });
 });
 
 // ── Controls: the instrument can go red ──────────────────────────────────────
@@ -254,6 +266,8 @@ const DISTINCTIVE: { name: string; re: RegExp }[] = [
   { name: "Projected results", re: /\bProjected results\b/ },
   { name: "Head-to-Head Cup", re: /\bHead-to-Head Cup\b/ },
   { name: "Cup or Tournament", re: /\bCup or Tournament\b/ },
+  { name: "Semi-finals", re: /\bSemi-finals\b/ },
+  { name: "Quarter-finals", re: /\bQuarter-finals\b/ },
 ];
 
 describe("distinctive terms are spelled only in the module", () => {
@@ -280,26 +294,6 @@ describe("distinctive terms are spelled only in the module", () => {
 
 // ── 3 · Generic terms: never a bare literal outside the module ────────────────
 
-/**
- * Same spelling, different concept — each listed with why it is NOT the term.
- * A new entry here is a decision about meaning, not a way to make the test pass.
- */
-const OTHER_MEANINGS: Record<string, string[]> = {
-  Live: [
-    path.join("components", "BottomNav.tsx"), // a TAB's name, not a game's state
-    path.join("components", "marketing", "FeaturesSection.tsx"), // the marketing page's illustrative badge
-  ],
-  Final: [
-    path.join("lib", "bracketLabels.ts"), // a bracket ROUND's name (structure), not a state
-  ],
-  AS: [
-    // The scoring engine's MARGIN value for a match halved through the last
-    // hole ("3&2" | "2 UP" | "AS"): data written to `game_matches.margin`, not
-    // a label. The label is MATCH_LEVEL_WORD.level.
-    path.join("lib", "matchPlay.ts"),
-  ],
-};
-
 const GENERIC = [
   GAME_STATE_WORD.live,
   GAME_STATE_WORD.final,
@@ -316,9 +310,8 @@ const GENERIC = [
 describe("generic terms are never a bare literal outside the module", () => {
   for (const word of GENERIC) {
     it(`"${word}"`, () => {
-      const allowed = new Set(OTHER_MEANINGS[word] ?? []);
       const hits = files
-        .filter((f) => f.rel !== HOME && !allowed.has(f.rel))
+        .filter((f) => f.rel !== HOME)
         .flatMap((f) => exactLiterals(f.source, f.rel, word).map((h) => ({ rel: f.rel, ...h })));
       expect(report(hits)).toEqual([]);
     });

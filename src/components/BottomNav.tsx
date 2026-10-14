@@ -1,6 +1,7 @@
 "use client";
 
 import { type FC, useEffect, useRef } from "react";
+import { NAV_WORD } from "@/lib/vocabulary";
 import { Home, Plus, Trophy, type LucideIcon } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 
@@ -62,7 +63,7 @@ export const GlobalBottomNav: FC<GlobalBottomNavProps> = ({ activeTripId }) => {
     { id: "new", label: "New trip", Icon: Plus, href: "/trips/new" },
     {
       id: "live",
-      label: "Live",
+      label: NAV_WORD.live,
       Icon: Trophy,
       href: activeTripId ? `/trips/${activeTripId}/leaderboard` : "#",
       hidden: !activeTripId,
@@ -128,7 +129,7 @@ export const TripBottomNav: FC<TripBottomNavProps> = ({
     { id: "trip-home", label: "Trip Home", Icon: Home, href: `/trips/${tripId}` },
     {
       id: "live",
-      label: liveLabel?.trim() || "Live",
+      label: liveLabel?.trim() || NAV_WORD.live,
       Icon: Trophy,
       href: `/trips/${tripId}/leaderboard`,
       hidden: showComp !== undefined ? !showComp : !eventId,
