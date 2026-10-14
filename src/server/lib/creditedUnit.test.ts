@@ -298,14 +298,22 @@ describe("a team-row format is paid by the team on the row, not by today's roste
     const before = await totalsOf(cup);
 
     /**
-     * Through the REAL mutation, not the service role — and it is genuinely
-     * reachable. `assertRosterUnlocked` keys the trade lock on `score_entries`,
-     * which a non-golf game never writes, so this cup is still UNLOCKED after
-     * being decided. `teams.ts` says so in its own comment. That makes this the
-     * plan's case rather than a synthetic one.
+     * Through the REAL mutation, not the service role, and through the path the
+     * app requires once results are in: the staff preview, then the move carrying
+     * its fingerprint.
+     *
+     * This used to make the move with no preview, and its comment said why that
+     * was reachable: the lock keyed on `score_entries`, which a non-golf game
+     * never writes, so this cup read as having no results after being decided.
+     * That was #1525's bug. Since migration 215 a finished game counts, so the
+     * cup reads as decided and a bare move is refused; the trade is still the
+     * plan's case, made the way a staff member now has to make it.
      */
+    const { fingerprint } = await ctx.caller().teamAssignments.previewChange({
+      tripId: cup.tripId, competitionId: cup.competitionId, userId: owner, toTeamId: cup.teamB,
+    });
     await ctx.caller().teamAssignments.assign({
-      tripId: cup.tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamB,
+      tripId: cup.tripId, competitionId: cup.competitionId, userId: owner, teamId: cup.teamB, rosterFingerprint: fingerprint,
     });
 
     expect(await totalsOf(cup)).toEqual(before);
