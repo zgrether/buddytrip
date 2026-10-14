@@ -1710,7 +1710,7 @@ function ChatBody({
               className="flex justify-center py-2 text-center"
               style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}
             >
-              Couldn&apos;t load earlier messages — check your connection.
+              Couldn&apos;t load earlier messages. Scroll up to retry.
             </div>
           )}
           {loading && <ChatMessagesPlaceholder />}
