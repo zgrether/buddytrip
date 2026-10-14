@@ -5,6 +5,7 @@ import { trpc } from "@/lib/trpc-client";
 import { skinsOutboxPut, skinsOutboxClear, skinsOutboxEntries } from "@/lib/skinsOutbox";
 import { isTerminalRefusal, refusalMessage, retryUnlessRefused } from "@/lib/terminalRefusal";
 import { showToast } from "@/lib/toast";
+import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
 import { skinsCellKey } from "@/components/games/skins/SkinsEntryView";
 import type { CellSaveState } from "@/components/games/types";
 import type { SkinsOutcomeRow } from "@/lib/skins";
@@ -222,6 +223,15 @@ export function useSkinsSaver(
     }, 0);
     return () => clearTimeout(t);
   }, [tripId, gameId, onChange]);
+
+  // #1622: re-send unsynced cells when the network is likely back (online, the
+  // page visible again, every 30s while visible) — not only on a tap or the next
+  // mount. Refused cells are skipped; see src/lib/retryOnReconnect.ts.
+  // A skins key is `${groupingId}:${hole}` (skinsCellKey); the id has no colon.
+  useRetryOnReconnect(saveStatus, refusals, (key) => {
+    const i = key.indexOf(":");
+    retryCell(key.slice(0, i), Number(key.slice(i + 1)));
+  });
 
   const errorCount = Object.values(saveStatus).filter((s) => s === "error").length;
   const savingCount = Object.values(saveStatus).filter((s) => s === "saving").length;
