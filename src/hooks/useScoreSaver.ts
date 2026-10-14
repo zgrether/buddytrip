@@ -7,7 +7,9 @@ import { outboxPut, outboxClear, outboxClearAll, outboxEntries } from "@/lib/sco
 import { reconcileScores } from "@/lib/scoreReconcile";
 import { isTerminalRefusal, refusalMessage, retryUnlessRefused } from "@/lib/terminalRefusal";
 import { showToast } from "@/lib/toast";
+import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
 import {
+  parseScoreCellKey,
   scoreCellKey,
   type CellSaveState,
   type SaveStatusMap,
@@ -380,6 +382,14 @@ export function useScoreSaver(
     }, 0);
     return () => clearTimeout(t);
   }, [tripId, gameId, onChange]);
+
+  // #1622: re-send unsynced cells when the network is likely back (online, the
+  // page visible again, every 30s while visible) — not only on a tap or the next
+  // mount. Refused cells are skipped; see src/lib/retryOnReconnect.ts.
+  useRetryOnReconnect(saveStatus, refusals, (key) => {
+    const { participantId, unitLabel } = parseScoreCellKey(key);
+    retryCell(participantId, unitLabel);
+  });
 
   const errorCount = Object.values(saveStatus).filter(
     (s) => s === "error",

@@ -7,8 +7,10 @@ import { reconcileOutcomes, outcomeOverwrites, type OutcomeOverwrite } from "@/l
 import { createGraceGate } from "@/lib/graceGate";
 import { isTerminalRefusal, refusalMessage, retryUnlessRefused } from "@/lib/terminalRefusal";
 import { showToast } from "@/lib/toast";
+import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
 import {
   outcomeCellKey,
+  parseOutcomeCellKey,
   type CellSaveState,
   type SaveStatusMap,
   type OutcomeValues,
@@ -238,6 +240,14 @@ export function useOutcomeSaver(
     }, 0);
     return () => clearTimeout(t);
   }, [tripId, gameId, onChange]);
+
+  // #1622: re-send unsynced cells when the network is likely back (online, the
+  // page visible again, every 30s while visible) — not only on a tap or the next
+  // mount. Refused cells are skipped; see src/lib/retryOnReconnect.ts.
+  useRetryOnReconnect(saveStatus, refusals, (key) => {
+    const { matchId, holeNumber } = parseOutcomeCellKey(key);
+    retryCell(matchId, String(holeNumber));
+  });
 
   const errorCount = Object.values(saveStatus).filter((s) => s === "error").length;
 
