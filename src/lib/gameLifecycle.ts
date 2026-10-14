@@ -83,7 +83,24 @@ export type GameLifecycleState = {
   canCorrect: boolean;
   /** Show the "Save scoring changes" CTA. */
   canRelock: boolean;
+  /**
+   * Show "Save scoring changes" DISABLED, with the line saying what's left
+   * (#1431). An editor mid-correction whose game is no longer complete: the
+   * button stays where they expect it, and the line names the action that
+   * enables it. Never true alongside `canRelock`.
+   */
+  relockBlocked: boolean;
 };
+
+/**
+ * The line under a disabled "Save scoring changes" (#1431, Zach). Matches for
+ * every format that has them (golf match play, rack's slots, non-golf Matches,
+ * bracket), holes for the two that don't (stroke, skins). The server refuses an
+ * undecided-match relock with the match line, so screen and refusal say one
+ * thing.
+ */
+export const RELOCK_BLOCKED_MATCHES = "Decide every match to save.";
+export const RELOCK_BLOCKED_HOLES = "Finish every hole to save.";
 
 /**
  * The LOCK STATE alone — what phase of its life the game is in, with no reference
@@ -174,12 +191,20 @@ export function gameLifecycle({
     // would quietly record a half-round as the result. "Complete" is each
     // format's own decision: pick'em passes `picksRevealed`, so it finalizes
     // early ON PURPOSE (a multi-day slate may need calling before every game is
-    // played) — that is not a missing check. (`canRelock` below is not gated on
-    // this at all — #1431.)
+    // played) — that is not a missing check.
     canFinalize: canEdit && !isFinal && allComplete,
     // NOT gated on `allComplete`: the whole point of a correction is that the
     // recorded result is wrong, and a locked game is complete by construction.
     canCorrect: canEdit && isLocked,
-    canRelock: canEdit && isCorrecting,
+    // Gated on `allComplete`, for the same reason `canFinalize` is (#1431). The
+    // relock calls the same `games.finish`, so a correction that clears a score
+    // or un-decides a match and then relocks would record a half-round as final
+    // through the one door the first finalize guards. This can't strand a game:
+    // a correction reopens score entry, and every format's input is derived from
+    // what is entered (non-golf placements seed from the server), so the way back
+    // to complete is the way the game got there. Pick'em's `picksRevealed` stays
+    // true through a correction, so its relock is unaffected.
+    canRelock: canEdit && isCorrecting && allComplete,
+    relockBlocked: canEdit && isCorrecting && !allComplete,
   };
 }

@@ -69,7 +69,7 @@ import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
-import { gameLockState } from "@/lib/gameLifecycle";
+import { gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
@@ -1638,6 +1638,7 @@ export function StrokeGameView() {
           status={gameQ.data?.status ?? null}
           correctionsOpen={strokeCorrectionsOpen}
           allComplete={allGroupsComplete}
+          relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
           onFinalize={handleFinish}

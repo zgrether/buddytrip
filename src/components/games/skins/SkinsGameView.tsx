@@ -50,7 +50,7 @@ import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { modifiersSummary, enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { unitsFromSchema, teeFromSchema } from "@/lib/strokePlayConfig";
 import { computeStrokeTeamStandings } from "@/lib/strokePlay";
-import { gameLockState } from "@/lib/gameLifecycle";
+import { gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
 import { pointsReady } from "@/lib/matchDraft";
 import { isWinnerTakesAll } from "@/lib/configDraft";
 import { type PointsDistribution } from "@/lib/pointsDistribution";
@@ -1046,6 +1046,7 @@ export function SkinsGameView() {
           status={gameQ.data?.status ?? null}
           correctionsOpen={correctionsOpen}
           allComplete={allComplete}
+          relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
           onFinalize={() => void finalize()}

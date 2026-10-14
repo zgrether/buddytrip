@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { TRPCError } from "@trpc/server";
+import { RELOCK_BLOCKED_MATCHES } from "@/lib/gameLifecycle";
 import { buildDecided, buildDecidedFromOutcomes, matchState, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { gloriousConfig } from "@/lib/gloriousHoles";
 import type { ModifiersMap } from "@/lib/modifiers";
@@ -82,16 +84,20 @@ export async function computeMatchPlayResults(
   /** `onFailure` (#776) — how a results-write failure surfaces. Defaults to the
    *  setup behaviour; `games.finish` passes "throw". See WriteFailureMode. A
    *  failed READ never reaches the write in either mode (#1470,
-   *  `failClosedOnRead`): finalize throws, setup leaves the rows alone. */
-  opts?: { skipComplete?: boolean; onFailure?: WriteFailureMode }
+   *  `failClosedOnRead`): finalize throws, setup leaves the rows alone.
+   *  `refuseUndecided` (#1431) — a RELOCK: refuse, before any write, when an
+   *  assigned match is not over. */
+  opts?: MatchPlayComputeOpts
 ): Promise<MatchOutcome[]> {
   return failClosedOnRead(gameId, opts?.onFailure, [], () => matchPlayResults(supabase, gameId, opts));
 }
 
+type MatchPlayComputeOpts = { skipComplete?: boolean; onFailure?: WriteFailureMode; refuseUndecided?: boolean };
+
 async function matchPlayResults(
   supabase: SupabaseClient,
   gameId: string,
-  opts?: { skipComplete?: boolean; onFailure?: WriteFailureMode }
+  opts?: MatchPlayComputeOpts
 ): Promise<MatchOutcome[]> {
   // Freeze boundary: incremental re-derives (setHandicap / assignPlayer) pass
   // skipComplete so a finished match's recorded result is never rewritten by a
@@ -256,6 +262,14 @@ async function matchPlayResults(
       mkResult(a.id, aTrailing ? 2 : 1, a.type),
       mkResult(b.id, bTrailing ? 2 : 1, b.type)
     );
+  }
+
+  // A relock with a match not over is refused HERE, after every match is
+  // computed and before the first write (#1431), so the correction is left
+  // exactly as it was. Over = `st.over`, the same predicate the client's
+  // `allOver` reads, so the disabled button and this refusal can't disagree.
+  if (opts?.refuseUndecided && outcomes.some((o) => o.result === null)) {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: RELOCK_BLOCKED_MATCHES });
   }
 
   // ── Every read happens before the first write (#1470) ────────────────────
