@@ -1040,7 +1040,6 @@ export function RackGameView() {
       canEdit,
       // Per-SLOT below: this object feeds Total Points too, which never locks.
       locked: false,
-      onChanged: () => void refreshGame(),
       onApplyFront: applyFrontToDraft,
       onApplyBack: applyBackToDraft,
       onRemoveBackNine: removeBackNineFromDraft,

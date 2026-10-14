@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "./courseSnapshot";
 import type { ScorecardSchema } from "./courseIndex";
+import { unitsFromSchema, strokeIndexOf } from "./strokePlayConfig";
+import { strokeHoles } from "./matchPlay";
 
 /**
  * buildCourseSnapshot — the shared "apply a course" derivation. These lock the
@@ -160,6 +162,57 @@ describe("buildComposedCourseSnapshot", () => {
       .toEqual({ ok: false, reason: "bad_back_index" });
     expect(buildComposedCourseSnapshot({ frontSchema: null, hasBackRef: false, backCourse: BACK9 }, "gtt_match_play"))
       .toEqual({ ok: false, reason: "no_front" });
+  });
+
+  // ── Moved from games.9hole.test.ts when games.setBackNine retired (#1624) ──
+  // That file asserted these through the server's setBackNine. The settings page
+  // composes with this builder and saves the result, so this is where they live.
+
+  it("a swap to a DIFFERENT back replaces only the back; the front's index is untouched", () => {
+    const first = buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: BACK9 }, "gtt_match_play");
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const otherIdx = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const swapped = buildComposedCourseSnapshot(
+      { frontSchema: first.schema, hasBackRef: true, backCourse: { ...BACK9, handicap_index: otherIdx } },
+      "gtt_match_play"
+    );
+    expect(swapped.ok).toBe(true);
+    if (!swapped.ok) return;
+    const before = first.schema.units?.metadata?.handicap_index ?? [];
+    const after = swapped.schema.units?.metadata?.handicap_index ?? [];
+    expect(after.slice(0, 9)).toEqual(before.slice(0, 9)); // front untouched
+    expect(after.slice(9)).toEqual(otherIdx.map((v) => 2 * v)); // back is the new nine
+    expect(after.slice(9)).not.toEqual(before.slice(9)); // and it actually changed
+  });
+
+  it("the back's yards come from its tee NAMED like the front's, even when another tee is listed first", () => {
+    // The back lists Gold FIRST, then Blue (the front's tee). Inheritance is by
+    // name, so the back nine's yards are Blue's, not the first tee's.
+    const blueSecond: CourseSnapshotInput = {
+      ...BACK9,
+      tee_sets: [
+        { name: "Gold", yards: Array(9).fill(500), courseRating: 36.0, slopeRating: 130 },
+        { name: "Blue", yards: Array(9).fill(300), courseRating: 34.0, slopeRating: 120 },
+      ],
+    };
+    const res = buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: blueSecond }, "gtt_match_play");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.schema.units?.metadata?.tee?.name).toBe("Blue");
+    expect(res.schema.units?.metadata?.tee?.yards?.slice(9)).toEqual(Array(9).fill(300));
+  });
+
+  it("handicap allocation spreads across BOTH nines (the fairness point)", () => {
+    const res = buildComposedCourseSnapshot({ frontSchema: front9(), hasBackRef: false, backCourse: BACK9 }, "gtt_match_play");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const strokeIndex = strokeIndexOf(unitsFromSchema(res.schema));
+    // A 5-stroke player gets the 5 hardest holes (overall index 1..5).
+    const holes = [...strokeHoles(5, strokeIndex, 18)].sort((a, b) => a - b);
+    expect(holes).toHaveLength(5);
+    expect(holes.some((h) => h <= 9)).toBe(true); // some on the front
+    expect(holes.some((h) => h >= 10)).toBe(true); // some on the back — NOT all front
   });
 
   it("is deterministic — the draft and the server compose byte-identically", () => {

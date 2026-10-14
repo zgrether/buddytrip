@@ -397,7 +397,8 @@ export async function computeCompetitionLeaderboard(
       // asserts this select carries every column the predicate reads.
       //
       // `scorecard_schema` is the largest of them and is the one that would be
-      // tempting to leave out — it is also load-bearing. `games.clearCourse` nulls
+      // tempting to leave out — it is also load-bearing. Clearing a course (the
+      // settings page's clear, saved through `save_game_config`) nulls
       // `course_id` but leaves the format's base schema behind, so it is the ONLY
       // column that still says "this game was configured" after a course is removed.
       .select("id, name, points_distribution, points_total, status, game_type_id, competition_format, course_id, back_course_id, scoring_enabled, entry_mode, corrections_open, display_order, config, modifiers, bracket_config, rules_for_today, scorecard_schema, tee_time")
