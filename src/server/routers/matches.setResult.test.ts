@@ -103,7 +103,7 @@ describe("matches.setResult — declares a match's result", () => {
     expect((await matchRow(matchId))?.result).toBe("halve");
   });
 
-  it("a null result UNSETS a declared match back to undecided — result, margin and status all revert (feedback: a mis-tap needs a way back)", async () => {
+  it("a null result UNSETS a declared match back to undecided — result and margin revert, the match is live again (feedback: a mis-tap needs a way back)", async () => {
     const { gameId, matchId } = await freshDecidableGame("Unsets");
     await ctx.caller().matches.setResult({ tripId, gameId, matchId, result: "a_win" });
     expect((await matchRow(matchId))?.status).toBe("complete");
@@ -111,7 +111,10 @@ describe("matches.setResult — declares a match's result", () => {
     const row = await matchRow(matchId);
     expect(row?.result).toBeNull();
     expect(row?.margin).toBeNull();
-    expect(row?.status).toBe("pending");
+    // `active`, not `pending` (#1430): `pending` means not live yet, and this
+    // game is live (scoring is on, or the write would have been refused). This
+    // case asserted `pending` until #1430 gave the status one meaning.
+    expect(row?.status).toBe("active");
   });
 
   it("unsetting an already-undecided match is a harmless no-op", async () => {

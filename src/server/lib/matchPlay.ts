@@ -236,9 +236,18 @@ async function matchPlayResults(
           ? "a_win"
           : "b_win"
       : null;
+    // ONE meaning for `pending` (#1430): NOT LIVE YET — go-live (`matches.ts`,
+    // `save_game_config`) moves a match pending → active, turning scoring off
+    // moves it back. This used to derive `pending` from "no hole played", so a
+    // recompute on a LIVE game (every setup path runs one) moved a hole-less
+    // match active → pending a second after go-live had set it active. The
+    // recompute decides only `complete` vs not; a not-over match keeps the
+    // lifecycle half it already has. A match with holes is live by
+    // construction (scores are refused until scoring is on), and a `complete`
+    // match a correction un-decided is live again.
     const status: MatchOutcome["status"] = st.over
       ? "complete"
-      : decided.length > 0
+      : decided.length > 0 || m.status !== "pending"
         ? "active"
         : "pending";
     const margin = st.over ? st.margin : null;

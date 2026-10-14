@@ -46,7 +46,7 @@ import { resolveResultStrategy } from "@/lib/resultStrategy";
 import { headToHeadResultRefusal } from "@/lib/headToHeadResult";
 import { computePickemResults } from "@/server/lib/pickemResults";
 import { computeSideBoard } from "@/server/lib/sideBoard";
-import { notReadyMessage, POINT_VALUE_NOT_READY } from "@/server/lib/notReadyMessage";
+import { notReadyMessage, POINT_VALUE_HINT } from "@/server/lib/notReadyMessage";
 import { writeTeamMatchPoints } from "../lib/matchAwards";
 import { anyGameStarted } from "../lib/gameStarted";
 import { RELOCK_BLOCKED_MATCHES } from "@/lib/gameLifecycle";
@@ -2244,12 +2244,15 @@ export const gamesRouter = router({
           // pattern as HAS_SCORES below, rather than flattening every NOT_READY into
           // the generic "finish setting up" copy.
           const detail = msg.split("NOT_READY:")[1]?.trim();
-          // The point-value refusal's advice depends on the FORMAT (can it be a
-          // side game?), which the RPC's message does not carry. Read only on this
-          // path. A failed read here writes nothing, so it degrades to the plain
-          // advice rather than replacing the refusal with a 500.
+          // The point-value refusal is identified by its CODE, the RAISE's HINT
+          // (migration 214), not by its sentence.
+          const hint = (error as { hint?: string | null }).hint ?? null;
+          // Its advice depends on the FORMAT (can it be a side game?), which the
+          // RPC's message does not carry. Read only on this path. A failed read
+          // here writes nothing, so it degrades to the plain advice rather than
+          // replacing the refusal with a 500.
           let gameTypeId: string | null = null;
-          if (detail === POINT_VALUE_NOT_READY) {
+          if (hint === POINT_VALUE_HINT) {
             const { data: typeRow } = await ctx.supabase
               .from("games")
               .select("game_type_id")
@@ -2259,7 +2262,7 @@ export const gamesRouter = router({
           }
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: notReadyMessage(detail, gameTypeId),
+            message: notReadyMessage(detail, hint, gameTypeId),
           });
         }
         // The two freeze boundaries. Each names the ACTUAL affordance — "Reset scores"

@@ -370,11 +370,12 @@ describe("saveConfig — the scoring_enabled state machine", () => {
         payload: configDraftToPayload({ ...paired, scoringEnabled: true }, seeded),
       })
     ).rejects.toMatchObject({
-      // EXACT, and it pins TWO things (PR 6b). The remap in `notReadyMessage` keys
-      // on the database's own wording, so if the RPC's text is ever reworded the
-      // remap misses, the raw text comes through, and this fails — loudly, rather
-      // than the side-game advice silently vanishing. And match play can be a side
-      // game, so it is offered that route.
+      // EXACT, and it pins TWO things. The remap in `notReadyMessage` keys on the
+      // refusal's CODE, `HINT = 'point_value'` (migration 214; it keyed on the
+      // database's wording until then, per PR 6b). If the RPC stops sending the
+      // hint, the remap misses, the raw lowercase text comes through, and this
+      // fails — loudly, rather than the side-game advice silently vanishing. And
+      // match play can be a side game, so it is offered that route.
       message: "Set a point value, or delete this game and add it again as a side game.",
     });
 
