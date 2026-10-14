@@ -59,10 +59,11 @@ export function UnsavedScoresBanner({
           style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-danger)" }}
         >
           <CloudOff size={15} />
-          {/* "wouldn't save" for a decision, "didn't save" for a blip — the
-              first is settled, the second is a thing that happened once. */}
+          {/* "wouldn't save" for a decision, "not synced" for a blip (Zach,
+              2026-10-14) — the first is settled, the second is a score held on
+              this device that Retry can still send. */}
           {count} {count === 1 ? "score" : "scores"}{" "}
-          {allRefused ? "wouldn’t save" : "didn’t save"}
+          {allRefused ? "wouldn’t save" : "not synced"}
         </span>
         {/* Hidden when nothing here CAN be retried — see the note above. */}
         {!allRefused && (

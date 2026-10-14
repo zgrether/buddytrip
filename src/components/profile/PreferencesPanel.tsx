@@ -737,7 +737,7 @@ function NotificationsSheet({ onClose }: { onClose: () => void }) {
       setTestResult({
         message: isUnauthorizedError(err)
           ? "Your session expired — sign in again, then try the test."
-          : "The test couldn't be sent. Check your connection and try again.",
+          : "Couldn't send the test. Try again.",
         tone: "error",
       }),
   });

@@ -29,7 +29,8 @@ describe("UnsavedScoresBanner", () => {
     // The unchanged case, asserted so the fix cannot quietly remove the button
     // from the failure it was correct for.
     const out = html({ count: 2, onRetry: noop });
-    expect(out).toContain("didn’t save");
+    expect(out).toContain("scores not synced");
+    expect(html({ count: 1, onRetry: noop })).toContain("score not synced");
     expect(out).toContain("Retry");
     expect(out).not.toContain("wouldn’t save");
   });
@@ -58,7 +59,7 @@ describe("UnsavedScoresBanner", () => {
       refusals: { "p1:1": POSTED },
     });
     expect(out).toContain("<button");
-    expect(out).toContain("didn’t save");
+    expect(out).toContain("scores not synced");
     expect(out).toContain(POSTED);
   });
 
