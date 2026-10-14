@@ -409,3 +409,34 @@ describe("save_game_config — pick'em settings move the hash and never churn it
     expect(await hashOf(gameId)).not.toBe(before);
   });
 });
+
+/**
+ * #1430 — every case above saves a game that is NOT live, which is why the
+ * re-stamp went unnoticed: `save_game_config`'s go-live re-affirm set
+ * `pairings_published_at = now()` on EVERY save of a live game, and that column
+ * is hashed, so an unchanged save of a live game moved the hash and every other
+ * open device refetched. Since migration 214 the stamp is kept once set.
+ */
+describe("save_game_config — an unchanged save of a LIVE game doesn't churn the hash (#1430)", () => {
+  it("keeps the hash and the publish time", async () => {
+    const groups: RackGroup[] = [{ name: "G1", userIds: [owner, member] }];
+    const gameId = await newRackGame("Live no churn");
+    await save(gameId, { groups, groupsStructureDirty: true, pointsTotal: 2, scoringEnabled: true });
+    const live = async () =>
+      (await ctx.admin.from("games").select("scoring_enabled, pairings_published_at").eq("id", gameId).single()).data as {
+        scoring_enabled: boolean;
+        pairings_published_at: string | null;
+      };
+    const first = await live();
+    expect(first.scoring_enabled, "precondition: the game is live").toBe(true);
+    expect(first.pairings_published_at, "precondition: go-live stamped it").not.toBeNull();
+    const before = await hashOf(gameId);
+
+    // The same config again, structure-clean — the client's unchanged-save shape.
+    // `scalars()` echoes scoringEnabled: true, so this IS the re-affirm.
+    await save(gameId, { groups, groupsStructureDirty: false });
+
+    expect((await live()).pairings_published_at).toBe(first.pairings_published_at);
+    expect(await hashOf(gameId)).toBe(before);
+  });
+});

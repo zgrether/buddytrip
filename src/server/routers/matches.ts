@@ -733,13 +733,16 @@ export const matchesRouter = router({
       // from (unlike golf's computed matches, where `matchState` produces both
       // together). `status: 'complete'` marks the MATCH decided — distinct from
       // the GAME's own `status`, which stays whatever it already was. A `null`
-      // result reverts the match's own `status` to `'pending'` too — undoing a
-      // decide undoes ALL of what deciding wrote, not just the visible half.
+      // result un-decides the match: `'active'`, not `'pending'` (#1430).
+      // `pending` means NOT LIVE YET (go-live moves pending → active), and this
+      // write is refused above unless scoring is on, so the match it un-decides
+      // is always on a live game. It used to write `'pending'`, the same
+      // two-meanings defect the golf recompute had.
       const { error } = await ctx.supabase
         .from("game_matches")
         .update(
           input.result == null
-            ? { result: null, margin: null, status: "pending" }
+            ? { result: null, margin: null, status: "active" }
             : { result: input.result, margin: null, status: "complete" }
         )
         .eq("id", input.matchId);
