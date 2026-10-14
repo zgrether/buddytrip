@@ -167,7 +167,9 @@ describe("teams.delete — a failed team read never skips both guards", () => {
   }, 60_000);
 });
 
-describe("the course freeze — a failed score count never opens it", () => {
+// Since #1474 the freeze asks `game_started` (every format's results), not a
+// count of `score_entries`, so the read that fails here is the view's.
+describe("the course freeze — a failed scores read never opens it", () => {
   const schemaOf = async () =>
     ((await ctx.admin.from("games").select("scorecard_schema").eq("id", scoredGame).single()).data as { scorecard_schema: unknown })
       .scorecard_schema;
@@ -176,10 +178,10 @@ describe("the course freeze — a failed score count never opens it", () => {
     await expect(ctx.caller().games.clearCourse({ tripId, gameId: scoredGame })).rejects.toThrow("Scores are already entered");
   }, 60_000);
 
-  it("a FAILED count refuses — par/index are not reset under the entered score", async () => {
+  it("a FAILED read refuses — par/index are not reset under the entered score", async () => {
     const before = await schemaOf();
-    const failing = callerFailingRead(ctx, "owner", { table: "score_entries", columns: "id" });
-    await expect(failing.games.clearCourse({ tripId, gameId: scoredGame })).rejects.toThrow(SENTENCE("game's scores"));
+    const failing = callerFailingRead(ctx, "owner", { table: "game_started", columns: "game_id" });
+    await expect(failing.games.clearCourse({ tripId, gameId: scoredGame })).rejects.toThrow(SENTENCE("scores"));
     expect(await schemaOf()).toEqual(before);
   }, 60_000);
 });
