@@ -202,3 +202,68 @@ describe("game_started — every format contributes its own answer", () => {
     await ctx.admin.from("games").delete().eq("id", gameId);
   });
 });
+
+/**
+ * Migration 215 — the two arms that were missing (#1413, #1525). Same shape as
+ * the arms above: false BEFORE the source exists, true after, so a build that
+ * never fires the arm can't pass.
+ */
+describe("game_started — a bracket's winners and every finished game (215)", () => {
+  it("BRACKET: a seeded draw with no winner is NOT started; one recorded winner starts it (#1413)", async () => {
+    const gameId = await newGame("gtt_generic_card", "Bracket started");
+    const fmt = await ctx.admin.from("games").update({ competition_format: "bracket", status: "active" }).eq("id", gameId);
+    expect(fmt.error).toBeNull();
+    const a = genId("be");
+    const b = genId("be");
+    const ents = await ctx.admin.from("bracket_entrants").insert([
+      { id: a, game_id: gameId, seed: 1 },
+      { id: b, game_id: gameId, seed: 2 },
+    ]);
+    expect(ents.error).toBeNull();
+    const matchId = genId("bm");
+    const draw = await ctx.admin.from("bracket_matches").insert({
+      id: matchId, game_id: gameId, bracket: "main", round: 1, slot: 1, entrant_a_id: a, entrant_b_id: b,
+    });
+    expect(draw.error).toBeNull();
+    // The half that distinguishes "the draw exists" from "a match was played".
+    expect(await started(gameId)).toBe(false);
+
+    const win = await ctx.admin.from("bracket_matches").update({ winner_entrant_id: a }).eq("id", matchId);
+    expect(win.error).toBeNull();
+    expect(await started(gameId)).toBe(true);
+
+    await ctx.admin.from("bracket_matches").delete().eq("game_id", gameId);
+    await ctx.admin.from("bracket_entrants").delete().eq("game_id", gameId);
+    await ctx.admin.from("games").delete().eq("id", gameId);
+  });
+
+  it("MANUAL PLACEMENTS: enabled is NOT started; finalized through the real finish IS, and the cup reads as having results (#1525)", async () => {
+    // Its own cup, so no other case's games can make the cup read as having
+    // results. The roster lock is #1525's symptom, so it is asserted too, through
+    // the query the settings modal reads.
+    const cup = await ctx.createCupTrip({
+      title: "game_started placements", name: "Placements cup", scoringModel: "points", teams: ["Team A", "Team B"],
+    });
+    const { data: teams } = await ctx.admin.from("teams").select("id").eq("competition_id", cup.competitionId).order("name");
+    expect(teams ?? []).toHaveLength(2);
+    const g = (await ctx.caller().games.create({
+      tripId: cup.tripId, gameTypeId: "gtt_generic_card", name: "Placement game", competitionId: cup.competitionId,
+      pointsDistribution: { type: "placement", values: [3, 1] },
+    })) as { id: string };
+    const live = await ctx.admin.from("games").update({ status: "active" }).eq("id", g.id);
+    expect(live.error).toBeNull();
+    expect(await started(g.id)).toBe(false);
+    expect(await ctx.caller().teamAssignments.hasResults({ tripId: cup.tripId, competitionId: cup.competitionId })).toBe(false);
+
+    await ctx.caller().games.finish({
+      tripId: cup.tripId, gameId: g.id,
+      placements: [{ entityId: teams![0].id as string, position: 1 }, { entityId: teams![1].id as string, position: 2 }],
+    });
+    // Precondition for the arm being the reason: the finalize wrote ONLY
+    // game_results, none of the tables the other arms read.
+    const { count: scores } = await ctx.admin.from("score_entries").select("id", { count: "exact", head: true }).eq("game_id", g.id);
+    expect(scores).toBe(0);
+    expect(await started(g.id)).toBe(true);
+    expect(await ctx.caller().teamAssignments.hasResults({ tripId: cup.tripId, competitionId: cup.competitionId })).toBe(true);
+  });
+});
