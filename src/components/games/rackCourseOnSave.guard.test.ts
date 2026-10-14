@@ -15,19 +15,17 @@ import { join } from "node:path";
  *
  * The flow itself was exercised in the running app (pick a course → "Set up
  * playing groups" → settings open with the course staged and nothing written →
- * Save → the course and its tee snapshot are stored). This pins that the view
- * cannot quietly go back to the second write path.
+ * Save → the course and its tee snapshot are stored).
+ *
+ * `games.applyCourse` has since been retired, so the compiler now refuses any
+ * call to it; this file's first case ("never calls games.applyCourse") could
+ * only ever pass and is gone. What can still regress is the view dropping the
+ * staging and losing the setup screen's course, which the case below pins.
  */
 const src = readFileSync(join(__dirname, "RackGameView.tsx"), "utf8");
 
 describe("rack's course has one write path (#1627)", () => {
-  it("RackGameView never calls games.applyCourse", () => {
-    expect(src).not.toMatch(/games\.applyCourse/);
-  });
-
-  it("CONTROL: it stages the setup screen's course into the settings draft", () => {
-    // Without this, a view that dropped the course altogether would pass the
-    // case above.
+  it("stages the setup screen's course into the settings draft", () => {
     expect(src).toContain("if (pendingCourse) setCourseToStage(pendingCourse);");
     expect(src).toContain("applyFrontToDraft(c.id, c.teeName);");
   });

@@ -164,7 +164,7 @@ export function buildScorecardSchema(
   holeCount: number,
   tee?: SnapshotTee | null,
   /** The back nine's chosen tee NAME (composed two-nines 18 only; P-F0a). Provided
-   *  by `setBackNine`; omitted by `applyCourse` (a fresh front clears any stale
+   *  by the composed snapshot; omitted for a fresh front (which clears any stale
    *  back-tee name, same as it resets back_course_id). */
   backTeeName?: string | null
 ): ScorecardSchema {

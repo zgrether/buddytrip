@@ -5,11 +5,10 @@ import { unitsFromSchema, strokeIndexOf } from "./strokePlayConfig";
 import { strokeHoles } from "./matchPlay";
 
 /**
- * buildCourseSnapshot — the shared "apply a course" derivation. These lock the
- * behaviours the SERVER's applyCourse relied on inline, now that the settings
- * draft runs the same function client-side: an applied course and a drafted one
- * must produce the identical snapshot, and a bad index must be refused rather
- * than frozen into a game.
+ * buildCourseSnapshot — the "apply a course" derivation. The settings draft
+ * runs it client-side and saves the result through `save_game_config`, the only
+ * course write (`games.applyCourse`, which ran it server-side, is retired). A bad
+ * index must be refused rather than frozen into a game.
  */
 
 const PAR18 = [4, 4, 3, 5, 4, 4, 3, 4, 5, 4, 3, 4, 5, 4, 4, 3, 4, 5];
@@ -92,7 +91,7 @@ const BACK9: CourseSnapshotInput = {
   tee_sets: [{ name: "Blue", yards: Array(9).fill(380), courseRating: 35.5, slopeRating: 128 }],
 };
 
-/** A lone 9-hole front, as `applyCourse` leaves it (index already 1..9). */
+/** A lone 9-hole front, as a fresh 9-hole pick leaves it (index already 1..9). */
 const front9 = (): ScorecardSchema => {
   const res = buildCourseSnapshot(
     { hole_count: 9, par: PAR9, handicap_index: INDEX9, has_stroke_index: true, tee_sets: [{ name: "Blue", yards: Array(9).fill(400), courseRating: 35.1, slopeRating: 126 }] },
@@ -101,6 +100,14 @@ const front9 = (): ScorecardSchema => {
   if (!res.ok) throw new Error("front fixture failed");
   return res.schema;
 };
+
+describe("a 9-hole course on its own (W-9HOLE-01)", () => {
+  it("snapshots as a lone 9-hole FRONT — the course row reads it as needing a back nine", () => {
+    const s = front9();
+    expect(s.units.count).toBe(9);
+    expect((s.units.metadata as { par: number[] }).par).toEqual(PAR9);
+  });
+});
 
 describe("buildComposedCourseSnapshot", () => {
   it("composes a 9-hole front + a 9-hole back into an interleaved 18", () => {

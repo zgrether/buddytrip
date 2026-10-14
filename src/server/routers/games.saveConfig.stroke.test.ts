@@ -249,7 +249,7 @@ describe("save_game_config — stroke (P2 flip): whole lean page saves; course i
     const strokesOf = new Map((g.participants ?? []).map((p) => [p.user_id, p.handicap_strokes]));
     expect(strokesOf.get(owner)).toBe(5);
 
-    // Locked tier: ONLY a COURSE change is refused (mirrors applyCourse's own refusal;
+    // Locked tier: ONLY a COURSE change is refused (COURSE_LOCKED;
     // change-gated on courseId/backCourseId/schema — a dummy id + schema is enough).
     await expect(
       save(gameId, { courseId: "some-course-id", scorecardSchema: { units: { count: 18 } } }),

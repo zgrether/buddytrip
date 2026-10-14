@@ -769,8 +769,8 @@ describe("saveConfig — the freeze boundaries once scores exist", () => {
     });
 
     const withScores = await draftOf(gameId);
-    // Mirrors applyCourse's own refusal — changing par/index under a scored round
-    // would silently rescore it.
+    // COURSE_LOCKED — changing par/index under a scored round would silently
+    // rescore it. (Outcome-mode and finished-game cases: games.courseLockStarted.test.ts.)
     await expect(
       ctx.caller().games.saveConfig({
         tripId,

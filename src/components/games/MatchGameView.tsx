@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
-import { ChevronRight, SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
+import { SlidersHorizontal, Sparkles, Users, Settings, ListChecks, TriangleAlert } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { useDepartedNames } from "@/hooks/useDepartedNames";
 import { withDeparted } from "@/lib/departedNames";
@@ -51,8 +51,6 @@ import type { SidePlayer } from "@/components/games/MatchSides";
 import { PlayerSelector } from "@/components/games/matchSetup/MatchSetup";
 import { MatchesAccordionRow } from "@/components/games/MatchesAccordionRow";
 import { SegmentedToggle } from "@/components/games/SegmentedToggle";
-import { TimePicker } from "@/components/TimePicker";
-import { CoursePicker } from "@/components/games/course/CoursePicker";
 import { GameSetupRows } from "@/components/games/GameSetupRows";
 import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
 import { liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
@@ -60,7 +58,6 @@ import { GameSettingsPage } from "@/components/games/GameSettingsPage";
 import { GamePageHeader } from "@/components/competition/GamePageHeader";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
-import { parseTime, toTime24 } from "@/lib/time";
 import { buildDecided, buildDecidedFromOutcomes, matchState, matchTrack, strokeHoles, type DecidedHole, type HoleOutcomeRow } from "@/lib/matchPlay";
 import { gloriousConfig, type GloriousConfig } from "@/lib/gloriousHoles";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
@@ -93,9 +90,6 @@ import { outcomeOverwriteNotice } from "@/components/games/outcomeOverwriteNotic
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 import { gamesPageHref, rostersHref } from "@/lib/gameRoutes";
 
-// One unified match-play type (Refactor A1). 1v1-vs-2v2 is per-match, derived from
-// each match's side type — not the game type. `MATCH_PLAY_DOUBLES` is retired.
-const MATCH_PLAY = "gtt_match_play";
 // Mirrors the server cap (matches router). Dynamic match count grows up to here.
 const MAX_MATCHES = 24;
 
@@ -112,7 +106,7 @@ type SideRef = { type: "user" | "play_group"; id: string } | null;
  * reorder / add / remove.
  */
 type DraftMatch = DraftMatchConfig;
-type Screen = "new" | "member-wait" | "setup" | "overview" | "score" | "config";
+type Screen = "none" | "member-wait" | "setup" | "overview" | "score" | "config";
 
 /** Which settings rows are expanded. Multi-open (draft-then-save): a row's panel is
  *  pure UI state now — collapsing no longer commits anything, so there's no reason
@@ -168,7 +162,9 @@ export function MatchGameView() {
 
   const utils = trpc.useUtils();
 
-  const [gameId, setGameId] = useState<string | null>(search.get("game"));
+  // Captured at mount: the panel host keys this view by game id, so a swap remounts
+  // (gamePanelView.test.tsx). The create screen that used to set it is retired.
+  const [gameId] = useState<string | null>(search.get("game"));
   // #501 Part 1: delegate-aware canEdit (owner/org OR this game's delegate),
   // centralized in useGameEditAccess.
   const { canEdit, canManageGame, loading: roleLoading } = useGameEditAccess(tripId, gameId);
@@ -201,7 +197,6 @@ export function MatchGameView() {
     onDiscard: () => discardRef.current(),
   });
 
-  const [teeTime, setTeeTime] = useState(""); // "HH:MM" 24h
   // ── The composite draft's SLICES (Draft-Then-Save P1, spec §2.1) ────────────
   // The whole settings page is ONE client draft; nothing reaches the server until
   // Save. Each slice is `null` when UNTOUCHED, and `configDraft` (below) assembles
@@ -274,14 +269,6 @@ export function MatchGameView() {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   // Collapse-on-advance: when teeing off with some slots still unfilled, confirm
   // the consequence (the game drops to the filled count; cup clinch shifts).
-  // Course (Slice C): picked on the new-game screen, applied to the game once
-  // it's created. id null until chosen.
-  const [courseId, setCourseId] = useState<string | null>(null);
-  const [courseName, setCourseName] = useState<string | null>(null);
-  // The CoursePicker's chosen tee, carried into handleCreate's applyCourse (A2-tee)
-  // so a new-game course snapshots the SELECTED tee, not just the first one.
-  const [courseTeeName, setCourseTeeName] = useState<string | undefined>(undefined);
-  const [coursePickerOpen, setCoursePickerOpen] = useState(false);
 
   // game config + pairings are STRUCTURE (kept); scores are STATE (the match
   // RESULTS within matches.listByGame change on finish/recompute, which invalidate
@@ -448,11 +435,6 @@ export function MatchGameView() {
     reconcile: reconcileOutcome,
   } = useOutcomeSaver(tripId, gameId, () => void outcomesQ.refetch(), onOutcomeOverwritten);
 
-  const createGame = trpc.games.create.useMutation();
-  // Still the NEW-GAME path's course apply (handleCreate snapshots the picked course
-  // onto the just-created game). The SETTINGS page no longer calls it — course is a
-  // draft slice there, committed by save_game_config.
-  const applyCourse = trpc.games.applyCourse.useMutation();
   // (setPairings / setHandicap / matches.enableScoring / games.disableScoring /
   // games.update-for-modifiers are GONE from this page. Every one of them was a
   // piecemeal settings write; `save_game_config` replaces the lot with one atomic
@@ -860,9 +842,9 @@ export function MatchGameView() {
   // `handleSave` / `handleCancel` are destructured there.
 
   // ── Course, drafted (spec §2.2 Design A: the CLIENT pre-computes the snapshot) ─
-  // Each handler runs the SAME shared pure derivation the server's applyCourse /
-  // setBackNine / clearCourse run, then stages the result — so a drafted course and
-  // an immediately-applied one can't drift (CLAUDE.md #8). The `courses` row is
+  // Each handler runs the shared pure snapshot derivation (courseSnapshot.ts),
+  // then stages the result for `save_game_config`, the only course write
+  // (CLAUDE.md #8). The `courses` row is
   // fetched imperatively (shared tRPC cache — the row is already warm from the
   // picker in the common case).
   const [courseBusy, setCourseBusy] = useState(false);
@@ -883,8 +865,8 @@ export function MatchGameView() {
           );
           return;
         }
-        // A fresh front RESETS any prior two-nines back ref (mirrors applyCourse's
-        // `back_course_id: null`) — a 9-hole course lands as a lone front that
+        // A fresh front RESETS any prior two-nines back ref (`backId: null`)
+        // — a 9-hole course lands as a lone front that
         // "needs a back nine" until one is composed.
         setSaveError(null);
         setCourseDraft({ id: courseId, backId: null, scorecardSchema: snap.schema });
@@ -933,8 +915,7 @@ export function MatchGameView() {
     })();
   };
 
-  // Drop just the back nine = re-snapshot the FRONT alone (exactly what the server
-  // path does — it re-runs applyCourse with the front), which shrinks the schema
+  // Drop just the back nine = re-snapshot the FRONT alone, which shrinks the schema
   // back to 9 and clears the back ref → the "needs a back nine" state.
   const removeBackNineFromDraft = () => {
     const frontId = configDraft.course.id;
@@ -1104,13 +1085,19 @@ export function MatchGameView() {
   // Derive the screen from server state; manual transitions take precedence.
   // Active/complete → the flat overview; pending → setup (owner) or wait (member).
   const derived: Screen = !gameId
-    ? "new"
+    ? "none"
     : !isPreScoring({ status, scoringEnabled })
       ? "overview"
       : !canEdit
         ? "member-wait"
         : "setup";
   const screen = manualScreen ?? derived;
+  // No game id: this URL used to open the view's own create screen, retired as
+  // unreachable (no link in the app produces it; games are added from the Games
+  // page). Send anyone who types it to the Games page rather than a blank view.
+  useEffect(() => {
+    if (tripId && !gameId) router.replace(gamesPageHref(tripId));
+  }, [tripId, gameId, router]);
 
   // Forward step: remember the screen we're leaving so Back can return to it.
   const go = (next: Screen) => {
@@ -1183,39 +1170,6 @@ export function MatchGameView() {
   // what saved it.)
 
   // ── Actions ──────────────────────────────────────────────────────────
-  async function handleCreate() {
-    if (!tripId) return;
-    const g = await createGame.mutateAsync({
-      tripId,
-      // One unified type (A1) — the shape lives on the matches the builder writes,
-      // not the game type. The name still reflects the current game-level shape.
-      gameTypeId: MATCH_PLAY,
-      name: sided ? "2v2 Match Play" : "Singles Match Play",
-      teeTime: teeTime || null,
-    });
-    setGameId(g.id);
-    // Snapshot the chosen course's par+index onto the new game (the §0 contract).
-    if (courseId) {
-      try {
-        await applyCourse.mutateAsync({ tripId, gameId: g.id, courseId, teeSetName: courseTeeName });
-      } catch {
-        // Non-fatal: the game still works on the template default par/index.
-      }
-    }
-    // A new game starts at ZERO matches (the valid empty state) — no seed row is
-    // persisted. "+ Add match" builds the first one (build-as-you-go), persisting
-    // on collapse.
-    await refreshAfterMatchCountChange();
-    // The checklist is interactive the instant setGameId ran (above); leave the
-    // draft empty unless the user already started adding (never clobber a touched draft).
-    if (!draftTouched.current) {
-      setDraft([]);
-    }
-    // Land straight on the settings page (the checklist's home) — the owner just
-    // created the game and wants to configure it (A2-ux correction).
-    openConfig();
-  }
-
   // ── THE SAVE (Draft-Then-Save P1, spec §2.7) ────────────────────────────────
   // The ONE commit path for the whole settings page. Everything that used to write
   // piecemeal — persist-on-collapse (matches/handicaps), persist-on-collapse
@@ -1285,8 +1239,8 @@ export function MatchGameView() {
   //
   // Keyed on the id, like `StrokeGameView`'s `currentHoleSeededRef` — the reference
   // pattern, not a second mechanism. `isDraftLockStale` also encodes the create
-  // transition (null → id), which must NOT clear: that draft belongs to the game
-  // `handleCreate` just made, which is why it takes care to preserve it.
+  // transition (null → id), which must NOT clear. (The view's own create screen,
+  // which made that transition, was retired as unreachable; the rule stays.)
   //
   // Clears the WHOLE composite, not just the lock: every sibling slice
   // (`nameDraft`, `modifiersDraft`, …) is null-when-untouched state carrying game
@@ -1869,7 +1823,7 @@ export function MatchGameView() {
   // placeholder + a way into settings) — the full checklist lives on the settings
   // overlay (cfgOpen), the ONE home for setup.
   const headerTitle =
-    cfgOpen ? "Configuration" : screen === "new" ? "New game" : screen === "setup" ? "Game Setup" : "Matches";
+    cfgOpen ? "Configuration" : screen === "setup" ? "Game Setup" : "Matches";
   return (
     <div className="flex flex-col" style={{ background: "var(--color-bt-base)", minHeight: inPanel ? "100%" : "100vh" }}>
       {/* #550: as a panel the app bar carries back/title/gear (published above), so
@@ -1901,32 +1855,6 @@ export function MatchGameView() {
       )}
 
       <div className="w-full px-4 py-5">
-      {!cfgOpen && screen === "new" && (
-        <NewGame
-          tripId={tripId}
-          game={gameQ.data as unknown as GameRow | undefined}
-          teeTime={teeTime}
-          setTeeTime={setTeeTime}
-          courseName={courseName}
-          onPickCourse={() => setCoursePickerOpen(true)}
-          onCreate={handleCreate}
-          pending={createGame.isPending || applyCourse.isPending}
-          canEdit={canEdit}
-        />
-      )}
-
-      {coursePickerOpen && (
-        <CoursePicker
-          onClose={() => setCoursePickerOpen(false)}
-          onApply={({ id, name, teeName }) => {
-            setCourseId(id);
-            setCourseName(name);
-            setCourseTeeName(teeName);
-            setCoursePickerOpen(false);
-          }}
-        />
-      )}
-
       {!cfgOpen && screen === "member-wait" && (
         <SetupPlaceholder tripId={tripId} game={gameQ.data as unknown as GameRow | undefined} />
       )}
@@ -2575,58 +2503,6 @@ function serverDraftFrom(
  * only compared the rendered labels would have found nothing wrong. Gone with the
  * inline tree; `GameSettingsPage` renders the shared one for all four. */
 
-function NewGame({
-  tripId,
-  game,
-  teeTime,
-  setTeeTime,
-  courseName,
-  onPickCourse,
-  onCreate,
-  pending,
-  canEdit,
-}: {
-  tripId: string;
-  game: GameRow | null | undefined;
-  teeTime: string;
-  setTeeTime: (t: string) => void;
-  courseName: string | null;
-  onPickCourse: () => void;
-  onCreate: () => void;
-  pending: boolean;
-  canEdit: boolean;
-}) {
-  if (!canEdit) return <MemberNotReady tripId={tripId} game={game} />;
-  // Build-as-you-go (W-GAMEPAGE-01 §6.1): creating the game seeds exactly ONE
-  // empty match — no up-front count. Matches are added one at a time on the setup
-  // face, so there's no stepper here.
-  return (
-    <div>
-      <div className="flex flex-col gap-3.5">
-        {/* Course — opens the Course Selector (Slice C); same field style as the tee time. */}
-        <div>
-          <FieldLabel>Course</FieldLabel>
-          <button type="button" onClick={onPickCourse} className="flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm" style={pillStyle}>
-            <span style={{ color: courseName ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>
-              {courseName ?? "Select a course"}
-            </span>
-            <ChevronRight size={16} style={{ color: "var(--color-bt-text-dim)" }} />
-          </button>
-        </div>
-
-        <TimePicker
-          label="First tee time"
-          presets="tee"
-          value={parseTime(teeTime)}
-          onChange={(v) => setTeeTime(toTime24(v))}
-        />
-      </div>
-
-      <PrimaryButton label="Create game" onClick={onCreate} disabled={pending} />
-    </div>
-  );
-}
-
 // The Matches setup grid — ONE template shared by the branded header and every
 // match row, so the six columns line up: grab │ # │ Team A │ vs │ Team B │ ×.
 // The two team columns flex (minmax(0,1fr)); the four structural columns are fixed.
@@ -2918,38 +2794,5 @@ function Overview({
         onCorrect={onCorrect}
       />
     </div>
-  );
-}
-
-// ── Small shared bits ──
-
-// Card-raised pill — matches the TimePicker trigger (Course / Matches fields).
-const pillStyle: React.CSSProperties = {
-  background: "var(--color-bt-card-raised)",
-  borderColor: "var(--color-bt-border)",
-};
-
-// Field label above a control — same style as the TimePicker's label.
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <label
-      className="mb-1 block text-[11px] font-semibold uppercase tracking-wider"
-      style={{ color: "var(--color-bt-text-dim)" }}
-    >
-      {children}
-    </label>
-  );
-}
-
-function PrimaryButton({ label, onClick, disabled, outlined }: { label: string; onClick: () => void; disabled?: boolean; outlined?: boolean }) {
-  // Outlined = the "more to fill" signal (neutral, not an error): same accent,
-  // hollow. Filled accent once every slot is assigned.
-  const style: React.CSSProperties = outlined
-    ? { height: 52, borderRadius: 12, background: "transparent", color: "var(--color-bt-accent)", border: "1.5px solid var(--color-bt-accent-border)", fontSize: 16, fontWeight: 600 }
-    : { height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 };
-  return (
-    <button onClick={onClick} disabled={disabled} className="mt-6 w-full disabled:opacity-40" style={style}>
-      {label}
-    </button>
   );
 }

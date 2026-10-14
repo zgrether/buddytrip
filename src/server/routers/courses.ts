@@ -7,8 +7,9 @@ import { validateStrokeIndex } from "@/lib/courseIndex";
  * courses — the GLOBAL course library (Slice C part 2, §5). Course par + stroke
  * index + per-tee yards are global facts (not circle-scoped), so any member can
  * read the whole library and add to it. Looked-up and hand-built courses persist
- * identically here; applying a course to a game is `games.applyCourse` (the
- * snapshot write — separate, because it mutates a trip-scoped game).
+ * identically here. Applying a course to a game is a settings save: the draft
+ * snapshots it and `save_game_config` writes it (separate, because it mutates a
+ * trip-scoped game).
  *
  * The stroke index is re-validated server-side as a complete permutation of
  * 1..holeCount — the client enforces it via swap-on-edit, but a course can never

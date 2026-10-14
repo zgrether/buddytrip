@@ -4,12 +4,10 @@
  * Applying a course SNAPSHOTS its par[] + stroke index (+ the selected tee's
  * yards/ratings) into the game's `scorecard_schema`, freezing the course facts the
  * round was set up with. That derivation used to live inline in the server's
- * `games.applyCourse`; it's lifted here so BOTH sides run the same function:
- *
- *  - `games.applyCourse` (server) — the existing immediate-apply path.
- *  - the settings draft (client) — draft-then-save pre-computes the snapshot and
- *    hands it to `save_game_config` ready-to-write (spec §2.2 Design A: the client
- *    pre-computes every derived value; the plpgsql only writes).
+ * `games.applyCourse` (retired, with the match create screen that was its last
+ * caller). The settings draft runs it client-side and hands the snapshot to
+ * `save_game_config` ready-to-write (spec §2.2 Design A: the client pre-computes
+ * every derived value; the plpgsql only writes).
  *
  * Keeping it pure + client-safe (no tRPC/DB — the caller supplies the course row)
  * is what stops the drafted snapshot and the server-applied one from drifting —

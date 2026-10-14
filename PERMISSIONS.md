@@ -247,7 +247,7 @@ is the Owner's"), which read as a principle and competed with the actual one.
 | Remove a team assignment | ✓ | ✓ | **captain: remove from *their own* team, before results, never themselves** | `teamAssignments.remove` *(Organizer+, #786; captain path via `captain_remove_player`, mig 199)* |
 | **Reorder a team's roster** (canonical order) | ✓ | ✓ | **captain of *that* team** | `teamAssignments.reorder` *(Organizer since mig 199; captain since mig 094; same gate as `teams.update`)* |
 | Appoint / clear a team captain | ✓ | ✓ | — | `teamAssignments.setCaptain` *(Owner or Organizer since mig 200 — you can hand out powers you already hold; Owner-only before)* |
-| **Edit / configure a game** (status — pending/active/complete only, points distribution, course, participants) | ✓ | ✓ | **delegate of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `applyCourse` / `addParticipants` |
+| **Edit / configure a game** (status — pending/active/complete only, points distribution, course, participants) | ✓ | ✓ | **delegate of *that* game** | `games.update` / `setStatus` / `setPointsDistribution` / `saveConfig` (course, via the settings draft) / `addParticipants` |
 | **Set what a game is worth** (`points_total`) | ✓ | ✓ | **delegate of *that* game** | `games.saveConfig` / `setPointsTotal` *(delegate tier since migration 158 — see the flag below)* |
 | **Enter a game's results** (manual placement; finish/compute — every format) | ✓ | ✓ | **delegate of *that* game** | `finish` *(`finish` absorbed `games.post`; see the flag below. `games.setManualResults` had no client caller and was deleted, #1429)* |
 | **RUN: open score correction** | ✓ | see flag | **delegate of *that* game** | `games.openCorrection` |

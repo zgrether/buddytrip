@@ -9,7 +9,7 @@ import { resetGameConfigHash, type GameConfigHashUtils } from "./gameConfigHash"
  *
  * The reported failure: set a game's points, use the Course row's "search the
  * wider database", get navigated to `/courses/new`, save the course — which
- * applies it to the game with `games.applyCourse` — come back, finish the
+ * applied it to the game with `games.applyCourse` (since retired) — come back, finish the
  * settings, Save, and be told "This game changed on another device." That page
  * invalidated `games.getById` (so the new course RENDERED, which is what made the
  * message read as a lie) but never the fingerprint, and `staleTime` is 60s, so
@@ -249,12 +249,9 @@ const NO_HASH_REFRESH_ALLOWED = [
   "src/components/competition/CompetitionLeaderboard.tsx",
   "src/components/competition/CompetitionSettingsModal.tsx",
   "src/components/games/NonGolfGameView.tsx",
-  // `startRack` — the NEW-GAME path: create the game, then apply the picked
-  // course to it. No settings draft can be frozen against a game that did not
-  // exist a moment ago. (`MatchGameView` does the same thing in `handleCreate`
-  // and is not listed only because it happens to mention `configHash` elsewhere,
-  // for `matches.addMatch` — file granularity letting one call site vouch for
-  // another. Noted rather than papered over; see the caveat above.)
+  // `startRack` — the NEW-GAME path creates the game. No settings draft can be
+  // frozen against a game that did not exist a moment ago. (Its course used to
+  // be applied here too; #1627 moved it into the settings draft.)
   "src/components/games/RackGameView.tsx",
   // `playGroups.setFoursomes`, called on Start to seed the mandatory default
   // grouping for a game being created — the same new-game exemption as rack.
@@ -273,8 +270,10 @@ describe("every client writer of hashed state refreshes games.configHash", () =>
   it("derives a real set of hash-moving procedures (the scan is not empty)", () => {
     // "Absence of matches is absence of search": an extractor that found nothing
     // would make the coverage assertion below pass vacuously. Anchor it on the
-    // writer that caused the bug and on two structurally different others.
-    expect(movers.has("games.applyCourse")).toBe(true);
+    // writer class that caused the bug (a direct `games` write outside the
+    // settings save; `games.applyCourse` itself is retired) and on two
+    // structurally different others.
+    expect(movers.has("games.enableScoring")).toBe(true);
     expect(movers.has("games.resetToSkeleton")).toBe(true);
     expect(movers.has("matches.setPairings")).toBe(true);
     // #1507: writes reached through SHARED SERVER CODE or the guest merge. Each
@@ -345,12 +344,13 @@ describe("every client writer of hashed state refreshes games.configHash", () =>
     const source = readFileSync(join(ROOT, "src/app/courses/new/page.tsx"), "utf8");
     const code = stripComments(source);
 
-    // The two writes that moved the hash, gone.
-    expect(code).not.toContain("games.applyCourse");
-    expect(code).not.toContain("games.setBackNine");
+    // The two writes that moved the hash, `games.applyCourse` and
+    // `games.setBackNine`, are not asserted absent here any more: both
+    // procedures are retired (#1624, and applyCourse with the match create
+    // screen), so the compiler refuses any call to them, and a source check
+    // could only ever pass. What can still regress is below.
     // The library write it legitimately keeps — asserted so this case fails if
-    // someone gutted the page rather than changing what it writes, which would
-    // satisfy the two checks above for the wrong reason.
+    // someone gutted the page rather than changing what it writes.
     expect(code).toContain("courses.create");
     // And the hand-off it replaced them with.
     expect(code).toContain("pendingCoursePut");

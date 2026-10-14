@@ -110,7 +110,7 @@ export interface GameTypeDefinition {
    *  finalize for every format — dispatches on. */
   resultStrategy: ResultStrategy | null;
   /** The base scorecard the format carries; null = non-golf (no scorecard).
-   *  applyCourse patches a COPY of this with the course's par/index. */
+   *  Applying a course patches a COPY of this with the course's par/index. */
   scorecardSchema: ScorecardSchema | null;
   /** Special-rule keys this format offers (golf modifier toggles). */
   compatibleModifiers: string[];
@@ -229,7 +229,7 @@ export type ScoringModel = "match_play" | "points";
 
 // ── Shared golf scorecard schemas ────────────────────────────────────────────
 // Copied verbatim from the live `game_type_templates.scorecard_schema`. The
-// par-72 layout is the template DEFAULT; applyCourse overwrites par + index with
+// par-72 layout is the template DEFAULT; a course snapshot overwrites par + index with
 // the chosen course's real values (on a deep clone — buildScorecardSchema never
 // mutates the input, so sharing these consts is safe).
 

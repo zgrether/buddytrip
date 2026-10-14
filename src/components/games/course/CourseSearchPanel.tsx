@@ -13,8 +13,8 @@ import type { RecentCourse } from "./CoursePicker";
  * CourseSearchPanel (W-COURSESPLIT-01) — the PICKER half of the old fused
  * CoursePicker, as inline accordion content on the Course row. **Read-only w.r.t.
  * course data**: it searches (local typeahead + the explicit golfcourseapi call) +
- * recents and SELECTS a saved course → `onApply` (the parent's `applyCourse`,
- * live). It never owns a draft.
+ * recents and SELECTS a saved course → `onApply` (the parent stages it into the
+ * settings draft). It never owns a draft.
  *
  * The two draft-requiring paths NAVIGATE to the heavy entry page (`/courses/new`):
  * "Add course manually" (blank) and selecting an API result (seeded by a pull).
@@ -27,7 +27,7 @@ export function CourseSearchPanel({
 }: {
   tripId: string;
   gameId: string;
-  /** Apply a SAVED course (the parent runs applyCourse / setBackNine). */
+  /** Apply a SAVED course (the parent stages it into the settings draft). */
   onApply: (course: { id: string; name: string; teeName?: string }) => void;
   /** "back" (W-9HOLE-01) → pick the BACK nine: restrict to 9-hole courses, hide
    *  the golfcourseapi search (a back nine is a saved/manual 9-holer), and the

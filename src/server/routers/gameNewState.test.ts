@@ -3,6 +3,7 @@ import { TestContext } from "../../__tests__/helpers/test-setup";
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
 import { isNew } from "../lib/gameReadiness";
 import { GAME_TYPES, getGameTypeDefinition, isGameTypeForScoringModel } from "@/lib/gameTypes";
+import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 
 /**
  * NEW vs CONFIGURING — the behavioural half.
@@ -221,7 +222,8 @@ describe("isNew — New vs Configuring", () => {
    * (This used to call `games.clearCourse`, which no screen called; #1624 retired
    * it.)
    */
-  async function clearCourseAsSettingsDoes(gameId: string) {
+  /** The settings page's course save: `course` set, or cleared when null. */
+  async function saveCourseAsSettingsDoes(gameId: string, course: { id: string; schema: unknown } | null) {
     const tripId = tripOf(gameId);
     const g = (await ctx.caller().games.getById({ tripId, gameId })) as Record<string, unknown> & {
       participants?: { user_id: string; handicap_strokes: number | null }[];
@@ -241,12 +243,13 @@ describe("isNew — New vs Configuring", () => {
         modifiers: (g.modifiers as Record<string, Record<string, unknown>>) ?? {},
         delegates: orgs.map((d) => d.user_id),
         participants: (g.participants ?? []).map((p) => ({ userId: p.user_id, strokes: p.handicap_strokes ?? 0 })),
-        courseId: null,
+        courseId: course?.id ?? null,
         backCourseId: null,
-        scorecardSchema: getGameTypeDefinition(g.game_type_id as string)?.scorecardSchema ?? null,
+        scorecardSchema: (course?.schema ?? getGameTypeDefinition(g.game_type_id as string)?.scorecardSchema ?? null) as never,
       },
     });
   }
+  const clearCourseAsSettingsDoes = (gameId: string) => saveCourseAsSettingsDoes(gameId, null);
 
   // ── 4 · loses configuration → Configuring, NOT New ─────────────────────────
 
@@ -280,7 +283,9 @@ describe("isNew — New vs Configuring", () => {
     });
     createdCourses.push(course.id as string);
 
-    await ctx.caller().games.applyCourse({ tripId: tripOf(gameId), gameId, courseId: course.id as string });
+    const snap = buildCourseSnapshot(course as unknown as CourseSnapshotInput, STROKE_PLAY);
+    if (!snap.ok) throw new Error(`fixture course did not snapshot: ${snap.reason}`);
+    await saveCourseAsSettingsDoes(gameId, { id: course.id as string, schema: snap.schema });
     expect((await sectionInputs(gameId)).isNewGame, "a course was applied").toBe(false);
 
     await clearCourseAsSettingsDoes(gameId);
