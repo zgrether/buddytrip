@@ -710,7 +710,7 @@ export const matchesRouter = router({
 
       const { data: match } = await ctx.supabase
         .from("game_matches")
-        .select("id, side_a, side_b")
+        .select("id, side_a, side_b, status")
         .eq("id", input.matchId)
         .eq("game_id", input.gameId)
         .maybeSingle();
@@ -732,17 +732,21 @@ export const matchesRouter = router({
       // No margin: a declared result carries no "3&2"-style score to derive one
       // from (unlike golf's computed matches, where `matchState` produces both
       // together). `status: 'complete'` marks the MATCH decided — distinct from
-      // the GAME's own `status`, which stays whatever it already was. A `null`
-      // result un-decides the match: `'active'`, not `'pending'` (#1430).
-      // `pending` means NOT LIVE YET (go-live moves pending → active), and this
-      // write is refused above unless scoring is on, so the match it un-decides
-      // is always on a live game. It used to write `'pending'`, the same
-      // two-meanings defect the golf recompute had.
+      // the GAME's own `status`, which stays whatever it already was.
+      //
+      // A `null` result un-decides the match (#1430): a DECIDED match goes back
+      // to `'active'`, and any other status is left as it is. `pending` means NOT
+      // LIVE YET (go-live moves pending → active); this write is refused above
+      // unless scoring is on, so a match it un-decides is on a live game. It used
+      // to write `'pending'` unconditionally, the same two-meanings defect the
+      // golf recompute had, and un-setting a never-decided match changed nothing
+      // else, so it must not change the status either.
+      const undecidedStatus = match.status === "complete" ? "active" : (match.status as string);
       const { error } = await ctx.supabase
         .from("game_matches")
         .update(
           input.result == null
-            ? { result: null, margin: null, status: "active" }
+            ? { result: null, margin: null, status: undecidedStatus }
             : { result: input.result, margin: null, status: "complete" }
         )
         .eq("id", input.matchId);
