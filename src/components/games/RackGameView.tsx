@@ -102,6 +102,9 @@ export function RackGameView() {
   // Carries the CoursePicker's selected TEE too (A2-tee) — dropping it left a
   // new-game course applied on its first tee regardless of the tee the owner chose.
   const [pendingCourse, setPendingCourse] = useState<{ id: string; name: string; teeName?: string } | null>(null);
+  // The setup screen's course, waiting to be staged into the settings draft once the
+  // draft's inputs have loaded (#1627). See the effect beside applyFrontToDraft.
+  const [courseToStage, setCourseToStage] = useState<{ id: string; teeName?: string } | null>(null);
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   // The tapped group's scorecard: "entry" (score keypad) vs "grid" (the read grid,
   // opened by the top-right scorecard icon).
@@ -183,7 +186,6 @@ export function RackGameView() {
   );
 
   const createGame = trpc.games.create.useMutation();
-  const applyCourse = trpc.games.applyCourse.useMutation();
   // #7 correction path (owner/Organizer/delegate — server-gated by
   // requireGameRunAction). "Re-lock" reuses finish().
   // Shared with the other three formats (CLAUDE.md #24) — including the
@@ -538,8 +540,10 @@ export function RackGameView() {
   // ── Handlers ─────────────────────────────────────────────────────────
   // The current persisted groups as a builder draft (one user-id array per group,
   // in group order) — seeds the builder when editing an existing game's groups.
-  // Start a rack: create the game (if new) + apply the course, then open settings with
-  // GROUPINGS expanded. No auto-assignment — the owner builds the carts from empty (the
+  // Start a rack: create the game (if new), then open settings with GROUPINGS expanded
+  // and the picked course STAGED in the draft (#1627) — it saves with the groupings
+  // through the settings save, the one course write path, instead of being applied on
+  // its own here. No auto-assignment — the owner builds the carts from empty (the
   // draft's groups slice, seeded from the — empty — server set).
   async function startRack() {
     if (!tripId || !competitionId) return;
@@ -550,15 +554,9 @@ export function RackGameView() {
       const g = await createGame.mutateAsync({ tripId, gameTypeId: RACK, name: "Rack-n-Stack", competitionId });
       gameId = g.id as string;
     }
-    if (pendingCourse) {
-      try {
-        await applyCourse.mutateAsync({ tripId, gameId, courseId: pendingCourse.id, teeSetName: pendingCourse.teeName });
-      } catch {
-        /* template default par/index still applies */
-      }
-    }
     await utils.playGroups.listByGame.invalidate({ tripId, gameId });
     setGameId(gameId);
+    if (pendingCourse) setCourseToStage(pendingCourse);
     // Land in the settings page with GROUPINGS expanded (the first Settings item).
     setOpenAccordion("groupings");
     openConfig();
@@ -601,6 +599,18 @@ export function RackGameView() {
       }
     })();
   };
+  // Stage the setup screen's course (#1627) only once settings are open and every
+  // query feeding the draft has loaded — the same readiness useConfigDraft waits
+  // for before it freezes the baseline and hash. Staged earlier, on a game created
+  // a moment ago, the draft would be touched against a half-loaded mirror.
+  useEffect(() => {
+    if (!courseToStage || !showConfig || !gid || !gameQ.data || !groupsQ.data || !orgQ.data) return;
+    const c = courseToStage;
+    setCourseToStage(null);
+    applyFrontToDraft(c.id, c.teeName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on readiness; applyFrontToDraft is a fresh closure each render
+  }, [courseToStage, showConfig, gid, gameQ.data, groupsQ.data, orgQ.data]);
+
   const applyBackToDraft = (backCourseId: string, backTeeName?: string) => {
     if (!gameTypeId) return;
     setCourseBusy(true);
@@ -1148,7 +1158,7 @@ export function RackGameView() {
               {assignQ.data?.length ?? 0} players across {teamMeta.A.name} &amp; {teamMeta.B.name} — you&apos;ll build them into playing groups (carts) yourself, any mix of 1–4 per group.
             </p>
             {canEdit && (
-              <button onClick={startRack} disabled={createGame.isPending || applyCourse.isPending} className="mt-2 w-full disabled:opacity-40" style={{ height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
+              <button onClick={startRack} disabled={createGame.isPending} className="mt-2 w-full disabled:opacity-40" style={{ height: 52, borderRadius: 12, background: "var(--color-bt-accent)", color: "#0d1f1a", fontSize: 16, fontWeight: 600 }}>
                 Set up playing groups
               </button>
             )}
