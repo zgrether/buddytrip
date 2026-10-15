@@ -4,6 +4,7 @@ import { TrendingUp } from "lucide-react";
 import { fmtToPar, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
 import { teamTextColor } from "@/lib/teamTextColor";
 import { thruLabel } from "@/lib/thruLabel";
+import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 
 /**
  * Rack-n-Stack display board (Slice C part 3 + addendum). PURE / display-only —
@@ -134,7 +135,7 @@ export function RackBoard({
                   <span style={{ fontSize: 14, color: "var(--color-bt-text)" }}>{nameOf(p.id)}</span>
                 </span>
                 <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
-                  {fmtToPar(p.value)} · thru {p.thru}
+                  {p.started ? `${fmtToPar(p.value)} · thru ${p.thru}` : MATCH_LEVEL_WORD.not_started}
                 </span>
               </div>
             ))}
@@ -159,7 +160,7 @@ function RackRow({ slot, nameOf, colorOf, unitCount }: { slot: RackSlot; nameOf:
   const gap = Math.round(slot.gap);
   return (
     <div className="flex items-stretch" style={{ height: ROW_H }}>
-      <ScoreBlock value={slot.a.value} thru={slot.a.thru} unitCount={unitCount} lead={aLead} color={colorOf("A")} />
+      <ScoreBlock value={slot.a.value} thru={slot.a.thru} started={slot.a.started} unitCount={unitCount} lead={aLead} color={colorOf("A")} />
       <NameBlock name={nameOf(slot.a.id)} align="right" lead={aLead} color={colorOf("A")} gapText={aLead ? `Up by ${gap}` : null} />
       <div className="flex shrink-0 flex-col" style={{ width: 28, paddingTop: TOP_PAD, background: "var(--color-bt-card-raised)" }}>
         <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
@@ -168,24 +169,26 @@ function RackRow({ slot, nameOf, colorOf, unitCount }: { slot: RackSlot; nameOf:
         <div style={{ height: SECONDARY }} />
       </div>
       <NameBlock name={nameOf(slot.b.id)} align="left" lead={bLead} color={colorOf("B")} gapText={bLead ? `Up by ${gap}` : null} />
-      <ScoreBlock value={slot.b.value} thru={slot.b.thru} unitCount={unitCount} lead={bLead} color={colorOf("B")} />
+      <ScoreBlock value={slot.b.value} thru={slot.b.thru} started={slot.b.started} unitCount={unitCount} lead={bLead} color={colorOf("B")} />
     </div>
   );
 }
 
-function ScoreBlock({ value, thru, unitCount, lead, color }: { value: number; thru: number; unitCount: number; lead: boolean; color: string }) {
+/** A not-started player's value is 0, which `fmtToPar` would print as "E" (level
+ *  par). So the score reads as a dash and the sub-label says not started (#1368). */
+function ScoreBlock({ value, thru, started, unitCount, lead, color }: { value: number; thru: number; started: boolean; unitCount: number; lead: boolean; color: string }) {
   return (
     <div className="flex shrink-0 flex-col" style={{ width: 60, paddingTop: TOP_PAD, background: lead ? color : "transparent" }}>
       <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
         <span style={{ fontSize: 22, fontWeight: 800, color: lead ? teamTextColor(color) : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
-          {fmtToPar(value)}
+          {started ? fmtToPar(value) : "—"}
         </span>
       </div>
       <div className="flex items-center justify-center" style={{ height: SECONDARY }}>
         {/* Secondary label on the leader's team color — same computed contrast
             color, slightly muted so it reads as a sub-label (not full-strength). */}
         <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.06em", color: lead ? teamTextColor(color) : "var(--color-bt-text-dim)", opacity: lead ? 0.85 : undefined }}>
-          THRU {thruLabel(thru, unitCount)}
+          {started ? `THRU ${thruLabel(thru, unitCount)}` : MATCH_LEVEL_WORD.not_started.toUpperCase()}
         </span>
       </div>
     </div>

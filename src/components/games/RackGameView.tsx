@@ -46,7 +46,7 @@ import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/F
 import { HandicapList, type HandicapPlayer } from "@/components/games/HandicapRoster";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
-import { playerStats, computeRack, rackProjectedTeamPoints, rackSides, type RackPlayer, type RackMode } from "@/lib/rackNStack";
+import { playerStats, computeRack, rackProjectedTeamPoints, rackSides, scoringSlotThrus, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { pointsReady } from "@/lib/matchDraft";
 import { strokeHoles } from "@/lib/matchPlay";
@@ -1213,7 +1213,7 @@ export function RackGameView() {
   // module exists to own.
   // Shared finalize gate: every slot side thru every hole, live over the derived
   // slot set (mid-round groups re-block). Same check stroke uses.
-  const allThru18 = allUnitsComplete(rack.slots.flatMap((s) => [s.a.thru, s.b.thru]), scUnits.length);
+  const allThru18 = allUnitsComplete(scoringSlotThrus(rack), scUnits.length);
   return (
     // Title-bar (back + name/status + gear) then the GamePageHeader below — the same
     // header pattern the match/stroke game pages use.

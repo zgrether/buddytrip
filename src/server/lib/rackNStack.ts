@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import { allUnitsComplete } from "@/lib/gameCompleteness";
 import { RELOCK_BLOCKED_MATCHES } from "@/lib/gameLifecycle";
-import { playerStats, computeRack, rackSides, type RackPlayer, type Team } from "@/lib/rackNStack";
+import { playerStats, computeRack, rackSides, scoringSlotThrus, type RackPlayer, type Team } from "@/lib/rackNStack";
 import { effectiveStrokes } from "@/lib/handicap";
 import { isPerMatch, liveRackPointsPerSlot } from "@/lib/pointsDistribution";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
@@ -183,7 +183,7 @@ async function rackResults(
   // A relock with a slot not played out is refused before the write (#1431).
   // Same predicate as the client's `allThru18` (`allUnitsComplete` over the
   // slots' thrus), so the disabled button and this refusal can't disagree.
-  if (refuseUndecided && !allUnitsComplete(slots.flatMap((s) => [s.a.thru, s.b.thru]), par.length)) {
+  if (refuseUndecided && !allUnitsComplete(scoringSlotThrus({ slots }), par.length)) {
     throw new TRPCError({ code: "PRECONDITION_FAILED", message: RELOCK_BLOCKED_MATCHES });
   }
   const teamPoints: Record<string, number> = { [teamIds[0]]: points.A, [teamIds[1]]: points.B };

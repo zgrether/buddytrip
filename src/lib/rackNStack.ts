@@ -77,21 +77,28 @@ export interface RackSlotPlayer {
   netToPar: number;
   projected: number | null;
   thru: number;
+  /** Has a score on at least one unit. A not-started player's `value` and
+   *  `netToPar` are 0, which reads as level par, so show `started` first. */
+  started: boolean;
 }
 
 export interface RackSlot {
   slot: number; // 1-based rank
   a: RackSlotPlayer;
   b: RackSlotPlayer;
-  /** Slot winner by the active mode's value; null = tie (halve). */
+  /** Slot winner by the active mode's value; null = tie (halve). Always null
+   *  while `undecided`, which is NOT a halve. */
   leader: Team | null;
   /** Net gap between the two values (≥0); the board renders "Up by {gap}". */
   gap: number;
+  /** One side has not started (#1368): nobody leads, and the slot pays nothing
+   *  until both have. Distinct from a halve, which pays ½ each. */
+  undecided: boolean;
 }
 
 export interface RackResult {
   slots: RackSlot[];
-  /** Surplus bottom players on the larger team — no slot, no point. */
+  /** Surplus bottom players on the larger ROSTER — no slot, no point. */
   sitOut: RackSlotPlayer[];
   /** Team points from slot wins (halves = ½), in the active mode. */
   points: { A: number; B: number };
@@ -111,16 +118,24 @@ function toSlotPlayer(p: RackPlayer, mode: RackMode, coursePar: number): RackSlo
     netToPar: p.stats.netToPar,
     projected: projectedNetToPar(p.stats.netStrokes, p.stats.thru, coursePar),
     thru: p.stats.thru,
+    started: p.stats.thru > 0,
   };
 }
 
 /**
- * Build the rack: exclude not-started players (thru 0), sort each team by the
- * active value (then net-to-par, gross, id — deterministic so the board doesn't
- * flicker), pair by rank, resolve slots, and surplus the larger team's bottom.
+ * Build the rack over the FULL roster: sort each team by the active value (then
+ * net-to-par, gross, id — deterministic so the board doesn't flicker) with
+ * not-started players (thru 0) after everyone who has started, pair by rank,
+ * resolve slots, and surplus the larger roster's bottom.
+ *
+ * #1368: this used to drop not-started players before pairing, so the board
+ * left them off entirely (fifteen rows where there were seventeen people) while
+ * the points-per-slot divisor counted the full roster. Pairing them last is
+ * points-neutral: a slot only decides when BOTH sides have started, and every
+ * slot below min(startedA, startedB) pairs exactly the players it paired before.
+ * A slot with a not-started side is `undecided`: no leader, no points.
  */
 export function computeRack(players: RackPlayer[], mode: RackMode, coursePar: number): RackResult {
-  const started = players.filter((p) => p.stats.thru > 0);
   const key = (p: RackPlayer): [number, number, number] => [
     valueOf(p, mode, coursePar),
     p.stats.netToPar,
@@ -132,8 +147,18 @@ export function computeRack(players: RackPlayer[], mode: RackMode, coursePar: nu
     for (let i = 0; i < kx.length; i++) if (kx[i] !== ky[i]) return kx[i] - ky[i];
     return x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
   };
-  const A = started.filter((p) => p.team === "A").sort(cmp);
-  const B = started.filter((p) => p.team === "B").sort(cmp);
+  const isStarted = (p: RackPlayer) => p.stats.thru > 0;
+  // Started first (by the rack's own order), then not-started, by id alone: a
+  // not-started player has no value to rank on.
+  const order = (x: RackPlayer, y: RackPlayer) => {
+    const sx = isStarted(x);
+    const sy = isStarted(y);
+    if (sx !== sy) return sx ? -1 : 1;
+    if (sx) return cmp(x, y);
+    return x.id < y.id ? -1 : x.id > y.id ? 1 : 0;
+  };
+  const A = players.filter((p) => p.team === "A").sort(order);
+  const B = players.filter((p) => p.team === "B").sort(order);
   const n = Math.min(A.length, B.length);
 
   const slots: RackSlot[] = [];
@@ -142,6 +167,10 @@ export function computeRack(players: RackPlayer[], mode: RackMode, coursePar: nu
   for (let k = 0; k < n; k++) {
     const sa = toSlotPlayer(A[k], mode, coursePar);
     const sb = toSlotPlayer(B[k], mode, coursePar);
+    if (!sa.started || !sb.started) {
+      slots.push({ slot: k + 1, a: sa, b: sb, leader: null, gap: 0, undecided: true });
+      continue;
+    }
     const leader: Team | null = sa.value < sb.value ? "A" : sa.value > sb.value ? "B" : null;
     if (leader === "A") pa += 1;
     else if (leader === "B") pb += 1;
@@ -149,10 +178,22 @@ export function computeRack(players: RackPlayer[], mode: RackMode, coursePar: nu
       pa += 0.5;
       pb += 0.5;
     }
-    slots.push({ slot: k + 1, a: sa, b: sb, leader, gap: Math.abs(sa.value - sb.value) });
+    slots.push({ slot: k + 1, a: sa, b: sb, leader, gap: Math.abs(sa.value - sb.value), undecided: false });
   }
   const surplus = (A.length > B.length ? A.slice(n) : B.slice(n)).map((p) => toSlotPlayer(p, mode, coursePar));
   return { slots, sitOut: surplus, points: { A: pa, B: pb } };
+}
+
+/**
+ * The thrus of the slots that SCORE (both sides started) — what "every slot is
+ * played out" means for the finalize gate and the re-lock refusal (#1431).
+ * #1368 pairs not-started players into undecided slots, and reading every
+ * slot's thru would block finalizing any game with a no-show, which today
+ * finalizes. These are exactly the slots `computeRack` returned before #1368.
+ * ONE home, so the client's gate and the server's refusal cannot disagree.
+ */
+export function scoringSlotThrus(rack: Pick<RackResult, "slots">): number[] {
+  return rack.slots.filter((s) => !s.undecided).flatMap((s) => [s.a.thru, s.b.thru]);
 }
 
 /**
