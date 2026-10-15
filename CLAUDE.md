@@ -170,6 +170,15 @@ if there's a real version you'd pick up and do; a vague "could be better
 someday" doesn't earn one. **(2) Capture-at-the-source:** when you
 scope something out of the current task, file it as a labelled issue *in the same
 session* — a report is ephemeral and the finding is lost when the session ends.
+**(2a) Every issue gets its launch label when it is filed: exactly one of
+`pre-launch` / `post-launch`, never neither and never both.** The test (Zach,
+2026-10-15): anything that can **tell people something false, lose data, or open
+a security gap** is `pre-launch`; everything else is `post-launch`. A case you
+can't place with confidence goes to Zach rather than being guessed, and stays
+unlabelled until he answers, so the drift check names it. The check is
+`.github/workflows/launch-labels.yml` (daily, and on demand), running
+`scripts/check-launch-labels.sh`: a red run lists every open issue without
+exactly one launch label.
 **(3) Close-on-merge:** every PR that resolves an issue says `Closes #NN`.
 **(3a) NEVER WRITE AN ISSUE NUMBER YOU HAVE NOT READ BACK FROM THE TRACKER.**
 Not from memory, and — the variant that actually happened — not from prediction.

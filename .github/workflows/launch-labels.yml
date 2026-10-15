@@ -1,0 +1,27 @@
+name: Launch labels
+
+# Flags any open issue that lacks exactly one launch label (pre-launch or
+# post-launch). CLAUDE.md's Issue Tracking section sets the rule: every issue
+# gets its launch label when it is filed. This is the drift check behind it.
+#
+# A failing run IS the flag: it lists the offending issues in the job summary.
+# It reads issues and writes nothing, so it cannot change the tracker on its own.
+
+on:
+  schedule:
+    - cron: "0 14 * * *" # daily, 14:00 UTC
+  workflow_dispatch:
+
+permissions:
+  issues: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every open issue has exactly one launch label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/check-launch-labels.sh
