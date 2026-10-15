@@ -5,6 +5,7 @@ import { Send, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { invalidateChatQueries } from "@/lib/chatQueryInvalidation";
+import { useChatBackstop } from "@/hooks/useChatBackstop";
 import { CHAT_VIEW_HEARTBEAT_MS } from "@/lib/chatViewHeartbeat";
 import { readChatCache, writeChatCache, type CachedMessage } from "@/lib/chatCache";
 import { readChatDraft, writeChatDraft } from "@/lib/chatDraft";
@@ -1003,6 +1004,18 @@ function FloatingChatPanelInner({
     : activeChannel === "crew"
       ? crewQuery
       : planningQuery;
+
+  // The room on screen checks it is current every 30s and on refocus, so a
+  // socket that dies without saying so cannot freeze it (#1396). Only for the
+  // ACTIVE room: hidden panels are mounted but nobody is looking at them.
+  useChatBackstop({
+    utils,
+    room: isTeamRoom
+      ? { tripId, channel: "team", teamId: teamId ?? "" }
+      : { tripId, channel: "trip", visibility: activeChannel },
+    enabled: active && !!tripId && (!isTeamRoom || !!teamId) && activeQuery.isSuccess,
+    newestLoadedId: activeQuery.data?.pages[0]?.[0]?.id ?? null,
+  });
   const body = (
     <ChatBody
       displayed={displayed}

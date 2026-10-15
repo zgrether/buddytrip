@@ -319,7 +319,9 @@ export function useRealtimeChat(
       // how far back the reader has scrolled.
       //
       // Marking stale without refetching keeps the reconciliation: the next mount
-      // or refocus still pulls fresh. When nothing was patched (panel closed, or
+      // pulls fresh, and `useChatBackstop` catches a missed row on the open room
+      // (#1396; the app's defaults never refetched on focus, which this comment
+      // used to claim). When nothing was patched (panel closed, or
       // a channel this client holds no cache for) the full refetch stays — and it
       // costs nothing there, because an unobserved query doesn't refetch on
       // invalidate; it just becomes stale for the next open.
