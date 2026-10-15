@@ -8,6 +8,7 @@ import { postSystemMessage } from "./messages";
 import { joinNoticeText } from "@/lib/joinMessage";
 import { archiveTripMember, ownerLeaveRefusal } from "../lib/archiveMember";
 import { countOrThrow } from "../lib/rowOrThrow";
+import { lookupAccountByEmail } from "../lib/emailLookup";
 
 /**
  * How many of the trip's expenses `userId` is part of: ones they paid, plus
@@ -607,11 +608,8 @@ export const tripMembersRouter = router({
       // Cross-boundary by nature — inviting is precisely how someone who is
       // not yet on this trip gets recognised — so it reads through the definer
       // (migration 133), not `users` (narrowed by migration 134).
-      const { data: existingRows } = await ctx.supabase.rpc(
-        "lookup_user_by_email",
-        { p_email: email }
-      );
-      const existing = (existingRows ?? [])[0] ?? null;
+      // #1537: throws on a FAILED lookup, which used to read as "no account".
+      const existing = await lookupAccountByEmail(ctx.supabase, email);
 
       // ── Path A: Real account exists — add to trip directly ──────────
       if (existing && !existing.is_guest) {

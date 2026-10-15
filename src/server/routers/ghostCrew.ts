@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { maybeRowOrThrow } from "@/server/lib/rowOrThrow";
+import { lookupAccountByEmail } from "@/server/lib/emailLookup";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripRole } from "../middleware";
@@ -53,11 +54,8 @@ export const ghostCrewRouter = router({
       // to catch — so it goes through the definer (migration 133) rather than
       // reading `users`, which migration 134 narrows.
       if (email) {
-        const { data: existingRows } = await ctx.supabase.rpc(
-          "lookup_user_by_email",
-          { p_email: email }
-        );
-        const existingUser = (existingRows ?? [])[0] ?? null;
+        // #1537: throws on a FAILED lookup, which used to read as "no account".
+        const existingUser = await lookupAccountByEmail(ctx.supabase, email);
 
         if (existingUser && !existingUser.is_guest) {
           // Real account exists — check if already a member
@@ -322,11 +320,8 @@ export const ghostCrewRouter = router({
         // `created_at` is null: the definer returns neither, and no consumer
         // reads either — the sibling reuse branch in `create` already returns
         // `created_at: null` for the same reason.
-        const { data: existingRows } = await ctx.supabase.rpc(
-          "lookup_user_by_email",
-          { p_email: email }
-        );
-        const found = (existingRows ?? [])[0] ?? null;
+        // #1537: throws on a FAILED lookup, which used to read as "no account".
+        const found = await lookupAccountByEmail(ctx.supabase, email);
         const existingUser = found
           ? { ...found, email, created_at: null as string | null }
           : null;
