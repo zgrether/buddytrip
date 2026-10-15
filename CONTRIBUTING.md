@@ -66,9 +66,9 @@ detail (including the audit-before-delete rule for any `DROP`).
 
 ## Issues & tracking
 
-- **Actionable-now → a GitHub issue**, labelled by **type** (`bug` / `dead-code` /
-  `feature` / `refactor` / `chore`) + **priority** (`bbmi-blocking` / `pre-launch` /
-  `polish` / `post-launch`). The `BBMI 2026` milestone holds only `bbmi-blocking`.
+- **Actionable-now → a GitHub issue**, labelled by **what** it is (`bug` / `dead-code` /
+  `feature` / `refactor` / `chore` / `polish`) + **when** it ships: exactly one of
+  `pre-launch` / `post-launch`, set when it is filed (see `CLAUDE.md`, Issue Tracking).
 - **Real-but-not-soon → [`TRACKER.md`](TRACKER.md)** (the forward-strategy system of record).
 - **Capture at the source:** when you scope something out of your task, file it in the same
   session — a finding lost to the end of a session is a finding lost.

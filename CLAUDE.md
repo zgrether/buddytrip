@@ -161,10 +161,12 @@ Two layers, kept separate so the issue list stays short enough to actually read.
 strategy + the "someday" nominations** (e.g. the R1 format-architecture refactor,
 the full dead-code list, glossary rename sites). Don't promote a tracker
 nomination to an issue until it's about to be worked. Labels are two dimensions
-only — **type** (`bug`/`dead-code`/`feature`/`refactor`/`chore`) + **priority**
-(`bbmi-blocking`/`pre-launch`/`polish`/`post-launch`); the `BBMI 2026` milestone
-holds **only** `bbmi-blocking` issues (its 100% bar is the event-critical forcing
-function). The standing discipline, followed every session with no reminder:
+only, answering two different questions — **what** it is (`bug`/`dead-code`/
+`feature`/`refactor`/`chore`/`polish`) and **when** it ships (`pre-launch`/
+`post-launch`, exactly one, rule 2a below). `bbmi-blocking` and its `BBMI 2026`
+milestone are retired (Zach, 2026-10-15: the event is over); the label stays on
+closed issues as history and is never applied. The standing discipline, followed
+every session with no reminder:
 **(1) Entry rule — actionable, not merely true:** an issue earns its place only
 if there's a real version you'd pick up and do; a vague "could be better
 someday" doesn't earn one. **(2) Capture-at-the-source:** when you
