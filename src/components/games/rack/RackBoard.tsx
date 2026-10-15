@@ -4,7 +4,6 @@ import { TrendingUp } from "lucide-react";
 import { fmtToPar, type RackMode, type RackSlot, type RackSlotPlayer } from "@/lib/rackNStack";
 import { teamTextColor } from "@/lib/teamTextColor";
 import { thruLabel } from "@/lib/thruLabel";
-import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 
 /**
  * Rack-n-Stack display board (Slice C part 3 + addendum). PURE / display-only —
@@ -132,10 +131,10 @@ export function RackBoard({
               >
                 <span className="flex items-center gap-2">
                   <Dot color={colorOf(p.team)} />
-                  <span style={{ fontSize: 14, color: "var(--color-bt-text)" }}>{nameOf(p.id)}</span>
+                  <span style={{ fontSize: 14, color: p.started ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>{nameOf(p.id)}</span>
                 </span>
                 <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
-                  {p.started ? `${fmtToPar(p.value)} · thru ${p.thru}` : MATCH_LEVEL_WORD.not_started}
+                  {p.started ? `${fmtToPar(p.value)} · thru ${p.thru}` : "—"}
                 </span>
               </div>
             ))}
@@ -175,13 +174,14 @@ function RackRow({ slot, nameOf, colorOf, unitCount }: { slot: RackSlot; nameOf:
 }
 
 /** A not-started player's value is 0, which `fmtToPar` would print as "E" (level
- *  par). So the score reads as a dash, and "Not started" goes under the NAME
- *  (`NameBlock`), where there is room for it (#1368). */
+ *  par). So the score is a muted dash and the name is muted (`NameBlock`): the
+ *  styling says "hasn't played yet", with no words to fit in a 60px column
+ *  (#1368; Zach's look on #1636). */
 function ScoreBlock({ value, thru, started, unitCount, lead, color }: { value: number; thru: number; started: boolean; unitCount: number; lead: boolean; color: string }) {
   return (
     <div className="flex shrink-0 flex-col" style={{ width: 60, paddingTop: TOP_PAD, background: lead ? color : "transparent" }}>
       <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
-        <span data-testid={started ? undefined : "rack-score-not-started"} style={{ fontSize: 22, fontWeight: 800, color: lead ? teamTextColor(color) : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+        <span data-testid={started ? undefined : "rack-score-not-started"} style={{ fontSize: 22, fontWeight: 800, color: lead ? teamTextColor(color) : started ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
           {started ? fmtToPar(value) : "—"}
         </span>
       </div>
@@ -201,15 +201,16 @@ function NameBlock({ name, align, lead, color, gapText, notStarted }: { name: st
   return (
     <div className="flex min-w-0 flex-1 flex-col" style={{ padding: `${TOP_PAD}px 10px 0`, background: lead ? `${color}29` : "transparent" }}>
       <div className="flex w-full items-center" style={{ height: PRIMARY, justifyContent: justify }}>
-        <span className="max-w-full truncate" style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{name}</span>
+        <span
+          className="max-w-full truncate"
+          data-testid={notStarted ? "rack-name-not-started" : undefined}
+          style={{ fontSize: 15, fontWeight: 600, color: notStarted ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}
+        >
+          {name}
+        </span>
       </div>
       <div className="flex w-full items-center" style={{ height: SECONDARY, justifyContent: justify }}>
         {gapText && <span style={{ fontSize: 11, fontWeight: 600, color }}>{gapText}</span>}
-        {notStarted && (
-          <span data-testid="rack-not-started" style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
-            {MATCH_LEVEL_WORD.not_started}
-          </span>
-        )}
       </div>
     </div>
   );
