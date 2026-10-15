@@ -78,3 +78,30 @@ export function clientFailingRead(real: SupabaseClient, target: { table: string;
   }) as SupabaseClient;
   return client;
 }
+
+/**
+ * A real, authenticated tRPC caller whose client FAILS EXACTLY ONE DATABASE
+ * FUNCTION, `rpc(fn)`, and does everything else against the database. The RPC
+ * twin of `callerFailingRead`, with the same narrowness: every other function and
+ * every table read and write goes through, so the write a test watches for can
+ * happen if the code under test lets it (#1537).
+ */
+export function callerFailingRpc(
+  ctx: TestContext,
+  who: Parameters<TestContext["authedClient"]>[0] | TestAccount,
+  fn: string,
+) {
+  const real = typeof who === "string" ? ctx.authedClient(who) : who.client();
+  const failure = { data: null, error: { code: "PGRST003", message: "simulated rpc failure" } };
+  const client = new Proxy(real, {
+    get(obj, prop, receiver) {
+      if (prop !== "rpc") return Reflect.get(obj, prop, receiver);
+      const realRpc = Reflect.get(obj, "rpc", receiver) as (name: string, ...rest: unknown[]) => unknown;
+      return (name: string, ...rest: unknown[]) =>
+        name === fn ? Promise.resolve(failure) : realRpc.call(obj, name, ...rest);
+    },
+  }) as SupabaseClient;
+  const user = typeof who === "string" ? ctx.getUser(who) : { id: who.id, email: who.email };
+  const trpcCtx: TRPCContext = { supabase: client, user: { id: user.id, email: user.email }, membershipCache: new Map() };
+  return createCallerFactory(appRouter)(trpcCtx);
+}
