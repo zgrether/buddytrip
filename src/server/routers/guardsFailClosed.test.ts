@@ -167,27 +167,6 @@ describe("teams.delete — a failed team read never skips both guards", () => {
   }, 60_000);
 });
 
-// Since #1474 the freeze asks `game_started` (every format's results), not a
-// count of `score_entries`, so the read that fails here is the view's.
-describe("the course freeze — a failed scores read never opens it", () => {
-  const schemaOf = async () =>
-    ((await ctx.admin.from("games").select("scorecard_schema").eq("id", scoredGame).single()).data as { scorecard_schema: unknown })
-      .scorecard_schema;
-
-  // `applyCourse` (the live course write; `clearCourse` retired in #1624). The
-  // lock refuses before the course is read, so the id need not exist.
-  it("CONTROL: real reads — applying a course to a scored game is refused", async () => {
-    await expect(ctx.caller().games.applyCourse({ tripId, gameId: scoredGame, courseId: "any-course" })).rejects.toThrow("Scores are already entered");
-  }, 60_000);
-
-  it("a FAILED read refuses — par/index are not reset under the entered score", async () => {
-    const before = await schemaOf();
-    const failing = callerFailingRead(ctx, "owner", { table: "game_started", columns: "game_id" });
-    await expect(failing.games.applyCourse({ tripId, gameId: scoredGame, courseId: "any-course" })).rejects.toThrow(SENTENCE("scores"));
-    expect(await schemaOf()).toEqual(before);
-  }, 60_000);
-});
-
 describe("games.update — a failed read never switches entry mode on a live game", () => {
   const modeOf = async () =>
     ((await ctx.admin.from("games").select("entry_mode").eq("id", scoredGame).single()).data as { entry_mode: string }).entry_mode;

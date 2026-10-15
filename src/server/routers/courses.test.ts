@@ -1,17 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
 
-const MATCH_PLAY = "gtt_match_play";
 const PAR = [4, 5, 3, 4, 4, 3, 5, 4, 4, 4, 3, 5, 4, 4, 3, 4, 5, 4];
 const IDX = [7, 3, 15, 1, 11, 5, 17, 9, 13, 8, 4, 16, 2, 12, 6, 18, 10, 14];
 
 let ctx: TestContext;
-let tripId: string;
 const courseIds: string[] = [];
 
 beforeAll(async () => {
   ctx = await TestContext.create();
-  tripId = await ctx.createTrip("Course Picker Trip");
 });
 
 afterAll(async () => {
@@ -52,7 +49,7 @@ describe("courses router — global library", () => {
     ).rejects.toThrow(/18 entries/i);
   });
 
-  it("saves an index-less course (par only) and snapshots par WITHOUT an index", async () => {
+  it("saves an index-less course (par only) — the row stores no index", async () => {
     const course = await ctx.caller().courses.create({
       name: "Gross Only GC",
       holeCount: 18,
@@ -62,13 +59,8 @@ describe("courses router — global library", () => {
     courseIds.push(course.id as string);
     expect(course.has_stroke_index).toBe(false);
     expect(course.handicap_index).toEqual([]);
-
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Gross" });
-    const updated = await ctx.caller().games.applyCourse({ tripId, gameId: game.id as string, courseId: course.id as string });
-    const schema = updated!.scorecard_schema as { units: { metadata: { par: number[]; handicap_index?: number[] } } };
-    expect(schema.units.metadata.par).toEqual(PAR);
-    // No index → handicap_index OMITTED; strokeHoles falls back to sequential.
-    expect(schema.units.metadata.handicap_index).toBeUndefined();
+    // Its snapshot (par only, no index) is the builder's job, pinned in
+    // courseSnapshot.test.ts ("an index-OFF course snapshots par only").
   });
 
   it("persists the FULL per-tee record — ratings + yards (mig 059)", async () => {
@@ -163,103 +155,6 @@ describe("courses router — global library", () => {
     // A non-matching term returns nothing for this course.
     const miss = await ctx.caller().courses.search({ q: "qqq-no-such-course-xyz" });
     expect(miss.some((h: { id: string }) => h.id === c.id)).toBe(false);
-  });
-});
-
-describe("games.applyCourse — the contract snapshot", () => {
-  it("snapshots par + handicap_index into the game's scorecard_schema + keeps course_id", async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Singles" });
-    const course = await ctx.caller().courses.create({
-      name: "Snapshot GC",
-      holeCount: 18,
-      par: PAR,
-      handicapIndex: IDX,
-    });
-    courseIds.push(course.id as string);
-
-    const updated = await ctx.caller().games.applyCourse({
-      tripId,
-      gameId: game.id as string,
-      courseId: course.id as string,
-    });
-    const schema = updated!.scorecard_schema as {
-      units: { metadata: { par: number[]; handicap_index: number[] }; count: number };
-    };
-    expect(schema.units.metadata.par).toEqual(PAR);
-    expect(schema.units.metadata.handicap_index).toEqual(IDX);
-    expect(schema.units.count).toBe(18);
-    expect(updated!.course_id).toBe(course.id);
-  });
-
-  it("snapshots the SELECTED tee (not the first) — display can't disagree with config", async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Tee Select" });
-    const course = await ctx.caller().courses.create({
-      name: "Two Tee GC",
-      holeCount: 18,
-      par: PAR,
-      handicapIndex: IDX,
-      teeSets: [
-        { name: "Blue", courseRating: 72.3, slopeRating: 131, yards: Array(18).fill(410) },
-        { name: "White", courseRating: 70.1, slopeRating: 124, yards: Array(18).fill(380) },
-      ],
-    });
-    courseIds.push(course.id as string);
-
-    // Apply the SECOND tee explicitly — the snapshot must carry White, not Blue.
-    const updated = await ctx.caller().games.applyCourse({
-      tripId,
-      gameId: game.id as string,
-      courseId: course.id as string,
-      teeSetName: "White",
-    });
-    const tee = (updated!.scorecard_schema as { units: { metadata: { tee: { name: string; yards: number[]; courseRating: number } } } })
-      .units.metadata.tee;
-    expect(tee.name).toBe("White");
-    expect(tee.courseRating).toBe(70.1);
-    expect(tee.yards.every((y) => y === 380)).toBe(true);
-  });
-
-  it("defaults to the first tee when none is named", async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Default Tee" });
-    const course = await ctx.caller().courses.create({
-      name: "Default Tee GC",
-      holeCount: 18,
-      par: PAR,
-      handicapIndex: IDX,
-      teeSets: [{ name: "Black", yards: Array(18).fill(450) }, { name: "Red", yards: Array(18).fill(300) }],
-    });
-    courseIds.push(course.id as string);
-
-    const updated = await ctx.caller().games.applyCourse({ tripId, gameId: game.id as string, courseId: course.id as string });
-    const tee = (updated!.scorecard_schema as { units: { metadata: { tee: { name: string } } } }).units.metadata.tee;
-    expect(tee.name).toBe("Black");
-  });
-
-  it("is frozen once a score exists (re-apply blocked)", async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Frozen" });
-    const course = await ctx.caller().courses.create({
-      name: "Frozen GC",
-      holeCount: 18,
-      par: PAR,
-      handicapIndex: IDX,
-    });
-    courseIds.push(course.id as string);
-
-    await ctx.caller().games.applyCourse({ tripId, gameId: game.id as string, courseId: course.id as string });
-
-    // A score lands → the par/index it's played on is frozen.
-    await ctx.admin.from("score_entries").insert({
-      id: crypto.randomUUID(),
-      game_id: game.id,
-      participant_id: ctx.user.id,
-      participant_type: "user",
-      unit_label: "1",
-      value: 4,
-    });
-
-    await expect(
-      ctx.caller().games.applyCourse({ tripId, gameId: game.id as string, courseId: course.id as string })
-    ).rejects.toThrow(/already entered|can't be changed/i);
   });
 });
 

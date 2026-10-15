@@ -288,7 +288,7 @@ export function CoursePicker({
   }
 
   // mode 'use' — pick a course to drop into the game. The active tee chip is the
-  // configured tee — pass it so applyCourse snapshots THAT tee's yardage.
+  // configured tee — pass it so the snapshot carries THAT tee's yardage.
   async function useCourse() {
     if (!indexUsable || !draft.name.trim()) return;
     const teeName = draft.teeSets[activeTee]?.name?.trim() || undefined;

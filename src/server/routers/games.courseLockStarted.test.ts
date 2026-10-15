@@ -1,30 +1,37 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
-import { callerFailingRead } from "../../__tests__/helpers/failingRead";
+import { configToDraft, configDraftToPayload, type ConfigDraft } from "../../lib/configDraft";
+import { buildCourseSnapshot, type CourseSnapshotInput } from "../../lib/courseSnapshot";
 
 /**
- * #1474 — the course lock asks `game_started`, not `score_entries`.
+ * #1474 — a game's course is fixed once it has results, in every shape a result
+ * takes.
  *
- * `games.applyCourse` refuses once a game has been scored, because changing par
- * and stroke index under recorded results rescores them. It used to count `score_entries` alone, which is zero rows for an
- * outcome-mode match game and for skins however many holes are recorded
- * (CLAUDE.md #27). Both read as unscored and their course could change. The
- * lock now reads `game_started`, the one definition every other "has this been
- * played" question uses.
+ * Changing par and stroke index under recorded results rescores them. #1474
+ * found the lock in `games.applyCourse` counting `score_entries` alone, which is
+ * zero rows for an outcome-mode match game however many holes are decided
+ * (CLAUDE.md #27). `applyCourse` was fixed to ask `game_started`, then retired:
+ * every course now saves through `save_game_config` (#1627 moved rack's setup
+ * screen; the match create screen that was its last caller was unreachable).
  *
- * Each case builds its own game, applies a course while unscored (the control:
- * the lock is not simply always shut), records ONE result through the app's own
- * procedure, then asserts the apply is refused AND the game's course is exactly
- * what it was.
+ * So the lock that matters is the RPC's, and this file pins it for the two
+ * shapes applyCourse's `game_started` check covered that no other saveConfig
+ * test does:
+ *  - outcome-mode match play (`match_hole_outcomes`, no `score_entries`) →
+ *    COURSE_LOCKED;
+ *  - a finished game with no scores at all (`games.finish` has no live-ness
+ *    check, so `complete` + scoreless is reachable) → FINAL_LOCKED.
+ * Stroke (`score_entries`) and skins (`skins_hole_outcomes`) are pinned in
+ * games.saveConfig.test.ts and games.saveConfig.skins.test.ts. The remaining
+ * `game_started` arms (bracket winners, decided non-golf matches, pick'em
+ * results) belong to formats with no course row.
  *
- * Reachability: rack's setup screen calls `applyCourse` ("Set up playing
- * groups"); the settings pages go through `save_game_config` and its own
- * check. (`games.clearCourse`, tested here alongside it at first, was retired in
- * #1624; #1627 moves rack onto the settings save so `applyCourse` can follow.)
+ * Each case builds its own game, saves a course while unscored (the control: the
+ * lock is not simply always shut), records a result through the app's own
+ * procedure, then asserts the course change is refused AND the stored course is
+ * exactly what it was. The course payload is built with `buildCourseSnapshot`,
+ * the function the settings page's course row uses.
  */
-
-const LOCKED = "Scores are already entered — the course can't be changed now.";
-const READ_FAILED = "Couldn't check the scores just now. This is temporary — try again in a moment.";
 
 let ctx: TestContext;
 let courseA: string;
@@ -58,34 +65,49 @@ afterAll(async () => {
 }, 60_000);
 
 async function courseOf(gameId: string) {
-  const { data } = await ctx.admin.from("games").select("course_id, scorecard_schema").eq("id", gameId).single();
+  const { data } = await ctx.admin.from("games").select("course_id, back_course_id, scorecard_schema").eq("id", gameId).single();
   return data;
 }
 
-/** The apply refuses with `message`, and the course is untouched. */
-async function expectLocked(tripId: string, gameId: string, message: string, caller = ctx.caller()) {
-  const before = await courseOf(gameId);
-  expect(before?.course_id, "precondition: a course is applied").toBe(courseA);
-  await expect(caller.games.applyCourse({ tripId, gameId, courseId: courseB })).rejects.toThrow(message);
-  expect(await courseOf(gameId)).toEqual(before);
+/** The game's settings draft as the match view builds it: stored match included,
+ *  so the save carries the matches the real page sends and none of them is dirty. */
+async function draftOf(tripId: string, gameId: string, a: string, b: string): Promise<ConfigDraft> {
+  const game = await ctx.caller().games.getById({ tripId, gameId });
+  const delegates = (await ctx.caller().games.listOrganizers({ tripId, gameId })) as { user_id: string }[];
+  return configToDraft(
+    game as Parameters<typeof configToDraft>[0],
+    [{ matchNumber: 1, playersPerSide: 1, a: [a], b: [b], handicap: 0, pointValue: null }],
+    delegates.map((d) => d.user_id)
+  );
 }
 
-async function twoTeams(competitionId: string, a: string[], b: string[]) {
-  const ta = await ctx.createTeam(competitionId, "Alpha", { shortName: "ALP" });
-  const tb = await ctx.createTeam(competitionId, "Bravo", { shortName: "BRV" });
-  const ins = await ctx.admin.from("team_assignments").insert([
-    ...a.map((user_id) => ({ competition_id: competitionId, user_id, team_id: ta })),
-    ...b.map((user_id) => ({ competition_id: competitionId, user_id, team_id: tb })),
-  ]);
-  expect(ins.error).toBeNull();
+/** Save `courseId` as the game's course through the settings save. */
+async function saveCourse(tripId: string, gameId: string, courseId: string, a: string, b: string) {
+  const base = await draftOf(tripId, gameId, a, b);
+  const course = await ctx.caller().courses.getById({ courseId });
+  const snap = buildCourseSnapshot(course as unknown as CourseSnapshotInput, base.gameTypeId as string);
+  if (!snap.ok) throw new Error(`fixture course did not snapshot: ${snap.reason}`);
+  const { hash } = await ctx.caller().games.configHash({ tripId, gameId });
+  await ctx.caller().games.saveConfig({
+    tripId,
+    gameId,
+    baseHash: hash,
+    payload: configDraftToPayload({ ...base, course: { id: courseId, backId: null, scorecardSchema: snap.schema } }, base),
+  });
 }
 
-/** An outcome-mode match game with a course applied while unscored. */
+/** An outcome-mode singles game whose course was saved while unscored. */
 async function outcomeMatchGame(name: string) {
   const { tripId, competitionId } = await ctx.createCupTrip({ name, scoringModel: "match_play", members: CREW });
   const owner = ctx.user.id;
   const planner = ctx.getUser("planner").id;
-  await twoTeams(competitionId, [owner], [planner]);
+  const ta = await ctx.createTeam(competitionId, "Alpha", { shortName: "ALP" });
+  const tb = await ctx.createTeam(competitionId, "Bravo", { shortName: "BRV" });
+  const ins = await ctx.admin.from("team_assignments").insert([
+    { competition_id: competitionId, user_id: owner, team_id: ta },
+    { competition_id: competitionId, user_id: planner, team_id: tb },
+  ]);
+  expect(ins.error).toBeNull();
   const game = (await ctx.caller().games.create({
     tripId, gameTypeId: "gtt_match_play", name: "Singles", competitionId,
     pointsDistribution: { type: "per_match", value: 1 },
@@ -95,60 +117,41 @@ async function outcomeMatchGame(name: string) {
     tripId, gameId: game.id,
     matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [planner] }, matchNumber: 1 }],
   })) as { id: string }[];
-  // The control: unscored, the course applies.
-  await ctx.caller().games.applyCourse({ tripId, gameId: game.id, courseId: courseA });
-  expect((await courseOf(game.id))?.course_id).toBe(courseA);
-  await ctx.caller().games.enableScoring({ tripId, gameId: game.id });
-  return { tripId, gameId: game.id, matchId: m.id };
+  // The control: unscored, the course saves.
+  await saveCourse(tripId, game.id, courseA, owner, planner);
+  const saved = await courseOf(game.id);
+  expect(saved?.course_id).toBe(courseA);
+  expect(saved?.scorecard_schema, "the snapshot was written with the course").toBeTruthy();
+  return { tripId, gameId: game.id, matchId: m.id, owner, planner };
 }
 
-describe("the course lock reads game_started (#1474)", () => {
-  it("outcome-mode match play: one hole recorded (zero score_entries) → locked", async () => {
-    const { tripId, gameId, matchId } = await outcomeMatchGame("Lock · outcome");
-    await ctx.caller().matchOutcomes.upsertOutcome({ tripId, gameId, matchId, holeNumber: 1, result: "side_a" });
-    const { count } = await ctx.admin.from("score_entries").select("id", { count: "exact", head: true }).eq("game_id", gameId);
-    expect(count, "precondition: the old count would have read this game as unscored").toBe(0);
-    await expectLocked(tripId, gameId, LOCKED);
+/** The course change is refused with `message`, and the stored course is untouched. */
+async function expectRefused(g: { tripId: string; gameId: string; owner: string; planner: string }, message: RegExp) {
+  const before = await courseOf(g.gameId);
+  expect(before?.course_id, "precondition: a course is saved").toBe(courseA);
+  await expect(saveCourse(g.tripId, g.gameId, courseB, g.owner, g.planner)).rejects.toThrow(message);
+  expect(await courseOf(g.gameId)).toEqual(before);
+}
+
+describe("a game's course is fixed once it has results (#1474, on the settings save)", () => {
+  it("outcome-mode match play: one hole recorded (zero score_entries) → refused", async () => {
+    const g = await outcomeMatchGame("Lock · outcome");
+    await ctx.caller().games.enableScoring({ tripId: g.tripId, gameId: g.gameId });
+    await ctx.caller().matchOutcomes.upsertOutcome({ tripId: g.tripId, gameId: g.gameId, matchId: g.matchId, holeNumber: 1, result: "side_a" });
+    const { count } = await ctx.admin.from("score_entries").select("id", { count: "exact", head: true }).eq("game_id", g.gameId);
+    expect(count, "precondition: a score_entries count would read this game as unscored").toBe(0);
+    // COURSE_LOCKED's own sentence: other locked-tier guards also say "already has
+    // scores", so only this one proves the course guard is what refused.
+    await expectRefused(g, /before changing its course/);
   });
 
-  it("skins: one hole recorded (zero score_entries) → locked", async () => {
-    const { tripId, competitionId } = await ctx.createCupTrip({ name: "Lock · skins", scoringModel: "points", members: CREW });
-    const owner = ctx.user.id;
-    const planner = ctx.getUser("planner").id;
-    const game = (await ctx.caller().games.create({
-      tripId, gameTypeId: "gtt_skins", name: "Skins", competitionId,
-      pointsDistribution: { type: "placement", values: [6, 2] },
-    })) as { id: string };
-    await ctx.caller().games.addParticipants({ tripId, gameId: game.id, userIds: [owner, planner] });
-    const g1 = await ctx.groupStrokeParticipants(game.id, [owner, planner]);
-    await ctx.caller().games.applyCourse({ tripId, gameId: game.id, courseId: courseA });
-    expect((await courseOf(game.id))?.course_id).toBe(courseA);
-    await ctx.caller().games.enableScoring({ tripId, gameId: game.id });
-    await ctx.caller().skinsOutcomes.upsertHole({ tripId, gameId: game.id, groupingId: g1, holeNumber: 1, result: "won", winnerId: owner });
-    const { count } = await ctx.admin.from("score_entries").select("id", { count: "exact", head: true }).eq("game_id", game.id);
-    expect(count, "precondition: the old count would have read this game as unscored").toBe(0);
-    await expectLocked(tripId, game.id, LOCKED);
-  });
-
-  it("stroke play: a score entry still locks it (the arm the old count had)", async () => {
-    const tripId = await ctx.createTrip("Lock · stroke");
-    const owner = ctx.user.id;
-    await ctx.addTripMember(tripId, "member", "Member");
-    const member = ctx.getUser("member").id;
-    const game = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_stroke_play", name: "Stroke" })) as { id: string };
-    await ctx.caller().games.addParticipants({ tripId, gameId: game.id, userIds: [owner, member] });
-    await ctx.groupStrokeParticipants(game.id, [owner, member]);
-    await ctx.caller().games.applyCourse({ tripId, gameId: game.id, courseId: courseA });
-    await ctx.caller().games.enableScoring({ tripId, gameId: game.id });
-    await ctx.caller().scores.upsertEntry({ tripId, gameId: game.id, participantId: owner, unitLabel: "1", value: 4 });
-    await expectLocked(tripId, game.id, LOCKED);
-  });
-
-  it("a failed game_started read refuses (fails closed) and changes nothing", async () => {
-    // Unscored, so only the failure can be what refuses. The sentence is the
-    // rowsOrThrow family's, which no other door produces.
-    const { tripId, gameId } = await outcomeMatchGame("Lock · read fails");
-    const failing = callerFailingRead(ctx, "owner", { table: "game_started", columns: "game_id" });
-    await expectLocked(tripId, gameId, READ_FAILED, failing);
+  it("finished with no scores at all → refused", async () => {
+    const g = await outcomeMatchGame("Lock · finished");
+    await ctx.caller().games.finish({ tripId: g.tripId, gameId: g.gameId });
+    const { data } = await ctx.admin.from("games").select("status").eq("id", g.gameId).single();
+    expect(data?.status, "precondition: finished").toBe("complete");
+    const { count } = await ctx.admin.from("match_hole_outcomes").select("id", { count: "exact", head: true }).eq("game_id", g.gameId);
+    expect(count, "precondition: nothing recorded, so only the finish can lock it").toBe(0);
+    await expectRefused(g, /recorded against the current course/);
   });
 });

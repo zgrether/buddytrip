@@ -20,7 +20,6 @@ import { GLORIOUS_HOLES_DEFAULT } from "@/lib/modifiers";
 import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
 import { isPlacement, liveMatchPointsPerMatch, awardsPerMatch } from "@/lib/pointsDistribution";
 import { GAME_TYPES, canBeSideGame, canPlayInTeamlessRace, gameTypesForTeamlessRace, getGameTypeDefinition, formatRefusalForScoringModel, type ScoringModel } from "@/lib/gameTypes";
@@ -48,7 +47,6 @@ import { computePickemResults } from "@/server/lib/pickemResults";
 import { computeSideBoard } from "@/server/lib/sideBoard";
 import { notReadyMessage, POINT_VALUE_HINT } from "@/server/lib/notReadyMessage";
 import { writeTeamMatchPoints } from "../lib/matchAwards";
-import { anyGameStarted } from "../lib/gameStarted";
 import { RELOCK_BLOCKED_MATCHES } from "@/lib/gameLifecycle";
 import type { PlaceCapacity } from "@/lib/gameConfig";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "@/server/lib/myDelegateGameIds";
@@ -1042,85 +1040,6 @@ export const gamesRouter = router({
         .eq("game_id", input.gameId)
         .order("created_at", { ascending: true });
       return data ?? [];
-    }),
-
-  // applyCourse — Owner/Organizer. THE CONTRACT (Slice C §0): snapshot the
-  // course's par[] + handicap_index[] into games.scorecard_schema.units.metadata
-  // (a COPY, not a live ref) so a later edit to the global course never rescores
-  // this game. course_id is kept as provenance. Re-snapshot is allowed before
-  // any score exists; FROZEN once scores are entered (freeze boundary).
-  applyCourse: authedProcedure
-    .input(
-      z.object({
-        tripId: z.string(),
-        gameId: z.string(),
-        courseId: z.string().min(1),
-        // The configured tee set (by name). Optional — defaults to the course's
-        // first tee. Snapshotted into the schema so display reads the SAME tee.
-        teeSetName: z.string().optional(),
-      })
-    )
-    .use(requireGameEdit())
-    .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("id, game_type_id")
-        .eq("id", input.gameId)
-        .eq("trip_id", ctx.tripId)
-        .maybeSingle();
-      if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-
-      // Freeze boundary: once any score is in, the par/index the game is being
-      // played on is fixed — re-applying a course would silently rescore it.
-      // #1474: "has this game been scored?" is `game_started`'s question, not a
-      // count of one table. `score_entries` alone is blind to outcome-mode match
-      // play and skins (CLAUDE.md #27), so their course could change under
-      // recorded results. The view covers every format's arm, including the next.
-      // #1469: a failed read throws (startedGameIds → rowsOrThrow); it must not
-      // read as "no scores" and open the freeze.
-      if (await anyGameStarted(ctx.supabase, [input.gameId])) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Scores are already entered — the course can't be changed now.",
-        });
-      }
-
-      const { data: course } = await ctx.supabase
-        .from("courses")
-        .select("hole_count, par, handicap_index, has_stroke_index, tee_sets")
-        .eq("id", input.courseId)
-        .maybeSingle();
-      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Course not found" });
-
-      // The snapshot derivation is the shared pure fn (courseSnapshot.ts): tee
-      // resolution, index validation, and the par/index/yardage freeze. The settings
-      // draft pre-computes the SAME snapshot client-side and hands it to
-      // save_game_config, so an applied course and a drafted one can't drift.
-      const snap = buildCourseSnapshot(course as CourseSnapshotInput, game.game_type_id as string, input.teeSetName);
-      if (!snap.ok) {
-        throw new TRPCError(
-          snap.reason === "bad_index"
-            ? { code: "BAD_REQUEST", message: "Course stroke index is not a valid permutation — fix it before use." }
-            : { code: "INTERNAL_SERVER_ERROR", message: "Game type has no scorecard schema to snapshot onto." }
-        );
-      }
-      const snapshot = snap.schema;
-      // Applying a (fresh) front course resets any prior two-nines back ref — a
-      // 9-hole course lands as a lone front "needs a back nine" until the settings
-      // page composes a back onto it.
-      const { error } = await ctx.supabase
-        .from("games")
-        .update({ scorecard_schema: snapshot, course_id: input.courseId, back_course_id: null })
-        .eq("id", input.gameId);
-      if (error) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `Failed to apply course: ${error.message}`,
-        });
-      }
-
-      const { data } = await ctx.supabase.from("games").select("*").eq("id", input.gameId).single();
-      return data;
     }),
 
   // finish — THE finalize. One procedure for every format, branching on the game
