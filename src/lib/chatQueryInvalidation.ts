@@ -38,7 +38,9 @@
  * `"none"` — mark stale, refetch nothing now. For the realtime path, where the
  * row has ALREADY been written into page 0 by the handler's own prepend, so a
  * refetch would re-download the history to learn what the cache was just told.
- * Staleness is preserved, so the next mount or refocus still reconciles.
+ * Staleness is preserved, so the next mount reconciles, and the room on screen
+ * catches anything missed through `useChatBackstop`'s probe (every 30s and on
+ * refocus; #1396). The app's own defaults do NOT refetch on focus.
  */
 export type MessagesListRefetch = "all" | "none";
 
