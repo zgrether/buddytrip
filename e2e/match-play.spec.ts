@@ -14,11 +14,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * with a seeded 2-team `match_play` competition + `team_assignments` (a 2-team
  * competition's pairing picker is team-bound, per side; see the helper below).
  *
- * The other two tests in this file ("dirty settings refuse to leave silently",
- * "Cancel button always leaves") still create their game via the standalone
- * `/trips/:id/games/match/new` route through `driveToSetupWithHandicap` — a
- * deliberately minimal trip + 2 members, no competition. Migrating them onto
- * the panel path is tracked as a follow-up (issue filed), not bundled here.
+ * The two draft-lifecycle tests ("dirty settings refuse to leave silently",
+ * "Cancel button always leaves") create their game the same way. They used the
+ * standalone `/trips/:id/games/match/new` route's own "Create game" screen until
+ * that screen was retired as unreachable (no link in the app opens it).
  *
  * Runs against the remote project (same model as the vitest suite): a UNIQUE
  * trip per run + full teardown, so reruns never collide and nothing is left.
@@ -158,94 +157,10 @@ async function handicapByUser(gameId: string): Promise<Map<string, number>> {
 }
 
 /** Number of FULLY-paired (both sides set) matches persisted for the latest game.
- *  "Create game" seeds an empty-sided row, so we count only the filled ones —
- *  that's what persist-on-collapse must write. */
+ *  Counts only filled rows, so an empty-sided row can never read as a pairing. */
 async function filledMatchCount(gameId: string): Promise<number> {
   const { data } = await admin.from("game_matches").select("side_a,side_b").eq("game_id", gameId);
   return (data ?? []).filter((m) => m.side_a && m.side_b).length;
-}
-
-/** Drive a fresh 1v1 to fully-set-up-but-not-enabled: create → pair MP Owner (A)
- *  vs MP Member (B) → give MP Member a stroke via the RELOCATED Handicaps row.
- *  Leaves the page on the checklist with Enable available. */
-async function driveToSetupWithHandicap(page: Page) {
-  await page.goto(`/trips/${tripId}/games/match/new`);
-  const createBtn = page.getByRole("button", { name: "Create game" });
-  await expect(createBtn).toBeVisible({ timeout: 20_000 });
-  await createBtn.click();
-
-  // T2 hard block (W-GAMEPAGE-01 §6.1): "Create game" seeds exactly ONE empty
-  // match (build-as-you-go), so the Game-Play toggle's Scoring segment is DISABLED
-  // until both slots fill (A2-ux: the toggle replaced the bottom Enable button).
-  // No silent collapse-to-filled-count — an empty slot keeps the gate shut.
-  await expect(page.getByTestId("mode-scoring")).toBeDisabled({ timeout: 20_000 });
-
-  // Accordion toggle = the row's HEADER button (the first button in the row). When
-  // a panel is expanded its body fills the row, so clicking the row CENTER would
-  // land in the editor, not the header — target the header explicitly to collapse.
-  const toggle = (tid: string) => page.getByTestId(tid).getByRole("button").first();
-
-  // The accordion model: each editor expands IN PLACE beneath its row (no Sheet).
-  // Tap the MATCHES row → its panel drops down → pair both slots (scoped to the
-  // pairing builder so the slot-fill check isn't fooled by the player-selector
-  // modal, which renders at page level OVER the panel).
-  await toggle("row-matches").click();
-  const pairings = page.getByTestId("match-pairings");
-  await expect(pairings).toBeVisible({ timeout: 20_000 });
-  // A new game opens at 0 matches (the valid empty state — just "Add match", no
-  // table). "Add match" reveals a shape choice (per-match shape, A2a); pick
-  // "Add singles" for a 1v1 match → two pairing slots.
-  await pairings.getByRole("button", { name: "Add match" }).click();
-  await pairings.getByRole("button", { name: /Add singles/ }).click();
-  // Fill slot A then slot B. Each pick is gated open→pick→closed so the picks can't
-  // race the picker mount/unmount: open the slot, wait for the picker, pick (scoped
-  // to the picker so the click can't hit a filled-slot button), wait for it to
-  // close, then confirm the slot filled (Add-player count dropped) before the next.
-  // (1 match = 2 slots; the count is read only when the picker is closed.)
-  const selector = page.getByTestId("player-selector");
-  const addPlayer = pairings.getByRole("button", { name: "Add player" });
-  await expect(addPlayer).toHaveCount(2, { timeout: 10_000 });
-  await addPlayer.first().click();
-  await expect(selector).toBeVisible({ timeout: 10_000 });
-  await selector.getByRole("button", { name: /MP Owner/ }).click();
-  await expect(selector).toBeHidden({ timeout: 10_000 });
-  await expect(addPlayer).toHaveCount(1, { timeout: 10_000 }); // slot A filled
-  await addPlayer.click(); // the single remaining add = slot B
-  await expect(selector).toBeVisible({ timeout: 10_000 });
-  await selector.getByRole("button", { name: /MP Member/ }).click();
-  await expect(selector).toBeHidden({ timeout: 10_000 });
-  await expect(addPlayer).toHaveCount(0, { timeout: 10_000 }); // both slots filled
-
-  // Course is gated BEFORE Handicaps (W-9HOLE-01) — apply the seeded 18-hole course
-  // so Handicaps unlocks. Draft-then-save: the pick STAGES the course (the row
-  // renders the drafted snapshot); nothing is written yet. Rows are multi-open now,
-  // so this no longer collapses Matches either.
-  await toggle("row-course").click();
-  const coursePanel = page.getByTestId("course-search-panel");
-  await expect(coursePanel).toBeVisible({ timeout: 10_000 });
-  await coursePanel.getByRole("button", { name: new RegExp(courseName) }).click();
-  // 1 tee → applies directly; the row resolves to the course name.
-  await expect(page.getByTestId("row-course")).toContainText(courseName, { timeout: 10_000 });
-
-  // Open the HANDICAPS row — ungated once Matches + Course resolve. Both gates read
-  // the DRAFT, so they open with nothing persisted yet (that's the point of the
-  // refactor: cross-row derivations read one draft, not the server).
-  await expect(page.getByTestId("row-handicaps")).not.toContainText(/first/, { timeout: 10_000 });
-  await toggle("row-handicaps").click();
-
-  // Give MP Member a stroke. Picking a side defaults to 1 stroke → "on hole …"; gate
-  // on that so the tap can't race the just-rendered control.
-  const handicaps = page.getByTestId("handicaps-section");
-  await expect(handicaps).toBeVisible({ timeout: 10_000 });
-  await handicaps.getByRole("button", { name: /MP Member/ }).click();
-  await expect(handicaps.getByText(/on hole/i)).toBeVisible({ timeout: 10_000 });
-
-  // NOTHING has reached the server yet — the whole page is one draft until Save.
-  // This is the inverse of the old assertion here (which required the pairing to be
-  // persisted by now, via the persist-on-collapse the flip deleted), and it's the
-  // property worth guarding: no row may write behind the user's back.
-  expect(await filledMatchCount(await latestGameId())).toBe(0);
-  await expect(page.getByTestId("settings-save")).toBeEnabled({ timeout: 10_000 });
 }
 
 /** The page's ONE commit. Save is disabled until the draft differs from the frozen
@@ -270,7 +185,7 @@ async function saveSettings(page: Page) {
  */
 test("dirty settings refuse to leave silently — browser back and the arrow both gate", async ({ page }) => {
   test.setTimeout(60_000);
-  await driveToSetupWithHandicap(page); // leaves a dirty, never-saved draft
+  await driveToSetupWithHandicap(page, "E2E Dirty Leave", "gear"); // leaves a dirty, never-saved draft
 
   const prompt = page.getByTestId("discard-changes-prompt");
 
@@ -310,7 +225,7 @@ test("dirty settings refuse to leave silently — browser back and the arrow bot
  */
 test("Cancel button always leaves — discards the draft and closes, no prompt", async ({ page }) => {
   test.setTimeout(60_000);
-  await driveToSetupWithHandicap(page); // dirty, never-saved draft
+  await driveToSetupWithHandicap(page, "E2E Cancel Leave"); // dirty, never-saved draft
 
   await expect(page.getByTestId("settings-cancel")).toBeEnabled();
   await page.getByTestId("settings-cancel").click();
@@ -339,23 +254,23 @@ test("Cancel button always leaves — discards the draft and closes, no prompt",
 // test was removed — see the PR description for the coverage-change
 // judgement call this migration made deliberately.
 //
-// `driveToSetupWithHandicap` (the standalone-route helper below) and its two
-// remaining callers — "dirty settings refuse to leave silently" and "Cancel
-// button always leaves" — are UNTOUCHED: they're draft-lifecycle tests, not
-// spine tests, and migrating them is tracked as a follow-up (issue filed),
-// not bundled into this change.
-async function driveToSetupWithHandicapViaPanel(page: Page) {
-  const title = "E2E Match Spine";
+// The two draft-lifecycle tests above use it too, each with its own `title` so
+// the row filter below matches exactly one row: every test in this file adds a
+// game to the same trip. (They used a standalone-route helper whose "Create
+// game" screen was retired as unreachable.)
+//
+// `entry` picks how settings open, because the two paths gate a browser back
+// differently. "panel" taps the board row, which opens settings through the
+// `?settings=1` deep link; "gear" opens the game's own page and taps "Set up
+// this game" (`openConfig`, which pushes a history entry). Only the gear path
+// gates a browser back today (#619), so the back-gate test uses it.
+async function driveToSetupWithHandicap(page: Page, title = "E2E Match Spine", entry: "panel" | "gear" = "panel") {
 
   // 1. Competition board → "Add a game" → GameSheet modal. EITHER of the board's
   //    two add buttons: the empty-state CTA when the board has no games, the
-  //    "Add a game" row when it has some. This used to click the CTA alone, on
-  //    the claim "this competition starts with zero games" — false since PR 6b
-  //    put side games on the board: the two tests above create SIDE games
-  //    (the standalone route) in this same trip, so by the time this runs the
-  //    board is not empty, the CTA never renders, and the click waited out the
-  //    test timeout. It passed in CI only on retry, after a worker restart gave
-  //    it a fresh, empty trip.
+  //    "Add a game" row when it has some. Every test in this file adds a game to
+  //    the same trip, so after the first one the board is not empty and the CTA
+  //    never renders (clicking the CTA alone once waited out the test timeout).
   await page.goto(`/trips/${tripId}/leaderboard`);
   await page.getByTestId("comp-games-empty-cta").or(page.getByTestId("comp-add-game")).click();
 
@@ -366,15 +281,19 @@ async function driveToSetupWithHandicapViaPanel(page: Page) {
   await page.getByPlaceholder("e.g. Day 1 Scramble").fill(title);
   await page.getByTestId("save-game").click();
 
-  // 3. Tap the new row — a fresh match game opens straight onto the setup
-  //    screen (the same one the standalone route reaches post-"Create game").
   const row = page.getByTestId("open-game-panel").filter({ hasText: title });
   await expect(row).toBeVisible({ timeout: 20_000 });
-  await row.click();
+  if (entry === "panel") {
+    // 3. Tap the new row — a fresh match game opens straight onto its settings.
+    await row.click();
+  } else {
+    // 3. The game's own page (what `gameHref` links to) opens on its setup
+    //    screen; "Set up this game" opens settings over it.
+    const { data } = await admin.from("games").select("id").eq("trip_id", tripId).eq("name", title).single();
+    await page.goto(`/trips/${tripId}/games/match/new?game=${data!.id}`);
+    await page.getByTestId("setup-go-to-settings").click();
+  }
 
-  // From here down: IDENTICAL to `driveToSetupWithHandicap` from its
-  // mode-scoring-disabled check onward (duplicated, not shared, per the
-  // staged-rollout instruction not to touch the old helper yet).
   await expect(page.getByTestId("mode-scoring")).toBeDisabled({ timeout: 20_000 });
 
   const toggle = (tid: string) => page.getByTestId(tid).getByRole("button").first();
@@ -418,7 +337,7 @@ async function driveToSetupWithHandicapViaPanel(page: Page) {
 
 test("match-play spine (competition-attached, real path) — create via board → pair + relocated handicap → enable → enter a hole → scorecard", async ({ page }) => {
   test.setTimeout(60_000);
-  await driveToSetupWithHandicapViaPanel(page);
+  await driveToSetupWithHandicap(page);
 
   // C3 readiness gate (MatchGameView.tsx `enableReady`): for a COMPETITION game
   // (gameCompId set), points-per-match > 0 joins the enable gate alongside
