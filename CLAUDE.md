@@ -161,15 +161,26 @@ Two layers, kept separate so the issue list stays short enough to actually read.
 strategy + the "someday" nominations** (e.g. the R1 format-architecture refactor,
 the full dead-code list, glossary rename sites). Don't promote a tracker
 nomination to an issue until it's about to be worked. Labels are two dimensions
-only — **type** (`bug`/`dead-code`/`feature`/`refactor`/`chore`) + **priority**
-(`bbmi-blocking`/`pre-launch`/`polish`/`post-launch`); the `BBMI 2026` milestone
-holds **only** `bbmi-blocking` issues (its 100% bar is the event-critical forcing
-function). The standing discipline, followed every session with no reminder:
+only, answering two different questions — **what** it is (`bug`/`dead-code`/
+`feature`/`refactor`/`chore`/`polish`) and **when** it ships (`pre-launch`/
+`post-launch`, exactly one, rule 2a below). `bbmi-blocking` and its `BBMI 2026`
+milestone are retired (Zach, 2026-10-15: the event is over); the label stays on
+closed issues as history and is never applied. The standing discipline, followed
+every session with no reminder:
 **(1) Entry rule — actionable, not merely true:** an issue earns its place only
 if there's a real version you'd pick up and do; a vague "could be better
 someday" doesn't earn one. **(2) Capture-at-the-source:** when you
 scope something out of the current task, file it as a labelled issue *in the same
 session* — a report is ephemeral and the finding is lost when the session ends.
+**(2a) Every issue gets its launch label when it is filed: exactly one of
+`pre-launch` / `post-launch`, never neither and never both.** The test (Zach,
+2026-10-15): anything that can **tell people something false, lose data, or open
+a security gap** is `pre-launch`; everything else is `post-launch`. A case you
+can't place with confidence goes to Zach rather than being guessed, and stays
+unlabelled until he answers, so the drift check names it. The check is
+`.github/workflows/launch-labels.yml` (daily, and on demand), running
+`scripts/check-launch-labels.sh`: a red run lists every open issue without
+exactly one launch label.
 **(3) Close-on-merge:** every PR that resolves an issue says `Closes #NN`.
 **(3a) NEVER WRITE AN ISSUE NUMBER YOU HAVE NOT READ BACK FROM THE TRACKER.**
 Not from memory, and — the variant that actually happened — not from prediction.

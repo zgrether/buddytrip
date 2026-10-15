@@ -21,6 +21,9 @@ Tier 1 outranks Tier 2. Within each, **structural before mechanical** (fix the r
 
 ## 1 · Roadmap status (ordered by the two-tier test)
 
+> **The UX roadmap lives outside the repo:** "BuddyTrip UX Roadmap", a Claude doc,
+> https://claude.ai/code/artifact/5c118191-c697-47fd-b17d-56ae88a7bceb (read it there; it is not copied here).
+
 ### DONE — by era, not by PR
 
 - **Pre-engine gates** (#405–#434) — Tier-0 bugs cleared (`BBMI 2026` milestone: 5 closed / 0 open), golf
@@ -292,7 +295,7 @@ the rename shipped). One glossary, one home. See `CLAUDE.md` § *Glossary — ra
 - **Reuse-don't-rebuild** (Phase 0 caught the course-API "greenfield" that was 80% built — swap, not rebuild).
 - **One gross→net path** (`netStrokeEntries`); derived values recompute, never snapshotted (except the
   intentional `scorecard_schema` config-time snapshot).
-- **Capture discipline:** actionable-now → GitHub issue (labeled, milestoned if bbmi-blocking); real-but-
+- **Capture discipline:** actionable-now → GitHub issue (a type label + exactly one launch label); real-but-
   not-soon → this tracker; sub-note → append to its item; CC files at the source. Prune at the merge seam.
 - **Circle-compatibility:** structural work stays Circle-compatible (don't reorganize twice), but doesn't
   reorganize *for* an architecture not yet designed.
