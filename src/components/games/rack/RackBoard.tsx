@@ -161,26 +161,27 @@ function RackRow({ slot, nameOf, colorOf, unitCount }: { slot: RackSlot; nameOf:
   return (
     <div className="flex items-stretch" style={{ height: ROW_H }}>
       <ScoreBlock value={slot.a.value} thru={slot.a.thru} started={slot.a.started} unitCount={unitCount} lead={aLead} color={colorOf("A")} />
-      <NameBlock name={nameOf(slot.a.id)} align="right" lead={aLead} color={colorOf("A")} gapText={aLead ? `Up by ${gap}` : null} />
+      <NameBlock name={nameOf(slot.a.id)} align="right" lead={aLead} color={colorOf("A")} gapText={aLead ? `Up by ${gap}` : null} notStarted={!slot.a.started} />
       <div className="flex shrink-0 flex-col" style={{ width: 28, paddingTop: TOP_PAD, background: "var(--color-bt-card-raised)" }}>
         <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>vs</span>
         </div>
         <div style={{ height: SECONDARY }} />
       </div>
-      <NameBlock name={nameOf(slot.b.id)} align="left" lead={bLead} color={colorOf("B")} gapText={bLead ? `Up by ${gap}` : null} />
+      <NameBlock name={nameOf(slot.b.id)} align="left" lead={bLead} color={colorOf("B")} gapText={bLead ? `Up by ${gap}` : null} notStarted={!slot.b.started} />
       <ScoreBlock value={slot.b.value} thru={slot.b.thru} started={slot.b.started} unitCount={unitCount} lead={bLead} color={colorOf("B")} />
     </div>
   );
 }
 
 /** A not-started player's value is 0, which `fmtToPar` would print as "E" (level
- *  par). So the score reads as a dash and the sub-label says not started (#1368). */
+ *  par). So the score reads as a dash, and "Not started" goes under the NAME
+ *  (`NameBlock`), where there is room for it (#1368). */
 function ScoreBlock({ value, thru, started, unitCount, lead, color }: { value: number; thru: number; started: boolean; unitCount: number; lead: boolean; color: string }) {
   return (
     <div className="flex shrink-0 flex-col" style={{ width: 60, paddingTop: TOP_PAD, background: lead ? color : "transparent" }}>
       <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: lead ? teamTextColor(color) : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+        <span data-testid={started ? undefined : "rack-score-not-started"} style={{ fontSize: 22, fontWeight: 800, color: lead ? teamTextColor(color) : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
           {started ? fmtToPar(value) : "—"}
         </span>
       </div>
@@ -188,14 +189,14 @@ function ScoreBlock({ value, thru, started, unitCount, lead, color }: { value: n
         {/* Secondary label on the leader's team color — same computed contrast
             color, slightly muted so it reads as a sub-label (not full-strength). */}
         <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.06em", color: lead ? teamTextColor(color) : "var(--color-bt-text-dim)", opacity: lead ? 0.85 : undefined }}>
-          {started ? `THRU ${thruLabel(thru, unitCount)}` : MATCH_LEVEL_WORD.not_started.toUpperCase()}
+          {started ? `THRU ${thruLabel(thru, unitCount)}` : null}
         </span>
       </div>
     </div>
   );
 }
 
-function NameBlock({ name, align, lead, color, gapText }: { name: string; align: "left" | "right"; lead: boolean; color: string; gapText: string | null }) {
+function NameBlock({ name, align, lead, color, gapText, notStarted }: { name: string; align: "left" | "right"; lead: boolean; color: string; gapText: string | null; notStarted: boolean }) {
   const justify = align === "right" ? "flex-end" : "flex-start";
   return (
     <div className="flex min-w-0 flex-1 flex-col" style={{ padding: `${TOP_PAD}px 10px 0`, background: lead ? `${color}29` : "transparent" }}>
@@ -204,6 +205,11 @@ function NameBlock({ name, align, lead, color, gapText }: { name: string; align:
       </div>
       <div className="flex w-full items-center" style={{ height: SECONDARY, justifyContent: justify }}>
         {gapText && <span style={{ fontSize: 11, fontWeight: 600, color }}>{gapText}</span>}
+        {notStarted && (
+          <span data-testid="rack-not-started" style={{ fontSize: 11, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
+            {MATCH_LEVEL_WORD.not_started}
+          </span>
+        )}
       </div>
     </div>
   );
