@@ -43,7 +43,6 @@ async function newGame(distribution: PointsDistribution | null, name = "Game", c
   return g.id;
 }
 
-const DIST_9642: PointsDistribution = { type: "placement", values: [9, 6, 4, 2] };
 const DIST_96: PointsDistribution = { type: "placement", values: [9, 6] };
 
 beforeAll(async () => {
@@ -75,7 +74,10 @@ afterAll(async () => {
 describe("Phase-1 shell + leaderboard (§3/§6)", () => {
   it("a game with all Phase-2 fields null is creatable and contributes points-available", async () => {
     const cup = await ownCup("shell");
-    const id = await newGame(DIST_9642, "Shell", cup);
+    // [9,6], not the [9,6,4,2] this used: a 4-place split in a 2-team cup is
+    // refused at create since #1427 (a place no team can finish in). The
+    // numbers below are unchanged — they only ever counted the first two places.
+    const id = await newGame(DIST_96, "Shell", cup);
     const game = (await ctx.caller().games.getById({ tripId: cup.tripId, gameId: id })) as {
       scorecard_schema: unknown;
       course_id: unknown;
@@ -84,11 +86,11 @@ describe("Phase-1 shell + leaderboard (§3/§6)", () => {
     };
     expect(game.scorecard_schema).toBeNull(); // Phase-2 null…
     expect(game.course_id).toBeNull();
-    expect(game.points_distribution).toEqual({ type: "placement", values: [9, 6, 4, 2] }); // …but Phase-1 set
+    expect(game.points_distribution).toEqual({ type: "placement", values: [9, 6] }); // …but Phase-1 set
     expect(game.status).toBe("pending");
 
     const lb = await ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
-    expect(lb.pointsAvailable).toBe(15); // sum(dist[0..1]) for 2 teams
+    expect(lb.pointsAvailable).toBe(15); // the whole split: 2 places, 2 teams
     expect(lb.winNumber).toBe(8); // > half of 15
     expect(lb.unitTotals[cup.teamA]).toBe(0); // nothing awarded yet
   });
@@ -99,7 +101,7 @@ describe("manual adapter → universal roll-up (§5)", () => {
     // Its own cup, so the totals are this game's alone (#1527) — on the shared
     // cup they included whatever other cases had banked.
     const cup = await ownCup("adapter");
-    const id = await newGame(DIST_9642, "Pickem", cup);
+    const id = await newGame(DIST_96, "Pickem", cup); // 2 places for 2 teams (#1427)
     await ctx.caller().games.finish({
       tripId: cup.tripId,
       gameId: id,

@@ -43,7 +43,11 @@ afterAll(async () => {
 describe("§1 — tagged shape round-trips through the DB", () => {
   it("placement distribution persists as {type:'placement', values:[...]}", async () => {
     const { tripId, competitionId: comp } = await cupTrip("Shape Comp");
+    // Three teams for a three-place split: a split longer than the cup's teams
+    // is refused at create since #1427.
     await ctx.createTeam(comp, "A");
+    await ctx.createTeam(comp, "B");
+    await ctx.createTeam(comp, "C");
     const g = (await ctx.caller().games.create({
       tripId,
       gameTypeId: MANUAL,
