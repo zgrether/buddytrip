@@ -572,6 +572,20 @@ export const gamesRouter = router({
         "trip's games"
       );
       const displayOrder: number | null = ((last?.display_order as number | null) ?? 0) + 1;
+      // #1427: a split created with more places than the tournament has teams.
+      // Every other split write refuses this; create accepted any. No screen
+      // creates with a placement split today, so this closes the API door, with
+      // the settings save's own refusal.
+      if (input.competitionId && input.pointsDistribution?.type === "placement") {
+        const teams = countOrThrow(
+          await ctx.supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", input.competitionId),
+          "team count"
+        );
+        const check = validatePlacement(input.pointsTotal ?? 0, input.pointsDistribution.values, teamPlaceCapacity(teams));
+        if (check.state === "too_many_places") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });
+        }
+      }
       // The creator is a trip member, so games_select passes on the new row —
       // no INSERT/SELECT split needed (unlike trips.create).
       const { error: insertErr } = await ctx.supabase.from("games").insert({
