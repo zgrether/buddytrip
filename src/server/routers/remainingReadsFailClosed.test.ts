@@ -139,6 +139,44 @@ describe("game writes read before they write (#1539)", () => {
     await expect(ctx.caller().games.setPointsDistribution({ tripId, gameId, distribution: dist })).resolves.toBeTruthy();
   }, 60_000);
 
+  it("saveConfig: each of its two competition reads refuses on its own (split sides, then pre-write)", async () => {
+    // Both read games.competition_id, so table + columns cannot tell them apart.
+    // `nth` fails one at a time; nth: 3 failing NOTHING (the save succeeds) proves
+    // there are exactly two, so 1 and 2 are each a different read. The split-sides
+    // read comes first in the procedure, so nth: 1 is that one.
+    const { tripId, competitionId, teamIds } = await ctx.createCupTrip({
+      name: "1539 two reads", scoringModel: "match_play", members: [["member", "Member"]], teams: ["A", "B"],
+    });
+    const owner = ctx.user.id;
+    const member = ctx.getUser("member").id;
+    await ctx.admin.from("team_assignments").insert([
+      { competition_id: competitionId, user_id: owner, team_id: teamIds[0] },
+      { competition_id: competitionId, user_id: member, team_id: teamIds[1] },
+    ]);
+    const g = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_match_play", name: "M", competitionId })) as { id: string };
+    await ctx.caller().matches.setPairings({
+      tripId, gameId: g.id,
+      matches: [{ playersPerSide: 1, sideA: { members: [owner] }, sideB: { members: [member] }, matchNumber: 1 }],
+    });
+    const save = async (nth: number) => {
+      const game = await ctx.caller().games.getById({ tripId, gameId: g.id });
+      const delegates = ((await ctx.caller().games.listOrganizers({ tripId, gameId: g.id })) as { user_id: string }[]).map((d) => d.user_id);
+      const base = configToDraft(game as Parameters<typeof configToDraft>[0], [{ matchNumber: 1, playersPerSide: 1, a: [owner], b: [member], handicap: 0, pointValue: null }], delegates);
+      const payload = configDraftToPayload({ ...base, name: `Renamed ${nth}` }, base);
+      expect((payload as { matches?: unknown[] }).matches?.length, "precondition: the save carries matches").toBe(1);
+      const { hash } = await ctx.caller().games.configHash({ tripId, gameId: g.id });
+      return callerFailingRead(ctx, "owner", { table: "games", columns: "competition_id", nth }).games.saveConfig({ tripId, gameId: g.id, baseHash: hash, payload });
+    };
+    const name = async () => (await ctx.admin.from("games").select("name").eq("id", g.id).single()).data?.name;
+
+    await expect(save(1), "the split-sides read").rejects.toThrow(READ_FAILED);
+    expect(await name()).toBe("M");
+    await expect(save(2), "the pre-write read").rejects.toThrow(READ_FAILED);
+    expect(await name()).toBe("M");
+    await save(3);
+    expect(await name(), "a third matching read does not exist").toBe("Renamed 3");
+  }, 60_000);
+
   it("saveConfig refuses before its write", async () => {
     const { tripId, gameId } = await game("saveConfig");
     const g = await ctx.caller().games.getById({ tripId, gameId });
