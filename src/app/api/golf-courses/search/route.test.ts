@@ -1,4 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+// Signed in: these cases are about the route, not its caller check, which
+// apiRoutesCheckCaller.test.ts covers against the real routeCaller.
+vi.mock("@/server/lib/routeCaller", () => ({
+  routeCaller: async () => ({ ok: true, userId: "user-1" }),
+}));
 import { NextRequest } from "next/server";
 import { GET } from "./route";
 import { normalizeSearch } from "@/lib/golfCourseApi";

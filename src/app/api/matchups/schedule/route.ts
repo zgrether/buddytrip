@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { leagueById, normalizeSchedule, scheduleUrl, type Matchup } from "@/lib/matchupApi";
+import { routeCaller } from "@/server/lib/routeCaller";
 
 /** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
  *  not less, is on the tRPC route — that is the one whose value also bounds
@@ -23,6 +24,9 @@ export const maxDuration = 60;
 const REVALIDATE_SECONDS = 60 * 60 * 6;
 
 export async function GET(req: NextRequest) {
+  // The route decides who is calling, not the middleware: see routeCaller.ts.
+  const caller = await routeCaller();
+  if (!caller.ok) return caller.response;
   const league = leagueById(req.nextUrl.searchParams.get("league"));
   const teamId = req.nextUrl.searchParams.get("teamId")?.trim();
   if (!league || !teamId) return NextResponse.json([] satisfies Matchup[]);
