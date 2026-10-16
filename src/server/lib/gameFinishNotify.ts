@@ -8,6 +8,7 @@ import type { ResolvedResultStrategy } from "@/lib/resultStrategy";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { sendPushToUsers, type SendPushToUsersResult } from "./sendPushToUsers";
 import { recordPushAttempt } from "./recordPushAttempt";
+import { readGamePlayers } from "./personParticipation";
 
 /**
  * The `game_results` category's ONE wire point (Push Phase 3).
@@ -451,8 +452,12 @@ interface NotifySurface {
    * competitors live in `bracket_entrants`), so "the game's participants" is not
    * a resolvable audience — it would resolve to nobody and the push would reach
    * no one. They are also rare (~1-5 per trip), so the wider audience is cheap.
+   *
+   * `players` — WHO PLAYED: participants plus anyone with a pick'em sheet
+   * (`readGamePlayers`). Pick'em only (#1442): a sheet is the participation, and
+   * the participant list holds only whoever was paired at the time.
    */
-  audience: "participants" | "competition";
+  audience: "participants" | "competition" | "players";
   /** Which `game_results` rows ARE the competitors, by `entity_type`. */
   competitor: "user" | "team" | "entrant" | "side";
   /** Which summary shape reads the resulting entries. */
@@ -481,15 +486,14 @@ const NOTIFY_SURFACE = {
   rack_n_stack: { audience: "participants", competitor: "team", summary: "placement" },
   manual: { audience: "competition", competitor: "team", summary: "placement" },
   bracket: { audience: "competition", competitor: "entrant", summary: "bracket" },
-  // Pick'em. Declared because the registry demands an answer from every
-  // strategy, and NOT YET EXERCISED: `games.finish` refuses "pickem" through
-  // its exhaustive else until the engine lands (Phase 6), so nothing reaches
-  // this row today. The answers mirror match play, which is the closest
-  // analogue — a real roster of people who played it (`participants`), team
-  // rows as the competitors so an eight-match game does not report sixteen of
-  // them, and a placement-shaped summary. Revisit when the engine writes its
-  // first `game_results`, rather than assuming this was validated by shipping.
-  pickem: { audience: "participants", competitor: "team", summary: "placement" },
+  // Pick'em. Team rows as the competitors (an eight-match game does not report
+  // sixteen of them) and a placement-shaped summary, as match play. The
+  // AUDIENCE is not match play's: this row said `participants` and was marked
+  // "not yet exercised", and when the engine shipped it was wrong. An
+  // individual-matches pick'em's participants are whoever is paired, so a sheet
+  // with no match was never told, and Picks 2 reached nobody (#1442). `players`
+  // is everyone with a sheet as well (Zach, 2026-10-16).
+  pickem: { audience: "players", competitor: "team", summary: "placement" },
   // Non-golf Matches. This registry FOUND itself — the four-predicate sweep that
   // scoped the format did not list this file, and the `satisfies` above refused
   // to compile until the row existed. That is the mechanism working as its own
@@ -538,7 +542,10 @@ export function notifySurfaceFor(
   peopleOnly = false
 ): NotifySurface {
   const surface: NotifySurface = NOTIFY_SURFACE[strategy ?? "manual"];
-  return peopleOnly && surface.competitor === "team" ? SIDE_GAME_SURFACE : surface;
+  if (!(peopleOnly && surface.competitor === "team")) return surface;
+  // The swap changes WHICH ROWS are the competitors, not who played: a side or
+  // teamless pick'em still tells everyone with a sheet (#1442).
+  return surface.audience === "players" ? { ...SIDE_GAME_SURFACE, audience: "players" } : SIDE_GAME_SURFACE;
 }
 
 /**
@@ -554,6 +561,7 @@ async function resolveAudience(
   competitionId: string | null,
   audience: NotifySurface["audience"]
 ): Promise<string[]> {
+  if (audience === "players") return readGamePlayers(admin, gameId);
   if (audience === "competition" && competitionId) {
     const { data } = await admin
       .from("team_assignments")

@@ -39,6 +39,30 @@ export interface PersonParticipation {
   entrantGameIds: Set<string>;
 }
 
+/**
+ * Who played ONE game: the game-side of the rule `readPersonParticipation`
+ * answers per person, so "who played" keeps one definition. A
+ * `game_participants` row, or a pick'em sheet (a `pickem_picks` row is a pick).
+ *
+ * #1442: pick'em's finish push read `game_participants` alone. In an
+ * individual-matches pick'em that list holds only the people paired at the
+ * time, so anyone with a sheet and no match was never told the results were in
+ * (Picks 2 reached nobody: its matches had been removed). Zach, 2026-10-16:
+ * the audience is who played, whether or not they were paired.
+ *
+ * Reads through the rowOrThrow family: a failed read throws, never "nobody".
+ */
+export async function readGamePlayers(supabase: SupabaseClient, gameId: string): Promise<string[]> {
+  const [parts, sheets] = await Promise.all([
+    supabase.from("game_participants").select("user_id").eq("game_id", gameId),
+    supabase.from("pickem_picks").select("user_id").eq("game_id", gameId),
+  ]);
+  const ids = new Set<string>();
+  for (const r of rowsOrThrow(parts, "game participants")) if (r.user_id) ids.add(r.user_id as string);
+  for (const r of rowsOrThrow(sheets, "pick'em sheets")) ids.add(r.user_id as string);
+  return [...ids];
+}
+
 export async function readPersonParticipation(
   supabase: SupabaseClient,
   gameIds: string[],
