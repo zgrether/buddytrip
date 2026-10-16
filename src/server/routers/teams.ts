@@ -9,6 +9,9 @@ import { assertTeamDeletable } from "../lib/rosterChange";
 import { reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
 import { canPlayInTeamlessRace } from "@/lib/gameTypes";
+import { isPlacement } from "@/lib/pointsDistribution";
+import { validatePlacement } from "@/lib/gameConfig";
+import { teamPlaceCapacity } from "@/lib/placeCapacity";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
 
 /**
@@ -61,6 +64,40 @@ async function teamCount(supabase: SupabaseClient, competitionId: string): Promi
     await supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", competitionId),
     "teams"
   );
+}
+
+/**
+ * The games whose placement split would have MORE places than teams once the
+ * competition is down to `remaining` teams (#1427).
+ *
+ * Every place-split write refuses a split longer than the team count
+ * (`validatePlacement` + `placeCapacity`), but deleting a team lowers the count
+ * underneath splits already saved. A 5/3/2 game in a three-team tournament left
+ * with two teams pays at most 8 of its 10, and the other 2 stay in
+ * points-available, a target no team can reach. Same check, same ceiling, run
+ * for the count the delete would leave.
+ *
+ * A bracket's ceiling is its field, not the teams, so a game with entrants is
+ * left out. Reads fail closed (CLAUDE.md, "a failed read is never data").
+ */
+async function splitsOutrunningTeams(supabase: SupabaseClient, competitionId: string, remaining: number): Promise<string[]> {
+  const games = rowsOrThrow(
+    await supabase.from("games").select("id, name, points_total, points_distribution").eq("competition_id", competitionId),
+    "games"
+  );
+  const capacity = teamPlaceCapacity(remaining);
+  const over = games.filter((g) => {
+    const d = g.points_distribution as unknown;
+    if (!isPlacement(d)) return false;
+    return validatePlacement((g.points_total as number | null) ?? 0, d.values, capacity).state === "too_many_places";
+  });
+  if (over.length === 0) return [];
+  const brackets = rowsOrThrow(
+    await supabase.from("bracket_entrants").select("game_id").in("game_id", over.map((g) => g.id as string)),
+    "bracket entrants"
+  );
+  const isBracket = new Set(brackets.map((b) => b.game_id as string));
+  return over.filter((g) => !isBracket.has(g.id as string)).map((g) => (g.name as string | null)?.trim() || "an unnamed game");
 }
 
 /**
@@ -261,6 +298,22 @@ export const teamsRouter = router({
           teamId: input.teamId,
           teamName: (team.name as string | null)?.trim() || "This team",
         });
+        // #1427: a points race keeps every saved place split payable. Only when a
+        // team would be LEFT: at zero the race goes teamless and the check below
+        // governs what it may hold.
+        if (h2hTeams === null) {
+          const remaining = (await teamCount(ctx.supabase, team.competition_id as string)) - 1;
+          if (remaining >= 1) {
+            const names = await splitsOutrunningTeams(ctx.supabase, team.competition_id as string, remaining);
+            if (names.length > 0) {
+              const one = names.length === 1;
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `${names.join(", ")} ${one ? "pays" : "pay"} more places than ${remaining} ${remaining === 1 ? "team" : "teams"} can finish in. Shorten ${one ? "its" : "their"} points split first, or keep this team.`,
+              });
+            }
+          }
+        }
         // PR 7: deleting a points race's LAST team makes it a teamless race (ruling
         // B), which holds only formats that record a result per person. A game
         // that pays teams would then finish paying nobody, so it is named here.
