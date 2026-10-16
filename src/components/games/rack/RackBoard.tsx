@@ -131,10 +131,10 @@ export function RackBoard({
               >
                 <span className="flex items-center gap-2">
                   <Dot color={colorOf(p.team)} />
-                  <span style={{ fontSize: 14, color: "var(--color-bt-text)" }}>{nameOf(p.id)}</span>
+                  <span style={{ fontSize: 14, color: p.started ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}>{nameOf(p.id)}</span>
                 </span>
                 <span style={{ fontSize: 13, color: "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums" }}>
-                  {fmtToPar(p.value)} · thru {p.thru}
+                  {p.started ? `${fmtToPar(p.value)} · thru ${p.thru}` : "—"}
                 </span>
               </div>
             ))}
@@ -159,45 +159,55 @@ function RackRow({ slot, nameOf, colorOf, unitCount }: { slot: RackSlot; nameOf:
   const gap = Math.round(slot.gap);
   return (
     <div className="flex items-stretch" style={{ height: ROW_H }}>
-      <ScoreBlock value={slot.a.value} thru={slot.a.thru} unitCount={unitCount} lead={aLead} color={colorOf("A")} />
-      <NameBlock name={nameOf(slot.a.id)} align="right" lead={aLead} color={colorOf("A")} gapText={aLead ? `Up by ${gap}` : null} />
+      <ScoreBlock value={slot.a.value} thru={slot.a.thru} started={slot.a.started} unitCount={unitCount} lead={aLead} color={colorOf("A")} />
+      <NameBlock name={nameOf(slot.a.id)} align="right" lead={aLead} color={colorOf("A")} gapText={aLead ? `Up by ${gap}` : null} notStarted={!slot.a.started} />
       <div className="flex shrink-0 flex-col" style={{ width: 28, paddingTop: TOP_PAD, background: "var(--color-bt-card-raised)" }}>
         <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>vs</span>
         </div>
         <div style={{ height: SECONDARY }} />
       </div>
-      <NameBlock name={nameOf(slot.b.id)} align="left" lead={bLead} color={colorOf("B")} gapText={bLead ? `Up by ${gap}` : null} />
-      <ScoreBlock value={slot.b.value} thru={slot.b.thru} unitCount={unitCount} lead={bLead} color={colorOf("B")} />
+      <NameBlock name={nameOf(slot.b.id)} align="left" lead={bLead} color={colorOf("B")} gapText={bLead ? `Up by ${gap}` : null} notStarted={!slot.b.started} />
+      <ScoreBlock value={slot.b.value} thru={slot.b.thru} started={slot.b.started} unitCount={unitCount} lead={bLead} color={colorOf("B")} />
     </div>
   );
 }
 
-function ScoreBlock({ value, thru, unitCount, lead, color }: { value: number; thru: number; unitCount: number; lead: boolean; color: string }) {
+/** A not-started player's value is 0, which `fmtToPar` would print as "E" (level
+ *  par). So the score is a muted dash and the name is muted (`NameBlock`): the
+ *  styling says "hasn't played yet", with no words to fit in a 60px column
+ *  (#1368; Zach's look on #1636). */
+function ScoreBlock({ value, thru, started, unitCount, lead, color }: { value: number; thru: number; started: boolean; unitCount: number; lead: boolean; color: string }) {
   return (
     <div className="flex shrink-0 flex-col" style={{ width: 60, paddingTop: TOP_PAD, background: lead ? color : "transparent" }}>
       <div className="flex items-center justify-center" style={{ height: PRIMARY }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: lead ? teamTextColor(color) : "var(--color-bt-text)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
-          {fmtToPar(value)}
+        <span data-testid={started ? undefined : "rack-score-not-started"} style={{ fontSize: 22, fontWeight: 800, color: lead ? teamTextColor(color) : started ? "var(--color-bt-text)" : "var(--color-bt-text-dim)", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+          {started ? fmtToPar(value) : "—"}
         </span>
       </div>
       <div className="flex items-center justify-center" style={{ height: SECONDARY }}>
         {/* Secondary label on the leader's team color — same computed contrast
             color, slightly muted so it reads as a sub-label (not full-strength). */}
         <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: "0.06em", color: lead ? teamTextColor(color) : "var(--color-bt-text-dim)", opacity: lead ? 0.85 : undefined }}>
-          THRU {thruLabel(thru, unitCount)}
+          {started ? `THRU ${thruLabel(thru, unitCount)}` : null}
         </span>
       </div>
     </div>
   );
 }
 
-function NameBlock({ name, align, lead, color, gapText }: { name: string; align: "left" | "right"; lead: boolean; color: string; gapText: string | null }) {
+function NameBlock({ name, align, lead, color, gapText, notStarted }: { name: string; align: "left" | "right"; lead: boolean; color: string; gapText: string | null; notStarted: boolean }) {
   const justify = align === "right" ? "flex-end" : "flex-start";
   return (
     <div className="flex min-w-0 flex-1 flex-col" style={{ padding: `${TOP_PAD}px 10px 0`, background: lead ? `${color}29` : "transparent" }}>
       <div className="flex w-full items-center" style={{ height: PRIMARY, justifyContent: justify }}>
-        <span className="max-w-full truncate" style={{ fontSize: 15, fontWeight: 600, color: "var(--color-bt-text)" }}>{name}</span>
+        <span
+          className="max-w-full truncate"
+          data-testid={notStarted ? "rack-name-not-started" : undefined}
+          style={{ fontSize: 15, fontWeight: 600, color: notStarted ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}
+        >
+          {name}
+        </span>
       </div>
       <div className="flex w-full items-center" style={{ height: SECONDARY, justifyContent: justify }}>
         {gapText && <span style={{ fontSize: 11, fontWeight: 600, color }}>{gapText}</span>}

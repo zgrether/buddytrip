@@ -89,11 +89,24 @@ describe("computeRack — current mode", () => {
     expect(r.points).toEqual({ A: 2, B: 0 });
   });
 
-  it("excludes not-started players (thru 0) until they post", () => {
+  it("pairs a not-started player into an UNDECIDED slot: no leader, no points (#1368)", () => {
+    // Was "excludes not-started players until they post": A left the board
+    // entirely and B sat out. Now both are on it, and the slot waits for A.
     const r = computeRack([mk("a", "A", 0, 0), mk("b", "B", 0, 5)], "current", COURSE_PAR);
-    expect(r.slots).toHaveLength(0); // A not started → no pair
-    expect(r.sitOut).toHaveLength(1); // B alone → surplus
-    expect(r.sitOut[0].id).toBe("b");
+    expect(r.slots).toHaveLength(1);
+    expect(r.slots[0]).toMatchObject({ undecided: true, leader: null, gap: 0 });
+    expect(r.slots[0].a).toMatchObject({ id: "a", started: false });
+    expect(r.slots[0].b).toMatchObject({ id: "b", started: true });
+    expect(r.sitOut).toHaveLength(0);
+    expect(r.points).toEqual({ A: 0, B: 0 });
+  });
+
+  it("an undecided slot is not a halve: level players who have both started split ½ each", () => {
+    // The control for the case above: same values, both started → ½ each. If an
+    // undecided slot were scored as a halve, the case above would read {½, ½}.
+    const r = computeRack([mk("a", "A", 0, 5), mk("b", "B", 0, 5)], "current", COURSE_PAR);
+    expect(r.slots[0]).toMatchObject({ undecided: false, leader: null });
+    expect(r.points).toEqual({ A: 0.5, B: 0.5 });
   });
 });
 
