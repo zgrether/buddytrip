@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isPlaceId } from "@/lib/placeId";
 
 
 /** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
@@ -129,10 +130,17 @@ export async function GET(req: NextRequest) {
   if (!placeId) {
     return NextResponse.json({ error: "placeId required" }, { status: 400 });
   }
+  // #693: the id lands in the PATH of a request that carries our API key, so
+  // anything that could change which path is requested (`/`, `..`, `?`, `#`,
+  // `%`) is refused before it gets there. Encoded as well, so the path stays
+  // one segment even if the shape check is ever loosened.
+  if (!isPlaceId(placeId)) {
+    return NextResponse.json({ error: "Invalid placeId" }, { status: 400 });
+  }
 
   try {
     const res = await fetch(
-      `https://places.googleapis.com/v1/places/${placeId}`,
+      `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
       {
         headers: {
           "Content-Type": "application/json",
