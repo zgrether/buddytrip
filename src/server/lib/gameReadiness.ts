@@ -118,7 +118,7 @@ export async function assertGameReady(supabase: SupabaseClient, gameId: string):
 
   const typeId = (game.game_type_id as string | null) ?? null;
   const competitionFormat = (game.competition_format as string | null) ?? null;
-  const hasPoints = game.points_distribution != null || game.points_total != null;
+  const hasPoints = hasPositivePoints(game);
   let matchPaired = 0;
   let matchTotal = 0;
   let participantCount = 0;
@@ -264,6 +264,23 @@ function notEmptyObject(v: unknown): boolean {
   if (v == null) return false;
   if (typeof v !== "object") return true;
   return Object.keys(v as object).length > 0;
+}
+
+/**
+ * Does this game carry a POSITIVE point value? The ONE answer to "has points"
+ * (#1029), for `isConfigured`'s last arm, the enable guard and the board.
+ *
+ * It used to be "is either column non-null". The add-game modal writes
+ * `points_total: 0` (or `{type:'per_match', value: 0}`) on every create, the
+ * #503 sentinel, so non-null was true of every game from the moment it
+ * existed: a fresh non-golf game read Configuring ("Ready — enable scoring")
+ * while migration 093's gate refused the enable on `points_total <= 0`. The
+ * row promised a button the server refused. Positive is what the gate, the
+ * board's points column and `CONFIG_COL_DEPARTED` already read, so this is
+ * the same definition (`distributionHasValue`), now shared.
+ */
+export function hasPositivePoints(row: { points_total?: unknown; points_distribution?: unknown }): boolean {
+  return (typeof row.points_total === "number" && row.points_total > 0) || distributionHasValue(row.points_distribution);
 }
 
 /** A points distribution carries a real value: a positive per-match number, or a

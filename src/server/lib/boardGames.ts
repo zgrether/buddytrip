@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { rowsOrThrow } from "@/server/lib/rowOrThrow";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { isBracketGame } from "@/lib/resultStrategy";
-import { isConfigured, isNew, ROSTER_TYPES } from "@/server/lib/gameReadiness";
+import { hasPositivePoints, isConfigured, isNew, ROSTER_TYPES } from "@/server/lib/gameReadiness";
 import { tripDisplayNames } from "@/server/lib/tripDisplayNames";
 
 /**
@@ -197,7 +197,8 @@ async function readRecredits(
 export function boardRow(g: GameRow, inputs: BoardInputs, pointsTotal: number | null) {
   const rawDist = g.points_distribution as PointsDistribution | null;
   const typeId = (g.game_type_id as string | null) ?? null;
-  const hasPoints = !!rawDist || g.points_total != null;
+  // POSITIVE, not non-null (#1029): every game is created with a 0 sentinel.
+  const hasPoints = hasPositivePoints({ points_total: g.points_total, points_distribution: g.points_distribution });
   const gid = g.id as string;
   return {
     id: gid,
