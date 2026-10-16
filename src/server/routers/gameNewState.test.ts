@@ -97,16 +97,15 @@ describe("isNew — New vs Configuring", () => {
   });
 
   it("a freshly created NON-GOLF game is New — it never could be before", async () => {
-    // The first defect. `isConfigured` falls through to `hasPoints` for manual
-    // formats, and the modal always writes the sentinel, so this game was
-    // `configured === true` at creation and landed in Configuring immediately.
-    // Both facts are asserted, not just the new answer: if `configured` stopped
-    // being true here the test would still pass on `isNewGame` alone while no
-    // longer exercising the defect at all.
+    // The first defect. `isConfigured` fell through to `hasPoints` for manual
+    // formats, and `hasPoints` read "non-null" while the modal always writes the
+    // 0 sentinel, so this game was `configured === true` at creation. This test
+    // used to assert that as its precondition. #1029 made `hasPoints` positive,
+    // so a fresh non-golf game is no longer configured, and New still holds.
     const gameId = await addGameAsModalDoes(NON_GOLF, "Fresh non-golf");
     const g = await sectionInputs(gameId);
-    expect(g.configured, "the old predicate still says configured — the defect is real").toBe(true);
-    expect(g.isNewGame, "but nothing has been configured").toBe(true);
+    expect(g.configured, "#1029: a 0-point sentinel is not configured").toBe(false);
+    expect(g.isNewGame, "and nothing has been configured").toBe(true);
   });
 
   // ── 2 · one config field → Configuring ─────────────────────────────────────
