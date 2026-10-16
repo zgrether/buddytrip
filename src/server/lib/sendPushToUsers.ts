@@ -191,10 +191,14 @@ export async function sendPushToUsers(
     // 2 · Preference gate — ONE query for the whole audience. A user row that
     // doesn't come back (deleted mid-flight) resolves through the registry
     // default via isTypeEnabled(null, ...), same as an unset preference.
-    const { data: userRows } = await admin
+    const { data: userRows, error: prefsErr } = await admin
       .from("users")
       .select("id, notification_prefs")
       .in("id", audience);
+    // #1471: a failed read is not "everyone left the default on". Read as one,
+    // it sent this push to people who had turned the category off, and logged
+    // `skippedPreferenceOff: 0`. It throws into this send's handler: nothing sent.
+    if (prefsErr) throw new Error(`could not read notification preferences: ${prefsErr.message}`);
 
     const prefsById = new Map<string, NotificationPrefs | null>(
       (userRows ?? []).map((u: { id: string; notification_prefs: unknown }) => [
@@ -220,10 +224,13 @@ export async function sendPushToUsers(
     }
 
     // 4 · Devices — ONE query for every eligible recipient.
-    const { data: subs } = await admin
+    const { data: subs, error: subsErr } = await admin
       .from("push_subscriptions")
       .select("id, user_id, endpoint, p256dh, auth")
       .in("user_id", eligible);
+    // #1471: a failed read is not "nobody has a device". It throws, so the
+    // record says the send failed rather than that it reached no devices.
+    if (subsErr) throw new Error(`could not read push subscriptions: ${subsErr.message}`);
 
     // Recorded BEFORE the sends, so "the audience had no devices" is a fact in
     // the log even if every send below then throws.

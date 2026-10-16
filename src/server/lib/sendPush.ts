@@ -132,11 +132,13 @@ export async function sendPush(
     // Skipped only for an explicit self-test (bypassPreference); Phase 3 events
     // never bypass, so an automated push always respects the user's choice.
     if (!opts.bypassPreference) {
-      const { data: userRow } = await admin
+      const { data: userRow, error: prefsErr } = await admin
         .from("users")
         .select("notification_prefs")
         .eq("id", userId)
         .maybeSingle();
+      // #1471: a failed read is not "the default is on"; nothing is sent.
+      if (prefsErr) throw new Error(`could not read notification preferences: ${prefsErr.message}`);
       const prefs = (userRow?.notification_prefs ?? null) as NotificationPrefs | null;
       if (!isTypeEnabled(prefs, typeKey)) {
         result.skippedPreferenceOff = true;
@@ -152,10 +154,12 @@ export async function sendPush(
     }
 
     // 3 · Fan out to every device.
-    const { data: subs } = await admin
+    const { data: subs, error: subsErr } = await admin
       .from("push_subscriptions")
       .select("id, endpoint, p256dh, auth")
       .eq("user_id", userId);
+    // #1471: a failed read is not "no devices"; it throws and is recorded.
+    if (subsErr) throw new Error(`could not read push subscriptions: ${subsErr.message}`);
 
     // Recorded BEFORE the sends: "this user has no device registered" stays a
     // fact in the log even if every send below then throws.
