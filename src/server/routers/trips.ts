@@ -594,6 +594,14 @@ export const tripsRouter = router({
 
       const dest = input.destination.trim();
 
+      // The date options whose votes a new destination clears. Read BEFORE the
+      // update (#1539): read after it, a failed read left the old votes standing
+      // behind a destination that had already changed. Now it refuses first.
+      const windows = rowsOrThrow(
+        await ctx.supabase.from("date_windows").select("id").eq("trip_id", ctx.tripId),
+        "date options"
+      );
+
       // Update destination
       const { data, error } = await ctx.supabase
         .from("trips")
@@ -611,12 +619,7 @@ export const tripsRouter = router({
       }
 
       // Reset date poll votes — dates may change with new destination
-      const { data: windows } = await ctx.supabase
-        .from("date_windows")
-        .select("id")
-        .eq("trip_id", ctx.tripId);
-
-      if (windows && windows.length > 0) {
+      if (windows.length > 0) {
         const windowIds = windows.map((w) => w.id);
         await ctx.supabase
           .from("date_poll_votes")

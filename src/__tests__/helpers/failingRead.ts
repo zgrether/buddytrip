@@ -29,7 +29,7 @@ import type { TestAccount, TestContext } from "./test-setup";
 export function callerFailingRead(
   ctx: TestContext,
   who: Parameters<TestContext["authedClient"]>[0] | TestAccount,
-  target: { table: string; columns: string },
+  target: { table: string; columns: string; nth?: number },
 ) {
   const real = typeof who === "string" ? ctx.authedClient(who) : who.client();
   const client = clientFailingRead(real, target);
@@ -42,8 +42,14 @@ export function callerFailingRead(
  * The same one-read failure, as a CLIENT rather than a tRPC caller: for code
  * that builds its own client (`createAdminClient()`) instead of taking one from
  * the request — mock the factory to return this. Same narrowness rules.
+ *
+ * `nth` (1-based) fails only the nth matching read and lets the others through,
+ * for a procedure that reads the same table and columns twice: each read can then
+ * be shown to refuse on its own (#1539, `saveConfig`'s two `competition_id` reads).
+ * Absent, every matching read fails.
  */
-export function clientFailingRead(real: SupabaseClient, target: { table: string; columns: string }): SupabaseClient {
+export function clientFailingRead(real: SupabaseClient, target: { table: string; columns: string; nth?: number }): SupabaseClient {
+  let seen = 0;
   const failure = { data: null, count: null, error: { code: "PGRST003", message: "simulated read failure" } };
 
   const failingChain = (): unknown => {
@@ -68,7 +74,7 @@ export function clientFailingRead(real: SupabaseClient, target: { table: string;
           get(b, p, r) {
             if (p !== "select") return Reflect.get(b, p, r);
             return (columns: string, opts?: unknown) =>
-              columns === target.columns
+              columns === target.columns && (target.nth == null || ++seen === target.nth)
                 ? failingChain()
                 : (Reflect.get(b, "select", r) as (c: string, o?: unknown) => unknown).call(b, columns, opts);
           },
