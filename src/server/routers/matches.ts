@@ -5,7 +5,7 @@ import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireGameEdit, canEditGame } from "../middleware";
-import { rowOrThrow } from "../lib/rowOrThrow";
+import { maybeRowOrThrow, rowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
 import { assertGameReady } from "../lib/gameReadiness";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 
@@ -115,11 +115,11 @@ export const matchesRouter = router({
       // A side must resolve to one unit until split payouts exist — the shared
       // structural check `saveConfig` runs too (`refuseSplitSides`). This used to
       // be an inline copy that let a teamed + unteamed pair through.
-      const { data: gameRow } = await ctx.supabase
-        .from("games")
-        .select("competition_id")
-        .eq("id", input.gameId)
-        .maybeSingle();
+      // #1471: a failed read throws; read as "no competition" it skipped the check.
+      const gameRow = maybeRowOrThrow(
+        await ctx.supabase.from("games").select("competition_id").eq("id", input.gameId).maybeSingle(),
+        "game"
+      );
       await refuseSplitSides(
         ctx.supabase,
         (gameRow?.competition_id as string | null) ?? null,
@@ -504,11 +504,13 @@ export const matchesRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
 
-      const { data: existing } = await ctx.supabase
-        .from("game_matches")
-        .select("match_number, display_order")
-        .eq("game_id", input.gameId);
-      const rows = (existing ?? []) as { match_number: number; display_order: number }[];
+      // #1471: both reads throw on failure. A failed list read counted zero
+      // matches past MAX_MATCHES; a failed game read let a match onto a
+      // finished game.
+      const rows = rowsOrThrow(
+        await ctx.supabase.from("game_matches").select("match_number, display_order").eq("game_id", input.gameId),
+        "matches"
+      ) as { match_number: number; display_order: number }[];
       if (rows.length >= MAX_MATCHES) {
         throw new TRPCError({ code: "BAD_REQUEST", message: `A game can have at most ${MAX_MATCHES} matches` });
       }
@@ -516,11 +518,10 @@ export const matchesRouter = router({
       const nextOrder = rows.reduce((mx, r) => Math.max(mx, r.display_order ?? -1), -1) + 1;
 
       // Active game → the new match is immediately scoreable; pending → pending.
-      const { data: game } = await ctx.supabase
-        .from("games")
-        .select("status")
-        .eq("id", input.gameId)
-        .maybeSingle();
+      const game = maybeRowOrThrow(
+        await ctx.supabase.from("games").select("status").eq("id", input.gameId).maybeSingle(),
+        "game"
+      );
       // A COMPLETE game does not grow a new match. Its result is recorded and
       // posted to the board; appending an unplayable match would leave the game
       // finished with a match nobody can score. The third procedure this month

@@ -8,6 +8,7 @@ import type { ResolvedResultStrategy } from "@/lib/resultStrategy";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { sendPushToUsers, type SendPushToUsersResult } from "./sendPushToUsers";
 import { recordPushAttempt } from "./recordPushAttempt";
+import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 import { readGamePlayers } from "./personParticipation";
 
 /**
@@ -562,20 +563,23 @@ async function resolveAudience(
   audience: NotifySurface["audience"]
 ): Promise<string[]> {
   if (audience === "players") return readGamePlayers(admin, gameId);
+  // #1471: both reads THROW on failure. A failed roster read used to fall through
+  // to the game's participants, sending the cup's push to the wrong (narrower)
+  // audience with no retry; now the send fails and says so.
   if (audience === "competition" && competitionId) {
-    const { data } = await admin
-      .from("team_assignments")
-      .select("user_id")
-      .eq("competition_id", competitionId);
-    const ids = (data ?? []).map((r: { user_id: string }) => r.user_id);
+    const data = rowsOrThrow(
+      await admin.from("team_assignments").select("user_id").eq("competition_id", competitionId),
+      "cup roster"
+    );
+    const ids = data.map((r: { user_id: string }) => r.user_id);
     if (ids.length > 0) return ids;
     // Fall through: a cup-scoped game whose competition has no assignments yet.
   }
-  const { data } = await admin
-    .from("game_participants")
-    .select("user_id")
-    .eq("game_id", gameId);
-  return (data ?? []).map((r: { user_id: string }) => r.user_id);
+  const data = rowsOrThrow(
+    await admin.from("game_participants").select("user_id").eq("game_id", gameId),
+    "game's players"
+  );
+  return data.map((r: { user_id: string }) => r.user_id);
 }
 
 /**
@@ -1286,6 +1290,21 @@ export async function notifyCupClinchedIfDecided(
       return;
     }
 
+    // #1471: every read the announcement needs happens BEFORE the claim, which is
+    // a write. The audience read used to follow it, so a failed read sent nothing
+    // with the claim already held, and every later finalize recorded
+    // `already_claimed`: a clinch that was never announced. A read that fails
+    // here throws before claiming, and the next finalize tries again.
+    const comp = maybeRowOrThrow(
+      await admin.from("competitions").select("name, scoring_model").eq("id", input.competitionId).maybeSingle(),
+      "cup"
+    );
+    const assignments = rowsOrThrow(
+      await admin.from("team_assignments").select("user_id").eq("competition_id", input.competitionId),
+      "cup roster"
+    );
+    const audience = assignments.map((r: { user_id: string }) => r.user_id);
+
     const claim = await claimClinchNotification(admin, input.competitionId, clincher.id);
 
     if (claim.outcome === "already_claimed") {
@@ -1354,18 +1373,6 @@ export async function notifyCupClinchedIfDecided(
       clincherTeamId: clincher.id,
     });
 
-    const { data: comp } = await admin
-      .from("competitions")
-      .select("name, scoring_model")
-      .eq("id", input.competitionId)
-      .maybeSingle();
-
-    const { data: assignments } = await admin
-      .from("team_assignments")
-      .select("user_id")
-      .eq("competition_id", input.competitionId);
-    const audience = (assignments ?? []).map((r: { user_id: string }) => r.user_id);
-
     // The cup standings AT the clinch — the same `unitTotals` the board renders,
     // so the notification and the board can't quote different numbers. Top two
     // only: the clincher is already named in the title, and the line exists to
@@ -1373,7 +1380,7 @@ export async function notifyCupClinchedIfDecided(
     const totals = (board.unitTotals ?? {}) as Record<string, number>;
     const standingsLine = formatClinchMargin(teams.map((t) => totals[t.id] ?? 0));
 
-    await sendPushToUsers(
+    const sent = await sendPushToUsers(
       audience,
       "game_results",
       {
@@ -1396,6 +1403,19 @@ export async function notifyCupClinchedIfDecided(
         },
       }
     );
+    // #1471: a send that reached NOBODY because it failed (a read inside the
+    // sender, or every delivery) must not leave the claim held, or the clinch is
+    // never announced: the next finalize would read `already_claimed`. Giving it
+    // back sends nothing; it lets the next finalize announce. A send that reached
+    // anyone, or found nobody with a device, keeps the claim.
+    if (sent.error && sent.sent === 0) {
+      console.error("[push] clinch check: send failed, claim released", {
+        competitionId: input.competitionId,
+        clincherTeamId: clincher.id,
+        error: sent.error,
+      });
+      await releaseClinchClaim(admin, input.competitionId, clincher.id);
+    }
   } catch (err) {
     // OUTCOME: threw. Same `[push] clinch check:` prefix as the other three so
     // one query returns every outcome — a filter that misses the failure case is
