@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 import { callerFailingRead, clientFailingRead } from "../../__tests__/helpers/failingRead";
-import { notifyCupClinchedIfDecided } from "./gameFinishNotify";
+import { gameFinishedMessage, notifyCupClinchedIfDecided } from "./gameFinishNotify";
 import { sendPushToUsers, type SendPushToUsersResult } from "./sendPushToUsers";
 import { seedScrambleTeamGroups } from "./scrambleTeamGroups";
 import { notifyPickemMatchesNotDrawn } from "./pickemMatchesNotify";
@@ -107,6 +107,25 @@ describe("the clinch is never left claimed and unannounced (#1471)", () => {
     sendMock.mockResolvedValueOnce(result({ sent: 1, failed: 1, error: "delivery failed (status 500)" }));
     await notify(cup.tripId, cup.competitionId);
     expect(await claimOf(cup.competitionId)).toBe(cup.winner);
+  }, 60_000);
+});
+
+// ── Who hears about a finished game ─────────────────────────────────────────────
+
+describe("a finished game's audience is never quietly narrowed (#1471)", () => {
+  it("a failed cup-roster read throws, instead of falling back to the game's own players", async () => {
+    const cup = await decidedCup("audience fallback");
+    const gameId = crypto.randomUUID();
+    await ctx.admin.from("games").insert({ id: gameId, trip_id: cup.tripId, competition_id: cup.competitionId, game_type_id: "gtt_generic_yard", name: "Cornhole", status: "complete" });
+    const input = { tripId: cup.tripId, gameId, gameName: "Cornhole", gameTypeId: "gtt_generic_yard", competitionId: cup.competitionId, strategy: null, actorUserId: "nobody" };
+
+    // CONTROL: the real read gives the cup roster (one assigned person).
+    const { audience } = await gameFinishedMessage(ctx.admin, input);
+    expect(audience).toEqual([ctx.user.id]);
+
+    await expect(
+      gameFinishedMessage(clientFailingRead(ctx.admin, { table: "team_assignments", columns: "user_id" }), input)
+    ).rejects.toThrow(READ_FAILED);
   }, 60_000);
 });
 
