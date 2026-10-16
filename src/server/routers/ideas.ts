@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
+import { maybeRowOrThrow } from "../lib/rowOrThrow";
 import { requireTripMember, requireTripRole } from "../middleware";
 
 export const ideasRouter = router({
@@ -220,12 +221,12 @@ export const ideasRouter = router({
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
       // Check if this idea is already the user's pick
-      const { data: existing } = await ctx.supabase
-        .from("idea_votes")
-        .select("idea_id")
-        .eq("idea_id", input.ideaId)
-        .eq("user_id", ctx.user!.id)
-        .maybeSingle();
+      // #1539: a failed read throws. Read as "not my pick", tapping the current
+      // pick re-set it instead of clearing it.
+      const existing = maybeRowOrThrow(
+        await ctx.supabase.from("idea_votes").select("idea_id").eq("idea_id", input.ideaId).eq("user_id", ctx.user!.id).maybeSingle(),
+        "your pick"
+      );
 
       if (existing) {
         // Clicking current pick — unvote completely.

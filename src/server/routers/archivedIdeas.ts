@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
+import { maybeRowOrThrow } from "../lib/rowOrThrow";
 import { requireTripRole } from "../middleware";
 
 /**
@@ -63,11 +64,12 @@ export const archivedIdeasRouter = router({
         });
       }
 
-      const { data: trip } = await ctx.supabase
-        .from("trips")
-        .select("title")
-        .eq("id", ctx.tripId)
-        .single();
+      // #1539: a failed read throws; read as no trip, the idea was archived with
+      // no trip title, permanently.
+      const trip = maybeRowOrThrow(
+        await ctx.supabase.from("trips").select("title").eq("id", ctx.tripId).maybeSingle(),
+        "trip"
+      );
 
       const { data, error } = await ctx.supabase
         .from("archived_ideas")

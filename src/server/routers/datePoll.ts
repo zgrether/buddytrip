@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { maybeRowOrThrow, countOrThrow } from "../lib/rowOrThrow";
+import { maybeRowOrThrow, countOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
 import { assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
@@ -145,12 +145,12 @@ export const datePollRouter = router({
       }
 
       // Check if user already has this exact vote (toggle-off via repeated tap)
-      const { data: existing } = await ctx.supabase
-        .from("date_poll_votes")
-        .select("answer")
-        .eq("window_id", input.windowId)
-        .eq("user_id", ctx.user!.id)
-        .maybeSingle();
+      // #1539: a failed read throws. Read as "no vote yet", a repeat tap meant to
+      // clear the vote set it again.
+      const existing = maybeRowOrThrow(
+        await ctx.supabase.from("date_poll_votes").select("answer").eq("window_id", input.windowId).eq("user_id", ctx.user!.id).maybeSingle(),
+        "your vote"
+      );
 
       if (existing?.answer === input.answer) {
         // Toggle off — delete the vote
@@ -531,12 +531,14 @@ export const datePollRouter = router({
         // ── Cancel poll: clear all data, children before parents ──────────
 
         // 1. Collect the window IDs for this trip so we can delete votes.
-        const { data: windows } = await ctx.supabase
-          .from("date_windows")
-          .select("id")
-          .eq("trip_id", ctx.tripId);
+        // #1539: a failed read throws. Read as "no windows", it cleared no votes
+        // and left them behind the cancelled poll.
+        const windows = rowsOrThrow(
+          await ctx.supabase.from("date_windows").select("id").eq("trip_id", ctx.tripId),
+          "date options"
+        );
 
-        const windowIds = (windows ?? []).map((w) => w.id);
+        const windowIds = windows.map((w) => w.id);
 
         // 2. Delete all votes that reference those windows.
         if (windowIds.length > 0) {

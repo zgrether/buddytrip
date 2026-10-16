@@ -1984,12 +1984,12 @@ export const gamesRouter = router({
       //       this save carries matches; a standalone game has no units.
       const savedMatches = (input.payload as { matches?: { a: string[]; b: string[] }[] }).matches;
       if (savedMatches && savedMatches.length > 0) {
-        const { data: owner } = await ctx.supabase
-          .from("games")
-          .select("competition_id")
-          .eq("id", input.gameId)
-          .eq("trip_id", ctx.tripId)
-          .maybeSingle();
+        // #1539: a failed read throws. Read as "no competition", a cup game
+        // looked like a side game and the split-sides refusal was skipped.
+        const owner = maybeRowOrThrow(
+          await ctx.supabase.from("games").select("competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle(),
+          "game"
+        );
         await refuseSplitSides(
           ctx.supabase,
           (owner?.competition_id as string | null) ?? null,
@@ -2025,6 +2025,10 @@ export const gamesRouter = router({
         .maybeSingle();
       const gloriousChanged =
         gfhCount(priorRow?.modifiers) !== gfhCount(input.payload.modifiers ?? {});
+
+      // Read BEFORE the write (#1539): the clinch reconcile after it runs post-commit
+      // and must not depend on a read that could fail once the save has committed.
+      const competitionId = await competitionOfGame(ctx.supabase, ctx.tripId, input.gameId);
 
       // 2 · The atomic write. Map the RPC's RAISE prefixes to typed errors so the
       //     Save banner can surface the readiness reason / live-reject legibly.
@@ -2270,7 +2274,7 @@ export const gamesRouter = router({
       //     untouched and sends nothing — announcing a newly-decided cup from a
       //     config edit is the separate, larger gap documented on the helper,
       //     and this must not become a second copy of the finalize path.
-      await reconcileGameClinch(ctx, input.gameId);
+      await reconcileGameClinch(competitionId);
       return { ok: true };
     }),
 
@@ -2380,8 +2384,13 @@ export const gamesRouter = router({
     .mutation(async ({ ctx, input }) => {
       // Fetched unconditionally (was placement-only before): competition_id is
       // needed regardless of distribution type, for the reconcile below.
-      const { data: game } = await ctx.supabase
-        .from("games").select("points_total, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+      // #1539: a failed read throws. Read as a null total, it skipped the
+      // "doesn't fit the total" refusal; read as no competition, it skipped the
+      // clinch reconcile below.
+      const game = maybeRowOrThrow(
+        await ctx.supabase.from("games").select("points_total, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle(),
+        "game"
+      );
       if (input.distribution?.type === "placement") {
         await refuseSplitOnPerMatchGame(ctx.supabase, ctx.tripId, input.gameId, undefined);
         const total = (game?.points_total as number | null) ?? null;
@@ -2620,6 +2629,9 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
+      // Read BEFORE the reset (#1539): the reconcile after it must not depend on a
+      // read that can fail once the reset has committed.
+      const competitionId = await competitionOfGame(ctx.supabase, ctx.tripId, input.gameId);
       const { error } = await ctx.supabase.rpc("reset_game_scoring", {
         p_game_id: input.gameId,
       });
@@ -2635,7 +2647,7 @@ export const gamesRouter = router({
       // Routed through the same recompute-gated helper as the other paths anyway
       // — one behaviour to reason about, not a special-cased unconditional clear
       // that has to independently stay proven safe.
-      await reconcileGameClinch(ctx, input.gameId);
+      await reconcileGameClinch(competitionId);
       return { success: true };
     }),
 
@@ -2648,6 +2660,7 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
+      const competitionId = await competitionOfGame(ctx.supabase, ctx.tripId, input.gameId);
       const { error } = await ctx.supabase.rpc("reset_game_to_skeleton", {
         p_game_id: input.gameId,
       });
@@ -2660,7 +2673,7 @@ export const gamesRouter = router({
       // Same reasoning as resetScoring — points_total survives this primitive
       // (migration 066 clears only the placement SPLIT, not the total), so
       // available can't rise and this can't manufacture a clinch either.
-      await reconcileGameClinch(ctx, input.gameId);
+      await reconcileGameClinch(competitionId);
       return { success: true };
     }),
 });
@@ -2671,16 +2684,21 @@ export const gamesRouter = router({
  * reconcile the clinch claim if it has one. Kept out of the procedures
  * themselves so "read competition_id, skip if none" isn't typed twice.
  */
-async function reconcileGameClinch(
-  ctx: { supabase: SupabaseClient },
-  gameId: string
-): Promise<void> {
-  const { data: game } = await ctx.supabase
-    .from("games")
-    .select("competition_id")
-    .eq("id", gameId)
-    .maybeSingle();
-  if (game?.competition_id) {
-    await reconcileClinchClaim(game.competition_id as string);
-  }
+/** The game's competition, read BEFORE a write that a clinch reconcile follows
+ *  (#1539). A failed read throws, so the whole operation is refused before
+ *  anything is written ("every read goes before the FIRST write"). */
+async function competitionOfGame(supabase: SupabaseClient, tripId: string, gameId: string): Promise<string | null> {
+  const game = maybeRowOrThrow(
+    await supabase.from("games").select("competition_id").eq("id", gameId).eq("trip_id", tripId).maybeSingle(),
+    "game"
+  );
+  return (game?.competition_id as string | null) ?? null;
+}
+
+/** Release a stale clinch claim after a write that can un-decide the cup.
+ *  Takes the competition read before the write (#1539): this runs AFTER a
+ *  commit, so it must not depend on a read that could fail and report a
+ *  committed save as failed. `reconcileClinchClaim` is best-effort itself. */
+async function reconcileGameClinch(competitionId: string | null): Promise<void> {
+  if (competitionId) await reconcileClinchClaim(competitionId);
 }
