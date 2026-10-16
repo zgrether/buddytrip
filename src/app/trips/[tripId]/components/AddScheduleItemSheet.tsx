@@ -251,7 +251,7 @@ export function AddScheduleItemSheet({
 
     // Fetch place details for address/GPS
     try {
-      const res = await fetch(`/api/places?placeId=${prediction.placeId}`);
+      const res = await fetch(`/api/places?placeId=${encodeURIComponent(prediction.placeId)}`);
       const details = await res.json();
       setSelectedCourse({
         placeId: prediction.placeId,
@@ -274,7 +274,7 @@ export function AddScheduleItemSheet({
     locationSearch.clear();
     setShowLocationSearch(false);
     try {
-      const res = await fetch(`/api/places?placeId=${prediction.placeId}`);
+      const res = await fetch(`/api/places?placeId=${encodeURIComponent(prediction.placeId)}`);
       const details = await res.json();
       setSelectedLocation({
         placeId: prediction.placeId,

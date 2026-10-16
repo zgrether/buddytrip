@@ -324,7 +324,7 @@ export function AddPropertySheet({
   const selectAddress = async (p: PlacePrediction) => {
     setAddressDropdown([]);
     try {
-      const res = await fetch(`/api/places?placeId=${p.placeId}`);
+      const res = await fetch(`/api/places?placeId=${encodeURIComponent(p.placeId)}`);
       const data: { address?: string } = await res.json();
       setAddress(data.address ?? p.fullText);
     } catch {
