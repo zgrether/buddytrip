@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { sendPushToUsers, type SendPushToUsersResult } from "./sendPushToUsers";
 import type { PushPayload } from "./sendPush";
@@ -56,9 +57,10 @@ export async function gameRunnerIds(admin: SupabaseClient, tripId: string, gameI
     admin.from("trip_members").select("user_id").eq("trip_id", tripId).in("role", ["Owner", "Organizer"]),
     admin.from("game_delegates").select("user_id").eq("game_id", gameId),
   ]);
+  // #1471: a failed read throws rather than silently narrowing who is told.
   const ids = new Set<string>();
-  for (const r of orgRes.data ?? []) ids.add(r.user_id as string);
-  for (const r of delRes.data ?? []) ids.add(r.user_id as string);
+  for (const r of rowsOrThrow(orgRes, "trip organizers")) ids.add(r.user_id as string);
+  for (const r of rowsOrThrow(delRes, "game delegates")) ids.add(r.user_id as string);
   return [...ids];
 }
 
@@ -116,16 +118,22 @@ async function notifyMatchesNotDrawnUnguarded(
     admin.from("pickem_games").select("roll_up").eq("game_id", input.gameId).maybeSingle(),
     admin.from("game_matches").select("side_a, side_b").eq("game_id", input.gameId),
   ]);
-  const game = gameRes.data;
+  // #1471: every read throws on failure (the caller is best-effort, so that
+  // means nothing is sent). A failed matches read used to count zero paired
+  // matches and tell the organizers to draw matches that were already drawn.
+  const game = maybeRowOrThrow(gameRes, "game");
   if (!game) return null;
   const competitionId = (game.competition_id as string | null) ?? null;
   let pointsMode = false;
   if (competitionId) {
-    const { data: comp } = await admin.from("competitions").select("scoring_model").eq("id", competitionId).maybeSingle();
+    const comp = maybeRowOrThrow(
+      await admin.from("competitions").select("scoring_model").eq("id", competitionId).maybeSingle(),
+      "cup"
+    );
     pointsMode = (comp?.scoring_model as string | null) === "points";
   }
-  const rollUp = ((cfgRes.data?.roll_up as string | null) ?? "team_totals") as "team_totals" | "individual_matches";
-  const paired = (matchRes.data ?? []).filter((m) => {
+  const rollUp = ((maybeRowOrThrow(cfgRes, "pick'em settings")?.roll_up as string | null) ?? "team_totals") as "team_totals" | "individual_matches";
+  const paired = rowsOrThrow(matchRes, "matches").filter((m) => {
     const a = m.side_a as { id?: string } | null;
     const b = m.side_b as { id?: string } | null;
     return !!a?.id && !!b?.id;

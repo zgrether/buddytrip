@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { countOrThrow } from "./rowOrThrow";
 
 /**
  * SCRAMBLE'S GROUPS ARE ITS TEAMS, and there is no setting for them.
@@ -68,11 +69,14 @@ export async function seedScrambleTeamGroups(
      * under the scores. Tracking a later roster change is a separate decision
      * with a real hazard behind it, not an increment.
      */
-    const { count } = await supabase
-      .from("play_groups")
-      .select("id", { count: "exact", head: true })
-      .eq("game_id", gameId);
-    if ((count ?? 0) > 0) return;
+    // #1471: a failed count is not "no groups yet". Read as zero, it seeded a
+    // SECOND set of groups beside the first. It throws into the catch below, which
+    // leaves the game unseeded: the recoverable case this function already handles.
+    const count = countOrThrow(
+      await supabase.from("play_groups").select("id", { count: "exact", head: true }).eq("game_id", gameId),
+      "game's groups"
+    );
+    if (count > 0) return;
 
     const [teamsRes, assignsRes] = await Promise.all([
       supabase
