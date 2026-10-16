@@ -54,6 +54,20 @@ export function isWinnerTakesAll(dist: PointsDistribution | null): boolean {
   return dist == null || (isPlacement(dist) && dist.values.length <= 1);
 }
 
+/**
+ * A REAL placement split: two or more places. The complement of
+ * `isWinnerTakesAll` among placements, so the two cannot disagree (#920).
+ *
+ * `isPlacement` alone answered "is this a pool" on the non-golf page, and a
+ * one-place split `[8]` passes it while `isWinnerTakesAll` calls it
+ * winner-takes-all. The same bytes then read "Winner takes all" on the stroke
+ * page (whose draft normalizes them away) and "Custom placement split" on the
+ * non-golf one (whose draft did not). Both are the same payout.
+ */
+export function isRealSplit(dist: PointsDistribution | null): boolean {
+  return isPlacement(dist) && !isWinnerTakesAll(dist);
+}
+
 /** `games.competition_format` values (non-golf structure). ONE definition shared by the
  *  draft, the payload, and the `saveConfig` zod so they can't drift.
  *
@@ -731,7 +745,12 @@ export function configToNonGolfDraft(
     bracketConfig: toBracketConfig(game.bracket_config),
     scoringEnabled: game.scoring_enabled ?? false,
     pointsTotal: game.points_total ?? null,
-    pointsDistribution: game.points_distribution ?? null,
+    // #920: a one-place split IS winner-takes-all; normalized to the null
+    // sentinel exactly as `configToStrokeDraft` does, so both pages meet the
+    // same draft. A real (2+ place) split passes through.
+    pointsDistribution: isWinnerTakesAll((game.points_distribution ?? null) as PointsDistribution | null)
+      ? null
+      : (game.points_distribution ?? null),
     delegates: [...delegates].sort(),
     bracketEntrants: entrants.map((e) => [...e]),
     matches: matches.map((m) => ({

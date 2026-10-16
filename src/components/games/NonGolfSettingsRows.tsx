@@ -12,8 +12,8 @@ import {
 } from "@/components/competition/CompetitionGamesPanel";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { PlaceCapacity } from "@/lib/gameConfig";
-import { effectiveCompetitionFormat, type NonGolfConfigDraft, type CompetitionFormat } from "@/lib/configDraft";
-import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
+import { effectiveCompetitionFormat, isRealSplit, type NonGolfConfigDraft, type CompetitionFormat } from "@/lib/configDraft";
+import { type PointsDistribution } from "@/lib/pointsDistribution";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 import { headToHeadResultRefusal } from "@/lib/headToHeadResult";
 import { MatchPointsRow, type PointsMatch } from "@/components/games/MatchPointsRow";
@@ -50,7 +50,9 @@ export function usesPointsPool(
   scoringModel: ScoringModel,
   distribution: PointsDistribution | null
 ): boolean {
-  return scoringModel === "points" || isPlacement(distribution);
+  // A REAL split (2+ places), not `isPlacement`: a one-place split is
+  // winner-takes-all, and read as a pool it disagreed with every other page (#920).
+  return scoringModel === "points" || isRealSplit(distribution);
 }
 
 /**
@@ -153,7 +155,8 @@ export function NonGolfSettingsRows({
   // spelled three different ways in the JSX below (and the third wasn't wired at
   // all), which is what let the collapsed row say "Winner takes all" while the
   // panel it opened said "not distributed yet".
-  const hasSplit = isPlacement(draft.pointsDistribution);
+  // The same question `usesPointsPool` asks, so the subtitle and the row agree (#920).
+  const hasSplit = isRealSplit(draft.pointsDistribution);
   const isPool = usesPointsPool(scoringModel, draft.pointsDistribution);
   const isMatches = draft.competitionFormat === MATCHES_COMPETITION_FORMAT;
   return (
