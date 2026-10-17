@@ -298,10 +298,15 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         run: npm run build
       - name: Run critical-path E2E
+        id: e2e
         if: needs.changes.outputs.code == 'true'
         run: npx playwright test
-      - name: Upload report on failure
-        if: ${{ failure() && needs.changes.outputs.code == 'true' }}
+      # Also kept when a test passed only on retry. The job is green then, and
+      # with failure() alone the report (and the first attempt's trace,
+      # playwright.config.ts) was thrown away every time (#1655).
+      # `retried` is written by e2e/retryReporter.ts.
+      - name: Upload report on failure or retry
+        if: ${{ needs.changes.outputs.code == 'true' && (failure() || (steps.e2e.outputs.retried != '' && steps.e2e.outputs.retried != '0')) }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

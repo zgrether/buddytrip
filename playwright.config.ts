@@ -33,7 +33,11 @@ export default defineConfig({
     : [["html"], ["./e2e/retryReporter.ts"]],
   use: {
     baseURL: BASE_URL,
-    trace: "on-first-retry",
+    // CI records each test's FIRST attempt and keeps the trace only if it failed.
+    // `on-first-retry` recorded the retry, which is the attempt that PASSES, so a
+    // test that failed once and then passed never left a trace of the failure:
+    // 15 of 81 runs after #1590 did exactly that and left nothing to read (#1655).
+    trace: process.env.CI ? "retain-on-first-failure" : "on-first-retry",
   },
   projects: [
     // Logs in as test-owner once and saves the session; the critical-path
