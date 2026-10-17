@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_BASE, normalizeSearch, type CourseSearchResult, type RawSearchCourse } from "@/lib/golfCourseApi";
+import { routeCaller } from "@/server/lib/routeCaller";
 
 
 /** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
@@ -34,6 +35,9 @@ export const maxDuration = 60;
 const REVALIDATE_SECONDS = 60 * 60 * 24; // 24h
 
 export async function GET(req: NextRequest) {
+  // The route decides who is calling, not the middleware: see routeCaller.ts.
+  const caller = await routeCaller();
+  if (!caller.ok) return caller.response;
   const apiKey = process.env.GOLFCOURSE_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "course search unavailable" }, { status: 503 });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { routeCaller } from "@/server/lib/routeCaller";
 
 
 /** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
@@ -20,6 +21,9 @@ export const maxDuration = 60;
  * form by hand" and doesn't surface the error loudly.
  */
 export async function POST(req: NextRequest) {
+  // The route decides who is calling, not the middleware: see routeCaller.ts.
+  const caller = await routeCaller();
+  if (!caller.ok) return caller.response;
   const body = await req.json().catch(() => ({}));
   const url = typeof body?.url === "string" ? body.url.trim() : "";
 

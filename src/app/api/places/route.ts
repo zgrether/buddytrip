@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isPlaceId } from "@/lib/placeId";
+import { routeCaller } from "@/server/lib/routeCaller";
 
 
 /** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
@@ -15,6 +16,9 @@ export const maxDuration = 60;
  * Enable "Places API (New)" in Google Cloud Console.
  */
 export async function POST(req: NextRequest) {
+  // The route decides who is calling, not the middleware: see routeCaller.ts.
+  const caller = await routeCaller();
+  if (!caller.ok) return caller.response;
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -118,6 +122,9 @@ export async function POST(req: NextRequest) {
  * GET /api/places/details?placeId=xxx — fetch place details for a selected course
  */
 export async function GET(req: NextRequest) {
+  // The route decides who is calling, not the middleware: see routeCaller.ts.
+  const caller = await routeCaller();
+  if (!caller.ok) return caller.response;
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

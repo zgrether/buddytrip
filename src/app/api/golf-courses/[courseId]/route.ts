@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_BASE, transformCourse, type RawGolfApiCourse } from "@/lib/golfCourseApi";
+import { routeCaller } from "@/server/lib/routeCaller";
 
 
 /** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
@@ -26,6 +27,9 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ courseId: string }> }
 ) {
+  // The route decides who is calling, not the middleware: see routeCaller.ts.
+  const caller = await routeCaller();
+  if (!caller.ok) return caller.response;
   const { courseId } = await params;
   const apiKey = process.env.GOLFCOURSE_API_KEY;
 
