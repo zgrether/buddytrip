@@ -11,6 +11,7 @@ import { TimePicker } from "@/components/TimePicker";
 import { DOMAIN_COLORS } from "@/lib/domainColors";
 import { parseLocalDate, toISODate } from "@/lib/dates";
 import { parseTime, toTime24 } from "@/lib/time";
+import { isLodgingUrl } from "@/lib/lodgingDomains";
 
 // ── Platform detection (exported so parents can use it) ───────────────────
 
@@ -253,6 +254,10 @@ export function AddPropertySheet({
     const trimmed = url.trim();
     if (metaTimer.current) clearTimeout(metaTimer.current);
     if (!isValidUrl(trimmed) || trimmed === metaFetchedFor) return;
+    // Previews come from listed lodging sites only; any other link still
+    // saves and opens, with no preview pulled. The server enforces the same
+    // list, so this only spares a request that could not have filled anything.
+    if (!isLodgingUrl(new URL(trimmed))) return;
 
     metaTimer.current = setTimeout(async () => {
       setMetaLoading(true);

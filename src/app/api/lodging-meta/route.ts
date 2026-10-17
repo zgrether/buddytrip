@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { routeCaller } from "@/server/lib/routeCaller";
 import { isAllowedFetchUrl } from "@/lib/ssrfGuard";
+import { isLodgingUrl } from "@/lib/lodgingDomains";
 
 /** Hops followed before giving up. Listing pages redirect once or twice. */
 const MAX_REDIRECTS = 5;
@@ -51,6 +52,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, reason: "blocked_host" }, { status: 400 });
   }
 
+  // Previews are fetched for listed lodging sites only (lodgingDomains.ts).
+  // Not an error: any other link still saves and opens, with no preview.
+  // The address check above stays as a second line of defence.
+  if (!isLodgingUrl(parsed)) {
+    return NextResponse.json({ ok: false, reason: "not_a_lodging_site" }, { status: 200 });
+  }
+
   // Hard cap the fetch so a slow / hung host can't pin a route handler
   // open. 6s is generous for og-tag pluck; if a host is slower than
   // that the user will fill the form anyway.
@@ -94,6 +102,11 @@ export async function POST(req: NextRequest) {
       if (!isAllowedFetchUrl(next)) {
         clearTimeout(timer);
         return NextResponse.json({ ok: false, reason: "blocked_redirect" }, { status: 200 });
+      }
+      // A redirect must land on a listed lodging domain too, or the fetch stops.
+      if (!isLodgingUrl(next)) {
+        clearTimeout(timer);
+        return NextResponse.json({ ok: false, reason: "redirect_off_list" }, { status: 200 });
       }
       current = next;
     }
