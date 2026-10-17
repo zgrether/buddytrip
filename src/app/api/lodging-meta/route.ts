@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { routeCaller } from "@/server/lib/routeCaller";
+import { isAllowedFetchUrl } from "@/lib/ssrfGuard";
+
+/** Hops followed before giving up. Listing pages redirect once or twice. */
+const MAX_REDIRECTS = 5;
 
 
 /** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
@@ -38,28 +42,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, reason: "invalid_protocol" }, { status: 400 });
   }
 
-  // SSRF guard — the caller controls the URL, so refuse anything that
-  // could point at our own infrastructure (loopback, private RFC-1918,
-  // link-local, IPv6 loopback / unique-local). Edge runtime has no DNS
-  // module so this is a hostname-string check only; good enough to
-  // block the obvious cases (localhost, 127.x, 10.x, 192.168.x, etc.)
-  // — DNS rebinding is a separate concern we punt on.
-  const host = parsed.hostname.toLowerCase();
-  const blockedHost =
-    host === "localhost" ||
-    host.endsWith(".local") ||
-    host.endsWith(".internal") ||
-    /^127\./.test(host) ||
-    /^0\./.test(host) ||
-    /^10\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^169\.254\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-    host === "::1" ||
-    host.startsWith("fe80:") ||
-    host.startsWith("fc") ||
-    host.startsWith("fd");
-  if (blockedHost) {
+  // SSRF guard: the caller controls the URL, so it must not reach our own
+  // infrastructure. `isAllowedFetchUrl` (src/lib/ssrfGuard.ts) normalizes the
+  // host and judges IPv6 and IPv4-in-IPv6 spellings as what they reach. It
+  // decides by the URL alone: a public NAME that resolves to a private
+  // address is not caught here (see that file).
+  if (!isAllowedFetchUrl(parsed)) {
     return NextResponse.json({ ok: false, reason: "blocked_host" }, { status: 400 });
   }
 
@@ -71,21 +59,48 @@ export async function POST(req: NextRequest) {
 
   let html: string;
   try {
-    const res = await fetch(parsed.toString(), {
-      method: "GET",
-      headers: {
-        // Many travel sites (VRBO especially) return a stripped page or
-        // a captcha to obvious bots. A modern desktop UA gets the same
-        // HTML a real visitor sees, including <meta property="og:*">.
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
-      redirect: "follow",
-      signal: controller.signal,
-    });
+    // Redirects are followed BY HAND: with `redirect: "follow"` the guard above
+    // saw only the first URL, and any public page could 302 to a private one.
+    let current = parsed;
+    let res: Response | null = null;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      const step = await fetch(current.toString(), {
+        method: "GET",
+        headers: {
+          // Many travel sites (VRBO especially) return a stripped page or
+          // a captcha to obvious bots. A modern desktop UA gets the same
+          // HTML a real visitor sees, including <meta property="og:*">.
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        redirect: "manual",
+        signal: controller.signal,
+      });
+      const location = step.status >= 300 && step.status < 400 ? step.headers.get("location") : null;
+      if (!location) {
+        res = step;
+        break;
+      }
+      let next: URL;
+      try {
+        next = new URL(location, current);
+      } catch {
+        clearTimeout(timer);
+        return NextResponse.json({ ok: false, reason: "invalid_redirect" }, { status: 200 });
+      }
+      if (!isAllowedFetchUrl(next)) {
+        clearTimeout(timer);
+        return NextResponse.json({ ok: false, reason: "blocked_redirect" }, { status: 200 });
+      }
+      current = next;
+    }
+    if (!res) {
+      clearTimeout(timer);
+      return NextResponse.json({ ok: false, reason: "too_many_redirects" }, { status: 200 });
+    }
     if (!res.ok) {
       return NextResponse.json(
         { ok: false, reason: `http_${res.status}` },
