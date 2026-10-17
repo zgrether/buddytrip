@@ -57,7 +57,6 @@ export function CourseEntryFlow({
   const [indexOptedIn, setIndexOptedIn] = useState(false);
   const [pulling, setPulling] = useState(!!providerId);
 
-  const recordApiCall = trpc.courses.recordApiCall.useMutation();
   const utils = trpc.useUtils();
 
   // Seed from a golfcourseapi pull (gated by the daily cap, like the old picker).
@@ -66,9 +65,9 @@ export function CourseEntryFlow({
     if (!providerId) return;
     let cancelled = false;
     (async () => {
-      const gate = await recordApiCall.mutateAsync().catch(() => ({ permitted: false }));
+      // The route counts this against the cap; at the cap it refuses and this is null.
+      const detail = await getCourseDetail(providerId).catch(() => null);
       await utils.courses.apiUsage.invalidate();
-      const detail = gate.permitted ? await getCourseDetail(providerId).catch(() => null) : null;
       if (cancelled) return;
       if (!detail || detail.holes.length === 0) { setPulling(false); setScreen("new"); return; }
       const holeCount = (detail.holes.length >= 18 ? 18 : 9) as 9 | 18;

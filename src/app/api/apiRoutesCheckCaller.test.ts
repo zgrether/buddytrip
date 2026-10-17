@@ -20,6 +20,8 @@ let session: Session = "signed-in";
 
 vi.mock("@/lib/supabase-server", () => ({
   createClient: async () => ({
+    // The golf routes take today's cap with this client; under the cap here.
+    rpc: async () => ({ data: 1, error: null }),
     auth: {
       getClaims: async () => {
         if (session === "signed-in") return { data: { claims: { sub: "user-1" } }, error: null };

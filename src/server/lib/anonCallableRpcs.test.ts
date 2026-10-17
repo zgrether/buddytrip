@@ -83,7 +83,6 @@ describe("the anon-callable RPC surface", () => {
       "_write_game_results", // writes game_results — the proven exploit
       "increment_member_email_count", // writes per-member email counters
       "record_api_call", // writes the golf-course API daily cap counter
-      "trip_has_any_member", // "is this trip empty?" — a claiming primitive (#991)
       "user_delete_blocking_fks", // schema metadata
     ]) {
       expect(rpcs.has(name), `${name} must not be callable by anon`).toBe(false);

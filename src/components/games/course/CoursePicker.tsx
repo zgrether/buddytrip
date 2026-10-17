@@ -15,6 +15,7 @@ import {
 } from "@/lib/courseService";
 import { validateStrokeIndex, applyStrokeIndexSwap, type IndexEntry } from "@/lib/courseIndex";
 import { courseSearchLine } from "@/lib/courseSearchWords";
+import { CourseApiAtCapError } from "@/lib/golfApiCap";
 import { NavArrow, HoleProgress } from "../entryChrome";
 
 /**
@@ -112,7 +113,6 @@ export function CoursePicker({
   // import and steers to the manual floor; local typeahead is never affected.
   const utils = trpc.useUtils();
   const apiUsage = trpc.courses.apiUsage.useQuery(undefined, { staleTime: 0 });
-  const recordApiCall = trpc.courses.recordApiCall.useMutation();
   const atCap = apiUsage.data?.atCap ?? false;
 
   // Debounce the typed query for the LOCAL search (free, never hits the API).
@@ -145,19 +145,21 @@ export function CoursePicker({
     const q = query.trim();
     if (q.length < 2 || apiSearching || atCap) return;
     setApiSearching(true);
-    const gate = await recordApiCall.mutateAsync();
-    await utils.courses.apiUsage.invalidate();
-    if (!gate.permitted) {
-      setApiSearching(false); // hit the cap between render and click — button now disables
-      return;
-    }
+    // The route takes today's cap itself (golfApiCap.ts). At the cap it
+    // refuses, and the refreshed usage below disables the button.
     try {
       setApiResults(await searchCourses(q));
       setApiFailed(false);
-    } catch {
+    } catch (err) {
+      if (err instanceof CourseApiAtCapError) {
+        await utils.courses.apiUsage.invalidate();
+        setApiSearching(false);
+        return;
+      }
       setApiResults([]);
       setApiFailed(true);
     }
+    await utils.courses.apiUsage.invalidate();
     setApiSearched(true);
     setApiSearching(false);
   }
@@ -202,19 +204,11 @@ export function CoursePicker({
     setIndexOptedIn(false);
     setConfirmMode("use");
     setPulling(true);
-    // Importing is a second API call — gate it too. At cap, fall back to manual
-    // entry with the name/location prefilled (same path as a failed detail).
-    const gate = await recordApiCall.mutateAsync();
-    await utils.courses.apiUsage.invalidate();
-    if (!gate.permitted) {
-      setPulling(false);
-      setDraft({ ...blankDraft(18), name: summary.name, location: summary.location });
-      setActiveTee(0);
-      setHole(1);
-      setScreen("new");
-      return;
-    }
+    // Importing is a second API call, and the route counts it against the cap.
+    // At the cap the route refuses and the detail is null, which takes the
+    // manual fallback below with the name/location prefilled.
     const detail = await getCourseDetail(summary.id);
+    await utils.courses.apiUsage.invalidate();
     setPulling(false);
     if (!detail || detail.holes.length === 0) {
       setDraft({ ...blankDraft(18), name: summary.name, location: summary.location });

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { validateStrokeIndex } from "@/lib/courseIndex";
+import { GOLF_API_DAILY_LIMIT, GOLF_API_PROVIDER } from "@/lib/golfApiCap";
 
 /**
  * courses — the GLOBAL course library (Slice C part 2, §5). Course par + stroke
@@ -19,10 +20,6 @@ import { validateStrokeIndex } from "@/lib/courseIndex";
 // The full per-tee record (mig 059). Ratings are optional + nullable —
 // golfcourseapi supplies them; manual entry leaves them out (par + stroke index
 // alone still score). Stored verbatim in courses.tee_sets (jsonb).
-// golfcourseapi.com free tier: 50 requests/day, keyed to 0000 UTC. The counter
-// is provider-scoped so a future second provider gets its own row + cap.
-const GOLF_API_PROVIDER = "golfcourseapi";
-const GOLF_API_DAILY_LIMIT = 50;
 
 // Rating bounds reflect REAL golf ranges (caught in verify-by-eye: Pebble's
 // Blue bogey rating is 101.7, which a max(99) wrongly rejected). Course rating
@@ -159,29 +156,9 @@ export const coursesRouter = router({
     return { count, limit: GOLF_API_DAILY_LIMIT, atCap: count >= GOLF_API_DAILY_LIMIT };
   }),
 
-  // recordApiCall — atomic check-and-increment before an actual golfcourseapi
-  // call (search or import). Returns permitted=false (without incrementing) when
-  // already at the daily cap, so the caller must NOT fire the API. The atomicity
-  // (a single DB function) is what makes "check before calling" race-safe.
-  recordApiCall: authedProcedure.mutation(async ({ ctx }) => {
-    const { data, error } = await ctx.supabase.rpc("record_api_call", {
-      p_provider: GOLF_API_PROVIDER,
-      p_limit: GOLF_API_DAILY_LIMIT,
-    });
-    if (error) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: `Failed to record API usage: ${error.message}`,
-      });
-    }
-    const newCount = data as number; // new count, or -1 when already at cap
-    const permitted = newCount >= 0;
-    return {
-      permitted,
-      count: permitted ? newCount : GOLF_API_DAILY_LIMIT,
-      atCap: !permitted,
-    };
-  }),
+  // The cap is TAKEN by the golf routes themselves (`takeGolfApiCall`), in the
+  // request that spends the key. `recordApiCall` used to do it as a separate
+  // call the app was trusted to make first, which a direct request skipped.
 
   // list — recent courses for the empty-search "Recent courses" list (§2/§5).
   // Global most-recent, not per-circle.

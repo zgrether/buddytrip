@@ -95,10 +95,10 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
 
   // ── What must keep working ──────────────────────────────────────────────
 
-  it("the bootstrap still works — a creator adds their OWN first Owner row", async () => {
-    // `trips.create` inserts the trip, then inserts itself as Owner through the
-    // user-scoped client, at which point is_trip_planner() is still false. If
-    // this breaks, nobody can create a trip.
+  it("creating a trip still makes its creator the only member, as Owner", async () => {
+    // Since migrations 216/217 `trips.create` goes through `create_trip`, which
+    // writes the trip and its Owner in one transaction; the self-insert arm
+    // this used to exercise is gone. If this breaks, nobody can create a trip.
     const newTripId = genId("boot-trip");
     await ctx.callerAs("outsider").trips.create({ id: newTripId, title: "Bootstrap Trip" });
 
@@ -111,6 +111,44 @@ describe("migration 128 — trip_members self-insert is bootstrap-only", () => {
 
     await ctx.admin.from("trip_members").delete().eq("trip_id", newTripId);
     await ctx.admin.from("trips").delete().eq("id", newTripId);
+  });
+
+  it("nobody can claim a trip that has NO members as its Owner (#991)", async () => {
+    // Migration 128 admitted exactly this, as the bootstrap `trips.create`
+    // needed. A failed create could leave such a trip behind for good, because
+    // its clean-up delete ran as a caller who held no role on it. 217 removes
+    // the arm: with `create_trip` there is nothing left for it to serve.
+    const emptyTrip = genId("empty-trip");
+    ctx.trackTrip(emptyTrip);
+    const { error: seedErr } = await ctx.admin.from("trips").insert({ id: emptyTrip, title: "Empty" });
+    expect(seedErr).toBeNull();
+
+    const { error } = await ctx.authedClient("outsider").from("trip_members").insert({
+      id: genId("empty-claim"),
+      trip_id: emptyTrip,
+      user_id: ctx.getUser("outsider").id,
+      role: "Owner",
+    });
+    expect(error).not.toBeNull();
+    const { count } = await ctx.admin
+      .from("trip_members")
+      .select("trip_id", { count: "exact", head: true })
+      .eq("trip_id", emptyTrip);
+    expect(count).toBe(0);
+  });
+
+  it("a signed-in caller cannot make a trip directly, outside create_trip (#991)", async () => {
+    // A trip inserted straight through PostgREST has no Owner, and nothing in
+    // the app makes one that way any more (migration 217 drops `trips_insert`).
+    const direct = genId("direct-trip");
+    ctx.trackTrip(direct);
+    const { error } = await ctx.authedClient("outsider").from("trips").insert({ id: direct, title: "Direct" });
+    expect(error).not.toBeNull();
+    const { count } = await ctx.admin
+      .from("trips")
+      .select("id", { count: "exact", head: true })
+      .eq("id", direct);
+    expect(count).toBe(0);
   });
 
   it("...but a second person cannot claim a trip that already has an Owner", async () => {

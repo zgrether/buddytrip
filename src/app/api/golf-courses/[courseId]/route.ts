@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_BASE, transformCourse, type RawGolfApiCourse } from "@/lib/golfCourseApi";
 import { routeCaller } from "@/server/lib/routeCaller";
+import { takeGolfApiCall } from "@/server/lib/golfApiCap";
 
 
 /** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
@@ -39,6 +40,11 @@ export async function GET(
   if (!courseId) {
     return NextResponse.json({ error: "courseId required" }, { status: 400 });
   }
+
+  // Today's cap is taken HERE, in the request that spends the key, not by a
+  // separate call the app is trusted to make first. See golfApiCap.ts.
+  const capped = await takeGolfApiCall();
+  if (capped) return capped;
 
   try {
     const res = await fetch(
