@@ -61,7 +61,7 @@ const ROUTES: Array<[string, () => Promise<Response>]> = [
   ],
   [
     "POST /api/lodging-meta",
-    () => lodgingPOST(at("/api/lodging-meta", { method: "POST", body: { url: "https://example.com/listing" } })),
+    () => lodgingPOST(at("/api/lodging-meta", { method: "POST", body: { url: "https://www.airbnb.com/rooms/1" } })),
   ],
   ["GET /api/matchups/schedule", () => scheduleGET(at("/api/matchups/schedule?league=nfl&teamId=1"))],
   ["GET /api/matchups/teams", () => teamsGET(at("/api/matchups/teams?league=nfl"))],
