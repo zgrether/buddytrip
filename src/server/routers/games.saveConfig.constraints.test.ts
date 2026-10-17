@@ -99,13 +99,13 @@ afterAll(async () => {
 }, 60_000);
 
 describe("saveConstraintMessage", () => {
-  it("maps 23503 and 23505, each to its own sentence that says reloading won't help", () => {
+  it("maps 23503 and 23505, each to its own sentence, pointing to Send feedback", () => {
     const fk = saveConstraintMessage("23503");
     const dup = saveConstraintMessage("23505");
     expect(fk).toContain("no longer exists");
-    expect(dup).toContain("lists something twice");
+    expect(dup).toContain("listed twice");
     for (const m of [fk, dup]) {
-      expect(m).toContain("Reloading won't fix it");
+      expect(m).toContain("Couldn’t save");
       expect(m).toContain("Send feedback");
       expect(m).not.toContain("try again");
     }
