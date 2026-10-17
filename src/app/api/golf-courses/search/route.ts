@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_BASE, normalizeSearch, type CourseSearchResult, type RawSearchCourse } from "@/lib/golfCourseApi";
 import { routeCaller } from "@/server/lib/routeCaller";
+import { takeGolfApiCall } from "@/server/lib/golfApiCap";
 
 
 /** Backstop against a stalled upstream (#1258). The reasoning, and why 60 and
@@ -27,9 +28,9 @@ export const maxDuration = 60;
  * `[]` means the search ran and found nothing.
  *
  * NOTE: golfcourseapi.com's free tier is 50 requests/day. The daily counter +
- * local-first search that protect that cap live one layer up (the picker only
- * hits this route on an explicit "Search the full database" click) — this route
- * is the dumb proxy.
+ * local-first search live one layer up (the picker only hits this route on an
+ * explicit "Search the full database" click). The cap itself is enforced HERE,
+ * by `takeGolfApiCall`, so a request straight to the route counts too.
  */
 
 const REVALIDATE_SECONDS = 60 * 60 * 24; // 24h
@@ -47,6 +48,11 @@ export async function GET(req: NextRequest) {
   if (q.length < 2) {
     return NextResponse.json([] satisfies CourseSearchResult[]);
   }
+
+  // Today's cap is taken HERE, in the request that spends the key, not by a
+  // separate call the app is trusted to make first. See golfApiCap.ts.
+  const capped = await takeGolfApiCall();
+  if (capped) return capped;
 
   const params = new URLSearchParams({ search_query: q });
 

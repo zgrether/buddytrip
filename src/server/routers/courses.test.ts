@@ -172,11 +172,15 @@ describe("courses router — golfcourseapi daily counter (Phase 4)", () => {
     await ctx.admin.from("api_usage_daily").delete().eq("provider", P);
   });
 
-  it("recordApiCall increments and apiUsage reflects it (tRPC wiring)", async () => {
+  it("a call taken as a signed-in user shows in apiUsage", async () => {
+    // The golf routes take the cap with the caller's own client
+    // (`takeGolfApiCall`), so this is the same call through the same grant.
     const before = await ctx.caller().courses.apiUsage();
-    const rec = await ctx.caller().courses.recordApiCall();
-    expect(rec.permitted).toBe(true);
-    expect(rec.count).toBe(before.count + 1);
+    const { data: count, error } = await ctx
+      .authedClient("owner")
+      .rpc("record_api_call", { p_provider: "golfcourseapi", p_limit: 50 });
+    expect(error).toBeNull();
+    expect(count).toBe(before.count + 1);
 
     const after = await ctx.caller().courses.apiUsage();
     expect(after.count).toBe(before.count + 1);

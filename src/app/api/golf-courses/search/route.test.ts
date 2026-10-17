@@ -5,6 +5,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 vi.mock("@/server/lib/routeCaller", () => ({
   routeCaller: async () => ({ ok: true, userId: "user-1" }),
 }));
+// Under the cap: golfCapInRoute.test.ts covers the cap itself.
+vi.mock("@/server/lib/golfApiCap", () => ({ takeGolfApiCall: async () => null }));
 import { NextRequest } from "next/server";
 import { GET } from "./route";
 import { normalizeSearch } from "@/lib/golfCourseApi";
