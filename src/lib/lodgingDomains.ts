@@ -9,14 +9,18 @@ import { normalizeHost } from "./ssrfGuard";
  * `airbnb.com.example.net`). A redirect must also land on a listed domain, or
  * the fetch stops: see `/api/lodging-meta`.
  *
- * Share-link domains: only Airbnb's `abnb.me` is listed, because it is the only
- * one confirmed. Add the others from a real share link out of each app, not
- * from memory.
+ * Share-link domains are added only from a real share link out of each app,
+ * never from memory: a wrong entry on an allow-list is the hole it closes.
+ * Confirmed so far: Airbnb `abnb.me`, Vrbo `vrbo.onelink.me`.
  */
 export const LODGING_DOMAINS = [
   "airbnb.com",
   "abnb.me", // Airbnb's share links
   "vrbo.com",
+  // Vrbo's share links: AppsFlyer OneLink, one 301 to www.vrbo.com. This exact
+  // host only. onelink.me itself is shared by every app that uses AppsFlyer.
+  // Confirmed from a real share link (BBMI 2026, 2026-10-17).
+  "vrbo.onelink.me",
   "booking.com",
   "hotels.com",
   "expedia.com",

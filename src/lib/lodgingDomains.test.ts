@@ -18,6 +18,7 @@ describe("isLodgingUrl", () => {
     "https://www.airbnb.com/rooms/123",
     "https://es.airbnb.com/rooms/123",
     "https://abnb.me/AbC123",
+    "https://vrbo.onelink.me/ItNz/7me1irdz",
     "https://www.vrbo.com/1234567",
     "https://www.booking.com/hotel/us/lake.html",
     "https://www.hotels.com/ho123/",
@@ -37,6 +38,8 @@ describe("isLodgingUrl", () => {
     ["a listed name in the path, not the host", "https://example.com/www.airbnb.com"],
     ["a listed name in the credentials", "https://www.airbnb.com@example.com/"],
     ["a non-http scheme", "ftp://www.airbnb.com/"],
+    ["another app's OneLink, which shares the parent domain", "https://someapp.onelink.me/x"],
+    ["OneLink itself", "https://onelink.me/x"],
   ])("refuses %s (%s)", (_label, u) => {
     expect(listed(u)).toBe(false);
   });
