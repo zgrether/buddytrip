@@ -8,6 +8,8 @@
  * manual entry rather than surfacing a failure.
  */
 
+import { CourseApiAtCapError } from "@/lib/golfApiCap";
+
 export interface CourseSummary {
   id: string;
   name: string;
@@ -88,6 +90,7 @@ export async function searchCourses(
   if (opts?.country) params.set("country", opts.country);
   if (opts?.state) params.set("state", opts.state);
   const res = await fetch(`/api/golf-courses/search?${params}`);
+  if (res.status === 429) throw new CourseApiAtCapError();
   if (!res.ok) throw new Error(`course search failed (${res.status})`);
   return (await res.json()) as CourseSummary[];
 }

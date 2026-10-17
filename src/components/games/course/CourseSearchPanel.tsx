@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, AlertTriangle, PencilLine, ChevronRight, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { searchCourses, teeColor, type CourseSummary } from "@/lib/courseService";
+import { CourseApiAtCapError } from "@/lib/golfApiCap";
 import { courseSearchLine } from "@/lib/courseSearchWords";
 import { manualEntryVisible, dedupeApiCourses } from "@/lib/courseSearch";
 import type { RecentCourse } from "./CoursePicker";
@@ -54,7 +55,6 @@ export function CourseSearchPanel({
 
   const recent = trpc.courses.list.useQuery({ limit: 8 });
   const apiUsage = trpc.courses.apiUsage.useQuery(undefined, { staleTime: 0 });
-  const recordApiCall = trpc.courses.recordApiCall.useMutation();
   const utils = trpc.useUtils();
   const atCap = apiUsage.data?.atCap ?? false;
 
@@ -71,16 +71,21 @@ export function CourseSearchPanel({
     const q = query.trim();
     if (q.length < 2 || apiSearching || atCap) return;
     setApiSearching(true);
-    const gate = await recordApiCall.mutateAsync().catch(() => ({ permitted: false }));
-    await utils.courses.apiUsage.invalidate();
-    if (!gate.permitted) { setApiSearching(false); return; }
+    // The route takes today's cap itself (golfApiCap.ts). At the cap it
+    // refuses, and the refreshed usage below disables the button.
     try {
       setApiResults(await searchCourses(q));
       setApiFailed(false);
-    } catch {
+    } catch (err) {
+      if (err instanceof CourseApiAtCapError) {
+        await utils.courses.apiUsage.invalidate();
+        setApiSearching(false);
+        return;
+      }
       setApiResults([]);
       setApiFailed(true);
     }
+    await utils.courses.apiUsage.invalidate();
     setApiSearched(true);
     setApiSearching(false);
   }
