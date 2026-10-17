@@ -151,50 +151,27 @@ export const tripsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const now = new Date().toISOString();
-
-      // Step 1: Insert the trip WITHOUT .select() — PostgREST's
-      // INSERT ... RETURNING requires the SELECT policy to pass on the
-      // new row, but the SELECT policy is `is_trip_member(id)` which is
-      // false until we add the creator as a member in step 2.
-      const hasLockedDest = !!input.lockedDestination;
-      const { error } = await ctx.supabase.from("trips").insert({
-        id: input.id,
-        title: input.title,
-        description: input.description ?? "",
-        location: input.lockedDestination?.location ?? input.location ?? null,
-        start_date: input.startDate ?? null,
-        end_date: input.endDate ?? null,
-        comparison_mode: input.comparisonMode ?? false,
-        locked_destination_title: input.lockedDestination?.title ?? null,
-        locked_destination_location: input.lockedDestination?.location ?? null,
-        // A locked destination is what moves a trip out of the idea phase;
-        // its absence (null) keeps the trip in idea.
-        locked_destination_at: hasLockedDest ? now : null,
+      // Steps 1 + 2: the trip and its Owner, in ONE transaction (#991,
+      // migration 216). As two statements through this client, a failed Owner
+      // insert left the trip behind: the clean-up delete ran as the caller, and
+      // `trips_delete` needs the Owner role nobody held yet, so it removed
+      // nothing and said nothing.
+      const { error } = await ctx.supabase.rpc("create_trip", {
+        p_id: input.id,
+        p_title: input.title,
+        p_description: input.description ?? "",
+        p_location: input.lockedDestination?.location ?? input.location ?? null,
+        p_start_date: input.startDate ?? null,
+        p_end_date: input.endDate ?? null,
+        p_comparison_mode: input.comparisonMode ?? false,
+        p_locked_destination_title: input.lockedDestination?.title ?? null,
+        p_locked_destination_location: input.lockedDestination?.location ?? null,
       });
 
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: `Failed to create trip: ${error.message}`,
-        });
-      }
-
-      // Step 2: Add creator as Owner — now is_trip_member() will be true
-      const { error: memberErr } = await ctx.supabase
-        .from("trip_members")
-        .insert({
-          trip_id: input.id,
-          user_id: ctx.user.id,
-          role: "Owner",
-        });
-
-      if (memberErr) {
-        // Clean up the trip if member insert fails
-        await ctx.supabase.from("trips").delete().eq("id", input.id);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to add creator as trip owner",
         });
       }
 

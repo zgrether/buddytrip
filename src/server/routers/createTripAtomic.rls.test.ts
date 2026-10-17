@@ -100,13 +100,16 @@ describe("create_trip (#991, migration 216)", () => {
 
   it("CONTROL: the old two-statement path, failing the same way, DOES leave the trip", async () => {
     // What `trips.create` did before 216: insert the trip, insert the Owner,
-    // and on failure delete the trip through the caller's own client.
+    // and on failure delete the trip through the caller's own client. The trip
+    // is seeded with the service role because migration 217 removed the
+    // caller's direct insert; the state it leaves is the one the old first
+    // statement left, and the two steps under test still run as the caller.
     const acct = await accountWithoutUsersRow("991-control");
     const id = genId("trip-991-control");
     ctx.trackTrip(id);
     const client = acct.client();
 
-    const { error: tripErr } = await client.from("trips").insert({ id, title: "991 control", description: "" });
+    const { error: tripErr } = await ctx.admin.from("trips").insert({ id, title: "991 control", description: "" });
     expect(tripErr).toBeNull();
     const { error: ownerErr } = await client.from("trip_members").insert({ trip_id: id, user_id: acct.id, role: "Owner" });
     expect(ownerErr, "the Owner insert must fail for this account").not.toBeNull();
