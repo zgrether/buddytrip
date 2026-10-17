@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { retriedFrom, summaryLines } from "../../../e2e/retryReporter";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { mkdtempSync, readFileSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import E2eRetryReporter, { retriedFrom, summaryLines } from "../../../e2e/retryReporter";
 
 /**
  * The E2E `[retries]` reporter (#1552, #1590): a test that fails and then
@@ -52,6 +55,39 @@ describe("retriedFrom — which tests needed a retry, read from every attempt", 
 
   it("CONTROL: a test that passed first time is not reported", () => {
     expect(retriedFrom([{ test: test("clean"), result: attempt(0, "passed") }])).toEqual([]);
+  });
+});
+
+describe("the `retried` step output — what keeps CI's report when a test passed only on retry (#1655)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  function runReporter(entries: Parameters<typeof retriedFrom>[0]) {
+    const dir = mkdtempSync(join(tmpdir(), "retry-reporter-"));
+    const output = join(dir, "output");
+    writeFileSync(output, "");
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("GITHUB_OUTPUT", output);
+    vi.stubEnv("GITHUB_STEP_SUMMARY", "");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const reporter = new E2eRetryReporter();
+    for (const e of entries) reporter.onTestEnd(e.test as never, e.result as never);
+    reporter.onEnd({} as never);
+    return readFileSync(output, "utf8");
+  }
+
+  it("a test that passed on retry writes retried=1, which the upload step reads", () => {
+    const spine = test("side game spine");
+    expect(runReporter([
+      { test: spine, result: attempt(0, "failed", "strict mode violation") },
+      { test: spine, result: attempt(1, "passed") },
+    ])).toBe("retried=1\n");
+  });
+
+  it("CONTROL: a clean run writes retried=0, so the upload step skips", () => {
+    expect(runReporter([{ test: test("clean"), result: attempt(0, "passed") }])).toBe("retried=0\n");
   });
 });
 
