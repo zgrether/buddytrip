@@ -97,6 +97,11 @@ export default class E2eRetryReporter implements Reporter {
       const msg = `${r.name} ${r.outcome} (${r.retries} retr${r.retries === 1 ? "y" : "ies"})${r.firstError ? `: ${r.firstError}` : ""}`;
       console.log(`::warning file=${r.file},title=Retried e2e test::${msg.replace(/\r?\n/g, "%0A")}`);
     }
+    // A step output, so the workflow can keep the report when a test passed only
+    // on retry. The job is green then and the upload-on-failure step skips, which
+    // is how every first attempt's trace was thrown away (#1655).
+    const output = process.env.GITHUB_OUTPUT;
+    if (output) appendFileSync(output, `retried=${retried.length}\n`);
     const summary = process.env.GITHUB_STEP_SUMMARY;
     if (!summary) return;
     const rows = retried.map(
