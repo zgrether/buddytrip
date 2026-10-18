@@ -465,12 +465,12 @@ export const matchesRouter = router({
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       await assertGameInTrip(ctx, input.gameId, ctx.tripId);
-      const { data: match } = await ctx.supabase
+      const match = maybeRowOrThrow(await ctx.supabase
         .from("game_matches")
         .select("id")
         .eq("id", input.matchId)
         .eq("game_id", input.gameId)
-        .maybeSingle();
+        .maybeSingle(), "match");
       if (!match) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
       }
@@ -709,12 +709,12 @@ export const matchesRouter = router({
         });
       }
 
-      const { data: match } = await ctx.supabase
+      const match = maybeRowOrThrow(await ctx.supabase
         .from("game_matches")
         .select("id, side_a, side_b, status")
         .eq("id", input.matchId)
         .eq("game_id", input.gameId)
-        .maybeSingle();
+        .maybeSingle(), "match");
       if (!match) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Match not found" });
       }

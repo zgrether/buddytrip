@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, canEditGame } from "../middleware";
-import { rowOrThrow } from "../lib/rowOrThrow";
+import { rowOrThrow, maybeRowOrThrow } from "../lib/rowOrThrow";
 import { canWriteSkinsHole } from "../lib/skinsAccess";
 
 /**
@@ -93,13 +93,13 @@ export const skinsOutcomesRouter = router({
       // independent, so a winner from another one is not a lesser mistake than a
       // winner from another game.
       if (input.winnerId) {
-        const { data: winner } = await ctx.supabase
+        const winner = maybeRowOrThrow(await ctx.supabase
           .from("game_participants")
           .select("user_id")
           .eq("game_id", input.gameId)
           .eq("user_id", input.winnerId)
           .eq("play_group_id", input.groupingId)
-          .maybeSingle();
+          .maybeSingle(), "winner");
         if (!winner) {
           throw new TRPCError({
             code: "BAD_REQUEST",

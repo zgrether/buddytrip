@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
 import { matchPlayReady } from "@/lib/matchDraft";
 import { isMatchesGame } from "@/lib/resultStrategy";
+import { maybeRowOrThrow } from "./rowOrThrow";
 
 /**
  * Game readiness — the ONE "is this game configured enough to score?" signal,
@@ -109,11 +110,11 @@ export function isConfigured(
  * client gate at all. Reads the same inputs the leaderboard derives `configured` from.
  */
 export async function assertGameReady(supabase: SupabaseClient, gameId: string): Promise<void> {
-  const { data: game } = await supabase
+  const game = maybeRowOrThrow(await supabase
     .from("games")
     .select("game_type_id, competition_format, points_distribution, points_total")
     .eq("id", gameId)
-    .maybeSingle();
+    .maybeSingle(), "game");
   if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
   const typeId = (game.game_type_id as string | null) ?? null;

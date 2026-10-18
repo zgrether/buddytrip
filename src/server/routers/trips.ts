@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { assertAffected } from "@/server/lib/assertAffected";
-import { rowsOrThrow } from "@/server/lib/rowOrThrow";
+import { rowsOrThrow, maybeRowOrThrow } from "@/server/lib/rowOrThrow";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole } from "../middleware";
 
@@ -311,12 +311,12 @@ export const tripsRouter = router({
       }
 
       // Verify new owner is a trip member
-      const { data: member } = await ctx.supabase
+      const member = maybeRowOrThrow(await ctx.supabase
         .from("trip_members")
         .select("user_id, role")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.newOwnerId)
-        .single();
+        .maybeSingle(), "trip member");
 
       if (!member) {
         throw new TRPCError({

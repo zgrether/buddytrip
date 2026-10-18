@@ -7,7 +7,7 @@ import { requireTripMember, requireTripRole } from "../middleware";
 import { postSystemMessage } from "./messages";
 import { joinNoticeText } from "@/lib/joinMessage";
 import { archiveTripMember, ownerLeaveRefusal } from "../lib/archiveMember";
-import { countOrThrow } from "../lib/rowOrThrow";
+import { countOrThrow, maybeRowOrThrow } from "../lib/rowOrThrow";
 import { lookupAccountByEmail } from "../lib/emailLookup";
 
 /**
@@ -434,12 +434,12 @@ export const tripMembersRouter = router({
       // Block setting a nickname on the Owner row — Owner controls their own
       // display name through account settings. Without this guard, any
       // Organizer could rename the Owner inside the trip context.
-      const { data: target } = await ctx.supabase
+      const target = maybeRowOrThrow(await ctx.supabase
         .from("trip_members")
         .select("role")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.userId)
-        .maybeSingle();
+        .maybeSingle(), "trip member");
 
       if (!target) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Member not found in this trip" });
@@ -867,12 +867,12 @@ export const tripMembersRouter = router({
     // #786/#824 — Organizer may record crew travel. Touches no role column.
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
-      const { data: member } = await ctx.supabase
+      const member = maybeRowOrThrow(await ctx.supabase
         .from("trip_members")
         .select("id")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.targetUserId)
-        .maybeSingle();
+        .maybeSingle(), "trip member");
 
       if (!member) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Member not found in this trip" });

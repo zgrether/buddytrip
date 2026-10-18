@@ -2309,8 +2309,8 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string(), total: z.number().min(0).nullable() }))
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games").select("id, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+      const game = maybeRowOrThrow(await ctx.supabase
+        .from("games").select("id, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle(), "game");
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       const { error } = await ctx.supabase
         .from("games").update({ points_total: input.total }).eq("id", input.gameId).eq("trip_id", ctx.tripId);
