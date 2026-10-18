@@ -15,6 +15,7 @@ import { QueryFailedError } from "@/server/lib/rowOrThrow";
 import IdentityChoice from "./IdentityChoice";
 import InviteMessage from "./InviteMessage";
 import { buildAuthHandoff } from "./authHandoff";
+import { spentLinkRefusal } from "./spentLink";
 
 /**
  * Invite landing — ROUTING ONLY.
@@ -125,6 +126,16 @@ export default async function InvitePage({
     addressee: invite?.addressee ?? null,
   });
 
+  // A SPENT link with nothing left that can work says so on the first screen
+  // (#1041): with no session, and for a signed-in account that cannot see the
+  // trip, where the only button used to be "Sign out" into this same message.
+  // A member's "Continue as" and a fresh invite's account switch are untouched;
+  // see spentLink.ts for why the condition is `spent` and not "no placeholder".
+  const spent = invite
+    ? spentLinkRefusal(route, { spent: invite.spent, tripName: invite.target.resourceName })
+    : null;
+  if (spent) return <InviteMessage title={spent.title} body={spent.body} />;
+
   switch (route.kind) {
     // Branch 1 — an active session that IS the invited person. Straight to the
     // trip, no interstitial. Nothing to confirm and nobody to confirm it to.
@@ -149,19 +160,8 @@ export default async function InvitePage({
       // on this trip". Handled here rather than in `resolveAccessRoute` because
       // it is a fact about the CAPABILITY, not about the viewer — the same
       // class of answer as the token resolving to nothing at all, which is why
-      // `resolveInviteLink` is the layer that decides it.
-      if (invite!.spent) {
-        return (
-          <InviteMessage
-            title="This invite has already been used"
-            body={
-              "Someone has already joined " +
-              invite!.target.resourceName +
-              " with this link. If that wasn't you, ask whoever invited you for a fresh one."
-            }
-          />
-        );
-      }
+      // `resolveInviteLink` is the layer that decides it. That case returns
+      // above the switch now (`spentLinkRefusal`), shared with identity-choice.
       redirect(buildAuthHandoff({ mode: route.mode, token: invite!.token }));
 
     // Branch 2 — a session, but a different account. Never resolved silently:
