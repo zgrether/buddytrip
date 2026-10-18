@@ -3,6 +3,7 @@ import { EITHER_COMPETITION } from "@/lib/vocabulary";
 import { TRPCError } from "@trpc/server";
 import { throwIfUnrostered } from "../lib/unrosteredRefusal";
 import { refuseSplitSides } from "../lib/splitSides";
+import { saveConstraintMessage } from "../lib/saveConstraintMessage";
 import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
 import { writeGameResults, type GameResultRow } from "../lib/writeGameResults";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
@@ -2191,6 +2192,20 @@ export const gamesRouter = router({
               ? ("BAD_REQUEST" as const)
               : ("PRECONDITION_FAILED" as const);
           throw new TRPCError({ code: status, message: detail });
+        }
+
+        /**
+         * A DATABASE CONSTRAINT, not a refusal (#1506). These carry no `CODE:`
+         * prefix, so they used to reach the generic arm below and tell the
+         * reader to reload and try again. Reloading cannot fix a broken
+         * reference or a duplicate: the same save fails the same way. Read from
+         * `error.code` (the SQLSTATE), never from the message text, and send
+         * the reader to the one place that can do something about it.
+         */
+        const constraint = saveConstraintMessage(error.code);
+        if (constraint) {
+          console.error("[games.saveConfig] constraint violation", { gameId: input.gameId, code: error.code, msg });
+          throw new TRPCError({ code: "CONFLICT", message: constraint });
         }
 
         console.error("[games.saveConfig] unmapped refusal", { gameId: input.gameId, msg });
