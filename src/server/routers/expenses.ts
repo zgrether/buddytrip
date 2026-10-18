@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember } from "../middleware";
+import { maybeRowOrThrow } from "../lib/rowOrThrow";
 
 export const expensesRouter = router({
   // -----------------------------------------------------------------------
@@ -161,12 +162,12 @@ export const expensesRouter = router({
     .use(requireTripMember)
     .mutation(async ({ ctx, input }) => {
       if (ctx.tripRole !== "Owner") {
-        const { data: existing } = await ctx.supabase
+        const existing = maybeRowOrThrow(await ctx.supabase
           .from("expenses")
           .select("paid_by_user_id")
           .eq("id", input.expenseId)
           .eq("trip_id", ctx.tripId)
-          .maybeSingle();
+          .maybeSingle(), "expense");
         if (!existing || existing.paid_by_user_id !== ctx.user!.id) {
           throw new TRPCError({
             code: "FORBIDDEN",
@@ -251,12 +252,12 @@ export const expensesRouter = router({
       const userId = ctx.user!.id;
 
       // Verify caller has a split row for this expense
-      const { data: existing } = await ctx.supabase
+      const existing = maybeRowOrThrow(await ctx.supabase
         .from("expense_splits")
         .select("expense_id, user_id")
         .eq("expense_id", input.expenseId)
         .eq("user_id", userId)
-        .maybeSingle();
+        .maybeSingle(), "expense split");
 
       if (!existing) {
         throw new TRPCError({
@@ -310,12 +311,12 @@ export const expensesRouter = router({
     .mutation(async ({ ctx, input }) => {
       const isStaff = ctx.tripRole === "Owner" || ctx.tripRole === "Organizer";
       if (!isStaff) {
-        const { data: existing } = await ctx.supabase
+        const existing = maybeRowOrThrow(await ctx.supabase
           .from("expenses")
           .select("paid_by_user_id")
           .eq("id", input.expenseId)
           .eq("trip_id", ctx.tripId)
-          .maybeSingle();
+          .maybeSingle(), "expense");
         if (!existing || existing.paid_by_user_id !== ctx.user!.id) {
           throw new TRPCError({
             code: "FORBIDDEN",

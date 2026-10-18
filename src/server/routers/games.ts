@@ -839,12 +839,12 @@ export const gamesRouter = router({
     )
     .use(requireGameRunAction())
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
+      const game = maybeRowOrThrow(await ctx.supabase
         .from("games")
         .select("id, status, corrections_open, scoring_enabled, competition_format")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+        .maybeSingle(), "game");
       if (!game) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
@@ -1020,12 +1020,12 @@ export const gamesRouter = router({
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
       // Confirm the game is in this trip before writing participants.
-      const { data: game } = await ctx.supabase
+      const game = maybeRowOrThrow(await ctx.supabase
         .from("games")
         .select("id")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+        .maybeSingle(), "game");
       if (!game) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
@@ -1106,7 +1106,7 @@ export const gamesRouter = router({
     .mutation(async ({ ctx, input }) => {
       // `status`, `name` and `competition_id` are selected for the push wiring
       // below — status is the TRANSITION guard, the other two are payload/route.
-      const { data: game } = await ctx.supabase
+      const game = maybeRowOrThrow(await ctx.supabase
         .from("games")
         // `competition_format` joins the select because the strategy is resolved
         // from the game type AND it (see `resolveResultStrategy`) — a bracket is
@@ -1117,7 +1117,7 @@ export const gamesRouter = router({
         .select("id, game_type_id, status, name, competition_id, competition_format, points_total, points_distribution, corrections_open")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+        .maybeSingle(), "game");
       if (!game) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       }
@@ -1628,8 +1628,8 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
-        .from("games").select("status").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+      const game = maybeRowOrThrow(await ctx.supabase
+        .from("games").select("status").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle(), "game");
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       const next = game.status === "active" ? "pending" : (game.status as string);
       const { error } = await ctx.supabase
@@ -2358,8 +2358,8 @@ export const gamesRouter = router({
     .mutation(async ({ ctx, input }) => {
       // competition_id read BEFORE the delete — the row (and this column) is gone
       // after, so it has to come from the pre-delete select.
-      const { data: game } = await ctx.supabase
-        .from("games").select("id, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle();
+      const game = maybeRowOrThrow(await ctx.supabase
+        .from("games").select("id, competition_id").eq("id", input.gameId).eq("trip_id", ctx.tripId).maybeSingle(), "game");
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       const { error } = await ctx.supabase
         .from("games").delete().eq("id", input.gameId).eq("trip_id", ctx.tripId);
@@ -2524,12 +2524,12 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireGameRunAction())
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
+      const game = maybeRowOrThrow(await ctx.supabase
         .from("games")
         .select("status")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+        .maybeSingle(), "game");
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       if (game.status !== "complete") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Only a posted game can enter score correction." });
@@ -2549,12 +2549,12 @@ export const gamesRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string(), userId: z.string().min(1) }))
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
+      const game = maybeRowOrThrow(await ctx.supabase
         .from("games")
         .select("id")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+        .maybeSingle(), "game");
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
       const { error } = await ctx.supabase
         .from("game_delegates")
