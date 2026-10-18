@@ -159,12 +159,12 @@ export const playGroupsRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
+      const game = maybeRowOrThrow(await ctx.supabase
         .from("games")
         .select("status")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+        .maybeSingle(), "game");
       if (game && (game.status as string) === "pending" && !(await canEditGame(ctx, ctx.tripId, input.gameId))) {
         return { groups: [], participants: [] };
       }

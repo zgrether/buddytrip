@@ -1569,11 +1569,11 @@ export const gamesRouter = router({
       // is "at least one grouped participant" (182), so it would refuse forever.
       // Idempotent by emptiness: a game that already has groups is untouched.
       {
-        const { data: g } = await ctx.supabase
+        const g = maybeRowOrThrow(await ctx.supabase
           .from("games")
           .select("game_type_id, competition_id")
           .eq("id", input.gameId)
-          .maybeSingle();
+          .maybeSingle(), "game");
         await seedScrambleTeamGroups(
           ctx.supabase,
           input.gameId,
@@ -2033,6 +2033,16 @@ export const gamesRouter = router({
       // Read BEFORE the write (#1539): the clinch reconcile after it runs post-commit
       // and must not depend on a read that could fail once the save has committed.
       const competitionId = await competitionOfGame(ctx.supabase, ctx.tripId, input.gameId);
+      // The recompute's inputs, read BEFORE the write too (#1663): after it, a
+      // failed read could only throw on a save that had already committed
+      // (CLAUDE.md: work after a commit is best-effort). The RPC never writes
+      // `game_type_id`, and the only `status` move it makes is pending -> active,
+      // which leaves the recompute's "complete or not" question unchanged.
+      const g = maybeRowOrThrow(await ctx.supabase
+        .from("games")
+        .select("game_type_id, status")
+        .eq("id", input.gameId)
+        .maybeSingle(), "game");
 
       // 2 · The atomic write. Map the RPC's RAISE prefixes to typed errors so the
       //     Save banner can surface the readiness reason / live-reject legibly.
@@ -2225,11 +2235,7 @@ export const gamesRouter = router({
       //     skipComplete; rack/stroke have no such option, so gate them on status (a
       //     complete/frozen game is never rewritten — same guard setParticipantStrokes
       //     uses). Cheap no-op when no scores exist (the computes early-return).
-      const { data: g } = await ctx.supabase
-        .from("games")
-        .select("game_type_id, status")
-        .eq("id", input.gameId)
-        .maybeSingle();
+      //     `g` (format + status) was read BEFORE the write; see above.
       //     Reads the FORMAT's engine, not `resolveResultStrategy` — deliberately.
       //     This step re-derives results from SCORES, and the bracket is not in
       //     that set: its placements come from the draw at finalize, and the two

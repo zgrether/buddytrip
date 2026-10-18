@@ -29,13 +29,31 @@ import type { TestAccount, TestContext } from "./test-setup";
 export function callerFailingRead(
   ctx: TestContext,
   who: Parameters<TestContext["authedClient"]>[0] | TestAccount,
-  target: { table: string; columns: string; nth?: number },
+  target: { table: string; columns: string; nth?: number; empty?: boolean },
 ) {
   const real = typeof who === "string" ? ctx.authedClient(who) : who.client();
   const client = clientFailingRead(real, target);
   const user = typeof who === "string" ? ctx.getUser(who) : { id: who.id, email: who.email };
   const trpcCtx: TRPCContext = { supabase: client, user: { id: user.id, email: user.email }, membershipCache: new Map() };
   return createCallerFactory(appRouter)(trpcCtx);
+}
+
+/**
+ * The same narrow caller, but the one read SUCCEEDS AND FINDS NOTHING
+ * (`data: null`, no error) rather than failing.
+ *
+ * For "the check saw nothing", e.g. the losing side of a race whose read-first
+ * check ran before the winner's row existed. A FAILED read is a different
+ * thing: since #1663 it throws a retryable 500 rather than standing in for
+ * absence, and a test that uses a failure to mean "saw nothing" is testing a
+ * path the app no longer has.
+ */
+export function callerEmptyRead(
+  ctx: TestContext,
+  who: Parameters<TestContext["authedClient"]>[0] | TestAccount,
+  target: { table: string; columns: string; nth?: number },
+) {
+  return callerFailingRead(ctx, who, { ...target, empty: true });
 }
 
 /**
@@ -48,9 +66,15 @@ export function callerFailingRead(
  * be shown to refuse on its own (#1539, `saveConfig`'s two `competition_id` reads).
  * Absent, every matching read fails.
  */
-export function clientFailingRead(real: SupabaseClient, target: { table: string; columns: string; nth?: number }): SupabaseClient {
+export function clientFailingRead(
+  real: SupabaseClient,
+  target: { table: string; columns: string; nth?: number; empty?: boolean }
+): SupabaseClient {
   let seen = 0;
-  const failure = { data: null, count: null, error: { code: "PGRST003", message: "simulated read failure" } };
+  // `empty`: the read succeeds and finds nothing (see `callerEmptyRead`).
+  const failure = target.empty
+    ? { data: null, count: 0, error: null }
+    : { data: null, count: null, error: { code: "PGRST003", message: "simulated read failure" } };
 
   const failingChain = (): unknown => {
     const chain: Record<string, unknown> = {};
