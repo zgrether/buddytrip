@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { maybeRowOrThrow } from "./rowOrThrow";
 import { canEditGame, type TripRole } from "@/server/middleware";
 import { memberCanScoreUnit, type ScoreUnitMatch, type ScoreUnitSide } from "@/lib/scoreUnit";
 
@@ -39,12 +40,16 @@ export async function canWriteOutcome(
 
   const db = ctx.supabase as unknown as SupabaseClient;
 
-  const { data: matchRow } = await db
-    .from("game_matches")
-    .select("side_a, side_b")
-    .eq("id", matchId)
-    .eq("game_id", gameId)
-    .maybeSingle();
+  // Every read here goes through the rowOrThrow family (#1276). A failed read
+  // used to come back as `null` and answer `false`, which the score write turns
+  // into a terminal FORBIDDEN, and a terminal refusal clears the score outbox:
+  // a database blip lost the score on the next reload. A failure now throws a
+  // retryable 500, which the outbox keeps and re-sends.
+
+  const matchRow = maybeRowOrThrow(
+    await db.from("game_matches").select("side_a, side_b").eq("id", matchId).eq("game_id", gameId).maybeSingle(),
+    "match"
+  );
   if (!matchRow) return false;
   const sideA = matchRow.side_a as ScoreUnitSide | null;
   const sideB = matchRow.side_b as ScoreUnitSide | null;
@@ -52,12 +57,10 @@ export async function canWriteOutcome(
 
   const matches: ScoreUnitMatch[] = [{ side_a: sideA, side_b: sideB }];
 
-  const { data: meRow } = await db
-    .from("game_participants")
-    .select("play_group_id")
-    .eq("game_id", gameId)
-    .eq("user_id", meId)
-    .maybeSingle();
+  const meRow = maybeRowOrThrow(
+    await db.from("game_participants").select("play_group_id").eq("game_id", gameId).eq("user_id", meId).maybeSingle(),
+    "game's players"
+  );
 
   // memberCanScoreUnit resolves "is meId in the unit containing participantId" —
   // its 1v1/2v2 branches look at BOTH sides of the match once found, so passing
