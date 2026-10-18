@@ -943,11 +943,11 @@ export const tripMembersRouter = router({
       // Fetch trip for email content. locked_destination_location is the
       // real-world location string ("Bandon, OR") that buildCannedInvitation
       // prefers over the cute locked_destination_title ("Bandon Dunes").
-      const { data: trip } = await ctx.supabase
+      const trip = maybeRowOrThrow(await ctx.supabase
         .from("trips")
         .select("title, about_message, location, locked_destination_location, locked_destination_title, start_date, end_date")
         .eq("id", ctx.tripId)
-        .single();
+        .maybeSingle(), "trip");
 
       if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Trip not found" });
 

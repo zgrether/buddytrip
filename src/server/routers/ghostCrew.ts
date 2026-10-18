@@ -287,12 +287,12 @@ export const ghostCrewRouter = router({
         input.email == null ? input.email : input.email.trim().toLowerCase();
 
       // Verify this guest is a member of this trip
-      const { data: membership } = await ctx.supabase
+      const membership = maybeRowOrThrow(await ctx.supabase
         .from("trip_members")
         .select("id, role")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.guestUserId)
-        .maybeSingle();
+        .maybeSingle(), "trip member");
 
       if (!membership) {
         throw new TRPCError({

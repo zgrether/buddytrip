@@ -118,12 +118,12 @@ export const playGroupsRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string(), userId: z.string().min(1), strokes: z.number().int() }))
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
+      const game = maybeRowOrThrow(await ctx.supabase
         .from("games")
         .select("id, status, game_type_id")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+        .maybeSingle(), "game");
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
       const strokes = clampStrokes(input.strokes);

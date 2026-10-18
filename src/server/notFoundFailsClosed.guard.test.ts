@@ -19,9 +19,16 @@ import { join, relative, sep } from "path";
  * rewritten). It carries its own CONTROL below: a planted snippet it MUST flag
  * and two it must not, so a scanner that silently stopped matching anything
  * would fail here rather than pass forever.
+ *
+ * The expression is `[^;]*?`, NOT `[\s\S]*?`. With the lazy any-character
+ * version, a `const {` that does not end in `.single()` / `.maybeSingle()`
+ * stretched forward and swallowed the NEXT statement that does; when the
+ * swallowing statement destructured `error`, the merged match was skipped and
+ * the real site behind it vanished. It hid 16 sites while this guard read
+ * green (#1276, reopened 2026-10-18). The control's third case is that shape.
  */
 
-const STATEMENT = /const\s*\{\s*([^}]*)\}\s*=\s*await\s+([\s\S]*?)\.(single|maybeSingle)\(\)\s*;/g;
+const STATEMENT = /const\s*\{\s*([^}]*)\}\s*=\s*await\s+([^;]*?)\.(single|maybeSingle)\(\)\s*;/g;
 
 function findSites(src: string): number[] {
   const text = src.split("\r").join("");
@@ -67,6 +74,15 @@ describe("the scanner (CONTROL: it can fail)", () => {
       "}",
     ].join("\n");
     expect(findSites(bad)).toEqual([1, 3]);
+  });
+
+  it("flags a site that follows an earlier statement destructuring `error` (the shape that hid 16)", () => {
+    const swallowed = [
+      'const { data: list, error } = await ctx.supabase.from("games").select("id");',
+      'const { data: member } = await ctx.supabase.from("trip_members").select("id").maybeSingle();',
+      'if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "x" });',
+    ].join("\n");
+    expect(findSites(swallowed)).toEqual([2]);
   });
 
   it("does not flag a read that keeps its error, or one that refuses nothing", () => {
