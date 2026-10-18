@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { maybeRowOrThrow } from "./lib/rowOrThrow";
 import { middleware } from "./trpc";
 
 // ---------------------------------------------------------------------------
@@ -273,23 +274,15 @@ export async function canEditGame(
   const compRole = await resolveCompetitionRole(ctx, tripId);
   if (COMP_ROLE_LEVEL[compRole] >= COMP_ROLE_LEVEL.organizer) return true;
   if (!ctx.user) return false;
-  // …otherwise a delegated organizer of THIS game (game-isolated).
-  const { data } = await (
-    ctx.supabase.from("game_delegates") as unknown as {
-      select: (s: string) => {
-        eq: (c: string, v: string) => {
-          eq: (c: string, v: string) => {
-            maybeSingle: () => Promise<{ data: { game_id: string } | null }>;
-          };
-        };
-      };
-    }
-  )
-    .select("game_id")
-    .eq("game_id", gameId)
-    .eq("user_id", ctx.user.id)
-    .maybeSingle();
-  return !!data;
+  // …otherwise a delegated organizer of THIS game (game-isolated). A failed read
+  // THROWS (#1276): read as "not a delegate", a delegate dropped to the member
+  // check, and a score write refused there clears the outbox.
+  const db = ctx.supabase as unknown as SupabaseClient;
+  const delegate = maybeRowOrThrow(
+    await db.from("game_delegates").select("game_id").eq("game_id", gameId).eq("user_id", ctx.user.id).maybeSingle(),
+    "game's delegates"
+  );
+  return !!delegate;
 }
 
 export function requireGameEdit() {

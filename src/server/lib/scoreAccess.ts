@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 import { canEditGame, type TripRole } from "@/server/middleware";
 import { memberCanScoreUnit, type ScoreUnitMatch, type ScoreUnitSide } from "@/lib/scoreUnit";
 
@@ -36,32 +37,36 @@ export async function canWriteScore(
 
   const db = ctx.supabase as unknown as SupabaseClient;
 
+  // Every read here goes through the rowOrThrow family (#1276). A failed read
+  // used to come back as `null` and answer `false`, which the score write turns
+  // into a terminal FORBIDDEN, and a terminal refusal clears the score outbox:
+  // a database blip lost the score on the next reload. A failure now throws a
+  // retryable 500, which the outbox keeps and re-sends.
+
   // The game TYPE decides cart-scoping (rack) vs individual (stroke) — NOT whether the
   // target is grouped (089 made stroke groupings mandatory, so grouped ≠ rack).
-  const { data: gameRow } = await db
-    .from("games")
-    .select("game_type_id")
-    .eq("id", gameId)
-    .maybeSingle();
+  const gameRow = maybeRowOrThrow(
+    await db.from("games").select("game_type_id").eq("id", gameId).maybeSingle(),
+    "game's format"
+  );
   const groupScoped = (gameRow as { game_type_id: string | null } | null)?.game_type_id === "gtt_rack_n_stack";
 
   // This game's matches (empty for stroke + rack). side_a/side_b are jsonb
   // {type,id}; an empty slot stays null.
-  const { data: matchRows } = await db
-    .from("game_matches")
-    .select("side_a, side_b")
-    .eq("game_id", gameId);
+  const matchRows = rowsOrThrow(
+    await db.from("game_matches").select("side_a, side_b").eq("game_id", gameId),
+    "game's matches"
+  );
   const matches: ScoreUnitMatch[] = ((matchRows as { side_a: ScoreUnitSide | null; side_b: ScoreUnitSide | null }[] | null) ?? []).map(
     (r) => ({ side_a: r.side_a, side_b: r.side_b }),
   );
 
   // The scorer's own participant row (+ the target user's, for rack) — one query.
   const wantUsers = participantType === "user" ? [meId, participantId] : [meId];
-  const { data: partRows } = await db
-    .from("game_participants")
-    .select("user_id, play_group_id")
-    .eq("game_id", gameId)
-    .in("user_id", wantUsers);
+  const partRows = rowsOrThrow(
+    await db.from("game_participants").select("user_id, play_group_id").eq("game_id", gameId).in("user_id", wantUsers),
+    "game's players"
+  );
   const parts = (partRows as { user_id: string; play_group_id: string | null }[] | null) ?? [];
   const meRow = parts.find((p) => p.user_id === meId);
   const targetRow = parts.find((p) => p.user_id === participantId);

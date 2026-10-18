@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { maybeRowOrThrow } from "./rowOrThrow";
 import { canEditGame, type TripRole } from "@/server/middleware";
 
 /**
@@ -47,22 +48,24 @@ export async function canWriteSkinsHole(
 
   const db = ctx.supabase as unknown as SupabaseClient;
 
+  // Every read here goes through the rowOrThrow family (#1276). A failed read
+  // used to come back as `null` and answer `false`, which the score write turns
+  // into a terminal FORBIDDEN, and a terminal refusal clears the score outbox:
+  // a database blip lost the score on the next reload. A failure now throws a
+  // retryable 500, which the outbox keeps and re-sends.
+
   // The grouping must belong to THIS game, or a caller could name one of their
   // own groupings from another game and be admitted into a game they are not in.
-  const { data: grouping } = await db
-    .from("play_groups")
-    .select("id")
-    .eq("id", groupingId)
-    .eq("game_id", gameId)
-    .maybeSingle();
+  const grouping = maybeRowOrThrow(
+    await db.from("play_groups").select("id").eq("id", groupingId).eq("game_id", gameId).maybeSingle(),
+    "grouping"
+  );
   if (!grouping) return false;
 
-  const { data: me } = await db
-    .from("game_participants")
-    .select("play_group_id")
-    .eq("game_id", gameId)
-    .eq("user_id", meId)
-    .maybeSingle();
+  const me = maybeRowOrThrow(
+    await db.from("game_participants").select("play_group_id").eq("game_id", gameId).eq("user_id", meId).maybeSingle(),
+    "game's players"
+  );
 
   return (me as { play_group_id: string | null } | null)?.play_group_id === groupingId;
 }
