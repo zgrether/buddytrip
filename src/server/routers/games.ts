@@ -2019,11 +2019,14 @@ export const gamesRouter = router({
         if (v == null) return null;
         return typeof v.holes === "number" ? v.holes : GLORIOUS_HOLES_DEFAULT;
       };
-      const { data: priorRow } = await ctx.supabase
-        .from("games")
-        .select("modifiers")
-        .eq("id", input.gameId)
-        .maybeSingle();
+      // A failed read must THROW, never read as "no modifiers" (#1657): that is
+      // "glorious was already off", so a save turning it off would skip the
+      // recompute that re-derives finished matches, and they would keep results
+      // decided under 2x weighting that no longer apply.
+      const priorRow = maybeRowOrThrow(
+        await ctx.supabase.from("games").select("modifiers").eq("id", input.gameId).maybeSingle(),
+        "game's current modifiers"
+      );
       const gloriousChanged =
         gfhCount(priorRow?.modifiers) !== gfhCount(input.payload.modifiers ?? {});
 
