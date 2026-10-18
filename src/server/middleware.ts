@@ -210,17 +210,17 @@ export function requireTeamIdentityEdit() {
 
     // The team must belong to THIS trip (defends a teamId from another trip
     // paired with a trip the caller happens to be a member of).
-    const { data: team } = await db
+    const team = maybeRowOrThrow(await db
       .from("teams")
       .select("competition_id")
       .eq("id", teamId)
-      .maybeSingle();
+      .maybeSingle(), "team");
     if (!team) throw new TRPCError({ code: "NOT_FOUND", message: "Team not found" });
-    const { data: comp } = await db
+    const comp = maybeRowOrThrow(await db
       .from("competitions")
       .select("trip_id")
       .eq("id", team.competition_id as string)
-      .maybeSingle();
+      .maybeSingle(), "competition");
     if (!comp || comp.trip_id !== tripId) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Team not found in this trip" });
     }

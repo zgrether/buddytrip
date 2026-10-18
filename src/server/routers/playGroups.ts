@@ -8,6 +8,7 @@ import { clampStrokes } from "@/lib/handicap";
 import { computeMatchPlayResults } from "../lib/matchPlay";
 import { computeRackNStackResults } from "../lib/rackNStack";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
+import { maybeRowOrThrow } from "../lib/rowOrThrow";
 
 /**
  * playGroups — foursomes for a game (the scoring-side use of `play_groups`,
@@ -40,12 +41,12 @@ export const playGroupsRouter = router({
     )
     .use(requireGameEdit())
     .mutation(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
+      const game = maybeRowOrThrow(await ctx.supabase
         .from("games")
         .select("id")
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+        .maybeSingle(), "game");
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
       // Roster = the union of grouped players. Idempotent re-adds (UNIQUE).

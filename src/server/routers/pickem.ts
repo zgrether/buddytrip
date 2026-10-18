@@ -5,6 +5,7 @@ import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireGameEdit } from "../middleware";
 import { afterResponse } from "../lib/afterResponse";
 import { notifyPickemMatchesNotDrawn } from "../lib/pickemMatchesNotify";
+import { maybeRowOrThrow } from "../lib/rowOrThrow";
 
 /**
  * pickem — the slate, the two scoring settings, and the lifecycle transitions.
@@ -125,7 +126,7 @@ export const pickemRouter = router({
     .input(z.object({ tripId: z.string(), gameId: z.string() }))
     .use(requireTripMember)
     .query(async ({ ctx, input }) => {
-      const { data: game } = await ctx.supabase
+      const game = maybeRowOrThrow(await ctx.supabase
         .from("games")
         .select(
           // `corrections_open` rides here for `gameLockState` — the finalize CTA
@@ -135,7 +136,7 @@ export const pickemRouter = router({
         )
         .eq("id", input.gameId)
         .eq("trip_id", ctx.tripId)
-        .maybeSingle();
+        .maybeSingle(), "game");
       if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
 
       /**

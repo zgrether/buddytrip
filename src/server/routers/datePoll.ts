@@ -217,12 +217,12 @@ export const datePollRouter = router({
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       // Confirm the target is a member of this trip
-      const { data: member } = await ctx.supabase
+      const member = maybeRowOrThrow(await ctx.supabase
         .from("trip_members")
         .select("user_id")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.userId)
-        .maybeSingle();
+        .maybeSingle(), "trip member");
 
       if (!member) {
         throw new TRPCError({
