@@ -931,11 +931,13 @@ export function StrokeGameView() {
       return {
         id,
         name: meta?.name ?? (crew.data ?? []).find((c) => c.user_id === id)?.displayName ?? "Player",
-        color: teamColorOf.get(id) ?? meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
+        // In a cup with teams, someone on no team is neutral grey (#1668 look):
+        // a palette colour would read as a team they are not on. Skins does the same.
+        color: teamColorOf.get(id) ?? (rostersApply ? "var(--color-bt-text-dim)" : meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length]),
         avatarIcon: avatarIconOf.get(id) ?? meta?.avatarIcon ?? null,
       };
     }),
-    [fieldIds, nameColorOf, crew.data, teamColorOf, avatarIconOf, isScramble, teamOfGroup, surfaceGroups],
+    [fieldIds, nameColorOf, crew.data, teamColorOf, avatarIconOf, isScramble, teamOfGroup, surfaceGroups, rostersApply],
   );
 
   // Net per-hole entries (feed to-par) + par-by-hole from the course snapshot. Nets against
