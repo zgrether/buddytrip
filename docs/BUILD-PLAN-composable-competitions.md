@@ -145,6 +145,26 @@ the same.
     costs nothing while it is still in setup. Consequence for the go-live refusal: it must
     name an action that exists — *set a point value, or delete this game and add it again as
     a side game.*
+    **EXCEPTION 2026-10-19 (Zach, the #1668 look; migration 218): *Play it as a side
+    game*, the one way a game leaves its competition.** At go-live, when a game is in a
+    team competition and nobody playing it is on a team, it cannot award points (their
+    results count for no team), and the app asks *"Nobody here is on a team, so this game
+    can't award points." — Play it as a side game · Keep as is.* The first is a SECOND
+    writer of `competition_id`, deliberately, and narrow by construction:
+    - **Out only, never in.** There is no way to move a game INTO a competition except
+      `games.create`. The reasoning above is about moving in (the format check, the
+      head-to-head refusals, 193's INSERT-only roster trigger), and still holds in full.
+    - **Only before the game has any result** (`game_started`, migration 215).
+    - **Only a format a side game allows** (`canBeSideGame`: stroke, skins, match play).
+      The RPC's literal list is pinned to that declaration by `sideGameFormats.guard.test.ts`.
+    - **Only an Owner or Organizer**, the tier that may delete the game.
+    - **It goes through Save.** `save_game_config`'s `leaveCompetition` key, staged with
+      the go-live and committed in the same atomic call (CLAUDE.md #18): a refused save
+      does neither. Every limit is enforced in the RPC, so no client can widen it.
+    It drops what only a cup game has (`points_total`, `points_distribution`,
+    `game_matches.point_value`) and `competition_id` joins the config hash. The
+    delete-and-re-add advice stays valid; this is the same move without losing the
+    game's setup.
 27. **Points appear in setup only for games that count toward a competition.** A side game
     has no points row. **A format that can't be a side game — rack — doesn't offer it.**
     **CORRECTED 2026-09-26 (PR 6, #1493), `allowedContainers`:** rack was not the only one.
