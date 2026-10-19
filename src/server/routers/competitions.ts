@@ -8,6 +8,7 @@ import { viewerTeamForTrip } from "../lib/viewerTeam";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "../lib/myDelegateGameIds";
 import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
 import { competitionNoun, EITHER_COMPETITION } from "@/lib/vocabulary";
+import { maybeRowOrThrow } from "../lib/rowOrThrow";
 
 const SCOREBOARD_STYLES = [
   "grid",
@@ -146,13 +147,13 @@ export const competitionsRouter = router({
             ? "organizer"
             : "member";
 
-      const { data: competition } = await ctx.supabase
+      const competition = maybeRowOrThrow(await ctx.supabase
         .from("competitions")
         .select("*")
         .eq("trip_id", tripId)
         .order("created_at", { ascending: true })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle(), "competition");
 
       if (!competition) {
         // Clean no-competition state — the face renders the enable/empty state.
@@ -334,12 +335,12 @@ export const competitionsRouter = router({
       // picker over several team chats, or a tab that names which team. That is
       // a feature, not a follow-up — see the team-chat work for why it was
       // scoped out (prod had 0 trips with two competitions when it was built).
-      const { data: existing } = await ctx.supabase
+      const existing = maybeRowOrThrow(await ctx.supabase
         .from("competitions")
         .select("id")
         .eq("trip_id", ctx.tripId)
         .limit(1)
-        .maybeSingle();
+        .maybeSingle(), "competition");
 
       if (existing) {
         throw new TRPCError({

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext } from "../../__tests__/helpers/test-setup";
-import { callerFailingRead } from "../../__tests__/helpers/failingRead";
+import { callerEmptyRead } from "../../__tests__/helpers/failingRead";
 
 /**
  * Migration 195 — one competition per trip is the DATABASE's rule.
@@ -13,10 +13,14 @@ import { callerFailingRead } from "../../__tests__/helpers/failingRead";
  *     per trip, not a global cap.
  *  2. When `competitions.create` reaches the constraint (the race its read-first
  *     check cannot see), the caller gets the same CONFLICT and sentence as the
- *     read-first branch — not a 500. The race is made deterministic by failing
- *     the read-first query (`callerFailingRead`): the router ignores that read's
- *     error, so the insert proceeds exactly as it would for the losing side of a
- *     real race.
+ *     read-first branch — not a 500. The race is made deterministic by making
+ *     the read-first query SEE NOTHING (`callerEmptyRead`), so the insert
+ *     proceeds exactly as it would for the losing side of a real race.
+ *
+ *     This used to FAIL the read instead (`callerFailingRead`), which only
+ *     worked because the router ignored that read's error and treated a failure
+ *     as "no competition". #1663 made a failed read a retryable 500, which is
+ *     right, and which a failure-as-absence fixture can no longer stand in for.
  */
 
 let ctx: TestContext;
@@ -65,8 +69,10 @@ describe("competitions.create when the race reaches the constraint", () => {
     const tripId = await ctx.createTrip("Race refusal");
     await ctx.caller().competitions.create({ tripId, name: "Winner of the race", scoringModel: "points" });
 
-    // The losing side of a race: its read-first check saw no competition.
-    const blind = callerFailingRead(ctx, "owner", { table: "competitions", columns: "id" });
+    // The losing side of a race: its read-first check ran before the winner's
+    // row existed and SAW NOTHING. An empty read, not a failed one: a failed read
+    // is a retryable 500 since #1663, never a stand-in for "nothing there".
+    const blind = callerEmptyRead(ctx, "owner", { table: "competitions", columns: "id" });
     await expect(blind.competitions.create({ tripId, name: "Loser of the race", scoringModel: "points" })).rejects.toMatchObject({
       code: "CONFLICT",
       message: "This trip already has a Cup or Tournament.",

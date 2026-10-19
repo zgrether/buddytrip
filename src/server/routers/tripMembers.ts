@@ -299,12 +299,12 @@ export const tripMembersRouter = router({
       }
 
       // Check if already a member
-      const { data: existing } = await ctx.supabase
+      const existing = maybeRowOrThrow(await ctx.supabase
         .from("trip_members")
         .select("id")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", input.userId)
-        .maybeSingle();
+        .maybeSingle(), "trip member");
 
       if (existing) {
         throw new TRPCError({
@@ -614,12 +614,12 @@ export const tripMembersRouter = router({
       // ── Path A: Real account exists — add to trip directly ──────────
       if (existing && !existing.is_guest) {
         // Check if already a member
-        const { data: alreadyMember } = await ctx.supabase
+        const alreadyMember = maybeRowOrThrow(await ctx.supabase
           .from("trip_members")
           .select("user_id")
           .eq("trip_id", ctx.tripId)
           .eq("user_id", existing.id)
-          .maybeSingle();
+          .maybeSingle(), "trip member");
 
         if (alreadyMember) {
           const displayName = existing.name ?? email;
@@ -706,12 +706,12 @@ export const tripMembersRouter = router({
       }
 
       // Check if already a member
-      const { data: alreadyMember } = await ctx.supabase
+      const alreadyMember = maybeRowOrThrow(await ctx.supabase
         .from("trip_members")
         .select("user_id")
         .eq("trip_id", ctx.tripId)
         .eq("user_id", guestUserId)
-        .maybeSingle();
+        .maybeSingle(), "trip member");
 
       if (alreadyMember) {
         const displayName = existing?.name ?? email;

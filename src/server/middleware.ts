@@ -234,13 +234,13 @@ export function requireTeamIdentityEdit() {
     }
 
     // Else: the captain of THIS team may edit its identity.
-    const { data: cap } = await db
+    const cap = maybeRowOrThrow(await db
       .from("team_assignments")
       .select("user_id")
       .eq("team_id", teamId)
       .eq("user_id", ctx.user!.id)
       .eq("is_captain", true)
-      .maybeSingle();
+      .maybeSingle(), "team captain");
     if (cap) {
       return next({ ctx: { ...ctx, tripId } });
     }

@@ -59,12 +59,12 @@ export const ghostCrewRouter = router({
 
         if (existingUser && !existingUser.is_guest) {
           // Real account exists — check if already a member
-          const { data: existingMember } = await ctx.supabase
+          const existingMember = maybeRowOrThrow(await ctx.supabase
             .from("trip_members")
             .select("id")
             .eq("trip_id", ctx.tripId)
             .eq("user_id", existingUser.id)
-            .maybeSingle();
+            .maybeSingle(), "trip member");
 
           if (existingMember) {
             throw new TRPCError({
@@ -121,12 +121,12 @@ export const ghostCrewRouter = router({
 
         if (existingUser && existingUser.is_guest) {
           // Guest with this email already exists — check if they're in this trip
-          const { data: existingMember } = await ctx.supabase
+          const existingMember = maybeRowOrThrow(await ctx.supabase
             .from("trip_members")
             .select("id")
             .eq("trip_id", ctx.tripId)
             .eq("user_id", existingUser.id)
-            .maybeSingle();
+            .maybeSingle(), "trip member");
 
           if (existingMember) {
             throw new TRPCError({
@@ -384,11 +384,11 @@ export const ghostCrewRouter = router({
           // It reads `deleted_at` because nothing else can tell the two apart:
           // a deleted account IS a placeholder in every structural sense after
           // migration 130, which is what makes the roster keep working.
-          const { data: ghostRow } = await ctx.supabase
+          const ghostRow = maybeRowOrThrow(await ctx.supabase
             .from("users")
             .select("deleted_at")
             .eq("id", input.guestUserId)
-            .maybeSingle();
+            .maybeSingle(), "crew member");
           if (ghostRow?.deleted_at) {
             throw new TRPCError({
               code: "PRECONDITION_FAILED",

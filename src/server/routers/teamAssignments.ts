@@ -248,14 +248,14 @@ export const teamAssignmentsRouter = router({
         // assigned to this COMPETITION" and would hand a mover all of the new
         // team's history. Two columns, two meanings; see migration 172.
         payload.team_visible_from = new Date().toISOString();
-        const { data: maxRow } = await ctx.supabase
+        const maxRow = maybeRowOrThrow(await ctx.supabase
           .from("team_assignments")
           .select("sort_order")
           .eq("competition_id", input.competitionId)
           .eq("team_id", input.teamId)
           .order("sort_order", { ascending: false })
           .limit(1)
-          .maybeSingle();
+          .maybeSingle(), "team order");
         payload.sort_order = ((maxRow?.sort_order as number | undefined) ?? -1) + 1;
       }
 
