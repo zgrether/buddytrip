@@ -14,6 +14,7 @@ import { useRailWidth, RAIL_STRIP_PX, RAIL_MIN_PX, RAIL_CONTRACTED_PX } from "./
 import { RailTripRow, RailPastTripRow, RailIdeaTripRow } from "./rail/RailTripRow";
 import { CreateTripModal } from "@/components/trips/CreateTripModal";
 import type { DestinationMode } from "@/components/DestinationPicker";
+import { listStateOf, type ListQuery, type ListState } from "@/lib/listState";
 
 /**
  * ContextRail — Home promoted from a tab to a persistent left rail (Phase 5).
@@ -136,16 +137,16 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
    * rail simply showed no trips, with no way to tell "you're in no trips" apart
    * from "the request failed" (#764).
    */
-  const {
-    data: trips = [],
-    isError,
-    refetch,
-  } = trpc.trips.list.useQuery(undefined, {
+  const tripsQuery = trpc.trips.list.useQuery(undefined, {
     ...STRUCTURE_QUERY,
     enabled: isDesktop && idle,
   });
-
-  const rows = trips as TripRow[];
+  // Both columns read this one state (#1616, `listState.ts`). It is also
+  // what stopped the Ideas column saying "Trips without a destination yet
+  // will collect here" while the list was still LOADING: there was no
+  // loading branch, so an unanswered list read as an empty one.
+  const tripsState = listStateOf(tripsQuery as ListQuery<TripRow[]>);
+  const rows = (tripsQuery.data ?? []) as TripRow[];
   // Which LIST is showing. Not persisted: it is a position ("what am I looking at
   // right now"), not a preference, and the trips list is the right thing to land
   // on every time — the precedent split is in `useRailWidth`'s note.
@@ -566,9 +567,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
       >
         {entity === "ideas" ? (
           <IdeasColumn
-            rows={rows}
-            isError={isError}
-            onRetry={() => void refetch()}
+            state={tripsState}
             activeTripId={activeTripId}
             pendingTripId={pendingTripId}
             onOpen={openTrip}
@@ -576,9 +575,7 @@ export function ContextRail({ activeTripId }: { activeTripId: string | null }) {
           />
         ) : entity === "trips" ? (
           <TripsColumn
-            rows={rows}
-            isError={isError}
-            onRetry={() => void refetch()}
+            state={tripsState}
             activeTripId={activeTripId}
             pendingTripId={pendingTripId}
             // The art drops in the narrow half — same midpoint the snap button
@@ -716,18 +713,14 @@ function StripItem({
  * that already exists.
  */
 function TripsColumn({
-  rows,
-  isError,
-  onRetry,
+  state,
   activeTripId,
   pendingTripId,
   expanded,
   onOpen,
   onNew,
 }: {
-  rows: TripRow[];
-  isError: boolean;
-  onRetry: () => void;
+  state: ListState<TripRow[]>;
   activeTripId: string | null;
   pendingTripId: string | null;
   expanded: boolean;
@@ -738,6 +731,7 @@ function TripsColumn({
   // two lists can't disagree about what's active. now + upcoming both read as
   // "Active" here: the rail's job is which trips are live concerns, and the
   // dashboard's finer split is a main-viewport distinction.
+  const rows = state.kind === "ready" || state.kind === "empty" ? state.data : [];
   const active: TripRow[] = [];
   const past: TripRow[] = [];
   for (const t of rows) {
@@ -836,9 +830,9 @@ function TripsColumn({
         </div>
       )}
 
-      {isError ? (
-        <RailLoadError onRetry={onRetry} />
-      ) : (
+      {state.kind === "error" ? (
+        <RailLoadError onRetry={state.retry} />
+      ) : state.kind === "loading" ? null : (
         <>
           <Section label="Active" count={active.length}>
             {active.map((t) => (
@@ -884,22 +878,19 @@ function TripsColumn({
  * and they have no mobile home either. Separate work.
  */
 function IdeasColumn({
-  rows,
-  isError,
-  onRetry,
+  state,
   activeTripId,
   pendingTripId,
   onOpen,
   onNew,
 }: {
-  rows: TripRow[];
-  isError: boolean;
-  onRetry: () => void;
+  state: ListState<TripRow[]>;
   activeTripId: string | null;
   pendingTripId: string | null;
   onOpen: (id: string) => void;
   onNew: () => void;
 }) {
+  const rows = state.kind === "ready" || state.kind === "empty" ? state.data : [];
   const ideas = rows.filter((t) => getEffectiveStatus(t) === "idea").sort(compareIdea);
   return (
     <div className="p-2">
@@ -910,9 +901,9 @@ function IdeasColumn({
         <EyebrowAction label="Start a trip" onClick={onNew} />
       </div>
 
-      {isError ? (
-        <RailLoadError onRetry={onRetry} />
-      ) : ideas.length === 0 ? (
+      {state.kind === "error" ? (
+        <RailLoadError onRetry={state.retry} />
+      ) : state.kind === "loading" ? null : ideas.length === 0 ? (
         <p className="px-1.5 pb-2 text-[12.5px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
           Trips without a destination yet will collect here.
         </p>

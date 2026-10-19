@@ -20,6 +20,7 @@ import { TopNav } from "@/components/TopNav";
 import { useMyTeamColor } from "@/hooks/useMyTeamColor";
 import { TripCard } from "@/components/TripCard";
 import { AuthenticatedEmptyState } from "@/components/AuthenticatedEmptyState";
+import { listStateOf } from "@/lib/listState";
 import { CreateTripModal } from "@/components/trips/CreateTripModal";
 import { getTripStatus, type TripStatus } from "@/components/StatusBadge";
 import type { TripRole } from "@/server/middleware";
@@ -202,12 +203,15 @@ export default function DashboardClient({
    * the key has. If a long cache is wanted on both, the membership mutations
    * need invalidation FIRST.
    */
-  const {
-    data: trips = [],
-    isLoading: tripsLoading,
-    isError: tripsError,
-    refetch: refetchTrips,
-  } = trpc.trips.list.useQuery();
+  const tripsQuery = trpc.trips.list.useQuery();
+  const tripsLoading = tripsQuery.isLoading;
+  // The list's state, in one order (#1616, `listState.ts`): `error` only while
+  // there is nothing to show, so a failed BACKGROUND refetch keeps the trips on
+  // screen instead of replacing them with the error card; `empty` only once the
+  // list has actually arrived.
+  const tripsState = listStateOf(tripsQuery);
+  // For the sections below, which render only once there IS data.
+  const trips = tripsQuery.data ?? [];
 
   // ── Partition ──────────────────────────────────────────────────────────────
   const sections = partitionTrips(trips as TripRow[]);
@@ -384,14 +388,14 @@ export default function DashboardClient({
           </div>
         )}
 
-        {tripsError ? (
+        {tripsState.kind === "error" ? (
           /* ── Load failure ────────────────────────────────────────────────
              Checked BEFORE the empty state, and that order is the point
-             (#764). `data` is `undefined` on error and this component
-             defaults it to `[]`, so a failed fetch used to fall straight
-             through to `AuthenticatedEmptyState` — telling a user with trips
-             that they have none, complete with the first-run onboarding
-             pitch. The two states are now distinguishable. */
+             (#764): a failed fetch used to fall straight through to
+             `AuthenticatedEmptyState`, telling a user with trips that they
+             have none, complete with the first-run onboarding pitch. The
+             order now lives in `listStateOf` (#1616), where "empty" can only
+             be reached once the list has arrived. */
           <div role="alert" data-testid="trips-load-error" className="py-16 text-center">
             <p
               className="text-base font-semibold"
@@ -404,14 +408,14 @@ export default function DashboardClient({
             </p>
             <button
               type="button"
-              onClick={() => void refetchTrips()}
+              onClick={tripsState.retry}
               className="mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold transition-opacity hover:opacity-90"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-base)" }}
             >
               Try again
             </button>
           </div>
-        ) : !hasAnyTrips ? (
+        ) : tripsState.kind === "empty" ? (
           /* ── Empty state ─────────────────────────────────────────────────
              Single source of truth — root `/` redirects here when authed
              with no trips, and a direct `/dashboard` visit shows the

@@ -20,6 +20,7 @@ import type { CannotProjectReason } from "@/lib/gameProjection";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
 import { ReorderableSection } from "./ReorderableGames";
+import { listStateOf } from "@/lib/listState";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -212,12 +213,12 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
    * refetching while any visible surface shows it, and stops only when none
    * does — which is emergent from the rule rather than hand-coded here.
    */
-  const { data: lb, isLoading, isError, refetch } = trpc.competitions.leaderboard.useQuery(
+  const lbQuery = trpc.competitions.leaderboard.useQuery(
     { tripId, competitionId },
     { ...LEADERBOARD_QUERY, enabled: useVisibleEnabled(!!competitionId) }
   );
 
-  const data = lb as LeaderboardData | undefined;
+  const data = lbQuery.data as LeaderboardData | undefined;
 
   // Viewer identity, delegate markers and the row prefetch — shared with the
   // side-game board (PR 6b) through ONE hook, not a second copy.
@@ -302,11 +303,12 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // through a failed refetch, so a flaky poll keeps showing the board. Only when
   // there's NO data yet do we branch: a spinner while the first load is in
   // flight, or a clear retryable card if it failed — never a confusing blank.
-  if (!data) {
-    if (isError) return <LeaderboardLoadError onRetry={() => void refetch()} />;
-    if (isLoading) return <LeaderboardLoading />;
-    return null;
-  }
+  // The order lives in `listStateOf` (#1616). A board is never "empty" here:
+  // its own no-teams / no-games states come after, from the data.
+  const board = listStateOf({ data, isError: lbQuery.isError, refetch: lbQuery.refetch }, () => false);
+  if (board.kind === "error") return <LeaderboardLoadError onRetry={board.retry} />;
+  // A hidden surface disables the query: no data, nothing loading, nothing shown.
+  if (board.kind === "loading" || !data) return lbQuery.isLoading ? <LeaderboardLoading /> : null;
 
   // `defendingTeamId` went with the clinch ribbon — it was that banner's only
   // reader, used to say "retains" rather than "wins". The hero's clinch line
