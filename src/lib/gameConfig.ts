@@ -51,7 +51,8 @@ export type PlacementState =
  * those are different things per source ("add teams" is useless advice for a
  * bracket, whose place count comes from its own shape).
  */
-export type PlaceCapacitySource = "teams" | "bracket";
+// `people`: a teamless race (#1639), whose finishers are the people playing.
+export type PlaceCapacitySource = "teams" | "bracket" | "people";
 
 /**
  * How many places this game can distribute across, and what decides it.
