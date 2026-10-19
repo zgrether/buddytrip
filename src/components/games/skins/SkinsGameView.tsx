@@ -69,6 +69,8 @@ import type { Participant } from "@/components/games/types";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 import { gamesPageHref } from "@/lib/gameRoutes";
 import { UnevenTeamsNote } from "@/components/games/UnevenTeamsNote";
+import { SideGamePrompt } from "@/components/games/SideGamePrompt";
+import { asksSideGameAtGoLive, leaveCompetitionKey } from "@/lib/sideGamePrompt";
 
 const SKINS = "gtt_skins";
 
@@ -178,6 +180,11 @@ export function SkinsGameView() {
     { tripId: tripId!, competitionId: competitionId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
   );
+  // Go-live in a team competition where nobody playing is on a team asks first
+  // (#1668 look): Play it as a side game, or Keep as is. The choice rides the
+  // same Save as the go-live (`leaveCompetitionKey`).
+  const [sideGameAsk, setSideGameAsk] = useState(false);
+  const [leaveChosen, setLeaveChosen] = useState(false);
   const groupsQ = trpc.playGroups.listByGame.useQuery(
     { tripId: tripId!, gameId: gid! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid }
@@ -412,7 +419,10 @@ export function SkinsGameView() {
     configDraft,
     anyTouched,
     draftsEqual: skinsDraftsEqual,
-    toPayload: (draft, baseline) => skinsDraftToPayload(draft, baseline),
+    toPayload: (draft, baseline) => ({
+      ...skinsDraftToPayload(draft, baseline),
+      ...leaveCompetitionKey({ chosen: leaveChosen, draftScoring: draft.scoringEnabled, savedScoring: baseline.scoringEnabled }),
+    }),
     bundle: {
       name: nameDraft, rules: rulesDraft, scoring: scoringDraft, delegates: delegatesDraft,
       pointsTotal: pointsTotalDraft, pointsDistribution: pointsDistDraft,
@@ -626,6 +636,23 @@ export function SkinsGameView() {
       : null
   );
 
+  function wouldAskSideGame(): boolean {
+    const teamOf = new Map(((assignQ.data ?? []) as { user_id: string; team_id: string }[]).map((x) => [x.user_id, x.team_id]));
+    return asksSideGameAtGoLive({
+      wasLive: !!gameQ.data?.scoring_enabled,
+      inCup: !!competitionId,
+      teamCount: (teamsQ.data ?? []).length,
+      gameTypeId: gameQ.data?.game_type_id as string | undefined,
+      playerIds: configDraft.groups.flat(),
+      teamOf: (id) => teamOf.get(id),
+    });
+  }
+  function handleEnable() {
+    if (wouldAskSideGame()) { setSideGameAsk(true); return; }
+    setScoringDraft(true);
+  }
+  function handleDisable() { setScoringDraft(false); setLeaveChosen(false); }
+
   if (!tripId) return null;
 
   // ── Settings ─────────────────────────────────────────────────────────────
@@ -666,6 +693,14 @@ export function SkinsGameView() {
     };
     return (
       <>
+        {sideGameAsk && (
+          <SideGamePrompt
+            canMakeSideGame={canManageGame}
+            onSideGame={() => { setLeaveChosen(true); setScoringDraft(true); setSideGameAsk(false); }}
+            onKeep={() => { setLeaveChosen(false); setScoringDraft(true); setSideGameAsk(false); }}
+            onDismiss={() => setSideGameAsk(false)}
+          />
+        )}
         <GameSettingsPage
           surface="skins"
           onClose={closeConfig}
@@ -702,14 +737,15 @@ export function SkinsGameView() {
           }
           management={{
             scoringEnabled: configDraft.scoringEnabled,
-            ready: draftGroupsAssigned && (!competitionId || pointsReady(configDraft.pointsTotal ?? 0)),
+            // The points term does not lock a game that will ASK instead (#1668).
+            ready: draftGroupsAssigned && (!competitionId || wouldAskSideGame() || pointsReady(configDraft.pointsTotal ?? 0)),
             blockedReason: !draftGroupsAssigned
               ? "Add at least one group before enabling scoring"
-              : competitionId && !pointsReady(configDraft.pointsTotal ?? 0)
+              : competitionId && !wouldAskSideGame() && !pointsReady(configDraft.pointsTotal ?? 0)
                 ? "Set a point value before enabling scoring"
                 : null,
-            onEnable: () => setScoringDraft(true),
-            onDisable: () => setScoringDraft(false),
+            onEnable: handleEnable,
+            onDisable: handleDisable,
             pending: saving,
             staged: configDraft.scoringEnabled !== scoringEnabled,
           }}
