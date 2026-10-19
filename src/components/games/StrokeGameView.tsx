@@ -70,9 +70,10 @@ import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
-import { placementPayout } from "@/lib/finalizePayout";
+import { placementAward } from "@/lib/finalizeAward";
 import { effectiveDistribution } from "@/lib/pointsDistribution";
-import { FinalizePayoutSummary } from "./FinalizePayoutSummary";
+import { AWARD_WORD } from "@/lib/vocabulary";
+import { FinalizeAwardSummary } from "./FinalizeAwardSummary";
 import { PickemFinalizePrompt } from "./pickem/PickemFinalizePrompt";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
@@ -973,7 +974,7 @@ export function StrokeGameView() {
     return m;
   }, [assignQ.data]);
   // Computed once, UNGATED: the board's team-totals section shows it when the
-  // board is set to team totals, and the finalize payout (#1639) reads it
+  // board is set to team totals, and the finalize award (#1639) reads it
   // whatever the board shows, because finalize banks these rows either way.
   const teamStandings = useMemo(() => {
     const started = new Set(leaderboardRows.filter((r) => r.started).map((r) => r.entityId));
@@ -1011,23 +1012,23 @@ export function StrokeGameView() {
     correctionsOpen: strokeCorrectionsOpen,
   });
 
-  // What finalize will pay, shown beside "Save results" (#1639): the cup's own
+  // What finalize will award, shown beside "Save results" (#1639): the cup's own
   // placement over the SAME team rows finalize banks. A team cup only for now;
   // a teamless race ranks people, and comes with the other formats.
   const strokeGame = gameQ.data as { competition_id?: string | null; points_total?: number | null; points_distribution?: PointsDistribution | null } | undefined;
-  const payoutTeams = useMemo(
+  const awardTeams = useMemo(
     () => (teamsQ.data ?? []) as { id: string; name: string; color: string }[],
     [teamsQ.data]
   );
-  const finalizePayout = useMemo(() => {
-    if (!strokeGame?.competition_id || payoutTeams.length === 0) return null;
+  const finalizeAward = useMemo(() => {
+    if (!strokeGame?.competition_id || awardTeams.length === 0) return null;
     const values = effectiveDistribution(strokeGame.points_distribution ?? null, strokeGame.points_total ?? null);
     if (values.length === 0) return null;
-    return placementPayout(values, teamStandings.map((t) => ({ unitId: t.teamId, position: t.position })));
-  }, [strokeGame?.competition_id, strokeGame?.points_distribution, strokeGame?.points_total, payoutTeams.length, teamStandings]);
-  const payoutUnits = useMemo(
-    () => new Map(payoutTeams.map((t) => [t.id, { name: t.name, color: t.color }])),
-    [payoutTeams]
+    return placementAward(values, teamStandings.map((t) => ({ unitId: t.teamId, position: t.position })));
+  }, [strokeGame?.competition_id, strokeGame?.points_distribution, strokeGame?.points_total, awardTeams.length, teamStandings]);
+  const awardUnits = useMemo(
+    () => new Map(awardTeams.map((t) => [t.id, { name: t.name, color: t.color }])),
+    [awardTeams]
   );
   const strokeCanFinalize = gameLifecycle({
     canEdit,
@@ -1035,7 +1036,7 @@ export function StrokeGameView() {
     correctionsOpen: strokeCorrectionsOpen,
     allComplete: allGroupsComplete,
   }).canFinalize;
-  const [confirmPaysNothing, setConfirmPaysNothing] = useState(false);
+  const [confirmAwardsNothing, setConfirmAwardsNothing] = useState(false);
 
   // The groupings list rows (FoursomeEntry) — thru = the group's furthest hole; started = any.
   const groupViews = useMemo<FoursomeGroupView[]>(
@@ -1665,10 +1666,10 @@ export function StrokeGameView() {
             not disabled); finalize only once every group is complete (all
             players, all holes, live over the current group set — a
             mid-round-added group re-blocks it). Never on a group's entry page. */}
-        {/* What finalize will pay (#1639). Beside the button, no extra step:
+        {/* What finalize will award (#1639). Beside the button, no extra step:
             finalize keeps its bare CTA. Shown only when the button is. */}
-        {strokeCanFinalize && finalizePayout && (
-          <FinalizePayoutSummary payout={finalizePayout} units={payoutUnits} unitWord={{ one: "team", many: "teams", none: "no team" }} />
+        {strokeCanFinalize && finalizeAward && (
+          <FinalizeAwardSummary award={finalizeAward} units={awardUnits} unitWord={{ one: "team", many: "teams", none: "no team" }} />
         )}
         <GameLifecycleActions
           canEdit={canEdit}
@@ -1678,24 +1679,24 @@ export function StrokeGameView() {
           relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
-          // A game that pays nothing still finishes, but asks first (#1639). On
-          // stroke the button shows only once every player is thru every hole,
-          // so a zero payout here always means the field played and nobody in
-          // it is on a team; the title says that, not "nothing was played".
-          onFinalize={finalizePayout?.paysNothing ? () => setConfirmPaysNothing(true) : handleFinish}
+          // A game that awards nothing still finishes, but asks first (#1639):
+          // the backstop behind the go-live prompt. On stroke the button shows
+          // only once every player is thru every hole, so a zero award here
+          // means the field played and nobody in it is on a team.
+          onFinalize={finalizeAward?.awardsNothing ? () => setConfirmAwardsNothing(true) : handleFinish}
           onCorrect={handleCorrect}
         />
-        {confirmPaysNothing && (
+        {confirmAwardsNothing && (
           <PickemFinalizePrompt
-            title="This game pays no points — nobody who played is on a team."
+            title={AWARD_WORD.none}
             confirmLabel="Finish anyway"
             cancelLabel="Cancel"
             pending={finalizePending}
             onConfirm={() => {
-              setConfirmPaysNothing(false);
+              setConfirmAwardsNothing(false);
               void handleFinish();
             }}
-            onCancel={() => setConfirmPaysNothing(false)}
+            onCancel={() => setConfirmAwardsNothing(false)}
           />
         )}
       </div>

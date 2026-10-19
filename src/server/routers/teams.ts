@@ -309,7 +309,7 @@ export const teamsRouter = router({
               const one = names.length === 1;
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `${names.join(", ")} ${one ? "pays" : "pay"} more places than ${remaining} ${remaining === 1 ? "team" : "teams"} can finish in. Shorten ${one ? "its" : "their"} points split first, or keep this team.`,
+                message: `${names.join(", ")} ${one ? "awards" : "award"} points to more places than ${remaining} ${remaining === 1 ? "team" : "teams"} can finish in. Shorten ${one ? "its" : "their"} points split first, or keep this team.`,
               });
             }
           }
@@ -327,7 +327,7 @@ export const teamsRouter = router({
             const names = blocking.map((g) => (g.name as string | null)?.trim() || "an unnamed game").join(", ");
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Without teams this tournament is played as individuals, and ${names} pays teams. Remove ${blocking.length === 1 ? "that game" : "those games"} first, or keep a team.`,
+              message: `Without teams this tournament is played as individuals, and ${names} awards points to teams. Remove ${blocking.length === 1 ? "that game" : "those games"} first, or keep a team.`,
             });
           }
         }

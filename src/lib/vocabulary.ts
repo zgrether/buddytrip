@@ -219,3 +219,21 @@ export const SIDE_GAME_WORD = "Side game";
 
 /** A bracket entrant who left the draw after it was built. */
 export const WITHDREW_WORD = "Withdrew";
+
+// ── Points ────────────────────────────────────────────────────────────────────
+
+/**
+ * Points are AWARDED, never paid (Zach, 2026-10-19, the #1668 look). "Pay" and
+ * "payout" are money words, and this app has real money in it (expenses), so
+ * points borrowing them blurs the one place where money is meant. The guard
+ * fails on a pay word in copy outside the files where it means money.
+ *
+ * `label` heads what a game will award at finalize, `unawarded` totals the
+ * places nobody can fill, and `none` is the finish confirm every format shows
+ * before a game that awards nothing.
+ */
+export const AWARD_WORD = {
+  label: "Points",
+  unawarded: "Not awarded",
+  none: "This game awards no points.",
+} as const;

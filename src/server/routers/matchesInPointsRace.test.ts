@@ -164,7 +164,7 @@ describe("PR 5 — a head-to-head game in a three-team points race credits only 
 
 describe("PR 5 — a side must resolve to one unit, until split payouts exist", () => {
   const TAIL =
-    " aren't on the same team. Until split payouts are supported, each side of a match has to be one team's players — pair teammates, or play them as singles.";
+    " aren't on the same team. Until a side's points can be split between teams, each side of a match has to be one team's players — pair teammates, or play them as singles.";
 
   it("matches.setPairings refuses a pair from two teams, naming them", async () => {
     const game = (await ctx.caller().games.create({ tripId, gameTypeId: MATCH_PLAY, name: "Split via setPairings", competitionId: race })) as { id: string };

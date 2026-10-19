@@ -1,52 +1,54 @@
 "use client";
 
-import type { FinalizePayout } from "@/lib/finalizePayout";
+import type { FinalizeAward } from "@/lib/finalizeAward";
+import { AWARD_WORD } from "@/lib/vocabulary";
 import { ordinalShort, fmtValue } from "@/components/competition/CompetitionGamesPanel";
 
 /**
- * What a game will pay, shown beside "Save results" before it is final
- * (#1639): each finisher's points, then any share of the split that no
- * finisher can occupy, with its reason.
+ * What a game will award, shown beside "Save results" before it is final
+ * (#1639): each finisher's points, then any place in the split that no
+ * finisher can occupy, with its reason. Points are awarded, never paid
+ * (`AWARD_WORD`).
  *
- * Persistence-agnostic (CLAUDE.md #7): the view computes the payout with
- * `src/lib/finalizePayout.ts` and passes it in with the names to show. No
+ * Persistence-agnostic (CLAUDE.md #7): the view computes the award with
+ * `src/lib/finalizeAward.ts` and passes it in with the names to show. No
  * confirm step: the summary sits next to the existing button, so finalize keeps
  * the bare CTA it has always had (Zach, 2026-10-19).
  */
 
 const pts = (n: number) => `${fmtValue(n)} ${n === 1 ? "pt" : "pts"}`;
 
-export function FinalizePayoutSummary({
-  payout,
+export function FinalizeAwardSummary({
+  award,
   units,
   unitWord,
 }: {
-  payout: FinalizePayout;
-  /** id → display, for every unit that can appear in `payout.lines`. */
+  award: FinalizeAward;
+  /** id → display, for every unit that can appear in `award.lines`. */
   units: Map<string, { name: string; color?: string | null }>;
-  /** What a finisher is, for the unpaid reason: "only 2 teams finished", and
+  /** What a finisher is, for the unawarded reason: "only 2 teams finished", and
    *  when there are none, "no team finished". A stroke round can be played
    *  in full by people on no team, so for teams "nobody finished" is false. */
   unitWord: { one: string; many: string; none: string };
 }) {
-  const unpaidTotal = payout.unpaid.reduce((sum, u) => sum + u.points, 0);
+  const unawardedTotal = award.unawarded.reduce((sum, u) => sum + u.points, 0);
   return (
     <div
       className="rounded-xl border px-3 py-2.5"
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
-      data-testid="finalize-payout"
+      data-testid="finalize-award"
     >
       <div
         className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider"
         style={{ color: "var(--color-bt-text-dim)" }}
       >
-        Payout
+        {AWARD_WORD.label}
       </div>
 
-      {payout.lines.map((l) => {
+      {award.lines.map((l) => {
         const u = units.get(l.unitId);
         return (
-          <div key={l.unitId} className="flex items-center gap-2.5 py-1" data-testid={`finalize-payout-row-${l.unitId}`}>
+          <div key={l.unitId} className="flex items-center gap-2.5 py-1" data-testid={`finalize-award-row-${l.unitId}`}>
             <span className="w-7 flex-shrink-0 text-[13px] font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
               {ordinalShort(l.place)}
             </span>
@@ -59,7 +61,7 @@ export function FinalizePayoutSummary({
             <span
               className="text-[13px] font-bold tabular-nums"
               style={{ color: "var(--color-bt-text)" }}
-              data-testid={`finalize-payout-points-${l.unitId}`}
+              data-testid={`finalize-award-points-${l.unitId}`}
             >
               {pts(l.points)}
             </span>
@@ -67,21 +69,21 @@ export function FinalizePayoutSummary({
         );
       })}
 
-      {payout.unpaid.length > 0 && (
+      {award.unawarded.length > 0 && (
         <div
           className="mt-1 pt-1.5"
           style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
-          data-testid="finalize-payout-unpaid"
+          data-testid="finalize-award-unawarded"
         >
           <div className="flex items-center gap-2.5 py-0.5">
             <span className="min-w-0 flex-1 text-[13px] font-semibold" style={{ color: "var(--color-bt-text-dim)" }}>
-              Not paid
+              {AWARD_WORD.unawarded}
             </span>
             <span className="text-[13px] font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
-              {pts(unpaidTotal)}
+              {pts(unawardedTotal)}
             </span>
           </div>
-          {payout.unpaid.map((u) => (
+          {award.unawarded.map((u) => (
             <p key={u.place} className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
               {ordinalShort(u.place)} place:{" "}
               {u.finishers === 0
