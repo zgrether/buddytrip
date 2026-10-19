@@ -219,3 +219,11 @@ export const SIDE_GAME_WORD = "Side game";
 
 /** A bracket entrant who left the draw after it was built. */
 export const WITHDREW_WORD = "Withdrew";
+
+/**
+ * Someone on the trip who is on no team of this cup (PR 9b; stroke and skins
+ * groupings since the #1668 look). One phrase for the one state: builders,
+ * groupings and their boards. The Rosters screen still says "Unassigned
+ * crew" for the same pool, and is not yet moved.
+ */
+export const NOT_ON_A_TEAM_WORD = "Not on a team";
