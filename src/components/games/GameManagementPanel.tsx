@@ -39,6 +39,7 @@ export function GameManagementPanel({
   onDisable,
   pending = false,
   staged = false,
+  leavingCompetition = false,
   blockedReason,
 }: {
   /** Current game mode — `scoring` once scoring is enabled, else `setup`. */
@@ -55,6 +56,10 @@ export function GameManagementPanel({
    *  subtitle says what's actually true and what Save will do. Self-persisting hosts
    *  (stroke/rack/non-golf) omit this → never staged → the plain on/off subtitle. */
   staged?: boolean;
+  /** The staged go-live also takes the game out of its competition (Play it as a
+   *  side game, #1668 look). The subtitle says so, because that is what Save will
+   *  do, and nothing else on the page shows it until it has. */
+  leavingCompetition?: boolean;
   /** WHY the Scoring segment is locked (`ready` is false) — e.g. "Set a point value
    *  before enabling scoring." Rendered adjacent to the toggle, not a toast: a disabled
    *  control with no stated reason is its own bug (#703's illegible-state family).
@@ -69,7 +74,9 @@ export function GameManagementPanel({
   // what's still true on the server AND the pending Save.
   const subtitle = staged
     ? isScoring
-      ? "Not live — Save to enable scoring"
+      ? leavingCompetition
+        ? "Not live — Save to play it as a side game"
+        : "Not live — Save to enable scoring"
       : "Live now — Save to disable scoring"
     : isScoring
       ? "Game is live — scoring enabled"

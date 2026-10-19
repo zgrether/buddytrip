@@ -1418,6 +1418,8 @@ export function StrokeGameView() {
             onDisable: handleDisable,
             pending: saving,
             staged: configDraft.scoringEnabled !== scoringEnabled,
+            // The same answer the payload reads, so the line and the save agree.
+            leavingCompetition: "leaveCompetition" in leaveCompetitionKey({ chosen: leaveChosen, draftScoring: configDraft.scoringEnabled, savedScoring: scoringEnabled }),
           }}
           // GROUP SETTINGS order (item 5): Groupings → Point Distribution → Handicaps —
           // distribution divides across the groups, so Groupings leads (dependency order).

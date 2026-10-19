@@ -748,6 +748,8 @@ export function SkinsGameView() {
             onDisable: handleDisable,
             pending: saving,
             staged: configDraft.scoringEnabled !== scoringEnabled,
+            // The same answer the payload reads, so the line and the save agree.
+            leavingCompetition: "leaveCompetition" in leaveCompetitionKey({ chosen: leaveChosen, draftScoring: configDraft.scoringEnabled, savedScoring: scoringEnabled }),
           }}
           settingsRows={
             <>
