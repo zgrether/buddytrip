@@ -69,7 +69,11 @@ import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
-import { gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
+import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
+import { placementPayout } from "@/lib/finalizePayout";
+import { effectiveDistribution } from "@/lib/pointsDistribution";
+import { FinalizePayoutSummary } from "./FinalizePayoutSummary";
+import { PickemFinalizePrompt } from "./pickem/PickemFinalizePrompt";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
@@ -968,8 +972,10 @@ export function StrokeGameView() {
     for (const a of (assignQ.data ?? []) as { user_id: string; team_id: string }[]) m[a.user_id] = a.team_id;
     return m;
   }, [assignQ.data]);
-  const teamTotalRows = useMemo(() => {
-    if (boardRollUp !== "team_totals") return [];
+  // Computed once, UNGATED: the board's team-totals section shows it when the
+  // board is set to team totals, and the finalize payout (#1639) reads it
+  // whatever the board shows, because finalize banks these rows either way.
+  const teamStandings = useMemo(() => {
     const started = new Set(leaderboardRows.filter((r) => r.started).map((r) => r.entityId));
     if (started.size === 0) return [];
     const startedEntries = netLeaderboardEntries.filter((e) => started.has(e.participant_id));
@@ -983,7 +989,8 @@ export function StrokeGameView() {
       : startedEntries.map((e) => ({ participant_id: e.participant_id, value: e.value }));
     const standings = computeStrokePlayStandings([...started], scored, { scoring });
     return computeStrokeTeamStandings(standings, teamOfUserId, scoring);
-  }, [boardRollUp, leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId]);
+  }, [leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId]);
+  const teamTotalRows = boardRollUp === "team_totals" ? teamStandings : [];
 
   // Game-level finalize gate (just like rack): every player of the LIVE whole field
   // is thru every hole. Reuses the shipped scoreboard's own rows (no parallel path) —
@@ -1003,6 +1010,32 @@ export function StrokeGameView() {
     status: gameQ.data?.status,
     correctionsOpen: strokeCorrectionsOpen,
   });
+
+  // What finalize will pay, shown beside "Save results" (#1639): the cup's own
+  // placement over the SAME team rows finalize banks. A team cup only for now;
+  // a teamless race ranks people, and comes with the other formats.
+  const strokeGame = gameQ.data as { competition_id?: string | null; points_total?: number | null; points_distribution?: PointsDistribution | null } | undefined;
+  const payoutTeams = useMemo(
+    () => (teamsQ.data ?? []) as { id: string; name: string; color: string }[],
+    [teamsQ.data]
+  );
+  const finalizePayout = useMemo(() => {
+    if (!strokeGame?.competition_id || payoutTeams.length === 0) return null;
+    const values = effectiveDistribution(strokeGame.points_distribution ?? null, strokeGame.points_total ?? null);
+    if (values.length === 0) return null;
+    return placementPayout(values, teamStandings.map((t) => ({ unitId: t.teamId, position: t.position })));
+  }, [strokeGame?.competition_id, strokeGame?.points_distribution, strokeGame?.points_total, payoutTeams.length, teamStandings]);
+  const payoutUnits = useMemo(
+    () => new Map(payoutTeams.map((t) => [t.id, { name: t.name, color: t.color }])),
+    [payoutTeams]
+  );
+  const strokeCanFinalize = gameLifecycle({
+    canEdit,
+    status: gameQ.data?.status ?? null,
+    correctionsOpen: strokeCorrectionsOpen,
+    allComplete: allGroupsComplete,
+  }).canFinalize;
+  const [confirmPaysNothing, setConfirmPaysNothing] = useState(false);
 
   // The groupings list rows (FoursomeEntry) — thru = the group's furthest hole; started = any.
   const groupViews = useMemo<FoursomeGroupView[]>(
@@ -1632,6 +1665,11 @@ export function StrokeGameView() {
             not disabled); finalize only once every group is complete (all
             players, all holes, live over the current group set — a
             mid-round-added group re-blocks it). Never on a group's entry page. */}
+        {/* What finalize will pay (#1639). Beside the button, no extra step:
+            finalize keeps its bare CTA. Shown only when the button is. */}
+        {strokeCanFinalize && finalizePayout && (
+          <FinalizePayoutSummary payout={finalizePayout} units={payoutUnits} unitWord={{ one: "team", many: "teams" }} />
+        )}
         <GameLifecycleActions
           canEdit={canEdit}
           status={gameQ.data?.status ?? null}
@@ -1640,9 +1678,23 @@ export function StrokeGameView() {
           relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
-          onFinalize={handleFinish}
+          // A game that pays nothing still finishes, but asks first (#1639).
+          onFinalize={finalizePayout?.paysNothing ? () => setConfirmPaysNothing(true) : handleFinish}
           onCorrect={handleCorrect}
         />
+        {confirmPaysNothing && (
+          <PickemFinalizePrompt
+            title="This game pays no points — nothing was played."
+            confirmLabel="Finish anyway"
+            cancelLabel="Cancel"
+            pending={finalizePending}
+            onConfirm={() => {
+              setConfirmPaysNothing(false);
+              void handleFinish();
+            }}
+            onCancel={() => setConfirmPaysNothing(false)}
+          />
+        )}
       </div>
     );
   }
