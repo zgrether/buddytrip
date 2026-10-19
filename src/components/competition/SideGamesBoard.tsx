@@ -7,6 +7,7 @@ import { SIDE_BOARD_QUERY } from "@/lib/queryConfig";
 import { COMPETITION_UMBRELLA } from "@/lib/vocabulary";
 import { useVisibleEnabled } from "@/lib/surfaceVisibility";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
+import { listStateOf } from "@/lib/listState";
 import { GamesSection, useGameRowContext, type LBGame, type LBCell } from "./CompetitionLeaderboard";
 
 /**
@@ -35,7 +36,7 @@ export function SideGamesBoard({
   // Live: a side game broadcasts on its TRIP (migration 196, #1498), so a score
   // entered on another phone moves this page without a save, a reload or the poll.
   useRealtimeScoreEvents(tripId, null);
-  const { data: rows, isLoading, isError, refetch } = trpc.games.sideBoard.useQuery(
+  const boardQuery = trpc.games.sideBoard.useQuery(
     { tripId },
     { ...SIDE_BOARD_QUERY, enabled: useVisibleEnabled(true) }
   );
@@ -45,17 +46,21 @@ export function SideGamesBoard({
     isOwner,
   });
   const noCells = useMemo(() => new Map<string, Map<string, LBCell>>(), []);
+  // One order for loading / error / empty / list (#1616, `listState.ts`).
+  const board = listStateOf(boardQuery);
 
   return (
     <div className="space-y-3" data-testid="games-page">
       {canEdit && <StartCompetitionCard onStart={onStartCompetition} />}
-      {!rows && isError ? (
-        <GamesLoadError onRetry={() => void refetch()} />
-      ) : !rows && isLoading ? (
+      {board.kind === "error" ? (
+        <GamesLoadError onRetry={board.retry} />
+      ) : board.kind === "loading" ? (
         <GamesLoading />
       ) : (
+        // Empty and ready both render the section: its own empty state is the
+        // "no games yet" call to action.
         <GamesSection
-          games={(rows ?? []) as LBGame[]}
+          games={board.data as LBGame[]}
           teams={[]}
           cellsByGame={noCells}
           projections={{}}
