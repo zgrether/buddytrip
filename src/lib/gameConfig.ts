@@ -51,7 +51,8 @@ export type PlacementState =
  * those are different things per source ("add teams" is useless advice for a
  * bracket, whose place count comes from its own shape).
  */
-export type PlaceCapacitySource = "teams" | "bracket";
+// `people`: a teamless race (#1639), whose finishers are the people playing.
+export type PlaceCapacitySource = "teams" | "bracket" | "people";
 
 /**
  * How many places this game can distribute across, and what decides it.
@@ -204,6 +205,13 @@ export function placementRefusalMessage(v: PlacementValidation): string | null {
         `${v.places} places configured, ${n} ${n === 1 ? "entrant" : "entrants"} in this bracket — ` +
         `remove places until there are at most ${n}, or add entrants. ` +
         `Places past the last entrant are never awarded.`
+      );
+    }
+    if (v.capacity.source === "people") {
+      return (
+        `${v.places} places configured, ${n} ${n === 1 ? "person" : "people"} playing — ` +
+        `remove places until there are at most ${n}, or add players. ` +
+        `Places past the last finisher are never awarded.`
       );
     }
     return (
