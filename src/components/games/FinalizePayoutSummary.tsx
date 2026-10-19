@@ -24,8 +24,10 @@ export function FinalizePayoutSummary({
   payout: FinalizePayout;
   /** id → display, for every unit that can appear in `payout.lines`. */
   units: Map<string, { name: string; color?: string | null }>;
-  /** What a finisher is, for the unpaid reason: "only 2 teams finished". */
-  unitWord: { one: string; many: string };
+  /** What a finisher is, for the unpaid reason: "only 2 teams finished", and
+   *  when there are none, "no team finished". A stroke round can be played
+   *  in full by people on no team, so for teams "nobody finished" is false. */
+  unitWord: { one: string; many: string; none: string };
 }) {
   const unpaidTotal = payout.unpaid.reduce((sum, u) => sum + u.points, 0);
   return (
@@ -83,7 +85,7 @@ export function FinalizePayoutSummary({
             <p key={u.place} className="text-[12px]" style={{ color: "var(--color-bt-text-dim)" }}>
               {ordinalShort(u.place)} place:{" "}
               {u.finishers === 0
-                ? "nobody finished"
+                ? `${unitWord.none} finished`
                 : `only ${u.finishers} ${u.finishers === 1 ? unitWord.one : unitWord.many} finished`}
             </p>
           ))}

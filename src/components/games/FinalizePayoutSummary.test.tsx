@@ -13,7 +13,7 @@ const units = new Map([
   ["A", { name: "Alpha", color: "#f00" }],
   ["B", { name: "Bravo", color: "#00f" }],
 ]);
-const teams = { one: "team", many: "teams" };
+const teams = { one: "team", many: "teams", none: "no team" };
 
 function rowText(html: string, testId: string): string {
   const at = html.indexOf(`data-testid="${testId}"`);
@@ -42,10 +42,17 @@ describe("FinalizePayoutSummary", () => {
     expect(unpaid).toContain("3rd place: only 2 teams finished");
   });
 
-  it("says 'nobody finished' rather than 'only 0 teams'", () => {
+  it("says 'no team finished' rather than 'only 0 teams'", () => {
     const html = renderToStaticMarkup(<FinalizePayoutSummary payout={placementPayout([5], [])} units={units} unitWord={teams} />);
-    expect(html).toContain("1st place: nobody finished");
+    expect(html).toContain("1st place: no team finished");
     expect(html).not.toContain("only 0");
+  });
+
+  it("a race of people says 'nobody finished'", () => {
+    const html = renderToStaticMarkup(
+      <FinalizePayoutSummary payout={placementPayout([5], [])} units={units} unitWord={{ one: "player", many: "players", none: "nobody" }} />
+    );
+    expect(html).toContain("1st place: nobody finished");
   });
 
   it("writes a half point as ½", () => {

@@ -1668,7 +1668,7 @@ export function StrokeGameView() {
         {/* What finalize will pay (#1639). Beside the button, no extra step:
             finalize keeps its bare CTA. Shown only when the button is. */}
         {strokeCanFinalize && finalizePayout && (
-          <FinalizePayoutSummary payout={finalizePayout} units={payoutUnits} unitWord={{ one: "team", many: "teams" }} />
+          <FinalizePayoutSummary payout={finalizePayout} units={payoutUnits} unitWord={{ one: "team", many: "teams", none: "no team" }} />
         )}
         <GameLifecycleActions
           canEdit={canEdit}
@@ -1678,13 +1678,16 @@ export function StrokeGameView() {
           relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
-          // A game that pays nothing still finishes, but asks first (#1639).
+          // A game that pays nothing still finishes, but asks first (#1639). On
+          // stroke the button shows only once every player is thru every hole,
+          // so a zero payout here always means the field played and nobody in
+          // it is on a team; the title says that, not "nothing was played".
           onFinalize={finalizePayout?.paysNothing ? () => setConfirmPaysNothing(true) : handleFinish}
           onCorrect={handleCorrect}
         />
         {confirmPaysNothing && (
           <PickemFinalizePrompt
-            title="This game pays no points — nothing was played."
+            title="This game pays no points — nobody who played is on a team."
             confirmLabel="Finish anyway"
             cancelLabel="Cancel"
             pending={finalizePending}
