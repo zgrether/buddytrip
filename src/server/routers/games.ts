@@ -1191,9 +1191,11 @@ export const gamesRouter = router({
         const capacity = await finishPlaceCapacity(ctx.supabase, ctx.tripId!, input.gameId);
         const check = validatePlacement(Number(game.points_total ?? 0), split.values, capacity);
         if (check.state === "too_many_places") {
+          // The two numbers are the whole diagnosis, and settings is the one
+          // place to fix it (copy trimmed in review, #1667).
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: `${placementRefusalMessage(check)} Change the split in this game's settings, then save results.`,
+            message: `This split pays ${check.places} places, but only ${check.capacity.count} can finish. Change it in settings.`,
           });
         }
       }

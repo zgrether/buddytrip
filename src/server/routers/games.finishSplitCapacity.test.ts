@@ -53,24 +53,22 @@ async function setSplit(gameId: string, values: number[]) {
 const statusOf = async (gameId: string) => (await ctx.admin.from("games").select("status").eq("id", gameId).single()).data?.status;
 
 describe("games.finish refuses a split nobody can fill (#1639)", () => {
-  it("a TEAMLESS race: 5 places over 3 people is refused, naming people and where to change it", async () => {
+  it("a TEAMLESS race: 5 places over 3 people is refused", async () => {
     const { tripId, gameId } = await skinsGame("teamless over", []);
     await setSplit(gameId, [5, 4, 3, 2, 1]);
     await expect(ctx.caller().games.finish({ tripId, gameId })).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",
-      message:
-        "5 places configured, 3 people playing — remove places until there are at most 3, or add players. " +
-        "Places past the last finisher are never awarded. Change the split in this game's settings, then save results.",
+      message: "This split pays 5 places, but only 3 can finish. Change it in settings.",
     });
     expect(await statusOf(gameId)).not.toBe("complete");
   }, 60_000);
 
-  it("a TEAM cup: 3 places over 2 teams is refused, in the teams wording", async () => {
+  it("a TEAM cup: 3 places over 2 teams is refused", async () => {
     const { tripId, gameId } = await skinsGame("team over", ["Alpha", "Bravo"]);
     await setSplit(gameId, [5, 3, 1]);
     await expect(ctx.caller().games.finish({ tripId, gameId })).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",
-      message: expect.stringContaining("3 places configured, 2 teams in this tournament"),
+      message: "This split pays 3 places, but only 2 can finish. Change it in settings.",
     });
     expect(await statusOf(gameId)).not.toBe("complete");
   }, 60_000);

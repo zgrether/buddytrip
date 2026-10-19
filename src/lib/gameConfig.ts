@@ -207,13 +207,6 @@ export function placementRefusalMessage(v: PlacementValidation): string | null {
         `Places past the last entrant are never awarded.`
       );
     }
-    if (v.capacity.source === "people") {
-      return (
-        `${v.places} places configured, ${n} ${n === 1 ? "person" : "people"} playing — ` +
-        `remove places until there are at most ${n}, or add players. ` +
-        `Places past the last finisher are never awarded.`
-      );
-    }
     return (
       `${v.places} places configured, ${n} ${n === 1 ? "team" : "teams"} in this tournament — ` +
       `remove places until there are at most ${n}, or add teams. ` +
