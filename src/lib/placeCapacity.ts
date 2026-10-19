@@ -66,6 +66,18 @@ export function bracketPlaceCapacity(entrantCount: number | null | undefined): P
 }
 
 /**
+ * A teamless race's ceiling is the number of PEOPLE playing (#1639). Its
+ * standings rank people, so a place past the last person is never awarded,
+ * exactly as a place past the last team is in a team cup.
+ *
+ * Null at zero: nobody has been added yet, which is incomplete, not wrong.
+ */
+export function peoplePlaceCapacity(peopleCount: number | null | undefined): PlaceCapacity {
+  const n = peopleCount ?? null;
+  return { count: n != null && n >= 1 ? n : null, source: "people" };
+}
+
+/**
  * The capacity for a game, given what is known about it.
  *
  * `entrantCount` is present only for a bracket; every other format falls through

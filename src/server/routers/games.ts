@@ -22,7 +22,7 @@ import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
 import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
-import { isPlacement, liveMatchPointsPerMatch, awardsPerMatch } from "@/lib/pointsDistribution";
+import { isPlacement, liveMatchPointsPerMatch, awardsPerMatch, type PointsDistribution } from "@/lib/pointsDistribution";
 import { GAME_TYPES, canBeSideGame, canPlayInTeamlessRace, gameTypesForTeamlessRace, getGameTypeDefinition, formatRefusalForScoringModel, type ScoringModel } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
 import { assertGameReady } from "../lib/gameReadiness";
@@ -35,7 +35,7 @@ import {
 } from "../lib/gameFinishNotify";
 import { afterResponse } from "../lib/afterResponse";
 import { computeConfigHash } from "@/lib/configHash";
-import { bracketPlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
+import { bracketPlaceCapacity, peoplePlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
 import { BRACKET_SIDES, type BracketDrawMatch } from "@/lib/bracket";
 import { matchKey, orphanedByPick, applyPickCascadingWith, type WinnerBySeed } from "@/lib/bracketAdvance";
 import { resolveDoubleDraw } from "@/lib/bracketDoubleAdvance";
@@ -454,6 +454,30 @@ async function placeCapacityForGame(
   );
   if (entrants > 0) return bracketPlaceCapacity(entrants);
   return teamPlaceCapacity(await teamCountForGame(supabase, tripId, gameId));
+}
+
+/**
+ * The finishers a placement split can pay at FINALIZE (#1639): the bracket's
+ * field when there is one, else the cup's teams, else (a teamless race) the
+ * people playing. `placeCapacityForGame` stops at teams, and its 0 never
+ * refuses, which is how a 5-place split over 3 people in a teamless race
+ * saved and then counted places nobody could finish in.
+ *
+ * Every count reads through `countOrThrow`: a failed count must not become
+ * "no ceiling" and wave the split through.
+ */
+async function finishPlaceCapacity(supabase: SupabaseClient, tripId: string, gameId: string): Promise<PlaceCapacity> {
+  const capacity = await placeCapacityForGame(supabase, tripId, gameId);
+  if (capacity.source === "bracket" || (capacity.count ?? 0) > 0) return capacity;
+  const people = countOrThrow(
+    await supabase
+      .from("game_participants")
+      .select("user_id", { count: "exact", head: true })
+      .eq("game_id", gameId)
+      .not("user_id", "is", null),
+    "game's players"
+  );
+  return peoplePlaceCapacity(people);
 }
 
 export const gamesRouter = router({
@@ -1155,6 +1179,25 @@ export const gamesRouter = router({
           code: "INTERNAL_SERVER_ERROR",
           message: `Unknown game type '${game.game_type_id}' — refusing to compute to avoid silent stroke-play scoring`,
         });
+      }
+
+      // A split that cannot be paid at all is refused HERE, before any arm
+      // writes (#1639). Settings already refuse it for team cups and brackets;
+      // finalize is where the split meets the actual finishers, so this also
+      // covers a teamless race (no team ceiling) and a direct save_game_config
+      // call (no capacity check). A side game pays no cup, so it is skipped.
+      if (game.competition_id && isPlacement(game.points_distribution as PointsDistribution | null)) {
+        const split = game.points_distribution as { type: "placement"; values: number[] };
+        const capacity = await finishPlaceCapacity(ctx.supabase, ctx.tripId!, input.gameId);
+        const check = validatePlacement(Number(game.points_total ?? 0), split.values, capacity);
+        if (check.state === "too_many_places") {
+          // The two numbers are the whole diagnosis, and settings is the one
+          // place to fix it (copy trimmed in review, #1667).
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `This split pays ${check.places} places, but only ${check.capacity.count} can finish. Change it in settings.`,
+          });
+        }
       }
 
       // Data-driven branch on the format's result_strategy (CLAUDE.md #8) — new
