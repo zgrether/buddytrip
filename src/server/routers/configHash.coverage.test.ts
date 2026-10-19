@@ -20,7 +20,9 @@ import { canonicalize, computeConfigHash } from "../../lib/configHash";
  *
  * NOT_HASHED reasons (why each is safe to exclude):
  *   • identity / scope / FK: id (where re-minted on clean-replace), game_id, trip_id,
- *     competition_id, schedule_item_id — not config content.
+ *     schedule_item_id — not config content. (`competition_id` was here until
+ *     migration 218 made it writable by a save — Play it as a side game — and so
+ *     hashed: everything the RPC writes is.)
  *   • provenance (re-minted every write — hashing churns the fingerprint): created_at,
  *     granted_by. (The game_delegates churn trap, generalized.)
  *   • score-DERIVED (must never churn the config hash when scores change): game_matches
@@ -42,7 +44,7 @@ const NOT_HASHED: Record<keyof typeof HASH_COLS, string[]> = {
   // game_matches.result: written once, by the finalize path, never by
   // `save_game_config`. Hashing it would move every open settings draft's
   // fingerprint at the moment a game finishes, for a value no setting edits.
-  games: ["id", "trip_id", "competition_id", "scheduled_at", "created_at", "schedule_item_id", "display_order", "credited_roster"],
+  games: ["id", "trip_id", "scheduled_at", "created_at", "schedule_item_id", "display_order", "credited_roster"],
   game_participants: ["id", "game_id", "created_at"],
   play_groups: ["game_id", "created_at"],
   game_matches: ["game_id", "result", "margin", "status", "created_at"],

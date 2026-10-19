@@ -70,7 +70,7 @@ describe("resetGameConfigHash", () => {
  *  these cannot move the fingerprint. Used to keep the over-approximation below
  *  honest about what it is. */
 const UNHASHED_GAME_COLS = [
-  "display_order", "scheduled_at", "schedule_item_id", "competition_id", "trip_id", "created_at", "id",
+  "display_order", "scheduled_at", "schedule_item_id", "trip_id", "created_at", "id",
 ];
 
 /** Every table `readGameConfigHash` folds in besides `games`. */

@@ -60,7 +60,7 @@ import { myDelegateGameIds as computeMyDelegateGameIds } from "@/server/lib/myDe
  * alongside these — see `configHash` below.
  */
 const GAME_CONFIG_COLS =
-  "name, status, game_type_id, config, modifiers, rules_for_today, scorecard_schema, tee_time, points_distribution, points_total, competition_format, scoring_enabled, course_id, back_course_id, corrections_open, pairings_published_at, entry_mode, bracket_config";
+  "name, status, game_type_id, config, modifiers, rules_for_today, scorecard_schema, tee_time, points_distribution, points_total, competition_format, competition_id, scoring_enabled, course_id, back_course_id, corrections_open, pairings_published_at, entry_mode, bracket_config";
 
 /**
  * The columns each hashed table contributes to `readGameConfigHash`, exported so the
@@ -1727,6 +1727,10 @@ export const gamesRouter = router({
           name: z.string().max(200),
           rulesForToday: z.string().nullable(),
           scoringEnabled: z.boolean(),
+          // Play it as a side game (#1668 look, migration 218): this save takes the
+          // game OUT of its competition. Out only, before results, side-capable
+          // formats, Owner/Organizer — every limit is enforced by the RPC.
+          leaveCompetition: z.boolean().optional(),
           // Match play owns these; non-golf omits them (086/P2) — the RPC preserves
           // entry_mode and defaults modifiers to {}.
           entryMode: z.string().optional(),
@@ -2142,6 +2146,10 @@ export const gamesRouter = router({
               detail ||
               "This game already has scores. Reset scores in the game's Danger zone before changing its matchups.",
           });
+        }
+        // 218: the side-game move's refusals carry their own actionable copy.
+        if (msg.includes("SIDE_GAME:")) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: msg.split("SIDE_GAME:")[1]!.trim() });
         }
         if (msg.includes("COURSE_LOCKED")) {
           throw new TRPCError({
