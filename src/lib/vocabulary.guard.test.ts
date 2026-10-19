@@ -12,6 +12,7 @@ import {
   EITHER_COMPETITION,
   GAME_STATE_WORD,
   MATCH_LEVEL_WORD,
+  NOT_ON_A_TEAM_WORD,
   RESULT_WORD,
   PROJECTED_RESULTS,
   RECREDIT_WORD,
@@ -181,6 +182,7 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
     expect(RECREDIT_WORD).toEqual({ action: "Re-credit", by: "Re-credited by" });
     expect(SIDE_GAME_WORD).toBe("Side game");
     expect(WITHDREW_WORD).toBe("Withdrew");
+    expect(NOT_ON_A_TEAM_WORD).toBe("Not on a team");
   });
 
   it("navigation, structure, and the stored margin", () => {
@@ -268,6 +270,7 @@ const DISTINCTIVE: { name: string; re: RegExp }[] = [
   { name: "Cup or Tournament", re: /\bCup or Tournament\b/ },
   { name: "Semi-finals", re: /\bSemi-finals\b/ },
   { name: "Quarter-finals", re: /\bQuarter-finals\b/ },
+  { name: "Not on a team", re: /\bNot on a team\b/ },
 ];
 
 describe("distinctive terms are spelled only in the module", () => {

@@ -68,14 +68,12 @@ import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { Participant } from "@/components/games/types";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 import { gamesPageHref, rostersHref } from "@/lib/gameRoutes";
-import { UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
 import { UnevenTeamsNote } from "@/components/games/UnevenTeamsNote";
 import { useTripRole } from "@/hooks/useTripRole";
 import { isTeamCaptain } from "@/hooks/useCanEditTeam";
 import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
 import { useRosterChangeGate } from "@/components/competition/RosterChangeGate";
-import { builderAddTargets, notOnATeamIds, notOnATeamNote, pairsFromRosters } from "@/lib/builderPool";
-import { NOT_ON_A_TEAM_WORD } from "@/lib/vocabulary";
+import { builderAddTargets, notOnATeamIds, notOnATeamNote, pairsFromRosters, unteamedSection } from "@/lib/builderPool";
 import { NotOnATeamSection } from "@/components/games/NotOnATeam";
 
 const SKINS = "gtt_skins";
@@ -272,16 +270,15 @@ export function SkinsGameView() {
         avatarIcon: avatarOf.get(uid) ?? null,
       });
     }
-    // Everyone on no team gets their own section, as stroke does (#1669): in a
-    // cup with teams they are the people on no team (#1668 look); in a side
-    // game or a teamless race nobody has a team, and they are the crew.
-    // Without it a skins game with no teams offered NOBODY and could never be
-    // grouped.
+    // Everyone on no team gets their own section, as stroke does: without it a
+    // skins game with no teams offered NOBODY and could never be grouped (#1669).
     const sections = [...byTeam.values()].filter((t) => t.players.length > 0);
-    const unassigned = (crew.data ?? [])
-      .filter((c) => c.user_id && !teamOfUser.has(c.user_id))
-      .map((c) => ({ id: c.user_id, name: nameOf.get(c.user_id) ?? "Player", avatarIcon: avatarOf.get(c.user_id) ?? null }));
-    if (unassigned.length) sections.push({ id: UNASSIGNED_TEAM_ID, name: rostersApply ? NOT_ON_A_TEAM_WORD : "Crew", color: "var(--color-bt-text-dim)", players: unassigned });
+    const unteamed = unteamedSection({
+      rostersApply,
+      crew: (crew.data ?? []).filter((c) => c.user_id).map((c) => ({ id: c.user_id, name: nameOf.get(c.user_id) ?? "Player", avatarIcon: avatarOf.get(c.user_id) ?? null })),
+      teamOf: (id) => teamOfUser.get(id),
+    });
+    if (unteamed) sections.push(unteamed);
     return sections;
   }, [teamIds, teamMeta, assignQ.data, nameOf, avatarOf, crew.data, teamOfUser, rostersApply]);
 

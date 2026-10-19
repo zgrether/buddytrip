@@ -37,10 +37,9 @@ import { useTripRole } from "@/hooks/useTripRole";
 import { isTeamCaptain } from "@/hooks/useCanEditTeam";
 import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
 import { useRosterChangeGate } from "@/components/competition/RosterChangeGate";
-import { builderAddTargets, notOnATeamIds, notOnATeamNote, pairsFromRosters } from "@/lib/builderPool";
-import { NOT_ON_A_TEAM_WORD } from "@/lib/vocabulary";
+import { builderAddTargets, notOnATeamIds, notOnATeamNote, pairsFromRosters, unteamedSection } from "@/lib/builderPool";
 import { NotOnATeamSection } from "@/components/games/NotOnATeam";
-import { teamColorByUser, UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
+import { teamColorByUser } from "@/lib/teamRosterColors";
 import { rollUpOf, type StrokeRollUp } from "@/lib/strokeGameConfig";
 import { bottomNavInset } from "@/lib/bottomNavInset";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
@@ -454,12 +453,10 @@ export function StrokeGameView() {
       const players = crewList.filter((c) => teamOfUser.get(c.id) === t.id);
       if (players.length) sections.push({ id: t.id, name: t.name, color: t.color, players });
     }
-    const unassigned = crewList.filter((c) => !teamOfUser.has(c.id));
-    // The sentinel comes from the module that EXCLUDES it, so the producer and
-    // the excluder cannot drift onto two spellings of one string.
-    // In a cup with teams these are the people on no team (#1668 look); in a
-    // side game or a teamless race nobody has a team, and they are the crew.
-    if (unassigned.length) sections.push({ id: UNASSIGNED_TEAM_ID, name: rostersApply ? NOT_ON_A_TEAM_WORD : "Crew", color: "var(--color-bt-text-dim)", players: unassigned });
+    // Everyone on no team: "Not on a team" in a cup with teams, the crew
+    // elsewhere (`unteamedSection`, shared with skins).
+    const unteamed = unteamedSection({ rostersApply, crew: crewList, teamOf: (id) => teamOfUser.get(id) });
+    if (unteamed) sections.push(unteamed);
     return sections;
   }, [teamsQ.data, assignQ.data, crew.data, avatarIconOf, rostersApply]);
 
