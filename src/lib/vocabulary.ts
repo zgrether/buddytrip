@@ -232,6 +232,13 @@ export const WITHDREW_WORD = "Withdrew";
  * places nobody can fill, and `none` is the finish confirm every format shows
  * before a game that awards nothing.
  */
+/**
+ * Skins are WON, or CARRIED OVER to the next hole — never paid, the same rule
+ * as points (Zach, 2026-10-19). A tie on the last hole leaves a pot nobody can
+ * win; every surface that says so says it this way.
+ */
+export const SKINS_DEAD_POT = "Nobody won the last skins.";
+
 export const AWARD_WORD = {
   label: "Points",
   unawarded: "Not awarded",
