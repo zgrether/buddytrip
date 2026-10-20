@@ -1162,6 +1162,7 @@ export function SkinsGameView() {
           finalizeOutcome?.award && (
             <FinalizeAwardSummary
               award={finalizeOutcome.award}
+              kind={teamlessRace ? "person" : "team"}
               units={awardUnits}
               unitWord={teamlessRace ? { one: "player", many: "players", none: "nobody" } : { one: "team", many: "teams", none: "no team" }}
             />
