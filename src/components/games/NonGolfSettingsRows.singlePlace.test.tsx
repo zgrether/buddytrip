@@ -105,7 +105,7 @@ describe("the row says a split has too many places, once, while it applies (#167
     expect(row).toContain("Custom placement split");
   });
 
-  it("the warning wraps rather than being cut off (it is 2px too long for a 375px phone)", () => {
+  it("the warning wraps rather than being cut off (a two-digit count or \"entrants\" can outgrow a 375px row)", () => {
     // The subtitle span is truncate-by-default; anchored on its own font size,
     // which no other span in the row carries.
     expect(subtitle(draft(THREE))).not.toContain('<span class="truncate" style="font-size:12.5px');
