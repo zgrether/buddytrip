@@ -24,7 +24,6 @@ export function FinalizeAwardSummary({
   kind,
   units,
   unitWord,
-  only,
 }: {
   award: FinalizeAward;
   /** What is being awarded. TEAMS carry their colour mark and a semibold name;
@@ -38,29 +37,21 @@ export function FinalizeAwardSummary({
    *  when there are none, "no team finished". A stroke round can be played
    *  in full by people on no team, so for teams "nobody finished" is false. */
   unitWord: { one: string; many: string; none: string };
-  /** "unawarded": the places no finisher can fill, and nothing else. For a
-   *  format whose header already shows each team's projected points (Zach,
-   *  #1639 c): a second list of the same numbers beside the button is the
-   *  header said twice. Renders nothing when every place can be filled. */
-  only?: "unawarded";
 }) {
   const unawardedTotal = award.unawarded.reduce((sum, u) => sum + u.points, 0);
-  if (only === "unawarded" && award.unawarded.length === 0) return null;
-  const lines = only === "unawarded" ? [] : kind === "person" ? award.lines.filter((l) => l.points > 0) : award.lines;
+  const lines = kind === "person" ? award.lines.filter((l) => l.points > 0) : award.lines;
   return (
     <div
       className="rounded-xl border px-3 py-2.5"
       style={{ background: "var(--color-bt-card)", borderColor: "var(--color-bt-border)" }}
       data-testid="finalize-award"
     >
-      {lines.length > 0 && (
-        <div
-          className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider"
-          style={{ color: "var(--color-bt-text-dim)" }}
-        >
-          {AWARD_WORD.label}
-        </div>
-      )}
+      <div
+        className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--color-bt-text-dim)" }}
+      >
+        {AWARD_WORD.label}
+      </div>
 
       {lines.map((l) => {
         const u = units.get(l.unitId);
@@ -91,8 +82,8 @@ export function FinalizeAwardSummary({
 
       {award.unawarded.length > 0 && (
         <div
-          className={lines.length > 0 ? "mt-1 pt-1.5" : undefined}
-          style={lines.length > 0 ? { borderTop: "1px solid var(--color-bt-subtle-border)" } : undefined}
+          className="mt-1 pt-1.5"
+          style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
           data-testid="finalize-award-unawarded"
         >
           <div className="flex items-center gap-2.5 py-0.5">

@@ -249,13 +249,13 @@ describe("finalizeSplitRefusal — finalize's question, asked by the game screen
   const split = (values: number[]) => ({ type: "placement" as const, values });
 
   it("a 3-place split in a cup with two teams: refused, in #1667's words", () => {
-    expect(finalizeSplitRefusal({ distribution: split([5, 3, 1]), pointsTotal: 9, capacity: teamPlaceCapacity(2) })).toBe(
+    expect(finalizeSplitRefusal({ distribution: split([5, 3, 1]), pointsTotal: 9, capacity: teamPlaceCapacity(2) })?.text).toBe(
       "This split awards points to 3 places, but only 2 can finish. Change it in settings."
     );
   });
 
   it("a race with no teams is measured by the people playing", () => {
-    expect(finalizeSplitRefusal({ distribution: split([5, 3, 1]), pointsTotal: 9, capacity: peoplePlaceCapacity(2) })).toBe(
+    expect(finalizeSplitRefusal({ distribution: split([5, 3, 1]), pointsTotal: 9, capacity: peoplePlaceCapacity(2) })?.text).toBe(
       "This split awards points to 3 places, but only 2 can finish. Change it in settings."
     );
   });

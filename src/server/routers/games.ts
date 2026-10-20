@@ -1197,7 +1197,7 @@ export const gamesRouter = router({
           pointsTotal: game.points_total as number | null,
           capacity,
         });
-        if (refusal) throw new TRPCError({ code: "PRECONDITION_FAILED", message: refusal });
+        if (refusal) throw new TRPCError({ code: "PRECONDITION_FAILED", message: refusal.text });
       }
 
       // Data-driven branch on the format's result_strategy (CLAUDE.md #8) — new

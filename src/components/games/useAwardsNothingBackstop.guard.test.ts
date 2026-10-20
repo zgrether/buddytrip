@@ -43,15 +43,22 @@ describe("every finalize button goes through the awards-nothing backstop", () =>
 });
 
 describe("the split refusal reaches the button and replaces the summary (#1679)", () => {
-  for (const file of ["StrokeGameView.tsx", "skins/SkinsGameView.tsx", "NonGolfScoreboard.tsx"]) {
+  // Each view hands its button the LINKED line, opening that view's settings.
+  for (const file of ["StrokeGameView.tsx", "skins/SkinsGameView.tsx", "NonGolfGameView.tsx"]) {
     it(file, () => {
-      expect(read(file)).toMatch(/finalizeBlockedLine=\{(splitRefusal|finalizeBlockedLine)\}/);
+      expect(read(file)).toMatch(/finalizeBlockedLine=\{splitRefusal && <SplitRefusalLine refusal=\{splitRefusal\} onSettings=\{openConfig\} \/>\}/);
     });
   }
+  it("NonGolfScoreboard.tsx passes it through", () => {
+    expect(read("NonGolfScoreboard.tsx")).toMatch(/finalizeBlockedLine=\{finalizeBlockedLine\}/);
+  });
   it("the views that build a summary hide it when refused", () => {
     expect(read("StrokeGameView.tsx")).toMatch(/finalizeAward && !splitRefusal && \(/);
     expect(read("skins/SkinsGameView.tsx")).toMatch(/finalizeOutcome\?\.award && !splitRefusal && \(/);
-    expect(read("NonGolfScoreboard.tsx")).toMatch(/!finalizeBlockedLine &&\s+awardNote\}/);
-    expect(read("NonGolfGameView.tsx")).toMatch(/finalizeBlockedLine=\{splitRefusal\}/);
+  });
+
+  it("a finishing order shows no award summary: an unfillable place there is the refusal", () => {
+    expect(read("NonGolfGameView.tsx")).not.toMatch(/FinalizeAwardSummary/);
+    expect(read("NonGolfScoreboard.tsx")).not.toMatch(/awardNote/);
   });
 });

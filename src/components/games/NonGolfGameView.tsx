@@ -45,7 +45,7 @@ import {
 import type { PointsMatch } from "@/components/games/MatchPointsRow";
 import { isPlacement, isPerMatch, effectiveDistribution, projectableMatchShare, type PointsDistribution } from "@/lib/pointsDistribution";
 import { placementFinalize, projectionAwardsNothing } from "@/lib/finalizeAward";
-import { FinalizeAwardSummary } from "./FinalizeAwardSummary";
+import { SplitRefusalLine } from "./SplitRefusalLine";
 import { tallyMatchAwards, type SideRef as MatchSideRef } from "@/lib/matchAwards";
 import { sideUnit } from "@/lib/sideUnit";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
@@ -919,24 +919,26 @@ export function NonGolfGameView() {
   /**
    * What finalize adds beside "Save results" (#1639 c). Every shape here
    * already shows each team's projected points in the header, so it adds only
-   * what the header cannot say (Zach): a place in the split no team can fill,
-   * and a confirm when the points on offer come to nothing.
+   * the confirm when the points on offer come to nothing (Zach).
    *
-   *  - FINISHING ORDER: the places, through the same `placementFinalize` the
-   *    golf formats use, over the exact `draftPlacements` the button posts.
-   *    Its schedule is the authored split only, as `draftDistribution` reads.
+   *  - FINISHING ORDER: no summary at all. Every team is ranked, so a place no
+   *    team can fill means the split has more places than teams, and that is
+   *    finalize's refusal (`splitRefusal` below), not a Not awarded line (the
+   *    #1679 look; the unawarded-only summary that lived here was removed).
+   *    It asks only when points have no split, through the same
+   *    `placementFinalize` the golf formats use.
    *  - WIN/LOSE/TIE, MATCHES, BRACKET: the confirm only, off the header's own
    *    projection. Win/lose/tie pays `[total, 0]`, so it has no third place;
    *    a Matches game has no places; a bracket's split is refused at save if
    *    it has more places than the field (#916).
    */
-  const placementOutcome = useMemo(() => {
-    if (isBracket || isMatches || winLoseTie || !draftPlacements) return null;
+  const placementAwardsNothing = useMemo(() => {
+    if (isBracket || isMatches || winLoseTie || !draftPlacements) return false;
     return placementFinalize({
       distribution: game?.points_distribution as PointsDistribution | null | undefined,
       pointsTotal: game?.points_total as number | null | undefined,
       ranked: draftPlacements.map((p) => ({ unitId: p.entityId, position: p.position })),
-    });
+    }).awardsNothing;
   }, [isBracket, isMatches, winLoseTie, draftPlacements, game?.points_distribution, game?.points_total]);
   const finalizeAwardsNothing = useMemo(() => {
     if (isBracket) {
@@ -954,12 +956,8 @@ export function NonGolfGameView() {
       return projectionAwardsNothing(offered, matchesProjection);
     }
     if (winLoseTie) return projectionAwardsNothing(Number(game?.points_total ?? 0), draftProjection);
-    return placementOutcome?.awardsNothing ?? false;
-  }, [isBracket, isMatches, winLoseTie, game?.points_distribution, game?.points_total, bracketProjection, serverMatchRows, matchesPointsPerMatch, matchesProjection, draftProjection, placementOutcome]);
-  const awardTeamUnits = useMemo(
-    () => new Map(teams.map((t) => [t.id, { name: t.name, shortName: t.short_name, color: t.color }])),
-    [teams]
-  );
+    return placementAwardsNothing;
+  }, [isBracket, isMatches, winLoseTie, game?.points_distribution, game?.points_total, bracketProjection, serverMatchRows, matchesPointsPerMatch, matchesProjection, draftProjection, placementAwardsNothing]);
 
   const filledEntrants = useMemo(
     () => configDraft.bracketEntrants.filter((e) => e.length > 0),
@@ -1603,18 +1601,7 @@ export function NonGolfGameView() {
           // case an explicit destination.
           onPosted={exitToBoard}
           awardsNothing={finalizeAwardsNothing}
-          finalizeBlockedLine={splitRefusal}
-          awardNote={
-            placementOutcome?.award ? (
-              <FinalizeAwardSummary
-                award={placementOutcome.award}
-                kind="team"
-                units={awardTeamUnits}
-                unitWord={{ one: "team", many: "teams", none: "no team" }}
-                only="unawarded"
-              />
-            ) : undefined
-          }
+          finalizeBlockedLine={splitRefusal && <SplitRefusalLine refusal={splitRefusal} onSettings={openConfig} />}
         />
       )}
     </div>

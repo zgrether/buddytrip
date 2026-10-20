@@ -11,7 +11,7 @@ import {
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import { GameLifecycleActions } from "./GameLifecycleActions";
 import { ScoringStateBanner } from "./ScoringStateBanner";
-import { gameLifecycle, gameLockState } from "@/lib/gameLifecycle";
+import { gameLockState } from "@/lib/gameLifecycle";
 import { useAwardsNothingBackstop } from "./useAwardsNothingBackstop";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
@@ -56,7 +56,6 @@ export function NonGolfScoreboard({
   canEdit,
   onPosted,
   awardsNothing = false,
-  awardNote,
   finalizeBlockedLine = null,
 }: {
   tripId: string;
@@ -107,13 +106,9 @@ export function NonGolfScoreboard({
    *  goes through, but asks first. The parent answers it from the SAME
    *  projection its header draws. */
   awardsNothing?: boolean;
-  /** What finalize will award that the header does not already say: the
-   *  places no team can fill (#1639 c). Shown beside the button, only when
-   *  the button is. */
-  awardNote?: ReactNode;
-  /** Why Save results would be refused (`finalizeSplitRefusal`); the button
-   *  is disabled with this under it, and the award note is not shown. */
-  finalizeBlockedLine?: string | null;
+  /** Why Save results would be refused (`finalizeSplitRefusal`, rendered by
+   *  `SplitRefusalLine`); the button is disabled with this under it. */
+  finalizeBlockedLine?: ReactNode;
 }) {
   const utils = trpc.useUtils();
   // Matches (170) decides FIRST — before winLoseTie is even consulted. Its
@@ -303,9 +298,6 @@ export function NonGolfScoreboard({
           borrows: one tap, no confirm, nothing left to ask about (see `commit`
           above). An empty pairing grid still refuses — there is nothing for a
           tap on this button to mean either way. */}
-      {gameLifecycle({ canEdit, status: game.status, correctionsOpen: game.corrections_open, allComplete }).canFinalize &&
-        !finalizeBlockedLine &&
-        awardNote}
       <GameLifecycleActions
         canEdit={canEdit}
         status={game.status}

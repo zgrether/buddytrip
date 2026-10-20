@@ -137,7 +137,7 @@ export function GameLifecycleActions({
    * it, the same shape as the relock line above. Finalize refuses the same
    * tap, so the disabled button is not the only guard.
    */
-  finalizeBlockedLine?: string | null;
+  finalizeBlockedLine?: React.ReactNode;
   finalizePending?: boolean;
   correctPending?: boolean;
   onFinalize: () => void;

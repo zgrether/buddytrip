@@ -81,6 +81,7 @@ import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLi
 import { placementFinalize } from "@/lib/finalizeAward";
 import { FinalizeAwardSummary } from "./FinalizeAwardSummary";
 import { useAwardsNothingBackstop } from "./useAwardsNothingBackstop";
+import { SplitRefusalLine } from "./SplitRefusalLine";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
@@ -1808,7 +1809,7 @@ export function StrokeGameView() {
           correctPending={correctPending}
           onFinalize={awardsNothingBackstop.onFinalize}
           onCorrect={handleCorrect}
-          finalizeBlockedLine={splitRefusal}
+          finalizeBlockedLine={splitRefusal && <SplitRefusalLine refusal={splitRefusal} onSettings={openConfig} />}
         />
         {awardsNothingBackstop.prompt}
       </div>

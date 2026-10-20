@@ -234,16 +234,29 @@ export function placementRefusalMessage(v: PlacementValidation): string | null {
  * the one finalize measures (`finishPlaceCapacity`): the team count, a
  * bracket's entrants, or in a race with no teams the people playing. Null when
  * the split is not a placement split or fits.
+ *
+ * In PARTS as well as whole: `text` is what finalize refuses with, and the game
+ * screen renders `reason` plus `SPLIT_REFUSAL_FIX` with "settings" as a link to
+ * the game's settings (`SplitRefusalLine`, Zach on the #1679 look). One set of
+ * words either way.
  */
+export const SPLIT_REFUSAL_FIX = { before: "Change it in ", link: "settings", after: "." } as const;
+export interface SplitRefusal {
+  /** The two numbers: "This split awards points to 3 places, but only 2 can finish." */
+  reason: string;
+  /** The whole sentence, `reason` and the fix. */
+  text: string;
+}
 export function finalizeSplitRefusal(p: {
   distribution: PointsDistribution | null | undefined;
   pointsTotal: number | null | undefined;
   capacity: PlaceCapacity;
-}): string | null {
+}): SplitRefusal | null {
   if (!isPlacement(p.distribution)) return null;
   const check = validatePlacement(Number(p.pointsTotal ?? 0), p.distribution.values, p.capacity);
   if (check.state !== "too_many_places") return null;
-  return `This split awards points to ${check.places} places, but only ${check.capacity.count} can finish. Change it in settings.`;
+  const reason = `This split awards points to ${check.places} places, but only ${check.capacity.count} can finish.`;
+  return { reason, text: `${reason} ${SPLIT_REFUSAL_FIX.before}${SPLIT_REFUSAL_FIX.link}${SPLIT_REFUSAL_FIX.after}` };
 }
 
 // ── Match readout (retires "projected") ──────────────────────────────────────

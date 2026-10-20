@@ -55,6 +55,7 @@ import { placementFinalize } from "@/lib/finalizeAward";
 import { finalizeSplitRefusal } from "@/lib/gameConfig";
 import { FinalizeAwardSummary } from "@/components/games/FinalizeAwardSummary";
 import { useAwardsNothingBackstop } from "@/components/games/useAwardsNothingBackstop";
+import { SplitRefusalLine } from "@/components/games/SplitRefusalLine";
 import { pointsReady } from "@/lib/matchDraft";
 import { isWinnerTakesAll } from "@/lib/configDraft";
 import { type PointsDistribution } from "@/lib/pointsDistribution";
@@ -1193,7 +1194,7 @@ export function SkinsGameView() {
           correctPending={correctPending}
           onFinalize={awardsNothingBackstop.onFinalize}
           onCorrect={handleCorrect}
-          finalizeBlockedLine={splitRefusal}
+          finalizeBlockedLine={splitRefusal && <SplitRefusalLine refusal={splitRefusal} onSettings={openConfig} />}
         />
         {awardsNothingBackstop.prompt}
       </div>
