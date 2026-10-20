@@ -145,6 +145,35 @@ describe("Play it as a side game", () => {
     expect(planner).toBeTruthy();
   });
 
+  // The zero-points refusal names the exit ONLY when it is open (#1668 look).
+  // Each case sends the same go-live a stroke draft sends: its groups, scoring on.
+  const goLive = (gameId: string, as: "owner" | "member" = "owner") =>
+    save(gameId, { scoringEnabled: true, groups: [{ name: "G1", userIds: [owner, member] }], groupsStructureDirty: true }, as);
+
+  it("the refusal offers the side game when nobody playing is on a team and an organizer is asking", async () => {
+    const gameId = await cupGame("gtt_stroke_play", "exit open");
+    await expect(goLive(gameId)).rejects.toThrow("Set a point value, or play it as a side game.");
+  });
+
+  it("CONTROL: not when someone playing is on a team (the prompt would not appear)", async () => {
+    const gameId = await cupGame("gtt_stroke_play", "exit closed by a team");
+    const { data: team } = await ctx.admin.from("teams").select("id").eq("competition_id", competitionId).limit(1).single();
+    const ins = await ctx.admin.from("team_assignments").insert({ competition_id: competitionId, user_id: member, team_id: team!.id });
+    if (ins.error) throw ins.error;
+    try {
+      await expect(goLive(gameId)).rejects.toThrow("Set a point value before enabling scoring.");
+    } finally {
+      await ctx.admin.from("team_assignments").delete().eq("competition_id", competitionId).eq("user_id", member);
+    }
+  });
+
+  it("CONTROL: not for a delegate, who cannot take it", async () => {
+    const gameId = await cupGame("gtt_stroke_play", "exit closed to a delegate");
+    const grant = await ctx.admin.from("game_delegates").insert({ game_id: gameId, user_id: member, granted_by: owner });
+    if (grant.error) throw grant.error;
+    await expect(goLive(gameId, "member")).rejects.toThrow("Set a point value before enabling scoring.");
+  });
+
   it("a side game already: the key is a no-op", async () => {
     const g = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_stroke_play", name: "already side", competitionId: null })) as { id: string };
     await save(g.id, { leaveCompetition: true });
