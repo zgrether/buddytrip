@@ -24,6 +24,17 @@ import { useTeamBadgeLabel } from "@/components/TeamBadgeLabels";
  * semibold (player names are regular); the badge labels itself with it for
  * screen readers.
  */
+/** The smallest letter worth drawing. Below it a letter is noise, so the badge is
+ *  the coloured square alone and the name beside it identifies the team (Zach,
+ *  2026-10-20: the finished-game tile, and anywhere else a badge renders that small). */
+export const MIN_LETTER_PX = 8;
+
+/** The letter size a badge of `size` draws `label` at — one rule, so the floor and
+ *  the type cannot disagree. */
+export function badgeLetterPx(size: number, label: string): number {
+  return Math.round(size * (label.length > 1 ? 0.42 : 0.56));
+}
+
 export function TeamBadge({
   teamId,
   name,
@@ -41,6 +52,8 @@ export function TeamBadge({
   const shared = useTeamBadgeLabel(teamId, name);
   const label = shared ?? teamInitial({ name, shortName });
   const two = label.length > 1;
+  const letterPx = badgeLetterPx(size, label);
+  const showLetter = letterPx >= MIN_LETTER_PX;
   return (
     <span
       role="img"
@@ -54,13 +67,13 @@ export function TeamBadge({
         background: color,
         color: teamTextColor(color),
         // Two letters fit the same square by stepping the type down.
-        fontSize: Math.round(size * (two ? 0.42 : 0.56)),
+        fontSize: letterPx,
         fontWeight: 800,
         letterSpacing: two ? "-0.02em" : undefined,
         lineHeight: 1,
       }}
     >
-      {label}
+      {showLetter ? label : null}
     </span>
   );
 }
