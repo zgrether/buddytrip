@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { TeamBadge } from "@/components/TeamBadge";
+import { suggestShortName } from "@/lib/teamColors";
 import {
   ArrowRight,
   GripVertical,
@@ -1510,7 +1511,7 @@ export function TeamSheet({
     // Auto-derive short_name from the first 3 chars until the user takes
     // manual control of the short name field.
     if (!shortNameDirty) {
-      setShortName(value.replace(/\s+/g, "").slice(0, 3).toUpperCase());
+      setShortName(suggestShortName(value));
     }
     // Once the user starts typing manually, collapse the suggester so it
     // doesn't sit there competing for attention.
@@ -1530,7 +1531,7 @@ export function TeamSheet({
     const suggestion = pickRandom(available.length > 0 ? available : theme.names);
     setName(suggestion);
     if (!shortNameDirty) {
-      setShortName(suggestion.replace(/\s+/g, "").slice(0, 3).toUpperCase());
+      setShortName(suggestShortName(suggestion));
     }
   }
 
