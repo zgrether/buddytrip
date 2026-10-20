@@ -224,7 +224,7 @@ function CombinedPicker({
         <div className="flex items-center gap-1.5" style={{ marginBottom: 8 }}>
           {/* A team section carries its badge; the pool of people on no team (or a
               side game's crew) is not a team and carries no mark. */}
-          {team.id !== UNASSIGNED_TEAM_ID && <TeamBadge name={team.name} color={team.color} size={16} />}
+          {team.id !== UNASSIGNED_TEAM_ID && <TeamBadge teamId={team.id} name={team.name} color={team.color} size={16} />}
           <span className="truncate" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text)" }}>{team.name}</span>
         </div>
         <div className="flex flex-col gap-1.5">

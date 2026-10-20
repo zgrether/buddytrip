@@ -102,7 +102,7 @@ export function BracketPartnerBuilder({
         return (
           <div key={team.id} className="flex flex-col" style={{ gap: 7 }}>
             <div className="flex items-center" style={{ gap: 6 }}>
-              <TeamBadge name={team.name} color={team.color} size={14} />
+              <TeamBadge teamId={team.id} name={team.name} color={team.color} size={14} />
               <span
                 style={{
                   fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.08em",

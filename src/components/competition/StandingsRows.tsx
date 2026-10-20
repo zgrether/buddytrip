@@ -89,7 +89,7 @@ export function StandingsRows({
                 </span>
                 <span className="flex w-[34%] min-w-0 shrink-0 items-center gap-2">
                   {/* A team is a square (TeamBadge); a person in a teamless race carries no mark. */}
-                  {r.color && <TeamBadge name={r.label} shortName={r.label} color={r.color} size={18} />}
+                  {r.color && <TeamBadge teamId={r.id} name={r.label} shortName={r.label} color={r.color} size={18} />}
                   <span className={`truncate text-sm ${r.color ? "font-semibold" : "font-normal"}`} style={{ color: "var(--color-bt-text)" }}>
                     {r.label}
                   </span>

@@ -123,7 +123,7 @@ export function SkinsBoard({
                   <span className="w-6 flex-shrink-0 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
                     {ordinalShort(r.position)}
                   </span>
-                  <TeamBadge name={t?.name ?? "Team"} color={t?.color ?? "var(--color-bt-text-dim)"} size={20} />
+                  <TeamBadge teamId={r.teamId} name={t?.name ?? "Team"} color={t?.color ?? "var(--color-bt-text-dim)"} size={20} />
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                     {t?.name ?? "Team"}
                   </span>

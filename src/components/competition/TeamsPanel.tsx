@@ -624,7 +624,7 @@ function TeamCard({
             className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-opacity hover:opacity-80"
             data-testid={`team-edit-${team.id}`}
           >
-            <TeamBadge name={team.name} shortName={team.short_name} color={team.color} size={24} />
+            <TeamBadge teamId={team.id} name={team.name} shortName={team.short_name} color={team.color} size={24} />
             <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {team.name}
             </span>
@@ -638,7 +638,7 @@ function TeamCard({
           </button>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1 py-1">
-            <TeamBadge name={team.name} shortName={team.short_name} color={team.color} size={24} />
+            <TeamBadge teamId={team.id} name={team.name} shortName={team.short_name} color={team.color} size={24} />
             <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {team.name}
             </span>

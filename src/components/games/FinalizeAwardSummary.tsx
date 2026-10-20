@@ -53,7 +53,7 @@ export function FinalizeAwardSummary({
             <span className="w-7 flex-shrink-0 text-[13px] font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
               {ordinalShort(l.place)}
             </span>
-            <TeamBadge name={u?.name ?? "Team"} shortName={u?.shortName} color={u?.color ?? "var(--color-bt-text-dim)"} size={18} />
+            <TeamBadge teamId={l.unitId} name={u?.name ?? "Team"} shortName={u?.shortName} color={u?.color ?? "var(--color-bt-text-dim)"} size={18} />
             <span className="min-w-0 flex-1 truncate text-[13px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {u?.name ?? "—"}
             </span>

@@ -908,7 +908,7 @@ function PlacementRowBody({
       <span className="w-5 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
         {showPlace ? place : ""}
       </span>
-      <TeamBadge name={team?.name ?? "Team"} shortName={team?.short_name} color={team?.color ?? "var(--color-bt-text-dim)"} size={18} />
+      <TeamBadge teamId={team?.id} name={team?.name ?? "Team"} shortName={team?.short_name} color={team?.color ?? "var(--color-bt-text-dim)"} size={18} />
       {/* SHORT name — a placement row is a set of peers read against each other,
           which makes it a label slot (STYLE_GUIDE "Team names — subject slots vs
           label slots"), same as the cup standings row it mirrors. */}
