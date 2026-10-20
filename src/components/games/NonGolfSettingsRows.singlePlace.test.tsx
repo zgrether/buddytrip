@@ -88,3 +88,24 @@ describe("a one-place split reads winner-takes-all on the non-golf page (#920)",
     expect(row).toContain("Custom placement split");
   });
 });
+
+describe("the row says a split has too many places, once, while it applies (#1679)", () => {
+  const THREE: PointsDistribution = { type: "placement", values: [5, 3, 1] };
+  const draft = (d: PointsDistribution | null) => ({ ...configToNonGolfDraft({ ...GAME, points_distribution: d, points_total: 9 } as never, []) });
+
+  it("3 places over 2 teams: the subtitle is the warning, in the warning colour", () => {
+    const row = subtitle(draft(THREE));
+    expect(row).toContain('style="color:var(--color-bt-warning)" data-testid="split-places-warning">Awards 3 places — only 2 teams can finish.</span>');
+    expect(row).not.toContain("Custom placement split");
+  });
+
+  it("CONTROL: a split that fits keeps its usual subtitle and no warning", () => {
+    const row = subtitle(draft(TWO));
+    expect(row).not.toContain('data-testid="split-places-warning"');
+    expect(row).toContain("Custom placement split");
+  });
+
+  it("no row subtitle tells the reader to tap: the chevron says it", () => {
+    for (const d of [null, TWO, THREE]) expect(subtitle(draft(d))).not.toMatch(/tap to/i);
+  });
+});

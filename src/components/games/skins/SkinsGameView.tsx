@@ -52,7 +52,7 @@ import { unitsFromSchema, teeFromSchema } from "@/lib/strokePlayConfig";
 import { computeStrokeTeamStandings } from "@/lib/strokePlay";
 import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
 import { placementFinalize } from "@/lib/finalizeAward";
-import { finalizeSplitRefusal } from "@/lib/gameConfig";
+import { finalizeSplitRefusal, splitPlacesWarning } from "@/lib/gameConfig";
 import { FinalizeAwardSummary } from "@/components/games/FinalizeAwardSummary";
 import { useAwardsNothingBackstop } from "@/components/games/useAwardsNothingBackstop";
 import { SplitRefusalLine } from "@/components/games/SplitRefusalLine";
@@ -669,6 +669,11 @@ export function SkinsGameView() {
     pending: finalizePending,
   });
 
+  // A split with more places than teams: the Point Distribution row's subtitle,
+  // and Save blocked (#1679). Same capacity the row's editor is given.
+  const distPlacesWarning = competitionId
+    ? splitPlacesWarning(configDraft.pointsDistribution, teamPlaceCapacity(teamsQ.data?.length))
+    : null;
   const entryDepth = entryGroupId ? (!locked && gridOpen ? 2 : 1) : 0;
   const back = useScreenHistory(entryDepth, () => {
     if (!locked && gridOpen) setGridOpen(false);
@@ -841,7 +846,9 @@ export function SkinsGameView() {
                   icon={Scale}
                   title="Point Distribution"
                   subtitle={
-                    distIsWta
+                    distPlacesWarning ? (
+                      <span style={{ color: "var(--color-bt-warning)" }} data-testid="split-places-warning">{distPlacesWarning}</span>
+                    ) : distIsWta
                       ? "Winner takes all"
                       : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
                   }
@@ -963,6 +970,7 @@ export function SkinsGameView() {
               // expects, and it is what the other four views pass.
               onDiscard={confirmDiscard}
               onLeave={leave}
+              saveBlocked={!!distPlacesWarning}
             />
           }
         />

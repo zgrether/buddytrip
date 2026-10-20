@@ -1000,7 +1000,7 @@ export function RackGameView() {
       <ChecklistRow
         icon={Users}
         title="Groupings"
-        subtitle={draftGroupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
+        subtitle={draftGroupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"}` : "No groups yet — add one to start"}
         state={draftGroupsAssigned ? "resolved" : "empty"}
         expanded={openAccordion === "groupings"}
         onToggle={toggleGroupings}

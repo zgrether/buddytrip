@@ -57,6 +57,7 @@ function render(props: {
   saving?: boolean;
   error?: string | null;
   saveDisabledReason?: string | null;
+  saveBlocked?: boolean;
 }) {
   return renderToStaticMarkup(
     <SettingsSaveBar
@@ -68,6 +69,7 @@ function render(props: {
       onLoadLatest={noop}
       onLeave={noop}
       saveDisabledReason={props.saveDisabledReason ?? null}
+      saveBlocked={props.saveBlocked ?? false}
     />,
   );
 }
@@ -211,5 +213,16 @@ describe("SettingsSaveBar — what the button does with each state", () => {
     expect(render({ saveState: "stale", saveDisabledReason: "Points don't add up." })).not.toContain(
       'data-testid="settings-load-latest"'
     );
+  });
+});
+
+describe("SettingsSaveBar — blocked by a reason already on the page (#1679)", () => {
+  it("saveBlocked disables Save and says nothing at the bottom", () => {
+    const html = render({ saveState: "ready", saveBlocked: true });
+    expect(isDisabled(buttonTag(html, "settings-save"))).toBe(true);
+    expect(html).not.toContain('data-testid="settings-save-blocked"');
+  });
+  it("CONTROL: without it a ready draft saves", () => {
+    expect(isDisabled(buttonTag(render({ saveState: "ready", saveBlocked: false }), "settings-save"))).toBe(false);
   });
 });

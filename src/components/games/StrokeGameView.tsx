@@ -51,7 +51,7 @@ import { fmtValue, type GameRow } from "@/components/competition/CompetitionGame
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { type ModifiersMap } from "@/lib/modifiers";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
-import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal } from "@/lib/gameConfig";
+import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal, splitPlacesWarning } from "@/lib/gameConfig";
 import { peoplePlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -433,16 +433,17 @@ export function StrokeGameView() {
     // A null total blocks the SUM check (nothing to sum against) but NOT the
     // places-vs-entities one, which never reads the total — #819 nested both
     // under this guard, so a no-total game could save an unappliable split.
-    if (configDraft.pointsTotal == null) {
-      const noTotal = validatePlacement(0, d.values, teamPlaceCapacity(teamsQ.data?.length));
-      return noTotal.state === "too_many_places" ? placementRefusalMessage(noTotal) : null;
-    }
+    // Too many places is NOT this message: the Point Distribution row says it
+    // (`distPlacesWarning` below) and Save is blocked silently (#1679).
+    if (configDraft.pointsTotal == null) return null;
     // Entity count = teams in the competition (what the leaderboard ranks).
     // undefined while the query is in flight, and a standalone game has none —
     // both pass `null`, which never refuses.
     const v = validatePlacement(configDraft.pointsTotal, d.values, teamPlaceCapacity(teamsQ.data?.length));
-    return v.saveable ? null : placementRefusalMessage(v);
+    return v.saveable || v.state === "too_many_places" ? null : placementRefusalMessage(v);
   }, [configDraft.pointsDistribution, configDraft.pointsTotal, teamsQ.data]);
+  // A split with more places than teams: the row's subtitle, and Save blocked.
+  const distPlacesWarning = splitPlacesWarning(configDraft.pointsDistribution, teamPlaceCapacity(teamsQ.data?.length));
 
   // The group picker's team sections: the WHOLE trip crew, grouped by their competition team
   // (via team_assignments), with a neutral bucket for anyone not on a team. This is the full
@@ -1330,7 +1331,9 @@ export function StrokeGameView() {
         icon={Scale}
         title="Point Distribution"
         subtitle={
-          distIsWta
+          distPlacesWarning ? (
+            <span style={{ color: "var(--color-bt-warning)" }} data-testid="split-places-warning">{distPlacesWarning}</span>
+          ) : distIsWta
             ? "Winner takes all"
             : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
         }
@@ -1357,7 +1360,7 @@ export function StrokeGameView() {
       <ChecklistRow
         icon={Users}
         title="Groupings"
-        subtitle={draftGroupCount > 0 ? `${draftGroupCount} group${draftGroupCount === 1 ? "" : "s"} · tap to edit tee groups` : "Required — everyone playing must be in a group"}
+        subtitle={draftGroupCount > 0 ? `${draftGroupCount} group${draftGroupCount === 1 ? "" : "s"}` : "Required — everyone playing must be in a group"}
         state={draftGroupCount > 0 ? "resolved" : "empty"}
         expanded={openAccordion === "groupings"}
         onToggle={() => setOpenAccordion((o) => (o === "groupings" ? null : "groupings"))}
@@ -1586,6 +1589,7 @@ export function StrokeGameView() {
               onDiscard={confirmDiscard}
               onLeave={leave}
               saveDisabledReason={distSaveBlock}
+              saveBlocked={!!distPlacesWarning}
             />
           }
         />

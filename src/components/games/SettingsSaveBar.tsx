@@ -153,6 +153,7 @@ export function SettingsSaveBar({
   onLoadLatest,
   loadingLatest = false,
   saveDisabledReason,
+  saveBlocked = false,
 }: {
   /** Why Save is (or isn't) available — the draft lifecycle, from `useConfigDraft`. */
   saveState: SaveState;
@@ -174,8 +175,12 @@ export function SettingsSaveBar({
    *  e.g. a points distribution that no longer sums to the total (C1). Distinct from
    *  `error`, which is a RED post-save failure. Cancel stays enabled (you can leave). */
   saveDisabledReason?: string | null;
+  /** Save is BLOCKED, and the reason is already on the page where it applies
+   *  (a split with too many places: the Point Distribution row says so, #1679).
+   *  No hint here, so the bar does not repeat the row. */
+  saveBlocked?: boolean;
 }) {
-  const blocked = !!saveDisabledReason;
+  const blocked = !!saveDisabledReason || saveBlocked;
 
   // Has `not-ready` outlasted the grace period?
   //

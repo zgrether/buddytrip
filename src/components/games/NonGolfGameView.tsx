@@ -60,7 +60,7 @@ import { stakesFromPositions } from "@/lib/bracketStakes";
 import { DEFAULT_BRACKET_CONFIG, isDefaultBracketConfig, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
-import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal } from "@/lib/gameConfig";
+import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal, splitPlacesWarning } from "@/lib/gameConfig";
 import { pointsReady, sideMemberIds, type ServerSide } from "@/lib/matchDraft";
 import { MatchesBuilder } from "@/components/games/MatchesBuilder";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
@@ -1001,15 +1001,16 @@ export function NonGolfGameView() {
     // A null total blocks the SUM check (nothing to sum against) but NOT the
     // places-vs-entities one, which never reads the total — #819 nested both
     // under this guard, so a no-total game could save an unappliable split.
-    if (configDraft.pointsTotal == null) {
-      const noTotal = validatePlacement(0, d.values, capacity);
-      return noTotal.state === "too_many_places" ? placementRefusalMessage(noTotal) : null;
-    }
+    // Too many places is NOT this message: the Point Distribution row says it
+    // (`splitPlacesWarning`, the same call in NonGolfSettingsRows) and Save is
+    // blocked silently (#1679).
+    if (configDraft.pointsTotal == null) return null;
     // The ceiling is `capacity` — a bracket's field, otherwise the teams the
     // leaderboard ranks. Unknown while a read is in flight, which never refuses.
     const v = validatePlacement(configDraft.pointsTotal, d.values, capacity);
-    return v.saveable ? null : placementRefusalMessage(v);
+    return v.saveable || v.state === "too_many_places" ? null : placementRefusalMessage(v);
   }, [configDraft.pointsDistribution, configDraft.pointsTotal, capacity]);
+  const distPlacesWarning = splitPlacesWarning(configDraft.pointsDistribution, capacity);
 
   // Outbox bundle + slice reset/recover (format-specific; the shared hook below drives
   // the whole lifecycle off these).
@@ -1411,6 +1412,7 @@ export function NonGolfGameView() {
             onDiscard={confirmDiscard}
             onLeave={leave}
             saveDisabledReason={distSaveBlock}
+            saveBlocked={!!distPlacesWarning}
           />
         }
       />

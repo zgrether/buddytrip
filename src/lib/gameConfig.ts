@@ -200,26 +200,50 @@ export function validatePlacement(
  */
 export function placementRefusalMessage(v: PlacementValidation): string | null {
   if (v.saveable) return null;
-  if (v.state === "too_many_places") {
-    const n = v.capacity.count;
-    if (v.capacity.source === "bracket") {
-      return (
-        `${v.places} places configured, ${n} ${n === 1 ? "entrant" : "entrants"} in this bracket — ` +
-        `remove places until there are at most ${n}, or add entrants. ` +
-        `Places past the last entrant are never awarded.`
-      );
-    }
-    return (
-      `${v.places} places configured, ${n} ${n === 1 ? "team" : "teams"} in this tournament — ` +
-      `remove places until there are at most ${n}, or add teams. ` +
-      `Places past the last team are never awarded.`
-    );
-  }
+  if (v.state === "too_many_places") return tooManyPlacesLine(v);
   const over = v.remaining < 0;
   return (
     `Points must total ${v.total} exactly — ${v.allocated} allocated, ` +
     `${over ? `${-v.remaining} over` : `${v.remaining} left to place`}.`
   );
+}
+
+/** What can finish, by what sets the ceiling. */
+const CAN_FINISH: Record<PlaceCapacitySource, { one: string; many: string }> = {
+  teams: { one: "team", many: "teams" },
+  bracket: { one: "entrant", many: "entrants" },
+  people: { one: "player", many: "players" },
+};
+
+/**
+ * A split with more places than can finish, in ONE short line (Zach, the #1679
+ * look): "Awards 3 places — only 2 teams can finish." It replaced a three-clause
+ * sentence that also called every competition a tournament, which a cup is not.
+ * The line names no competition at all, so it is right for both kinds.
+ *
+ * Settings shows it as the Point Distribution row's subtitle, in the warning
+ * colour, with Save disabled; a save that reaches the server anyway is refused
+ * with it (`placementRefusalMessage`); and finalize's refusal leads with it
+ * (`finalizeSplitRefusal`). Null for any other state.
+ */
+export function tooManyPlacesLine(v: PlacementValidation): string | null {
+  if (v.state !== "too_many_places") return null;
+  const n = v.capacity.count ?? 0;
+  const unit = CAN_FINISH[v.capacity.source];
+  return `Awards ${v.places} places — only ${n} ${n === 1 ? unit.one : unit.many} can finish.`;
+}
+
+/**
+ * Settings' question: does this draft split have more places than can finish?
+ * The places check never reads the total (#819), so it answers with or without
+ * one. The row's subtitle and the page's Save both ask it, with one capacity.
+ */
+export function splitPlacesWarning(
+  distribution: PointsDistribution | null | undefined,
+  capacity: PlaceCapacity
+): string | null {
+  if (!isPlacement(distribution)) return null;
+  return tooManyPlacesLine(validatePlacement(0, distribution.values, capacity));
 }
 
 /**
@@ -242,7 +266,7 @@ export function placementRefusalMessage(v: PlacementValidation): string | null {
  */
 export const SPLIT_REFUSAL_FIX = { before: "Change it in ", link: "settings", after: "." } as const;
 export interface SplitRefusal {
-  /** The two numbers: "This split awards points to 3 places, but only 2 can finish." */
+  /** The two numbers: "Awards 3 places — only 2 teams can finish." (`tooManyPlacesLine`) */
   reason: string;
   /** The whole sentence, `reason` and the fix. */
   text: string;
@@ -255,7 +279,7 @@ export function finalizeSplitRefusal(p: {
   if (!isPlacement(p.distribution)) return null;
   const check = validatePlacement(Number(p.pointsTotal ?? 0), p.distribution.values, p.capacity);
   if (check.state !== "too_many_places") return null;
-  const reason = `This split awards points to ${check.places} places, but only ${check.capacity.count} can finish.`;
+  const reason = tooManyPlacesLine(check)!;
   return { reason, text: `${reason} ${SPLIT_REFUSAL_FIX.before}${SPLIT_REFUSAL_FIX.link}${SPLIT_REFUSAL_FIX.after}` };
 }
 
