@@ -856,6 +856,7 @@ export function SkinsGameView() {
                   expanded={openAccordion === "distribution"}
                   onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
                   testId="row-point-distribution"
+                  subtitleWraps={!!distPlacesWarning}
                 >
                   <FormatPointsPanel
                     game={gameQ.data as unknown as GameRow}

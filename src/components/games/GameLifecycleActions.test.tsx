@@ -57,7 +57,7 @@ describe("Save scoring changes while a correction leaves the game incomplete", (
 });
 
 describe("Save results when finalize would refuse the split (#1679)", () => {
-  const LINE = "This split awards points to 3 places, but only 2 can finish. Change it in settings.";
+  const LINE = "3 places, but only 2 teams can finish. Fix in settings.";
   const ready = (over: Partial<Parameters<typeof GameLifecycleActions>[0]> = {}) =>
     renderToStaticMarkup(
       <GameLifecycleActions canEdit status="active" correctionsOpen={false} allComplete onFinalize={noop} onCorrect={noop} {...over} />

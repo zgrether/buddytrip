@@ -105,6 +105,17 @@ describe("the row says a split has too many places, once, while it applies (#167
     expect(row).toContain("Custom placement split");
   });
 
+  it("the warning wraps rather than being cut off (it is 2px too long for a 375px phone)", () => {
+    // The subtitle span is truncate-by-default; anchored on its own font size,
+    // which no other span in the row carries.
+    expect(subtitle(draft(THREE))).not.toContain('<span class="truncate" style="font-size:12.5px');
+    expect(subtitle(draft(THREE))).toContain('<span style="font-size:12.5px');
+  });
+
+  it("CONTROL: an ordinary subtitle still truncates", () => {
+    expect(subtitle(draft(TWO))).toContain('<span class="truncate" style="font-size:12.5px');
+  });
+
   it("no row subtitle tells the reader to tap: the chevron says it", () => {
     for (const d of [null, TWO, THREE]) expect(subtitle(draft(d))).not.toMatch(/tap to/i);
   });

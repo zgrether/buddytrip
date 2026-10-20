@@ -264,9 +264,9 @@ export function splitPlacesWarning(
  * the game's settings (`SplitRefusalLine`, Zach on the #1679 look). One set of
  * words either way.
  */
-export const SPLIT_REFUSAL_FIX = { before: "Change it in ", link: "settings", after: "." } as const;
+export const SPLIT_REFUSAL_FIX = { before: "Fix in ", link: "settings", after: "." } as const;
 export interface SplitRefusal {
-  /** The two numbers: "Awards 3 places — only 2 teams can finish." (`tooManyPlacesLine`) */
+  /** The two numbers: "3 places, but only 2 teams can finish." */
   reason: string;
   /** The whole sentence, `reason` and the fix. */
   text: string;
@@ -279,7 +279,12 @@ export function finalizeSplitRefusal(p: {
   if (!isPlacement(p.distribution)) return null;
   const check = validatePlacement(Number(p.pointsTotal ?? 0), p.distribution.values, p.capacity);
   if (check.state !== "too_many_places") return null;
-  const reason = tooManyPlacesLine(check)!;
+  // Shorter than settings' line, so reason + fix stay ONE line under Save
+  // results on a phone (the #1679 copy sweep, measured at 375px). Same unit
+  // words (`CAN_FINISH`), so the two can only differ in their framing.
+  const n = check.capacity.count ?? 0;
+  const unit = CAN_FINISH[check.capacity.source];
+  const reason = `${check.places} places, but only ${n} ${n === 1 ? unit.one : unit.many} can finish.`;
   return { reason, text: `${reason} ${SPLIT_REFUSAL_FIX.before}${SPLIT_REFUSAL_FIX.link}${SPLIT_REFUSAL_FIX.after}` };
 }
 

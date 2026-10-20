@@ -58,7 +58,7 @@ describe("games.finish refuses a split nobody can fill (#1639)", () => {
     await setSplit(gameId, [5, 4, 3, 2, 1]);
     await expect(ctx.caller().games.finish({ tripId, gameId })).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",
-      message: "Awards 5 places — only 3 players can finish. Change it in settings.",
+      message: "5 places, but only 3 players can finish. Fix in settings.",
     });
     expect(await statusOf(gameId)).not.toBe("complete");
   }, 60_000);
@@ -68,7 +68,7 @@ describe("games.finish refuses a split nobody can fill (#1639)", () => {
     await setSplit(gameId, [5, 3, 1]);
     await expect(ctx.caller().games.finish({ tripId, gameId })).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",
-      message: "Awards 3 places — only 2 teams can finish. Change it in settings.",
+      message: "3 places, but only 2 teams can finish. Fix in settings.",
     });
     expect(await statusOf(gameId)).not.toBe("complete");
   }, 60_000);

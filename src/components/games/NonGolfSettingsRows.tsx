@@ -233,6 +233,7 @@ export function NonGolfSettingsRows({
           expanded={openAccordion === "distribution"}
           onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
           testId="row-point-distribution"
+          subtitleWraps={!!placesWarning}
         >
           <FormatPointsPanel
             capacity={capacity}
