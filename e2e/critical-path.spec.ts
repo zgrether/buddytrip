@@ -84,11 +84,22 @@ test.beforeAll(async () => {
     id: compId, trip_id: tripId, name: "E2E Cup", scoring_model: "points", status: "upcoming",
   });
   if (compErr) throw new Error(`seed competition failed: ${compErr.message}`);
-  const { error: teamErr } = await admin.from("teams").insert([
+  const { data: teams, error: teamErr } = await admin.from("teams").insert([
     { competition_id: compId, name: "Team A", short_name: "A", color: "#3b82f6", color_dim: "#0a1a2a" },
     { competition_id: compId, name: "Team B", short_name: "B", color: "#ef4444", color_dim: "#2a0a0a" },
-  ]);
+  ]).select("id");
   if (teamErr) throw new Error(`seed teams failed: ${teamErr.message}`);
+  // The two players are ON the cup's teams, as in any real team cup. A cup
+  // with teams where nobody playing is on one is a different state: going
+  // live there asks "Nobody here is on a team, so this game can't award
+  // points" (#1673), which is not the spine this spec walks.
+  const teamIds = (teams ?? []).map((t) => t.id as string);
+  if (teamIds.length !== 2) throw new Error(`seed teams returned ${teamIds.length} rows`);
+  const { error: asgErr } = await admin.from("team_assignments").insert([
+    { competition_id: compId, user_id: ownerId, team_id: teamIds[0] },
+    { competition_id: compId, user_id: memberId, team_id: teamIds[1] },
+  ]);
+  if (asgErr) throw new Error(`seed team assignments failed: ${asgErr.message}`);
 });
 
 test.afterAll(async () => {
@@ -103,6 +114,7 @@ test.afterAll(async () => {
     await admin.from("games").delete().eq("id", g.id);
   }
   if (compId) {
+    await admin.from("team_assignments").delete().eq("competition_id", compId);
     await admin.from("teams").delete().eq("competition_id", compId);
     await admin.from("competitions").delete().eq("id", compId);
   }
