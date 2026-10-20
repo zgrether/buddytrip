@@ -1341,7 +1341,7 @@ export function StrokeGameView() {
         expanded={openAccordion === "distribution"}
         onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
         testId="row-point-distribution"
-        subtitleWraps={!!distPlacesWarning}
+        subtitleWraps
       >
         <FormatPointsPanel
           game={gameQ.data as unknown as GameRow}

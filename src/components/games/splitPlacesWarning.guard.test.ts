@@ -27,4 +27,9 @@ describe("every settings page shows the split warning on the row and blocks Save
   it("the distribution editor does not say it a second time", () => {
     expect(read("../competition/CompetitionGamesPanel.tsx")).toMatch(/placement\.state !== "too_many_places" && \(/);
   });
+  it("every Point Distribution row wraps its subtitle, always (Zach)", () => {
+    for (const file of ["StrokeGameView.tsx", "skins/SkinsGameView.tsx", "NonGolfSettingsRows.tsx"]) {
+      expect(read(file), file).toMatch(/testId="row-point-distribution"\s+subtitleWraps\s/);
+    }
+  });
 });

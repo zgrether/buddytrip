@@ -101,9 +101,10 @@ export function ChecklistRow({
   /** Small status line (~12.5px dim). ReactNode so a teal segment can be embedded
    *  (the Points "…: N" live value). */
   subtitle?: React.ReactNode;
-  /** Let the subtitle wrap instead of truncating. For a WARNING only (#1679):
-   *  an ellipsis can hide the part of a warning that matters, so on a narrow
-   *  phone it takes a second line rather than being cut off. */
+  /** Let the subtitle wrap instead of truncating. The Point Distribution rows
+   *  always pass it (Zach, #1679): their subtitle carries the split warning,
+   *  and an ellipsis can hide the part of a warning that matters at a larger
+   *  text size or a different font, so it takes a second line instead. */
   subtitleWraps?: boolean;
   state: ChecklistRowState;
   /** Overlay-tappable row (opens a separate editor). Omit for accordion/read-only. */

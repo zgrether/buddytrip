@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NonGolfSettingsRows, usesPointsPool } from "./NonGolfSettingsRows";
+import { ChecklistRow } from "./ChecklistRow";
+import { Scale } from "lucide-react";
 import { configToNonGolfDraft, isRealSplit, isWinnerTakesAll, type NonGolfConfigDraft } from "@/lib/configDraft";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -112,8 +114,16 @@ describe("the row says a split has too many places, once, while it applies (#167
     expect(subtitle(draft(THREE))).toContain('<span style="font-size:12.5px');
   });
 
-  it("CONTROL: an ordinary subtitle still truncates", () => {
-    expect(subtitle(draft(TWO))).toContain('<span class="truncate" style="font-size:12.5px');
+  it("the row wraps whatever it says, so nothing on it is ever cut off (Zach)", () => {
+    for (const d of [null, TWO]) {
+      expect(subtitle(draft(d))).not.toContain('<span class="truncate" style="font-size:12.5px');
+      expect(subtitle(draft(d))).toContain('<span style="font-size:12.5px');
+    }
+  });
+
+  it("CONTROL: a row that does not ask to wrap still truncates", () => {
+    const html = renderToStaticMarkup(<ChecklistRow icon={Scale} title="Other" subtitle="A long line" state="resolved" />);
+    expect(html).toContain('<span class="truncate" style="font-size:12.5px');
   });
 
   it("no row subtitle tells the reader to tap: the chevron says it", () => {
