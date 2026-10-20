@@ -6,6 +6,7 @@ import {
   netStrokeEntries,
   netStrokeEntriesByHole,
   stablefordEntries,
+  teamOfScrambleGroups,
   type RawStrokeEntry,
   type StrokeStanding,
 } from "@/lib/strokePlay";
@@ -235,12 +236,18 @@ async function strokeResults(
         await supabase.from("game_participants").select("user_id, play_group_id").eq("game_id", gameId),
         "game's groups"
       );
+      // Members in row order, grouped; the first member with a team decides it
+      // (`teamOfScrambleGroups`, the rule the view's summary reads too, #1674).
+      const byGroup = new Map<string, string[]>();
       for (const m of members) {
         const groupId = m.play_group_id as string | null;
-        if (!groupId || teamOf[groupId]) continue; // first member with a team decides it
-        const teamId = teamOfUser.get(m.user_id as string);
-        if (teamId) teamOf[groupId] = teamId;
+        if (!groupId) continue;
+        byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), m.user_id as string]);
       }
+      Object.assign(
+        teamOf,
+        teamOfScrambleGroups([...byGroup].map(([id, userIds]) => ({ id, userIds })), (u) => teamOfUser.get(u))
+      );
     } else {
       for (const [userId, teamId] of teamOfUser) teamOf[userId] = teamId;
     }

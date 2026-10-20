@@ -58,7 +58,7 @@ import { useScreenHistory } from "@/hooks/useScreenHistory";
 import {
   computeStrokeLeaderboard,
   computeStrokePlayStandings,
-  computeStrokeTeamStandings,
+  computeStrokeTeamStandings, teamOfScrambleGroups,
   stablefordEntries,
 } from "@/lib/strokePlay";
 import { allUnitsComplete } from "@/lib/gameCompleteness";
@@ -76,8 +76,7 @@ import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
-import { placementAward } from "@/lib/finalizeAward";
-import { effectiveDistribution } from "@/lib/pointsDistribution";
+import { placementFinalize } from "@/lib/finalizeAward";
 import { AWARD_WORD } from "@/lib/vocabulary";
 import { FinalizeAwardSummary } from "./FinalizeAwardSummary";
 import { PickemFinalizePrompt } from "./pickem/PickemFinalizePrompt";
@@ -882,13 +881,14 @@ export function StrokeGameView() {
     const teamOfUser = new Map(
       ((assignQ.data ?? []) as { user_id: string; team_id: string }[]).map((a) => [a.user_id, a.team_id])
     );
-    for (const g of surfaceGroups) {
-      // First member with a team decides it. A group whose members are all
-      // unassigned has no team and falls back to its own display name below —
-      // absent, not "Team" with a grey dot, which would read as a real team.
-      const teamId = g.userIds.map((u) => teamOfUser.get(u)).find(Boolean);
-      const t = teamId ? teamById.get(teamId) : undefined;
-      if (t) m.set(g.id, { name: t.name, color: t.color });
+    // First member with a team decides it (`teamOfScrambleGroups`, the rule the
+    // server's finalize reads too). A group whose members are all unassigned has
+    // no team and falls back to its own display name below — absent, not "Team"
+    // with a grey dot, which would read as a real team.
+    const groupTeam = teamOfScrambleGroups(surfaceGroups, (u) => teamOfUser.get(u));
+    for (const [groupId, teamId] of Object.entries(groupTeam)) {
+      const t = teamById.get(teamId);
+      if (t) m.set(groupId, { name: t.name, color: t.color });
     }
     return m;
   }, [isScramble, surfaceGroups, teamsQ.data, assignQ.data]);
@@ -1015,8 +1015,12 @@ export function StrokeGameView() {
       ? stablefordEntries(startedEntries, parByHole, boardRubric)
       : startedEntries.map((e) => ({ participant_id: e.participant_id, value: e.value }));
     const standings = computeStrokePlayStandings([...started], scored, { scoring });
-    return computeStrokeTeamStandings(standings, teamOfUserId, scoring);
-  }, [leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId]);
+    // A scramble ranks GROUPS, so its team map is group -> team (#1674): mapping
+    // groups through the person map found nothing, and the finalize summary said
+    // a scramble awarding real points would award none.
+    const teamOfUnit = isScramble ? teamOfScrambleGroups(surfaceGroups, (u) => teamOfUserId[u]) : teamOfUserId;
+    return computeStrokeTeamStandings(standings, teamOfUnit, scoring);
+  }, [leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId, isScramble, surfaceGroups]);
   const teamTotalRows = boardRollUp === "team_totals" ? teamStandings : [];
 
   // Game-level finalize gate (just like rack): every player of the LIVE whole field
@@ -1046,12 +1050,17 @@ export function StrokeGameView() {
     () => (teamsQ.data ?? []) as { id: string; name: string; color: string }[],
     [teamsQ.data]
   );
-  const finalizeAward = useMemo(() => {
+  // The schedule the board PAYS (#1674): `placementFinalize` reads the authored
+  // split only, and treats points with no split as awarding nothing.
+  const finalizeOutcome = useMemo(() => {
     if (!strokeGame?.competition_id || awardTeams.length === 0) return null;
-    const values = effectiveDistribution(strokeGame.points_distribution ?? null, strokeGame.points_total ?? null);
-    if (values.length === 0) return null;
-    return placementAward(values, teamStandings.map((t) => ({ unitId: t.teamId, position: t.position })));
+    return placementFinalize({
+      distribution: strokeGame.points_distribution,
+      pointsTotal: strokeGame.points_total,
+      ranked: teamStandings.map((t) => ({ unitId: t.teamId, position: t.position })),
+    });
   }, [strokeGame?.competition_id, strokeGame?.points_distribution, strokeGame?.points_total, awardTeams.length, teamStandings]);
+  const finalizeAward = finalizeOutcome?.award ?? null;
   const awardUnits = useMemo(
     () => new Map(awardTeams.map((t) => [t.id, { name: t.name, color: t.color }])),
     [awardTeams]
@@ -1729,7 +1738,7 @@ export function StrokeGameView() {
           // the backstop behind the go-live prompt. On stroke the button shows
           // only once every player is thru every hole, so a zero award here
           // means the field played and nobody in it is on a team.
-          onFinalize={finalizeAward?.awardsNothing ? () => setConfirmAwardsNothing(true) : handleFinish}
+          onFinalize={finalizeOutcome?.awardsNothing ? () => setConfirmAwardsNothing(true) : handleFinish}
           onCorrect={handleCorrect}
         />
         {confirmAwardsNothing && (
