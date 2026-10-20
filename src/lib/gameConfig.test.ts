@@ -180,7 +180,7 @@ describe("validatePlacement — more places than scoring entities", () => {
     // #809 — name the control, not just the state. Since #1679 the line IS on
     // the control: it is the Point Distribution row's subtitle, so it no longer
     // spells out "remove places" (Zach: one short line).
-    expect(msg).toBe("Awards 5 places — only 2 teams can finish.");
+    expect(msg).toBe("5 places, but only 2 teams can finish.");
   });
 
   it("refuses even when the split adds up exactly", () => {
@@ -283,15 +283,15 @@ describe("tooManyPlacesLine — the split warning, one short line (#1679)", () =
     validatePlacement(9, [5, 3, 1], { count, source });
 
   it("names what can finish, by what sets the ceiling", () => {
-    expect(tooManyPlacesLine(over(2, "teams"))).toBe("Awards 3 places — only 2 teams can finish.");
-    expect(tooManyPlacesLine(over(2, "bracket"))).toBe("Awards 3 places — only 2 entrants can finish.");
-    expect(tooManyPlacesLine(over(2, "people"))).toBe("Awards 3 places — only 2 players can finish.");
-    expect(tooManyPlacesLine(over(1, "teams"))).toBe("Awards 3 places — only 1 team can finish.");
+    expect(tooManyPlacesLine(over(2, "teams"))).toBe("3 places, but only 2 teams can finish.");
+    expect(tooManyPlacesLine(over(2, "bracket"))).toBe("3 places, but only 2 entrants can finish.");
+    expect(tooManyPlacesLine(over(2, "people"))).toBe("3 places, but only 2 players can finish.");
+    expect(tooManyPlacesLine(over(1, "teams"))).toBe("3 places, but only 1 team can finish.");
   });
 
   it("is what a save refuses with, and calls no competition a tournament", () => {
     const msg = placementRefusalMessage(over(2, "teams"));
-    expect(msg).toBe("Awards 3 places — only 2 teams can finish.");
+    expect(msg).toBe("3 places, but only 2 teams can finish.");
     expect(msg).not.toMatch(/tournament|cup/i);
   });
 
@@ -304,12 +304,24 @@ describe("tooManyPlacesLine — the split warning, one short line (#1679)", () =
 describe("splitPlacesWarning — settings' question, with or without a total", () => {
   const split = (values: number[]) => ({ type: "placement" as const, values });
   it("warns on too many places whatever the total (the places check never reads it, #819)", () => {
-    expect(splitPlacesWarning(split([5, 3, 1]), teamPlaceCapacity(2))).toBe("Awards 3 places — only 2 teams can finish.");
+    expect(splitPlacesWarning(split([5, 3, 1]), teamPlaceCapacity(2))).toBe("3 places, but only 2 teams can finish.");
   });
   it("CONTROL: a fitting split, an unknown capacity, a per-match shape and no split are all silent", () => {
     expect(splitPlacesWarning(split([5, 3]), teamPlaceCapacity(2))).toBeNull();
     expect(splitPlacesWarning(split([5, 3, 1]), teamPlaceCapacity(null))).toBeNull();
     expect(splitPlacesWarning({ type: "per_match", value: 3 }, teamPlaceCapacity(1))).toBeNull();
     expect(splitPlacesWarning(null, teamPlaceCapacity(1))).toBeNull();
+  });
+});
+
+describe("one sentence on both screens (#1679, Zach)", () => {
+  it("the game screen's refusal begins with the settings row's line, word for word", () => {
+    for (const capacity of [teamPlaceCapacity(2), peoplePlaceCapacity(2), bracketPlaceCapacity(2)]) {
+      const distribution = { type: "placement" as const, values: [5, 3, 1] };
+      const row = splitPlacesWarning(distribution, capacity)!;
+      const refusal = finalizeSplitRefusal({ distribution, pointsTotal: 9, capacity })!;
+      expect(refusal.reason).toBe(row);
+      expect(refusal.text).toBe(`${row} Fix in settings.`);
+    }
   });
 });

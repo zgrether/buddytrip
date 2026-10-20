@@ -95,7 +95,7 @@ describe("the row says a split has too many places, once, while it applies (#167
 
   it("3 places over 2 teams: the subtitle is the warning, in the warning colour", () => {
     const row = subtitle(draft(THREE));
-    expect(row).toContain('style="color:var(--color-bt-warning)" data-testid="split-places-warning">Awards 3 places — only 2 teams can finish.</span>');
+    expect(row).toContain('style="color:var(--color-bt-warning)" data-testid="split-places-warning">3 places, but only 2 teams can finish.</span>');
     expect(row).not.toContain("Custom placement split");
   });
 

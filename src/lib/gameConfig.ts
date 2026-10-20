@@ -217,20 +217,24 @@ const CAN_FINISH: Record<PlaceCapacitySource, { one: string; many: string }> = {
 
 /**
  * A split with more places than can finish, in ONE short line (Zach, the #1679
- * look): "Awards 3 places — only 2 teams can finish." It replaced a three-clause
+ * look): "3 places, but only 2 teams can finish." It replaced a three-clause
  * sentence that also called every competition a tournament, which a cup is not.
  * The line names no competition at all, so it is right for both kinds.
  *
- * Settings shows it as the Point Distribution row's subtitle, in the warning
- * colour, with Save disabled; a save that reaches the server anyway is refused
- * with it (`placementRefusalMessage`); and finalize's refusal leads with it
- * (`finalizeSplitRefusal`). Null for any other state.
+ * ONE sentence on every screen, word for word (Zach): settings shows it as the
+ * Point Distribution row's subtitle, in the warning colour, with Save disabled;
+ * the game screen shows it under a disabled Save results with "Fix in
+ * settings." after it (`finalizeSplitRefusal`); and a save that reaches the
+ * server is refused with it (`placementRefusalMessage`). An earlier round had
+ * a dash variant in settings and this one on the game screen: two wordings of
+ * one fact, which is what this function exists to prevent. Null for any other
+ * state.
  */
 export function tooManyPlacesLine(v: PlacementValidation): string | null {
   if (v.state !== "too_many_places") return null;
   const n = v.capacity.count ?? 0;
   const unit = CAN_FINISH[v.capacity.source];
-  return `Awards ${v.places} places — only ${n} ${n === 1 ? unit.one : unit.many} can finish.`;
+  return `${v.places} places, but only ${n} ${n === 1 ? unit.one : unit.many} can finish.`;
 }
 
 /**
@@ -266,7 +270,7 @@ export function splitPlacesWarning(
  */
 export const SPLIT_REFUSAL_FIX = { before: "Fix in ", link: "settings", after: "." } as const;
 export interface SplitRefusal {
-  /** The two numbers: "3 places, but only 2 teams can finish." */
+  /** The two numbers: "3 places, but only 2 teams can finish." (`tooManyPlacesLine`) */
   reason: string;
   /** The whole sentence, `reason` and the fix. */
   text: string;
@@ -279,12 +283,8 @@ export function finalizeSplitRefusal(p: {
   if (!isPlacement(p.distribution)) return null;
   const check = validatePlacement(Number(p.pointsTotal ?? 0), p.distribution.values, p.capacity);
   if (check.state !== "too_many_places") return null;
-  // Shorter than settings' line, so reason + fix stay ONE line under Save
-  // results on a phone (the #1679 copy sweep, measured at 375px). Same unit
-  // words (`CAN_FINISH`), so the two can only differ in their framing.
-  const n = check.capacity.count ?? 0;
-  const unit = CAN_FINISH[check.capacity.source];
-  const reason = `${check.places} places, but only ${n} ${n === 1 ? unit.one : unit.many} can finish.`;
+  // The settings row's sentence, word for word (Zach): one sentence, two places.
+  const reason = tooManyPlacesLine(check)!;
   return { reason, text: `${reason} ${SPLIT_REFUSAL_FIX.before}${SPLIT_REFUSAL_FIX.link}${SPLIT_REFUSAL_FIX.after}` };
 }
 

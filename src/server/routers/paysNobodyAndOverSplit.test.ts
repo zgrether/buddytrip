@@ -134,7 +134,7 @@ describe("a placement split can no longer outrun the teams (#1427 · 2)", () => 
         tripId, gameTypeId: "gtt_stroke_play", name: "Too long", competitionId,
         pointsTotal: 10, pointsDistribution: { type: "placement", values: [5, 3, 2] },
       })
-    ).rejects.toThrow("Awards 3 places — only 2 teams can finish.");
+    ).rejects.toThrow("3 places, but only 2 teams can finish.");
     const { count } = await ctx.admin.from("games").select("id", { count: "exact", head: true }).eq("competition_id", competitionId);
     expect(count).toBe(0);
 

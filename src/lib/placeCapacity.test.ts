@@ -118,12 +118,12 @@ describe("validatePlacement against a bracket ceiling", () => {
 describe("placementRefusalMessage names what can finish", () => {
   it("teams: names the teams", () => {
     const msg = placementRefusalMessage(validatePlacement(15, [5, 4, 3, 2, 1], teamPlaceCapacity(2)))!;
-    expect(msg).toBe("Awards 5 places — only 2 teams can finish.");
+    expect(msg).toBe("5 places, but only 2 teams can finish.");
   });
 
   it("bracket: names the entrants, never teams — the ceiling is the field", () => {
     const msg = placementRefusalMessage(validatePlacement(8, [4, 2, 1, 1], bracketPlaceCapacity(3)))!;
-    expect(msg).toBe("Awards 4 places — only 3 entrants can finish.");
+    expect(msg).toBe("4 places, but only 3 entrants can finish.");
     expect(msg).not.toMatch(/team/i);
   });
 });
