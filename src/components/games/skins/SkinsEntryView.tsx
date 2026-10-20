@@ -1,5 +1,6 @@
 "use client";
 
+import { SKINS_DEAD_POT } from "@/lib/vocabulary";
 import { useState } from "react";
 import { RESULT_WORD } from "@/lib/vocabulary";
 import { ChevronLeft, Table2, Check, Settings } from "lucide-react";
@@ -308,7 +309,7 @@ export function SkinsEntryView({
             // the only place the consequence is stated before it is chosen.
             sub={
               hole === units.length
-                ? "Nobody is paid — the pot is gone"
+                ? SKINS_DEAD_POT
                 : `Carries ${line.pot} to hole ${units[hole]?.label ?? hole + 1}`
             }
             onClick={pickTied}

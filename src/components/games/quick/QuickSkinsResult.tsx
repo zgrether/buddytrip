@@ -1,5 +1,6 @@
 "use client";
 
+import { SKINS_DEAD_POT } from "@/lib/vocabulary";
 import { Table2 } from "lucide-react";
 import { formatMoney, formatSignedMoney, type Settlement } from "@/lib/sideBets";
 import type { SkinsStanding } from "@/lib/skins";
@@ -174,8 +175,7 @@ export function QuickSkinsResult({
             data-testid="quick-skins-dead-pot"
             style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }}
           >
-            The last hole was tied, so {deadPot} skin{deadPot === 1 ? "" : "s"} went unpaid — there was no
-            hole left to carry to.
+            {SKINS_DEAD_POT}
           </div>
         )}
 

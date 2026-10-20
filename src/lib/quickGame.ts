@@ -1202,9 +1202,9 @@ function quickSkinsSubtitle(state: QuickSkinsState, units: ScoreUnit[]): string 
   const thru = played.length;
   const next = tally.lines.find((l) => l.status === "unplayed");
   // A carried pot with nowhere left to go is not "on the 19th" — it is skins
-  // nobody will be paid, which is a different sentence (`potIsDead`).
+  // nobody can win, which is a different sentence (`potIsDead`).
   const riding = tally.potIsDead
-    ? `${fmtSkins(tally.carried)} unpaid`
+    ? `${fmtSkins(tally.carried)} not won`
     : next && next.pot > 1
       ? `${fmtSkins(next.pot)} on ${next.hole}`
       : null;

@@ -1,5 +1,6 @@
 "use client";
 
+import { SKINS_DEAD_POT } from "@/lib/vocabulary";
 import type { SkinsHoleLine } from "@/lib/skins";
 
 /**
@@ -61,7 +62,7 @@ export function SkinsPotBanner({
   const { headline, detail, testId } = dead
     ? {
         headline: "Pushed",
-        detail: `${skins(line.pot)} go unpaid — there is no hole left to carry to.`,
+        detail: SKINS_DEAD_POT,
         testId: "skins-pot-dead",
       }
     : pushed

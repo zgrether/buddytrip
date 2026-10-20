@@ -527,6 +527,10 @@ export interface SaveMatchRow {
  *  `points_distribution.value` — so the RPC only does the all-or-nothing multi-
  *  table write. */
 export interface SaveConfigPayload {
+  /** Play it as a side game (#1668 look, migration 218): this save takes the game
+   *  OUT of its competition. Sent only with the go-live it was chosen at
+   *  (`leaveCompetitionKey`); every limit is the RPC's. */
+  leaveCompetition?: true;
   name: string;
   rulesForToday: string | null;
   /** `games.competition_format` (086) — non-golf's structure label; null for golf. */

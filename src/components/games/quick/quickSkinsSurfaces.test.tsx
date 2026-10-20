@@ -97,12 +97,12 @@ describe("the finish screen", () => {
     expect(html).toContain('data-testid="quick-skins-total-p1"');
   });
 
-  it("says a destroyed pot went unpaid — the fact no number on the screen carries", () => {
+  it("says nobody won the last skins — the fact no number on the screen carries", () => {
     // Every figure is correct without mentioning it, and every one is equally
     // consistent with the pot never having existed. So the sentence has to say
     // it, and only when it happened.
     expect(result({ deadPot: 3 })).toContain('data-testid="quick-skins-dead-pot"');
-    expect(result({ deadPot: 3 })).toContain("3 skins went unpaid");
+    expect(result({ deadPot: 3 })).toContain("Nobody won the last skins.");
     expect(result()).not.toContain('data-testid="quick-skins-dead-pot"');
   });
 });

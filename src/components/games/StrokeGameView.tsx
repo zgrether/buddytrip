@@ -33,6 +33,8 @@ import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerT
 import { StrokeScoringRow } from "@/components/games/StrokeScoringRow";
 import { scoringOf, type ScoringType } from "@/lib/stableford";
 import { UnevenTeamsNote } from "./UnevenTeamsNote";
+import { SideGamePrompt } from "@/components/games/SideGamePrompt";
+import { asksSideGameAtGoLive, leaveCompetitionKey } from "@/lib/sideGamePrompt";
 import { useTripRole } from "@/hooks/useTripRole";
 import { isTeamCaptain } from "@/hooks/useCanEditTeam";
 import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
@@ -334,6 +336,11 @@ export function StrokeGameView() {
   // competition id. Reuses rack's play_groups mechanism (issue path in save_game_config).
   const teamsQ = trpc.teams.list.useQuery({ tripId: tripId!, competitionId: gameCompetitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompetitionId });
   const assignQ = trpc.teamAssignments.list.useQuery({ tripId: tripId!, competitionId: gameCompetitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompetitionId });
+  // Go-live in a team competition where nobody playing is on a team asks first
+  // (#1668 look): Play it as a side game, or Keep as is. The choice rides the
+  // same Save as the go-live (`leaveCompetitionKey`).
+  const [sideGameAsk, setSideGameAsk] = useState(false);
+  const [leaveChosen, setLeaveChosen] = useState(false);
   // People on no team of this cup (#1668 look): they play, their result counts
   // for no team, and an organizer (or their captain) can add them from the
   // groupings. `rostersApply` is false for a side game and a teamless race,
@@ -527,8 +534,22 @@ export function StrokeGameView() {
   }
   // Setup/Scoring toggle → the scoring draft slice; Save commits it (go-live readiness
   // re-asserted server-side inside the tx, so the client gate can't be bypassed).
-  function handleEnable() { setScoringDraft(true); }
-  function handleDisable() { setScoringDraft(false); }
+  function wouldAskSideGame(): boolean {
+    const teamOf = new Map(((assignQ.data ?? []) as { user_id: string; team_id: string }[]).map((a) => [a.user_id, a.team_id]));
+    return asksSideGameAtGoLive({
+      wasLive: !!gameQ.data?.scoring_enabled,
+      inCup: !!gameCompetitionId,
+      teamCount: (teamsQ.data ?? []).length,
+      gameTypeId: gameQ.data?.game_type_id as string | undefined,
+      playerIds: configDraft.groups.flat(),
+      teamOf: (id) => teamOf.get(id),
+    });
+  }
+  function handleEnable() {
+    if (wouldAskSideGame()) { setSideGameAsk(true); return; }
+    setScoringDraft(true);
+  }
+  function handleDisable() { setScoringDraft(false); setLeaveChosen(false); }
   // §3: per-player handicap strokes → the strokes draft slice (warned/in-place; Save
   // commits + recomputes). Returns a Promise for HandicapRoster's async contract.
   const onSetStrokes = (userId: string, strokes: number) => {
@@ -653,7 +674,10 @@ export function StrokeGameView() {
     ready: !!gameQ.data && !!groupsQ.data && !!orgQ.data,
     serverConfigDraft, configDraft, anyTouched,
     draftsEqual: strokeDraftsEqual,
-    toPayload: (draft, base) => strokeDraftToPayload(draft, base),
+    toPayload: (draft, base) => ({
+      ...strokeDraftToPayload(draft, base),
+      ...leaveCompetitionKey({ chosen: leaveChosen, draftScoring: draft.scoringEnabled, savedScoring: base.scoringEnabled }),
+    }),
     bundle: draftBundle, applyRecovered: applyBundle, reset: resetSlices,
     onSaved: async () => {
       // Refetch play_groups too (P3 3.2) so the groupings baseline (serverGroups) reflects
@@ -1394,6 +1418,14 @@ export function StrokeGameView() {
     };
     return (
       <>
+        {sideGameAsk && (
+          <SideGamePrompt
+            canMakeSideGame={canManageGame}
+            onSideGame={() => { setLeaveChosen(true); setScoringDraft(true); setSideGameAsk(false); }}
+            onKeep={() => { setLeaveChosen(false); setScoringDraft(true); setSideGameAsk(false); }}
+            onDismiss={() => setSideGameAsk(false)}
+          />
+        )}
         <GameSettingsPage
           surface="stroke"
           onClose={closeConfig}
@@ -1454,16 +1486,20 @@ export function StrokeGameView() {
           // "finish setting up this game" (#706).
           management={{
             scoringEnabled: configDraft.scoringEnabled,
-            ready: draftGroupCount > 0 && (!gameCompetitionId || pointsReady(configDraft.pointsTotal ?? 0)),
+            // The points term does not lock a game that will ASK instead: nobody
+            // playing is on a team, so no point value could be awarded anyway.
+            ready: draftGroupCount > 0 && (!gameCompetitionId || wouldAskSideGame() || pointsReady(configDraft.pointsTotal ?? 0)),
             blockedReason: draftGroupCount === 0
               ? "Add at least one group before enabling scoring"
-              : gameCompetitionId && !pointsReady(configDraft.pointsTotal ?? 0)
+              : gameCompetitionId && !wouldAskSideGame() && !pointsReady(configDraft.pointsTotal ?? 0)
                 ? "Set a point value before enabling scoring"
                 : null,
             onEnable: handleEnable,
             onDisable: handleDisable,
             pending: saving,
             staged: configDraft.scoringEnabled !== scoringEnabled,
+            // The same answer the payload reads, so the line and the save agree.
+            leavingCompetition: "leaveCompetition" in leaveCompetitionKey({ chosen: leaveChosen, draftScoring: configDraft.scoringEnabled, savedScoring: scoringEnabled }),
           }}
           // GROUP SETTINGS order (item 5): Groupings → Point Distribution → Handicaps —
           // distribution divides across the groups, so Groupings leads (dependency order).

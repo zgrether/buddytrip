@@ -179,6 +179,8 @@ export function GameSettingsPage({
     onDisable: () => void;
     pending: boolean;
     staged: boolean;
+    /** See GameManagementPanel. */
+    leavingCompetition?: boolean;
   };
 
   /** The SETTINGS zone body — the format's own spine. The zone header renders
@@ -272,6 +274,7 @@ export function GameSettingsPage({
                 onDisable={management.onDisable}
                 pending={management.pending}
                 staged={management.staged}
+                leavingCompetition={management.leavingCompetition}
               />
             )}
             {!competitionId && standaloneRows}
