@@ -41,3 +41,17 @@ describe("every finalize button goes through the awards-nothing backstop", () =>
     }
   });
 });
+
+describe("the split refusal reaches the button and replaces the summary (#1679)", () => {
+  for (const file of ["StrokeGameView.tsx", "skins/SkinsGameView.tsx", "NonGolfScoreboard.tsx"]) {
+    it(file, () => {
+      expect(read(file)).toMatch(/finalizeBlockedLine=\{(splitRefusal|finalizeBlockedLine)\}/);
+    });
+  }
+  it("the views that build a summary hide it when refused", () => {
+    expect(read("StrokeGameView.tsx")).toMatch(/finalizeAward && !splitRefusal && \(/);
+    expect(read("skins/SkinsGameView.tsx")).toMatch(/finalizeOutcome\?\.award && !splitRefusal && \(/);
+    expect(read("NonGolfScoreboard.tsx")).toMatch(/!finalizeBlockedLine &&\s+awardNote\}/);
+    expect(read("NonGolfGameView.tsx")).toMatch(/finalizeBlockedLine=\{splitRefusal\}/);
+  });
+});

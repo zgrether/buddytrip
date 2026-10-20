@@ -57,6 +57,7 @@ export function NonGolfScoreboard({
   onPosted,
   awardsNothing = false,
   awardNote,
+  finalizeBlockedLine = null,
 }: {
   tripId: string;
   competitionId: string;
@@ -110,6 +111,9 @@ export function NonGolfScoreboard({
    *  places no team can fill (#1639 c). Shown beside the button, only when
    *  the button is. */
   awardNote?: ReactNode;
+  /** Why Save results would be refused (`finalizeSplitRefusal`); the button
+   *  is disabled with this under it, and the award note is not shown. */
+  finalizeBlockedLine?: string | null;
 }) {
   const utils = trpc.useUtils();
   // Matches (170) decides FIRST — before winLoseTie is even consulted. Its
@@ -300,6 +304,7 @@ export function NonGolfScoreboard({
           above). An empty pairing grid still refuses — there is nothing for a
           tap on this button to mean either way. */}
       {gameLifecycle({ canEdit, status: game.status, correctionsOpen: game.corrections_open, allComplete }).canFinalize &&
+        !finalizeBlockedLine &&
         awardNote}
       <GameLifecycleActions
         canEdit={canEdit}
@@ -310,6 +315,7 @@ export function NonGolfScoreboard({
         correctPending={correctPending}
         onFinalize={awardsNothingBackstop.onFinalize}
         onCorrect={handleCorrect}
+        finalizeBlockedLine={finalizeBlockedLine}
       />
       {awardsNothingBackstop.prompt}
     </div>

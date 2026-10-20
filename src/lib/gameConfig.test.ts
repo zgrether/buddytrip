@@ -3,11 +3,12 @@ import {
   deriveMatchCount,
   validatePlacement,
   placementRefusalMessage,
+  finalizeSplitRefusal,
   matchReadout,
   placementFit,
   matchFit,
 } from "./gameConfig";
-import { teamPlaceCapacity } from "./placeCapacity";
+import { teamPlaceCapacity, peoplePlaceCapacity, bracketPlaceCapacity } from "./placeCapacity";
 
 /** The capacity these cases always meant: N teams in the competition. */
 const teams = teamPlaceCapacity;
@@ -241,5 +242,36 @@ describe("validatePlacement — places check is independent of the total", () =>
     // It's `partial` (0 ≠ 15) — which the callers only enforce once a total
     // exists — but it must never be reported as an entity-count problem.
     expect(validatePlacement(0, [9, 6], teams(2)).state).toBe("partial");
+  });
+});
+
+describe("finalizeSplitRefusal — finalize's question, asked by the game screen first (#1679)", () => {
+  const split = (values: number[]) => ({ type: "placement" as const, values });
+
+  it("a 3-place split in a cup with two teams: refused, in #1667's words", () => {
+    expect(finalizeSplitRefusal({ distribution: split([5, 3, 1]), pointsTotal: 9, capacity: teamPlaceCapacity(2) })).toBe(
+      "This split awards points to 3 places, but only 2 can finish. Change it in settings."
+    );
+  });
+
+  it("a race with no teams is measured by the people playing", () => {
+    expect(finalizeSplitRefusal({ distribution: split([5, 3, 1]), pointsTotal: 9, capacity: peoplePlaceCapacity(2) })).toBe(
+      "This split awards points to 3 places, but only 2 can finish. Change it in settings."
+    );
+  });
+
+  it("refuses on the place count whatever the split adds up to", () => {
+    expect(finalizeSplitRefusal({ distribution: split([5, 3, 1]), pointsTotal: 20, capacity: teamPlaceCapacity(2) })).not.toBeNull();
+  });
+
+  it("CONTROL: a split that fits is not refused", () => {
+    expect(finalizeSplitRefusal({ distribution: split([5, 3]), pointsTotal: 8, capacity: teamPlaceCapacity(2) })).toBeNull();
+    expect(finalizeSplitRefusal({ distribution: split([5, 3, 1]), pointsTotal: 9, capacity: bracketPlaceCapacity(4) })).toBeNull();
+  });
+
+  it("CONTROL: an unknown capacity never refuses, and nor does a per-match shape or no split", () => {
+    expect(finalizeSplitRefusal({ distribution: split([5, 3, 1]), pointsTotal: 9, capacity: teamPlaceCapacity(null) })).toBeNull();
+    expect(finalizeSplitRefusal({ distribution: { type: "per_match", value: 3 }, pointsTotal: 9, capacity: teamPlaceCapacity(1) })).toBeNull();
+    expect(finalizeSplitRefusal({ distribution: null, pointsTotal: 9, capacity: teamPlaceCapacity(1) })).toBeNull();
   });
 });

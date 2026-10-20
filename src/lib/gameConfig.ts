@@ -18,6 +18,8 @@
  * the leaderboard available-points both call it (one derivation, two consumers).
  */
 
+import { isPlacement, type PointsDistribution } from "./pointsDistribution";
+
 export type MatchFormat = "singles" | "doubles";
 
 /**
@@ -218,6 +220,30 @@ export function placementRefusalMessage(v: PlacementValidation): string | null {
     `Points must total ${v.total} exactly — ${v.allocated} allocated, ` +
     `${over ? `${-v.remaining} over` : `${v.remaining} left to place`}.`
   );
+}
+
+/**
+ * Finalize's refusal of a split with more places than can finish (#1667), as
+ * the GAME SCREEN shows it: the two numbers, and where to fix it. Settings
+ * words the same condition for the person editing the split
+ * (`placementRefusalMessage`); this is for the person about to save results.
+ *
+ * ONE question, asked by `games.finish` and by every screen that offers Save
+ * results (#1679 look): the screen used to list the unfillable place as "Not
+ * awarded" with Save live, and finalize then refused the tap. `capacity` is
+ * the one finalize measures (`finishPlaceCapacity`): the team count, a
+ * bracket's entrants, or in a race with no teams the people playing. Null when
+ * the split is not a placement split or fits.
+ */
+export function finalizeSplitRefusal(p: {
+  distribution: PointsDistribution | null | undefined;
+  pointsTotal: number | null | undefined;
+  capacity: PlaceCapacity;
+}): string | null {
+  if (!isPlacement(p.distribution)) return null;
+  const check = validatePlacement(Number(p.pointsTotal ?? 0), p.distribution.values, p.capacity);
+  if (check.state !== "too_many_places") return null;
+  return `This split awards points to ${check.places} places, but only ${check.capacity.count} can finish. Change it in settings.`;
 }
 
 // ── Match readout (retires "projected") ──────────────────────────────────────

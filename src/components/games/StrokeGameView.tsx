@@ -51,8 +51,8 @@ import { fmtValue, type GameRow } from "@/components/competition/CompetitionGame
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { type ModifiersMap } from "@/lib/modifiers";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
-import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
-import { teamPlaceCapacity } from "@/lib/placeCapacity";
+import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal } from "@/lib/gameConfig";
+import { peoplePlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
 import { useGameEditAccess } from "@/hooks/useGameEditAccess";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useGameSettingsOverlay } from "@/hooks/useGameSettingsOverlay";
@@ -1092,6 +1092,18 @@ export function StrokeGameView() {
     });
   }, [strokeGame?.competition_id, strokeGame?.points_distribution, strokeGame?.points_total, teamlessRace, awardTeams.length, playerStandings, teamStandings]);
   const finalizeAward = finalizeOutcome?.award ?? null;
+  // Finalize's own refusal, asked before the tap (#1679 look), against the
+  // capacity finalize measures: the teams, or in a race with no teams the
+  // people playing. When it refuses, Save results is disabled with the
+  // reason, and the summary is not shown: its Not awarded line would say the
+  // opposite.
+  const splitRefusal = strokeGame?.competition_id
+    ? finalizeSplitRefusal({
+        distribution: strokeGame.points_distribution,
+        pointsTotal: strokeGame.points_total,
+        capacity: teamlessRace ? peoplePlaceCapacity(leaderboardRows.length) : teamPlaceCapacity(awardTeams.length),
+      })
+    : null;
   const awardUnits = useMemo(
     () =>
       teamlessRace
@@ -1778,7 +1790,7 @@ export function StrokeGameView() {
             mid-round-added group re-blocks it). Never on a group's entry page. */}
         {/* What finalize will award (#1639). Beside the button, no extra step:
             finalize keeps its bare CTA. Shown only when the button is. */}
-        {strokeCanFinalize && finalizeAward && (
+        {strokeCanFinalize && finalizeAward && !splitRefusal && (
           <FinalizeAwardSummary
             award={finalizeAward}
             kind={teamlessRace ? "person" : "team"}
@@ -1796,6 +1808,7 @@ export function StrokeGameView() {
           correctPending={correctPending}
           onFinalize={awardsNothingBackstop.onFinalize}
           onCorrect={handleCorrect}
+          finalizeBlockedLine={splitRefusal}
         />
         {awardsNothingBackstop.prompt}
       </div>

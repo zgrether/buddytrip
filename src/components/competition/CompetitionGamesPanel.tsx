@@ -800,8 +800,7 @@ export function ManualPlacementEditor({
         </DragOverlay>
       </DndContext>
       <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        Drag to set the finishing order. Tap the link icon to tie a team with the one above it —
-        tied teams split the points for the places they share, so the game&rsquo;s total never changes.
+        Drag to set the order. Tap the link to tie with the team above.
       </p>
     </div>
   );

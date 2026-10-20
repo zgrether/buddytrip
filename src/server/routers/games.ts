@@ -22,7 +22,7 @@ import { GLORIOUS_HOLES_DEFAULT } from "@/lib/modifiers";
 import type { MatchOutcome } from "../lib/matchPlay";
 import type { RackTeamOutcome } from "../lib/rackNStack";
 import type { StrokeStanding } from "@/lib/strokePlay";
-import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
+import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal } from "@/lib/gameConfig";
 import { isPlacement, liveMatchPointsPerMatch, awardsPerMatch, type PointsDistribution } from "@/lib/pointsDistribution";
 import { GAME_TYPES, canBeSideGame, canPlayInTeamlessRace, gameTypesForTeamlessRace, getGameTypeDefinition, formatRefusalForScoringModel, type ScoringModel } from "@/lib/gameTypes";
 import { COMPETITION_FORMATS, LEGACY_COMPETITION_FORMATS } from "@/lib/configDraft";
@@ -1188,17 +1188,16 @@ export const gamesRouter = router({
       // covers a teamless race (no team ceiling) and a direct save_game_config
       // call (no capacity check). A side game pays no cup, so it is skipped.
       if (game.competition_id && isPlacement(game.points_distribution as PointsDistribution | null)) {
-        const split = game.points_distribution as { type: "placement"; values: number[] };
         const capacity = await finishPlaceCapacity(ctx.supabase, ctx.tripId!, input.gameId);
-        const check = validatePlacement(Number(game.points_total ?? 0), split.values, capacity);
-        if (check.state === "too_many_places") {
-          // The two numbers are the whole diagnosis, and settings is the one
-          // place to fix it (copy trimmed in review, #1667).
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: `This split awards points to ${check.places} places, but only ${check.capacity.count} can finish. Change it in settings.`,
-          });
-        }
+        // The two numbers are the whole diagnosis, and settings is the one
+        // place to fix it (copy trimmed in review, #1667). The game screens ask
+        // the same function first and disable Save results (#1679).
+        const refusal = finalizeSplitRefusal({
+          distribution: game.points_distribution as PointsDistribution | null,
+          pointsTotal: game.points_total as number | null,
+          capacity,
+        });
+        if (refusal) throw new TRPCError({ code: "PRECONDITION_FAILED", message: refusal });
       }
 
       // Data-driven branch on the format's result_strategy (CLAUDE.md #8) — new

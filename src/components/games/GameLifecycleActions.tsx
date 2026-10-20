@@ -90,6 +90,7 @@ export function GameLifecycleActions({
   finalizePendingLabel = "Saving results…",
   correctLabel = "Correct a score",
   relockBlockedLine = RELOCK_BLOCKED_MATCHES,
+  finalizeBlockedLine = null,
   finalizePending = false,
   correctPending = false,
   variant = "cta",
@@ -129,6 +130,14 @@ export function GameLifecycleActions({
    * match line; stroke and skins, which have no matches, pass the holes line.
    */
   relockBlockedLine?: string;
+  /**
+   * Why Save results would be refused, when the screen already knows (#1679):
+   * a split with more places than can finish (`finalizeSplitRefusal`). The
+   * button stays where the reader expects it, DISABLED, with this line under
+   * it, the same shape as the relock line above. Finalize refuses the same
+   * tap, so the disabled button is not the only guard.
+   */
+  finalizeBlockedLine?: string | null;
   finalizePending?: boolean;
   correctPending?: boolean;
   onFinalize: () => void;
@@ -188,9 +197,10 @@ export function GameLifecycleActions({
   if (state.canFinalize) {
     return box(
       "game-finalize",
+      <>
       <button
         onClick={onFinalize}
-        disabled={finalizePending}
+        disabled={finalizePending || !!finalizeBlockedLine}
         className={panel ? "shrink-0 px-4 disabled:opacity-40" : "w-full disabled:opacity-40"}
         style={{
           ...(panel ? PANEL_BTN : { height: 50, borderRadius: 12, fontSize: 15 }),
@@ -211,6 +221,16 @@ export function GameLifecycleActions({
       >
         {finalizePending ? finalizePendingLabel : finalizeLabel}
       </button>
+      {finalizeBlockedLine && (
+        <p
+          data-testid="game-finalize-blocked"
+          className="mt-2 text-center"
+          style={{ fontSize: TYPE_SCALE.bodyDense, color: "var(--color-bt-text-dim)" }}
+        >
+          {finalizeBlockedLine}
+        </p>
+      )}
+      </>
     );
   }
 
@@ -259,7 +279,7 @@ export function GameLifecycleActions({
         <>
           <button
             onClick={onFinalize}
-            disabled={finalizePending || state.relockBlocked}
+            disabled={finalizePending || state.relockBlocked || !!finalizeBlockedLine}
             className={panel ? "shrink-0 px-4 disabled:opacity-40" : "w-full disabled:opacity-40"}
             style={{
               ...(panel ? PANEL_BTN : { height: 50, borderRadius: 12, fontSize: 15 }),
@@ -270,13 +290,13 @@ export function GameLifecycleActions({
           >
             {finalizePending ? "Saving changes…" : "Save scoring changes"}
           </button>
-          {state.relockBlocked && (
+          {(state.relockBlocked || finalizeBlockedLine) && (
             <p
               data-testid="game-relock-blocked"
               className="mt-2 text-center"
               style={{ fontSize: TYPE_SCALE.bodyDense, color: "var(--color-bt-text-dim)" }}
             >
-              {relockBlockedLine}
+              {state.relockBlocked ? relockBlockedLine : finalizeBlockedLine}
             </p>
           )}
         </>

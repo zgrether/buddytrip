@@ -60,7 +60,7 @@ import { stakesFromPositions } from "@/lib/bracketStakes";
 import { DEFAULT_BRACKET_CONFIG, isDefaultBracketConfig, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
-import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
+import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal } from "@/lib/gameConfig";
 import { pointsReady, sideMemberIds, type ServerSide } from "@/lib/matchDraft";
 import { MatchesBuilder } from "@/components/games/MatchesBuilder";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
@@ -982,6 +982,17 @@ export function NonGolfGameView() {
     }),
     [isBracket, filledEntrants.length, teams.length],
   );
+  // Finalize's own refusal, asked before the tap (#1679 look): a split with
+  // more places than teams disables Save results and says why, rather than
+  // listing the place as Not awarded and refusing the tap. A bracket stays
+  // confirm-only (Zach); its settings already refuse such a split.
+  const splitRefusal = isBracket
+    ? null
+    : finalizeSplitRefusal({
+        distribution: game?.points_distribution as PointsDistribution | null | undefined,
+        pointsTotal: game?.points_total as number | null | undefined,
+        capacity,
+      });
 
   // C1: block Save when a STARTED placement split no longer sums to the total (owner
   // changed Total Points after distributing). Re-derived from the draft, not snapshotted.
@@ -1592,6 +1603,7 @@ export function NonGolfGameView() {
           // case an explicit destination.
           onPosted={exitToBoard}
           awardsNothing={finalizeAwardsNothing}
+          finalizeBlockedLine={splitRefusal}
           awardNote={
             placementOutcome?.award ? (
               <FinalizeAwardSummary

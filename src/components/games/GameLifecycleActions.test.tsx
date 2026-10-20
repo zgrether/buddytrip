@@ -55,3 +55,35 @@ describe("Save scoring changes while a correction leaves the game incomplete", (
     expect(html).not.toContain('data-testid="game-relock-blocked"');
   });
 });
+
+describe("Save results when finalize would refuse the split (#1679)", () => {
+  const LINE = "This split awards points to 3 places, but only 2 can finish. Change it in settings.";
+  const ready = (over: Partial<Parameters<typeof GameLifecycleActions>[0]> = {}) =>
+    renderToStaticMarkup(
+      <GameLifecycleActions canEdit status="active" correctionsOpen={false} allComplete onFinalize={noop} onCorrect={noop} {...over} />
+    );
+
+  it("stays where it is, disabled, with the reason under it", () => {
+    const html = ready({ finalizeBlockedLine: LINE });
+    expect(html).toContain('data-testid="game-finalize"');
+    expect(html).toContain('disabled=""');
+    expect(html).toContain(`data-testid="game-finalize-blocked"`);
+    expect(html).toContain(`>${LINE}</p>`);
+  });
+
+  it("CONTROL: with nothing to refuse it is live and says nothing", () => {
+    const html = ready();
+    expect(html).toContain('data-testid="game-finalize"');
+    expect(html).not.toContain('disabled=""');
+    expect(html).not.toContain('data-testid="game-finalize-blocked"');
+  });
+
+  it("a correction's Save scoring changes is held by the same refusal", () => {
+    const html = renderToStaticMarkup(
+      <GameLifecycleActions canEdit status="complete" correctionsOpen allComplete onFinalize={noop} onCorrect={noop} finalizeBlockedLine={LINE} />
+    );
+    expect(html).toContain('data-testid="game-relock"');
+    expect(html).toContain('disabled=""');
+    expect(html).toContain(`>${LINE}</p>`);
+  });
+});
