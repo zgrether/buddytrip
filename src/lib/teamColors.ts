@@ -47,3 +47,16 @@ export function seedTeamName(i: number): { name: string; shortName: string } {
   const letter = String.fromCharCode(65 + i); // A, B, C, …
   return { name: `Team ${letter}`, shortName: letter };
 }
+
+
+/**
+ * The short name the team sheet SUGGESTS for a name (the person can still type
+ * their own). A leading "Team " is dropped first, as for the badge letter, so a
+ * name in the app's own "Team A" / "Team B" style suggests A, B, C… rather than
+ * "TEA" for every one of them — which migration 219's short-name index would
+ * refuse from the second team on.
+ */
+export function suggestShortName(name: string): string {
+  const stripped = name.trim().replace(/^team\s+/i, "");
+  return (stripped || name).replace(/\s+/g, "").slice(0, 3).toUpperCase();
+}

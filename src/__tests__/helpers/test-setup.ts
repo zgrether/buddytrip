@@ -15,6 +15,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { suggestShortName } from "@/lib/teamColors";
 import { strictTestClient } from "./strictTestClient";
 import { createCallerFactory, type TRPCContext } from "../../server/trpc";
 import { appRouter } from "../../server/router";
@@ -365,7 +366,9 @@ export class TestContext {
           id: teamId,
           competition_id: competitionId,
           name,
-          short_name: opts.shortName ?? name.slice(0, 3).toUpperCase(),
+          // The app's own suggestion: "Team A" / "Team B" become A / B rather than
+          // both "TEA", which migration 219's short-name index refuses.
+          short_name: opts.shortName ?? suggestShortName(name),
           color: opts.color ?? "#3b82f6",
           color_dim: opts.colorDim ?? "#0a1a2a",
         }),
