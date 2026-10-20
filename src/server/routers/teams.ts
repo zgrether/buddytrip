@@ -8,6 +8,19 @@ import { competitionHasResults } from "../lib/rosterLock";
 import { assertTeamDeletable } from "../lib/rosterChange";
 import { reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
+
+/**
+ * A team's name is unique within its competition, ignoring case and spaces
+ * (migration 219's index). The database refuses a clash with unique_violation
+ * (23505); this is the sentence the person sees instead, naming the fix.
+ */
+export function duplicateTeamNameMessage(name: string): string {
+  return `Another team is already called ${name.trim()}. Pick a different name.`;
+}
+function isDuplicateTeamName(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null | undefined;
+  return e?.code === "23505" && (e.message ?? "").includes("teams_competition_name_unique");
+}
 import { canPlayInTeamlessRace } from "@/lib/gameTypes";
 import { isPlacement } from "@/lib/pointsDistribution";
 import { validatePlacement } from "@/lib/gameConfig";
@@ -184,6 +197,9 @@ export const teamsRouter = router({
         .select("id")
         .single();
 
+      if (isDuplicateTeamName(insertErr)) {
+        throw new TRPCError({ code: "CONFLICT", message: duplicateTeamNameMessage(input.name) });
+      }
       if (insertErr || !inserted) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -242,6 +258,9 @@ export const teamsRouter = router({
         p_color_dim: input.colorDim ?? null,
       });
 
+      if (isDuplicateTeamName(error) && input.name) {
+        throw new TRPCError({ code: "CONFLICT", message: duplicateTeamNameMessage(input.name) });
+      }
       if (error) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
