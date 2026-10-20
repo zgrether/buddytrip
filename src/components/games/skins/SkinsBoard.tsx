@@ -49,6 +49,7 @@ export function SkinsBoard({
   teamRows,
   teams,
   participants,
+  notCountingIds,
   unitCount,
   thruOf,
 }: {
@@ -60,6 +61,11 @@ export function SkinsBoard({
   /** id → display, for the teams in the competition. */
   teams: { id: string; name: string; color: string }[];
   participants: Participant[];
+  /** People on no team of this game's cup (#1668 look). They play, and their
+   *  result counts for no team, so their row is muted and their avatar is the
+   *  outlined no-team one rather than a team's colour. Empty outside a cup with
+   *  teams: a side game or a teamless race has no team to be off. */
+  notCountingIds?: ReadonlySet<string>;
   /** The round's real length, for `thruLabel`'s F. Never a literal 18. */
   unitCount: number;
   /** How many holes this player's GROUP has recorded — progress is a property of
@@ -174,6 +180,7 @@ export function SkinsBoard({
             {rows.map((r, i) => {
               const p = pById.get(r.entityId);
               const isFirst = i === 0;
+              const off = !!notCountingIds?.has(r.entityId);
               return (
                 <div
                   key={r.entityId}
@@ -185,6 +192,7 @@ export function SkinsBoard({
                     opacity: r.started ? 1 : 0.6, // not-started reads as pending
                   }}
                   data-testid={`skins-row-${r.entityId}`}
+                  data-not-counting={off ? "true" : undefined}
                 >
                   <span className="w-6 flex-shrink-0 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
                     {r.started ? ordinalShort(r.position) : "—"}
@@ -192,12 +200,13 @@ export function SkinsBoard({
                   <Avatar
                     name={p?.name ?? "Player"}
                     avatarIcon={p?.avatarIcon ?? null}
-                    teamColor={p?.color ?? null}
+                    teamColor={off ? null : p?.color ?? null}
+                    muted={off}
                     sizePx={30}
                     collapse
                     collapseAt="dense"
                   />
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
                     {p?.name ?? "Player"}
                   </span>
                   <span
@@ -209,7 +218,7 @@ export function SkinsBoard({
                   </span>
                   <span
                     className="w-11 text-right text-sm font-bold tabular-nums"
-                    style={{ color: "var(--color-bt-text)" }}
+                    style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}
                     data-testid={`skins-count-${r.entityId}`}
                   >
                     {/* A player whose GROUP has not begun shows a dash, not a 0:

@@ -9,7 +9,7 @@ import { useDepartedNames } from "@/hooks/useDepartedNames";
 import { withDeparted } from "@/lib/departedNames";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
-import { gamesPageHref, isScrambleFormat } from "@/lib/gameRoutes";
+import { gamesPageHref, isScrambleFormat, rostersHref } from "@/lib/gameRoutes";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { gameEventScope, useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
@@ -35,7 +35,13 @@ import { scoringOf, type ScoringType } from "@/lib/stableford";
 import { UnevenTeamsNote } from "./UnevenTeamsNote";
 import { SideGamePrompt } from "@/components/games/SideGamePrompt";
 import { asksSideGameAtGoLive, leaveCompetitionKey } from "@/lib/sideGamePrompt";
-import { teamColorByUser, UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
+import { useTripRole } from "@/hooks/useTripRole";
+import { isTeamCaptain } from "@/hooks/useCanEditTeam";
+import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
+import { useRosterChangeGate } from "@/components/competition/RosterChangeGate";
+import { builderAddTargets, notOnATeamIds, notOnATeamNote, pairsFromRosters, unteamedSection } from "@/lib/builderPool";
+import { NotOnATeamSection } from "@/components/games/NotOnATeam";
+import { teamColorByUser } from "@/lib/teamRosterColors";
 import { rollUpOf, type StrokeRollUp } from "@/lib/strokeGameConfig";
 import { bottomNavInset } from "@/lib/bottomNavInset";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
@@ -335,6 +341,18 @@ export function StrokeGameView() {
   // same Save as the go-live (`leaveCompetitionKey`).
   const [sideGameAsk, setSideGameAsk] = useState(false);
   const [leaveChosen, setLeaveChosen] = useState(false);
+  // People on no team of this cup (#1668 look): they play, their result counts
+  // for no team, and an organizer (or their captain) can add them from the
+  // groupings. `rostersApply` is false for a side game and a teamless race,
+  // where there is no team to be off and everyone is simply the crew.
+  const rostersApply = pairsFromRosters({ inCup: !!gameCompetitionId, teamCount: (teamsQ.data ?? []).length });
+  const { canEdit: rosterStaff } = useTripRole(tripId);
+  const rosterPreview = useRosterChangeGate();
+  const hasResultsQ = trpc.teamAssignments.hasResults.useQuery(
+    { tripId: tripId!, competitionId: gameCompetitionId! },
+    { enabled: !!tripId && !!gameCompetitionId && rostersApply }
+  );
+  const { assign: assignToTeam } = useTeamAssignmentMutations(tripId ?? "", gameCompetitionId ?? "");
   const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: urlGameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId });
 
   // ── Draft-then-save (P2) machinery ──────────────────────────────────────────
@@ -447,12 +465,12 @@ export function StrokeGameView() {
       const players = crewList.filter((c) => teamOfUser.get(c.id) === t.id);
       if (players.length) sections.push({ id: t.id, name: t.name, color: t.color, players });
     }
-    const unassigned = crewList.filter((c) => !teamOfUser.has(c.id));
-    // The sentinel comes from the module that EXCLUDES it, so the producer and
-    // the excluder cannot drift onto two spellings of one string.
-    if (unassigned.length) sections.push({ id: UNASSIGNED_TEAM_ID, name: "Crew", color: "var(--color-bt-text-dim)", players: unassigned });
+    // Everyone on no team: "Not on a team" in a cup with teams, the crew
+    // elsewhere (`unteamedSection`, shared with skins).
+    const unteamed = unteamedSection({ rostersApply, crew: crewList, teamOf: (id) => teamOfUser.get(id) });
+    if (unteamed) sections.push(unteamed);
     return sections;
-  }, [teamsQ.data, assignQ.data, crew.data, avatarIconOf]);
+  }, [teamsQ.data, assignQ.data, crew.data, avatarIconOf, rostersApply]);
 
   // b2: the Handicaps roster is the LIVE DRAFTED FIELD — every player across the CURRENT
   // draft groups (`configDraft.groups`), NOT the stale create-time `game.participants`
@@ -939,11 +957,13 @@ export function StrokeGameView() {
       return {
         id,
         name: meta?.name ?? (crew.data ?? []).find((c) => c.user_id === id)?.displayName ?? "Player",
-        color: teamColorOf.get(id) ?? meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
+        // In a cup with teams, someone on no team is neutral grey (#1668 look):
+        // a palette colour would read as a team they are not on. Skins does the same.
+        color: teamColorOf.get(id) ?? (rostersApply ? "var(--color-bt-text-dim)" : meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length]),
         avatarIcon: avatarIconOf.get(id) ?? meta?.avatarIcon ?? null,
       };
     }),
-    [fieldIds, nameColorOf, crew.data, teamColorOf, avatarIconOf, isScramble, teamOfGroup, surfaceGroups],
+    [fieldIds, nameColorOf, crew.data, teamColorOf, avatarIconOf, isScramble, teamOfGroup, surfaceGroups, rostersApply],
   );
 
   // Net per-hole entries (feed to-par) + par-by-hole from the course snapshot. Nets against
@@ -997,6 +1017,12 @@ export function StrokeGameView() {
     for (const a of (assignQ.data ?? []) as { user_id: string; team_id: string }[]) m[a.user_id] = a.team_id;
     return m;
   }, [assignQ.data]);
+  // The board's muted rows (#1668 look). A scramble ranks groups, never people.
+  const notCountingIds = useMemo(
+    () => new Set(isScramble ? [] : notOnATeamIds({ rostersApply, crewIds: fieldIds, teamOf: (id) => teamOfUserId[id] })),
+    [isScramble, rostersApply, fieldIds, teamOfUserId]
+  );
+
   // Computed once, UNGATED: the board's team-totals section shows it when the
   // board is set to team totals, and the finalize award (#1639) reads it
   // whatever the board shows, because finalize banks these rows either way.
@@ -1315,6 +1341,26 @@ export function StrokeGameView() {
           />
         )}
         <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={pickerTeams} />
+        {gameCompetitionId && tripId && (() => {
+          const teamList = ((teamsQ.data ?? []) as { id: string; name: string; color: string }[]).map((t) => ({ id: t.id, name: t.name, color: t.color }));
+          const targets = builderAddTargets({
+            teams: teamList,
+            staff: rosterStaff,
+            captainOf: (teamId) => isTeamCaptain(assignQ.data as { user_id: string; team_id: string; is_captain?: boolean }[] | undefined, me?.id, teamId),
+            hasResults: !!hasResultsQ.data,
+            previewAvailable: !!rosterPreview,
+          });
+          const ids = notOnATeamIds({ rostersApply, crewIds: configDraft.groups.flat(), teamOf: (id) => teamOfUserId[id] });
+          return (
+            <NotOnATeamSection
+              people={ids.map((id) => ({ id, name: (crew.data ?? []).find((c) => c.user_id === id)?.displayName ?? "Player" }))}
+              targets={targets}
+              note={notOnATeamNote({ targets, staff: rosterStaff, hasResults: !!hasResultsQ.data, previewAvailable: !!rosterPreview })}
+              rostersHref={rostersHref(tripId)}
+              onAdd={(userId, teamId) => assignToTeam.mutate({ tripId, competitionId: gameCompetitionId, userId, teamId })}
+            />
+          );
+        })()}
       </ChecklistRow>
     );
     // Handicaps row (GROUP SETTINGS, P3 3.3) — INLINE per-player strokes (was a full-page
@@ -1687,7 +1733,7 @@ export function StrokeGameView() {
             rubric={boardRubric}
           />
         )}
-        <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} rubric={boardRubric} unitCount={scUnits.length} />
+        <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} notCountingIds={notCountingIds} rubric={boardRubric} unitCount={scUnits.length} />
         <FoursomeEntry
           groups={groupViews}
           onEnter={(id) => {

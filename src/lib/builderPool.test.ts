@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { builderAddTargets, builderPool, notOnATeamIds, notOnATeamNote, pairsFromRosters, type BuilderTeam } from "./builderPool";
+import { builderAddTargets, builderPool, notOnATeamIds, notOnATeamNote, pairsFromRosters, unteamedSection, type BuilderTeam } from "./builderPool";
 
 const RED: BuilderTeam = { id: "red", name: "Red", color: "#ef4444" };
 const BLUE: BuilderTeam = { id: "blue", name: "Blue", color: "#3b82f6" };
@@ -112,5 +112,31 @@ describe("notOnATeamNote — what a viewer with no add is told", () => {
   /** An Organizer with no preview mounted must not be sent looking for themselves. */
   it("an organizer with results in and no preview is sent to Rosters", () => {
     expect(notOnATeamNote({ ...base, staff: true, hasResults: true, previewAvailable: false })).toBe("rosters");
+  });
+});
+
+describe("unteamedSection — the groupings picker offers everyone on no team (#1669)", () => {
+  const crew = CREW.map((id) => ({ id }));
+
+  /**
+   * THE BUG: skins built its picker from team rosters alone, so a game with no
+   * teams (a side game, a teamless race) offered nobody and could never be
+   * grouped. Here nobody has a team, and everyone must be offered.
+   */
+  it("a side game offers the whole crew, as the crew", () => {
+    const s = unteamedSection({ rostersApply: false, crew, teamOf: () => undefined });
+    expect(s?.name).toBe("Crew");
+    expect(s?.players.map((p) => p.id)).toEqual(CREW);
+  });
+
+  it("a cup with teams offers only the people on no team, as Not on a team", () => {
+    const teamOf = (id: string) => (id === "ann" || id === "bob" ? "red" : undefined);
+    const s = unteamedSection({ rostersApply: true, crew, teamOf });
+    expect(s?.name).toBe("Not on a team");
+    expect(s?.players.map((p) => p.id)).toEqual(["cat", "dan"]);
+  });
+
+  it("no section when everyone is on a team", () => {
+    expect(unteamedSection({ rostersApply: true, crew, teamOf: () => "red" })).toBeNull();
   });
 });

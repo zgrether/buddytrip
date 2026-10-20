@@ -34,11 +34,17 @@ import { thruLabel } from "@/lib/thruLabel";
 export function StrokeLeaderboard({
   rows,
   participants,
+  notCountingIds,
   rubric,
   unitCount,
 }: {
   rows: StrokeLeaderboardRow[];
   participants: Participant[];
+  /** People on no team of this game's cup (#1668 look). They play, and their
+   *  result counts for no team, so their row is muted and their avatar is the
+   *  outlined no-team one rather than a team's colour. Empty outside a cup with
+   *  teams: a side game or a teamless race has no team to be off. */
+  notCountingIds?: ReadonlySet<string>;
   /**
    * The game's rubric under Stableford, `null` under Traditional — the SAME
    * value handed to `computeStrokeLeaderboard`, never a second derivation of
@@ -105,6 +111,7 @@ export function StrokeLeaderboard({
           {rows.map((r, i) => {
             const p = pById.get(r.entityId);
             const isFirst = i === 0;
+            const off = !!notCountingIds?.has(r.entityId);
             return (
               <div
                 key={r.entityId}
@@ -116,15 +123,16 @@ export function StrokeLeaderboard({
                   opacity: r.started ? 1 : 0.6, // not-started reads as pending
                 }}
                 data-testid={`stroke-lb-row-${r.entityId}`}
+                data-not-counting={off ? "true" : undefined}
               >
                 <span className="w-6 flex-shrink-0 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
                   {r.started ? ordinalShort(r.position) : "—"}
                 </span>
-                <Avatar name={p?.name ?? "Player"} avatarIcon={p?.avatarIcon ?? null} teamColor={p?.color ?? null} sizePx={30} collapse collapseAt="dense" />
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
+                <Avatar name={p?.name ?? "Player"} avatarIcon={p?.avatarIcon ?? null} teamColor={off ? null : p?.color ?? null} muted={off} sizePx={30} collapse collapseAt="dense" />
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
                   {p?.name ?? "Player"}
                 </span>
-                <span className="w-10 text-right text-[13px] tabular-nums" style={{ color: "var(--color-bt-text)" }}>
+                <span className="w-10 text-right text-[13px] tabular-nums" style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
                   {r.started ? r.totalStrokes : "—"}
                 </span>
                 <span
@@ -144,7 +152,7 @@ export function StrokeLeaderboard({
                     // Under Stableford PTS is the ranked column, so to-par steps
                     // down to STRK's weight and gives up the accent — two bold
                     // numbers on one row is two answers to "who is winning".
-                    color: showPoints
+                    color: showPoints || off
                       ? "var(--color-bt-text-dim)"
                       : r.started
                         ? r.toPar < 0
@@ -158,7 +166,7 @@ export function StrokeLeaderboard({
                 {showPoints && (
                   <span
                     className="w-11 text-right text-sm font-bold tabular-nums"
-                    style={{ color: r.started ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
+                    style={{ color: r.started && !off ? "var(--color-bt-text)" : "var(--color-bt-text-dim)" }}
                     data-testid={`stroke-lb-pts-${r.entityId}`}
                   >
                     {r.started ? r.points : "—"}
