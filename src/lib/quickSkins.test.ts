@@ -295,9 +295,9 @@ describe("the subtitle", () => {
     );
   });
 
-  it("reports a dead pot as unpaid, never as riding on a hole that does not exist", () => {
+  it("reports a dead pot as not won, never as riding on a hole that does not exist", () => {
     const g = skinsGame({ outcomes: { ...won({ 18: null }) } });
-    expect(quickGameSubtitle(g)).toContain("1 skin unpaid");
+    expect(quickGameSubtitle(g)).toContain("1 skin not won");
   });
 
   it("falls back to the shared unscored line before anything is recorded", () => {

@@ -374,9 +374,11 @@ describe("saveConfig — the scoring_enabled state machine", () => {
       // refusal's CODE, `HINT = 'point_value'` (migration 214; it keyed on the
       // database's wording until then, per PR 6b). If the RPC stops sending the
       // hint, the remap misses, the raw lowercase text comes through, and this
-      // fails — loudly, rather than the side-game advice silently vanishing. And
-      // match play can be a side game, so it is offered that route.
-      message: "Set a point value, or delete this game and add it again as a side game.",
+      // fails — loudly, rather than the remap silently vanishing. The side-game
+      // exit is NOT named here: these paired players are on teams, so the
+      // go-live prompt would not appear and the exit is not open (#1668 look;
+      // the open case is in games.saveConfig.leaveCompetition.test.ts).
+      message: "Set a point value before enabling scoring.",
     });
 
     const after = await ctx.caller().games.getById({ tripId, gameId });

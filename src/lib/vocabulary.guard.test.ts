@@ -4,6 +4,7 @@ import path from "path";
 import ts from "typescript";
 import {
   AWARD_WORD,
+  SKINS_DEAD_POT,
   COMPETITION_CHOICE_WORD,
   COMPETITION_NAME_EXAMPLE,
   COMPETITION_UMBRELLA,
@@ -188,6 +189,7 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
 
   it("points are awarded", () => {
     expect(AWARD_WORD).toEqual({ label: "Points", unawarded: "Not awarded", none: "This game awards no points." });
+    expect(SKINS_DEAD_POT).toBe("Nobody won the last skins.");
   });
 
   it("navigation, structure, and the stored margin", () => {
@@ -277,6 +279,7 @@ const DISTINCTIVE: { name: string; re: RegExp }[] = [
   { name: "Quarter-finals", re: /\bQuarter-finals\b/ },
   { name: "Not on a team", re: /\bNot on a team\b/ },
   { name: "Not awarded", re: /\bNot awarded\b/ },
+  { name: "Nobody won the last skins.", re: /Nobody won the last skins/ },
   { name: "This game awards no points.", re: /\bawards no points\b/i },
 ];
 
@@ -346,17 +349,6 @@ const MONEY = new Set([
   path.join("server", "routers", "expenses.ts"), // "a receipt you paid for"
   path.join("server", "routers", "tripMembers.ts"), // "expenses they paid"
 ]);
-/**
- * SKINS: a skin is not a point, and golf calls a dead pot "unpaid". Whether
- * that word stays is Zach's call, asked on #1668 and not yet answered; until
- * then these files are listed rather than guessed at.
- */
-const SKINS_POT = new Set([
-  path.join("components", "games", "quick", "QuickSkinsResult.tsx"),
-  path.join("components", "games", "skins", "SkinsEntryView.tsx"),
-  path.join("components", "games", "skins", "SkinsPotBanner.tsx"),
-  path.join("components", "games", "skins", "SkinsScorecard.tsx"),
-]);
 /** One-word literals the copy scanner skips as identifier-shaped, which is how
  *  `one ? "pays" : "pay"` hid from the sweep that found the rest. */
 const PAY_WORDS = ["pay", "pays", "paid", "paying", "payout", "unpaid"];
@@ -378,14 +370,14 @@ describe("no copy says a game pays points", () => {
 
   it("in a sentence", () => {
     const hits = files
-      .filter((x) => !MONEY.has(x.rel) && !SKINS_POT.has(x.rel))
+      .filter((x) => !MONEY.has(x.rel))
       .flatMap((x) => copyMatches(x.source, x.rel, PAY).map((h) => ({ rel: x.rel, ...h })));
     expect(report(hits)).toEqual([]);
   });
 
   it("as a bare one-word literal", () => {
     const hits = files
-      .filter((x) => !MONEY.has(x.rel) && !SKINS_POT.has(x.rel))
+      .filter((x) => !MONEY.has(x.rel))
       .flatMap((x) => PAY_WORDS.flatMap((w) => exactLiterals(x.source, x.rel, w)).map((h) => ({ rel: x.rel, ...h })));
     expect(report(hits)).toEqual([]);
   });

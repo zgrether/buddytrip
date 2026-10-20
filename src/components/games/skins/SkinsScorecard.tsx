@@ -1,5 +1,6 @@
 "use client";
 
+import { SKINS_DEAD_POT } from "@/lib/vocabulary";
 import { tallyGrouping, type SkinsOutcomeRow } from "@/lib/skins";
 import { NO_GLORIOUS, type GloriousConfig } from "@/lib/gloriousHoles";
 import { ScorecardChrome, ScorecardLabelCell, CountPill, scorecardPeople } from "../StandardGrid";
@@ -127,7 +128,7 @@ export function SkinsScorecard({
               })}
               <div
                 style={{ ...cellBase, fontSize: 12, fontWeight: 700, color: "var(--color-bt-text-dim)" }}
-                data-testid="skins-card-unpaid"
+                data-testid="skins-card-not-won"
               >
                 {/* Only a DEAD pot belongs in a total column: a live carry is
                     still going to be won by somebody, so printing it here would
@@ -145,7 +146,7 @@ export function SkinsScorecard({
           style={{ padding: "12px 10px 2px", fontSize: 13, fontWeight: 700, color: "var(--color-bt-text-dim)" }}
           data-testid="skins-card-dead-pot"
         >
-          The last hole was tied — {tally.carried} skin{tally.carried === 1 ? "" : "s"} went unpaid.
+          {SKINS_DEAD_POT}
         </p>
       )}
     </div>

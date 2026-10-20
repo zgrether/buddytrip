@@ -8,7 +8,8 @@ import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
 import { writeGameResults, type GameResultRow } from "../lib/writeGameResults";
 import { assertAffected, assertNoError } from "@/server/lib/assertAffected";
 import { router, authedProcedure } from "../trpc";
-import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame } from "../middleware";
+import { requireTripMember, requireTripRole, requireGameEdit, requireGameRunAction, canEditGame, resolveTripRole } from "../middleware";
+import { sideGameExitOpen } from "../lib/sideGameExit";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeStrokePlayResults } from "../lib/strokePlay";
 import { computeSkinsResults } from "../lib/skins";
@@ -2112,22 +2113,23 @@ export const gamesRouter = router({
           // The point-value refusal is identified by its CODE, the RAISE's HINT
           // (migration 214), not by its sentence.
           const hint = (error as { hint?: string | null }).hint ?? null;
-          // Its advice depends on the FORMAT (can it be a side game?), which the
-          // RPC's message does not carry. Read only on this path. A failed read
-          // here writes nothing, so it degrades to the plain advice rather than
-          // replacing the refusal with a 500.
-          let gameTypeId: string | null = null;
+          // Its advice names the side-game exit only when it is open to THIS
+          // person on THIS draft (#1668 look): read only on this path, and a
+          // failed read degrades to the plain advice (`sideGameExitOpen`).
+          let sideGameExit = false;
           if (hint === POINT_VALUE_HINT) {
-            const { data: typeRow } = await ctx.supabase
-              .from("games")
-              .select("game_type_id")
-              .eq("id", input.gameId)
-              .maybeSingle();
-            gameTypeId = (typeRow?.game_type_id as string | null | undefined) ?? null;
+            const role = await resolveTripRole(ctx, ctx.tripId!).catch(() => null);
+            const groups = (input.payload as { groups?: { userIds: string[] }[] }).groups;
+            sideGameExit = await sideGameExitOpen(ctx.supabase, {
+              tripId: ctx.tripId!,
+              gameId: input.gameId,
+              isOrganizer: role === "Owner" || role === "Organizer",
+              draftPlayerIds: groups ? groups.flatMap((g) => g.userIds) : null,
+            });
           }
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: notReadyMessage(detail, hint, gameTypeId),
+            message: notReadyMessage(detail, hint, sideGameExit),
           });
         }
         // The two freeze boundaries. Each names the ACTUAL affordance — "Reset scores"

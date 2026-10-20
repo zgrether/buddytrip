@@ -1,5 +1,3 @@
-import { canBeSideGame } from "@/lib/gameTypes";
-
 /**
  * The CODE `save_game_config` attaches to its go-live refusal for a competition
  * game worth 0 points: `RAISE … USING HINT = 'point_value'` (migration 214),
@@ -17,13 +15,12 @@ export const POINT_VALUE_HINT = "point_value";
 /**
  * What the Save banner says for a NOT_READY refusal.
  *
- * The point-value refusal gets the one piece of advice the database cannot
- * give: a game that was meant as a practice round and was added to the cup by
- * mistake can be re-added as a side game, where no point value is asked for.
- * That half is offered only when the FORMAT can be a side game, read from its
- * `recordsPerPersonResults` declaration (`canBeSideGame`) rather than a list of
- * names, so a format that gains a per-person writer gets the advice by editing
- * the declaration alone.
+ * The point-value refusal adds "or play it as a side game" ONLY when that exit
+ * is open to this person (Zach, the #1668 look): `sideGameExitOpen` decides,
+ * from the same rule the go-live prompt reads plus the limits migration 218
+ * enforces. Anywhere else, naming it would send the reader to a door they
+ * cannot open. (It used to say "delete this game and add it again as a side
+ * game"; 218 made that detour unnecessary.)
  *
  * Every other refusal passes through as before (093): the RPC's text is
  * specific when it has something specific to say.
@@ -31,12 +28,10 @@ export const POINT_VALUE_HINT = "point_value";
 export function notReadyMessage(
   detail: string | undefined,
   hint: string | null | undefined,
-  gameTypeId: string | null
+  sideGameExit: boolean
 ): string {
   if (hint === POINT_VALUE_HINT) {
-    return canBeSideGame(gameTypeId)
-      ? "Set a point value, or delete this game and add it again as a side game."
-      : "Set a point value before enabling scoring.";
+    return sideGameExit ? "Set a point value, or play it as a side game." : "Set a point value before enabling scoring.";
   }
   return detail || "Finish setting up this game before switching it to scoring.";
 }

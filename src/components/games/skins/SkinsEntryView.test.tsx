@@ -147,7 +147,7 @@ describe("SkinsEntryView — the choice list", () => {
   it("…and on the LAST hole says the opposite thing", () => {
     const html = renderEntry([...allWonThrough(17, ANN.id)], 18);
     const tiedRow = html.slice(html.indexOf('data-testid="skins-choice-tied"'));
-    expect(tiedRow).toContain("Nobody is paid");
+    expect(tiedRow).toContain("Nobody won the last skins.");
   });
 
   it("read-only renders no commit bar and no clear", () => {
@@ -302,7 +302,7 @@ describe("SkinsScorecard", () => {
     const dead = renderCard([...allWonThrough(15, ANN.id), tied(16), tied(17), tied(18)]);
     expect(live).not.toContain('data-testid="skins-card-dead-pot"');
     expect(dead).toContain('data-testid="skins-card-dead-pot"');
-    expect(dead.slice(dead.indexOf('data-testid="skins-card-unpaid"')).slice(0, 60)).toContain(">6<");
+    expect(dead.slice(dead.indexOf('data-testid="skins-card-not-won"')).slice(0, 60)).toContain(">6<");
   });
 
   it("player totals are the skins they won", () => {
