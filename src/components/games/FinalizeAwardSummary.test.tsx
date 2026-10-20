@@ -103,4 +103,30 @@ describe("FinalizeAwardSummary", () => {
     );
     expect(html).toContain('data-testid="team-badge"');
   });
+
+  describe("only the unawarded places (a format whose header shows projected points)", () => {
+    // Three places on offer, two teams: the 3rd can never be filled.
+    const short = placementAward([5, 3, 1], [{ unitId: "A", position: 1 }, { unitId: "B", position: 2 }]);
+
+    it("shows the unfillable place and no team rows", () => {
+      const html = renderToStaticMarkup(<FinalizeAwardSummary kind={T} award={short} units={units} unitWord={teams} only="unawarded" />);
+      const unawarded = html.slice(html.indexOf('data-testid="finalize-award-unawarded"')).replace(/<[^>]+>/g, "");
+      expect(unawarded).toContain("3rd place: only 2 teams finished");
+      expect(html).not.toContain('data-testid="finalize-award-row-A"');
+      expect(html).not.toContain('data-testid="finalize-award-row-B"');
+      // No "Points" heading over an empty list: the header already says it.
+      expect(html.replace(/<[^>]+>/g, "|")).not.toContain("|Points|");
+    });
+
+    it("renders nothing when every place can be filled", () => {
+      const full = placementAward([5, 3], [{ unitId: "A", position: 1 }, { unitId: "B", position: 2 }]);
+      expect(renderToStaticMarkup(<FinalizeAwardSummary kind={T} award={full} units={units} unitWord={teams} only="unawarded" />)).toBe("");
+    });
+
+    it("CONTROL: without the mode, the same award lists the rows under its heading", () => {
+      const html = renderToStaticMarkup(<FinalizeAwardSummary kind={T} award={short} units={units} unitWord={teams} />);
+      expect(html).toContain('data-testid="finalize-award-row-A"');
+      expect(html.replace(/<[^>]+>/g, "|")).toContain("|Points|");
+    });
+  });
 });

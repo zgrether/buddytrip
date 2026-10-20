@@ -52,9 +52,8 @@ import { unitsFromSchema, teeFromSchema } from "@/lib/strokePlayConfig";
 import { computeStrokeTeamStandings } from "@/lib/strokePlay";
 import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
 import { placementFinalize } from "@/lib/finalizeAward";
-import { AWARD_WORD } from "@/lib/vocabulary";
 import { FinalizeAwardSummary } from "@/components/games/FinalizeAwardSummary";
-import { PickemFinalizePrompt } from "@/components/games/pickem/PickemFinalizePrompt";
+import { useAwardsNothingBackstop } from "@/components/games/useAwardsNothingBackstop";
 import { pointsReady } from "@/lib/matchDraft";
 import { isWinnerTakesAll } from "@/lib/configDraft";
 import { type PointsDistribution } from "@/lib/pointsDistribution";
@@ -616,7 +615,6 @@ export function SkinsGameView() {
     if (teamlessRace) return new Map(standings.map((s) => [s.entityId, { name: nameOf.get(s.entityId) ?? "Player", color: null }]));
     return new Map(teamIds.map((id) => [id, { name: teamMeta.get(id)?.name ?? "Team", color: teamMeta.get(id)?.color ?? null }]));
   }, [teamlessRace, standings, nameOf, teamIds, teamMeta]);
-  const [confirmAwardsNothing, setConfirmAwardsNothing] = useState(false);
 
   const teamList = useMemo(
     () => teamIds.map((id) => ({ id, name: teamMeta.get(id)?.name ?? "Team", color: teamMeta.get(id)?.color ?? "var(--color-bt-text-dim)" })),
@@ -650,6 +648,12 @@ export function SkinsGameView() {
     competitionId,
     refreshSelf: () => void utils.games.getById.invalidate({ tripId: tripId!, gameId: gid! }),
     onExit: exitToBoard,
+  });
+  // A game that awards nothing still finishes, but asks first (#1668).
+  const awardsNothingBackstop = useAwardsNothingBackstop({
+    awardsNothing: !!finalizeOutcome?.awardsNothing,
+    finalize,
+    pending: finalizePending,
   });
 
   const entryDepth = entryGroupId ? (!locked && gridOpen ? 2 : 1) : 0;
@@ -1175,23 +1179,10 @@ export function SkinsGameView() {
           relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
-          // A game that awards nothing still finishes, but asks first (#1668).
-          onFinalize={finalizeOutcome?.awardsNothing ? () => setConfirmAwardsNothing(true) : () => void finalize()}
+          onFinalize={awardsNothingBackstop.onFinalize}
           onCorrect={handleCorrect}
         />
-        {confirmAwardsNothing && (
-          <PickemFinalizePrompt
-            title={AWARD_WORD.none}
-            confirmLabel="Finish anyway"
-            cancelLabel="Cancel"
-            pending={finalizePending}
-            onConfirm={() => {
-              setConfirmAwardsNothing(false);
-              void finalize();
-            }}
-            onCancel={() => setConfirmAwardsNothing(false)}
-          />
-        )}
+        {awardsNothingBackstop.prompt}
       </div>
     </Shell>
   );
