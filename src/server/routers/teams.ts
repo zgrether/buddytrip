@@ -10,17 +10,23 @@ import { reconcileClinchClaim } from "../lib/gameFinishNotify";
 import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "../lib/rowOrThrow";
 
 /**
- * A team's name is unique within its competition, ignoring case and spaces
- * (migration 219's index). The database refuses a clash with unique_violation
- * (23505); this is the sentence the person sees instead, naming the fix.
+ * A team's name, and its short name, are unique within its competition,
+ * ignoring case and spaces (migration 219's indexes; a blank short name may
+ * repeat). The database refuses a clash with unique_violation (23505); these
+ * are the sentences the person sees instead, each naming the fix.
  */
 export function duplicateTeamNameMessage(name: string): string {
   return `Another team is already called ${name.trim()}. Pick a different name.`;
 }
-function isDuplicateTeamName(error: unknown): boolean {
-  const e = error as { code?: string; message?: string } | null | undefined;
-  return e?.code === "23505" && (e.message ?? "").includes("teams_competition_name_unique");
+export function duplicateShortNameMessage(shortName: string): string {
+  return `Another team already uses the short name ${shortName.trim()}. Pick a different one.`;
 }
+function violated(error: unknown, index: string): boolean {
+  const e = error as { code?: string; message?: string } | null | undefined;
+  return e?.code === "23505" && (e.message ?? "").includes(index);
+}
+const isDuplicateTeamName = (error: unknown) => violated(error, "teams_competition_name_unique");
+const isDuplicateShortName = (error: unknown) => violated(error, "teams_competition_short_name_unique");
 import { canPlayInTeamlessRace } from "@/lib/gameTypes";
 import { isPlacement } from "@/lib/pointsDistribution";
 import { validatePlacement } from "@/lib/gameConfig";
@@ -200,6 +206,9 @@ export const teamsRouter = router({
       if (isDuplicateTeamName(insertErr)) {
         throw new TRPCError({ code: "CONFLICT", message: duplicateTeamNameMessage(input.name) });
       }
+      if (isDuplicateShortName(insertErr)) {
+        throw new TRPCError({ code: "CONFLICT", message: duplicateShortNameMessage(input.shortName) });
+      }
       if (insertErr || !inserted) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -260,6 +269,9 @@ export const teamsRouter = router({
 
       if (isDuplicateTeamName(error) && input.name) {
         throw new TRPCError({ code: "CONFLICT", message: duplicateTeamNameMessage(input.name) });
+      }
+      if (isDuplicateShortName(error) && input.shortName) {
+        throw new TRPCError({ code: "CONFLICT", message: duplicateShortNameMessage(input.shortName) });
       }
       if (error) {
         throw new TRPCError({

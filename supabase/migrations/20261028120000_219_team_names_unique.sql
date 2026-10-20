@@ -1,4 +1,4 @@
--- 219 · A team's name is unique within its competition.
+-- 219 · A team's name, and its short name, are unique within its competition.
 --
 -- WHAT CHANGES: a unique index on teams (competition_id, lower(btrim(name))),
 -- so two teams in one competition can never share a name, ignoring case and
@@ -21,7 +21,15 @@
 -- competitions.create's seeded "Team A" / "Team B". The routers turn the
 -- resulting unique_violation into a refusal that names the fix.
 --
--- Short names are NOT made unique here: nothing looks a team up by its short
--- name (production also held 0 duplicates of those).
+-- SHORT NAMES TOO (Zach, before merge): the same rule — case and surrounding
+-- spaces ignored — because the board's standings and the finished-game tiles
+-- label a team by its short name, and two teams both reading "BRA" side by
+-- side is the same confusion. A BLANK short name may repeat: the column is
+-- NOT NULL with no minimum length, so an empty one is storable, and it names
+-- nothing to clash with. Production held 0 duplicate short names either.
 CREATE UNIQUE INDEX IF NOT EXISTS teams_competition_name_unique
   ON public.teams (competition_id, lower(btrim(name)));
+
+CREATE UNIQUE INDEX IF NOT EXISTS teams_competition_short_name_unique
+  ON public.teams (competition_id, lower(btrim(short_name)))
+  WHERE btrim(short_name) <> '';
