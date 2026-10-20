@@ -279,7 +279,7 @@ export function reconcileConvention(
     if (arm.expects === "positions") {
       console.warn(
         `[leaderboard] ranking-convention reconciled: game ${arm.id}'s results are raw_score POINTS but its ` +
-          `arm ranks low_wins — paying the points as scored. The game's configuration disagrees with its ` +
+          `arm ranks low_wins — awarding the points as scored. The game's configuration disagrees with its ` +
           `results. Evidence: ${evidence("points")}`
       );
     }
@@ -291,7 +291,7 @@ export function reconcileConvention(
   if (arm.expects === "points") {
     console.warn(
       `[leaderboard] ranking-convention reconciled: game ${arm.id}'s results are POSITIONS but its arm ` +
-        `ranks high_wins — paying by place. The game's configuration disagrees with its results. ` +
+        `ranks high_wins — awarding by place. The game's configuration disagrees with its results. ` +
         `Evidence: ${evidence("positions")}`
     );
   }

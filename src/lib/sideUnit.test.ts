@@ -61,7 +61,7 @@ describe("playGroupUnits — the participant-row form both servers read", () => 
 describe("splitSideRefusal — the temporary structural rule, in words", () => {
   it("names the players and the condition that lifts it", () => {
     expect(splitSideRefusal([["cat"], ["ann", "cat"]], teamOf, nameOf)).toBe(
-      "Ann and Cat aren't on the same team. Until split payouts are supported, each side of a match has to be one team's players — pair teammates, or play them as singles.",
+      "Ann and Cat aren't on the same team. Until a side's points can be split between teams, each side of a match has to be one team's players — pair teammates, or play them as singles.",
     );
   });
 

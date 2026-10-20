@@ -68,7 +68,7 @@ export function PickemFinalizePrompt({
   onCancel,
 }: {
   title: string;
-  message: string;
+  message?: string;
   confirmLabel: string;
   pendingLabel?: string;
   cancelLabel: string;
@@ -97,9 +97,11 @@ export function PickemFinalizePrompt({
         <div style={{ fontSize: 16.5, fontWeight: 700, color: "var(--color-bt-text)" }}>
           {title}
         </div>
-        <p className="mt-1.5 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
-          {message}
-        </p>
+        {message && (
+          <p className="mt-1.5 text-[13px] leading-snug" style={{ color: "var(--color-bt-text-dim)" }}>
+            {message}
+          </p>
+        )}
         <div className="mt-4 flex flex-col gap-2">
           <button
             type="button"

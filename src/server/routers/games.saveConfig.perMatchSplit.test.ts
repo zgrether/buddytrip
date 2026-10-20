@@ -17,7 +17,7 @@ import { configToNonGolfDraft, nonGolfDraftToPayload, type NonGolfConfigDraft } 
 
 const CARD = "gtt_generic_card";
 const MATCH_PLAY = "gtt_match_play";
-const REFUSAL = /pays match by match/;
+const REFUSAL = /awards points match by match/;
 
 let ctx: TestContext;
 let tripId: string;
