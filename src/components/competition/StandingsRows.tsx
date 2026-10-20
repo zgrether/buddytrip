@@ -2,6 +2,7 @@
 
 import { standingsRows, type StandingsUnit } from "@/lib/standingsRows";
 import { teamInk } from "@/lib/teamTextColor";
+import { TeamBadge } from "@/components/TeamBadge";
 import { fmtPts } from "./GameRow";
 
 /**
@@ -87,7 +88,8 @@ export function StandingsRows({
                   {r.rank ?? "–"}
                 </span>
                 <span className="flex w-[34%] min-w-0 shrink-0 items-center gap-2">
-                  {r.color && <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.color }} />}
+                  {/* A team is a square (TeamBadge); a person in a teamless race carries no mark. */}
+                  {r.color && <TeamBadge name={r.label} shortName={r.label} color={r.color} size={18} />}
                   <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                     {r.label}
                   </span>

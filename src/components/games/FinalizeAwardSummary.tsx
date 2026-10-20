@@ -2,6 +2,7 @@
 
 import type { FinalizeAward } from "@/lib/finalizeAward";
 import { AWARD_WORD } from "@/lib/vocabulary";
+import { TeamBadge } from "@/components/TeamBadge";
 import { ordinalShort, fmtValue } from "@/components/competition/CompetitionGamesPanel";
 
 /**
@@ -25,7 +26,7 @@ export function FinalizeAwardSummary({
 }: {
   award: FinalizeAward;
   /** id → display, for every unit that can appear in `award.lines`. */
-  units: Map<string, { name: string; color?: string | null }>;
+  units: Map<string, { name: string; shortName?: string | null; color?: string | null }>;
   /** What a finisher is, for the unawarded reason: "only 2 teams finished", and
    *  when there are none, "no team finished". A stroke round can be played
    *  in full by people on no team, so for teams "nobody finished" is false. */
@@ -52,9 +53,7 @@ export function FinalizeAwardSummary({
             <span className="w-7 flex-shrink-0 text-[13px] font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
               {ordinalShort(l.place)}
             </span>
-            <span
-              style={{ width: 9, height: 9, borderRadius: "50%", background: u?.color ?? "var(--color-bt-text-dim)", flexShrink: 0 }}
-            />
+            <TeamBadge name={u?.name ?? "Team"} shortName={u?.shortName} color={u?.color ?? "var(--color-bt-text-dim)"} size={18} />
             <span className="min-w-0 flex-1 truncate text-[13px] font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {u?.name ?? "—"}
             </span>
