@@ -205,7 +205,7 @@ export function SkinsBoard({
                     collapse
                     collapseAt="dense"
                   />
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
+                  <span className="min-w-0 flex-1 truncate text-sm font-normal" style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
                     {p?.name ?? "Player"}
                   </span>
                   <span

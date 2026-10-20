@@ -1,6 +1,7 @@
 "use client";
 
 import { ValueUnit } from "@/components/ValueUnit";
+import { TeamBadge } from "@/components/TeamBadge";
 import { useEffect, useState } from "react";
 import { DelegatePicker } from "@/components/games/DelegatePicker";
 import {
@@ -907,7 +908,7 @@ function PlacementRowBody({
       <span className="w-5 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
         {showPlace ? place : ""}
       </span>
-      <span className="h-3 w-3 flex-shrink-0 rounded-full" style={{ background: team?.color ?? "var(--color-bt-text-dim)" }} />
+      <TeamBadge name={team?.name ?? "Team"} shortName={team?.short_name} color={team?.color ?? "var(--color-bt-text-dim)"} size={18} />
       {/* SHORT name — a placement row is a set of peers read against each other,
           which makes it a label slot (STYLE_GUIDE "Team names — subject slots vs
           label slots"), same as the cup standings row it mirrors. */}

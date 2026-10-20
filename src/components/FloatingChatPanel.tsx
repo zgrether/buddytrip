@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
+import { TeamBadge } from "@/components/TeamBadge";
 import { Send, ChevronDown, ChevronRight, MessageCircle } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
@@ -1580,18 +1581,9 @@ function ChatBody({
              category, which is the opposite of what a private room's own header
              should say. */
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 999,
-                flexShrink: 0,
-                // The team's own colour, the same value the leaderboard and the
-                // app-bar avatar use — all three read `competitions.myTeamColor`.
-                background: teamColor ?? "var(--color-bt-accent)",
-              }}
-            />
+            {/* The team's own colour, the same value the leaderboard and the
+                app-bar avatar use — all three read `competitions.myTeamColor`. */}
+            <TeamBadge name={teamName ?? "Team"} color={teamColor ?? "var(--color-bt-accent)"} size={16} />
             <span
               data-testid="chat-team-header"
               className="truncate font-semibold"

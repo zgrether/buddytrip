@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar } from "@/components/Avatar";
+import { TeamBadge } from "@/components/TeamBadge";
 import { fmtToPar } from "@/lib/rackNStack";
 import { ordinalShort } from "@/components/competition/CompetitionGamesPanel";
 import type { StrokeLeaderboardRow } from "@/lib/strokePlay";
@@ -35,6 +36,7 @@ export function StrokeLeaderboard({
   rows,
   participants,
   notCountingIds,
+  unitKind = "person",
   rubric,
   unitCount,
 }: {
@@ -45,6 +47,9 @@ export function StrokeLeaderboard({
    *  outlined no-team one rather than a team's colour. Empty outside a cup with
    *  teams: a side game or a teamless race has no team to be off. */
   notCountingIds?: ReadonlySet<string>;
+  /** A scramble ranks TEAMS (its groups); everything else ranks people. A team
+   *  row is a badge and a semibold name, a person row a circle and a regular one. */
+  unitKind?: "person" | "team";
   /**
    * The game's rubric under Stableford, `null` under Traditional — the SAME
    * value handed to `computeStrokeLeaderboard`, never a second derivation of
@@ -128,8 +133,12 @@ export function StrokeLeaderboard({
                 <span className="w-6 flex-shrink-0 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
                   {r.started ? ordinalShort(r.position) : "—"}
                 </span>
-                <Avatar name={p?.name ?? "Player"} avatarIcon={p?.avatarIcon ?? null} teamColor={off ? null : p?.color ?? null} muted={off} sizePx={30} collapse collapseAt="dense" />
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
+                {unitKind === "team" ? (
+                  <TeamBadge name={p?.name ?? "Team"} color={p?.color ?? "var(--color-bt-text-dim)"} size={30} />
+                ) : (
+                  <Avatar name={p?.name ?? "Player"} avatarIcon={p?.avatarIcon ?? null} teamColor={off ? null : p?.color ?? null} muted={off} sizePx={30} collapse collapseAt="dense" />
+                )}
+                <span className={`min-w-0 flex-1 truncate text-sm ${unitKind === "team" ? "font-semibold" : "font-normal"}`} style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
                   {p?.name ?? "Player"}
                 </span>
                 <span className="w-10 text-right text-[13px] tabular-nums" style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>

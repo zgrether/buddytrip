@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Fragment } from "react";
+import { TeamBadge } from "@/components/TeamBadge";
 import { ChevronDown, Flag, Check } from "lucide-react";
 import { useTeeVisibility } from "@/hooks/useTeeVisibility";
 import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
@@ -380,7 +381,11 @@ export function ScorecardLabelCell({
         const fit = isTeam ? { text: q.name, step: 1 } : fitName(q.name, SCORECARD_LABEL_CAPACITY_EM);
         return (
           <span key={q.id} className={isTeam ? "flex min-w-0 items-start gap-1.5" : "flex min-w-0 items-center gap-1.5"}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: q.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0, marginTop: isTeam ? 3 : 0 }} />
+            {isTeam ? (
+              <span style={{ marginTop: 1 }}><TeamBadge name={q.name} color={q.color} size={13} /></span>
+            ) : (
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: q.color, border: "1px solid var(--color-bt-subtle-border)", flexShrink: 0 }} />
+            )}
             <span
               className={isTeam ? "min-w-0 break-words" : "truncate"}
               data-name-step={fit.step}

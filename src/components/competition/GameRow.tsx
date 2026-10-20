@@ -1,6 +1,7 @@
 "use client";
 
 import { createElement } from "react";
+import { TeamBadge } from "@/components/TeamBadge";
 import { PROJECTED_RESULTS, RECREDIT_WORD, GAME_STATE_WORD, SIDE_GAME_WORD } from "@/lib/vocabulary";
 import { resultTiles } from "@/lib/standingsRows";
 import { formatOwnStanding, ownStandingIsSettled } from "@/lib/ownStanding";
@@ -656,7 +657,7 @@ function OuterColumn({
           const cell = cells?.get(team.id);
           return (
             <span key={team.id} className="flex items-center gap-1 text-[13px] font-semibold tabular-nums">
-              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: team.color }} />
+              <TeamBadge name={team.name} shortName={team.short_name} color={team.color} size={13} />
               {/* Completed game: a team with no cell scored a real zero, not
                   "not-applicable" — show 0, reserve the dash for unplayed (W3-LB5). */}
               <span style={{ color: "var(--color-bt-text)" }}>{cell ? fmtPts(cell.points) : "0"}</span>
@@ -1187,7 +1188,7 @@ function CompletedTiles({ teams, cells }: { teams: LBTeam[]; cells: Map<string, 
               {tile.points == null ? "–" : fmtPts(tile.points)}
             </span>
             <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold leading-none" style={{ color: "var(--color-bt-text-dim)" }}>
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: team.color }} />
+              <TeamBadge name={team.name} shortName={team.short_name} color={team.color} size={11} />
               {team.short_name}
             </span>
           </span>

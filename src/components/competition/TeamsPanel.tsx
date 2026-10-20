@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { TeamBadge } from "@/components/TeamBadge";
 import {
   ArrowRight,
   GripVertical,
@@ -623,7 +624,7 @@ function TeamCard({
             className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1 py-1 text-left transition-opacity hover:opacity-80"
             data-testid={`team-edit-${team.id}`}
           >
-            <span className="h-6 w-6 flex-shrink-0 rounded-full" style={{ background: team.color }} aria-hidden />
+            <TeamBadge name={team.name} shortName={team.short_name} color={team.color} size={24} />
             <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {team.name}
             </span>
@@ -637,7 +638,7 @@ function TeamCard({
           </button>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1 py-1">
-            <span className="h-6 w-6 flex-shrink-0 rounded-full" style={{ background: team.color }} aria-hidden />
+            <TeamBadge name={team.name} shortName={team.short_name} color={team.color} size={24} />
             <span className="truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
               {team.name}
             </span>
@@ -2313,7 +2314,7 @@ function AddPlayerSheet({
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-base font-bold" style={{ color: "var(--color-bt-text)" }}>
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: teamColor }} />
+              <TeamBadge name={teamName} color={teamColor} size={18} />
               Add to {teamName}
             </div>
             <button

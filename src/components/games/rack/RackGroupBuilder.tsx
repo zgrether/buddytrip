@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { TeamBadge } from "@/components/TeamBadge";
 import { createPortal } from "react-dom";
 import { Plus, X } from "lucide-react";
 import { PlayerChip } from "@/components/games/PlayerChip";
 import { Avatar } from "@/components/Avatar";
+import { UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
 import { addGroup as addGroupOp, removeGroup as removeGroupOp, assignPlayer, removePlayer as removePlayerOp, assignedIds, MAX_PER_GROUP, MAX_GROUPS } from "@/lib/rackGroupDraft";
 
 export interface GroupBuilderPlayer {
@@ -220,7 +222,9 @@ function CombinedPicker({
     return (
       <div key={team.id} className="min-w-0">
         <div className="flex items-center gap-1.5" style={{ marginBottom: 8 }}>
-          <span className="inline-block rounded-full" style={{ width: 9, height: 9, background: team.color }} />
+          {/* A team section carries its badge; the pool of people on no team (or a
+              side game's crew) is not a team and carries no mark. */}
+          {team.id !== UNASSIGNED_TEAM_ID && <TeamBadge name={team.name} color={team.color} size={16} />}
           <span className="truncate" style={{ fontSize: 12, fontWeight: 700, color: "var(--color-bt-text)" }}>{team.name}</span>
         </div>
         <div className="flex flex-col gap-1.5">

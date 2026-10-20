@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { TeamBadge } from "@/components/TeamBadge";
 import { ChevronLeft, Table2, Settings } from "lucide-react";
 import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, stablefordEntries, type RawStrokeEntry } from "@/lib/strokePlay";
 import { stablefordPoints, type StablefordRubric } from "@/lib/stableford";
@@ -36,6 +37,9 @@ import {
  * a literal 18 or the word "hole".
  */
 interface ScoreEntryViewProps {
+  /** A scramble's entry rows are TEAMS (its groups): a badge and a semibold
+   *  name. Everything else enters for people: a circle and a regular name. */
+  unitKind?: "person" | "team";
   gameName: string;
   units: ScoreUnit[];
   participants: Participant[];
@@ -121,6 +125,7 @@ function ptsLabel(points: number): string {
 }
 
 export function ScoreEntryView({
+  unitKind = "person",
   gameName,
   units,
   participants,
@@ -434,10 +439,14 @@ export function ScoreEntryView({
                   paddingLeft: 13,
                 }}
               >
-                <Avatar name={p.name} teamColor={p.color} avatarIcon={p.avatarIcon} sizePx={34} />
+                {unitKind === "team" ? (
+                  <TeamBadge name={p.name} color={p.color} size={34} />
+                ) : (
+                  <Avatar name={p.name} teamColor={p.color} avatarIcon={p.avatarIcon} sizePx={34} />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span style={{ fontSize: 17, fontWeight: 500, color: "var(--color-bt-text)" }}>{p.name}</span>
+                    <span style={{ fontSize: 17, fontWeight: unitKind === "team" ? 600 : 400, color: "var(--color-bt-text)" }}>{p.name}</span>
                     {done && (
                       <span
                         style={{

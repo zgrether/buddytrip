@@ -1,6 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
+import { TeamBadge } from "@/components/TeamBadge";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { applyField, fieldMembers } from "@/lib/bracketDraft";
 
@@ -98,7 +99,7 @@ export function BracketFieldPicker({
         return (
           <div key={team.id} className="flex flex-col" style={{ gap: 7 }}>
             <div className="flex items-center" style={{ gap: 6 }}>
-              <i style={{ width: 7, height: 7, borderRadius: "50%", background: team.color, flexShrink: 0 }} />
+              <TeamBadge name={team.name} color={team.color} size={14} />
               <span
                 style={{
                   fontSize: 10.5, textTransform: "uppercase", letterSpacing: "0.08em",

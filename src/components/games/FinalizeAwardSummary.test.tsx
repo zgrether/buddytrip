@@ -20,7 +20,17 @@ function rowText(html: string, testId: string): string {
   expect(at, `${testId} rendered`).toBeGreaterThan(-1);
   const start = html.lastIndexOf("<div", at);
   const end = html.indexOf("</div>", at);
-  return html.slice(start, end).replace(/<[^>]+>/g, "");
+  // The badge's own letter is not row text; its presence is asserted separately.
+  const row = html.slice(start, end);
+  const badge = '<span role="img"';
+  const b = row.indexOf(badge);
+  const withoutBadge = b < 0 ? row : row.slice(0, b) + row.slice(row.indexOf("</span>", b) + 7);
+  return withoutBadge.replace(/<[^>]+>/g, "");
+}
+/** The row's slice, badge included — for asserting the badge itself. */
+function rowHtml(html: string, testId: string): string {
+  const at = html.indexOf(`data-testid="${testId}"`);
+  return html.slice(html.lastIndexOf("<div", at), html.indexOf("</div>", at));
 }
 
 describe("FinalizeAwardSummary", () => {
@@ -30,6 +40,9 @@ describe("FinalizeAwardSummary", () => {
     );
     expect(rowText(html, "finalize-award-row-A")).toBe("1stAlpha5 pts");
     expect(rowText(html, "finalize-award-row-B")).toBe("2ndBravo3 pts");
+    // Each team row carries its badge (a square, never the old circle).
+    expect(rowHtml(html, "finalize-award-row-A")).toContain('data-testid="team-badge"');
+    expect(rowHtml(html, "finalize-award-row-A")).not.toContain("border-radius:50%");
     expect(html).not.toContain('data-testid="finalize-award-unawarded"');
   });
 

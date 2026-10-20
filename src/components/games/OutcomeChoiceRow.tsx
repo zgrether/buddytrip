@@ -1,6 +1,7 @@
 "use client";
 
 import { Equal } from "lucide-react";
+import { TeamBadge } from "@/components/TeamBadge";
 import { Avatar } from "@/components/Avatar";
 import { SideChips, type SidePlayer } from "./MatchSides";
 import { ScoreSaveBadge } from "./ScoreSaveBadge";
@@ -25,6 +26,8 @@ export function OutcomeChoiceRow({
   neutral,
   avatarName,
   avatarIcon,
+  isTeam = false,
+  teamShortName,
   label,
   players,
   sub,
@@ -40,6 +43,10 @@ export function OutcomeChoiceRow({
   neutral?: boolean;
   avatarName?: string;
   avatarIcon?: string | null;
+  /** The row stands for a TEAM (non-golf head to head): a badge and a
+   *  semibold name. Otherwise a person: a circle and a regular name. */
+  isTeam?: boolean;
+  teamShortName?: string | null;
   label: string;
   /** A 2v2 side's players — when 2+, the row shows the shared stacked
    *  `SideChips` instead of a single avatar + compound "R & B" label. */
@@ -111,10 +118,17 @@ export function OutcomeChoiceRow({
               <Equal size={14} />
             </span>
           ) : (
-            <Avatar name={avatarName ?? label} avatarIcon={avatarIcon} teamColor={color} sizePx={30} collapse />
+            // A TEAM is a square (TeamBadge), a person a circle (Avatar).
+            isTeam ? (
+              <TeamBadge name={avatarName ?? label} shortName={teamShortName} color={color ?? "var(--color-bt-text-dim)"} size={30} />
+            ) : (
+              <Avatar name={avatarName ?? label} avatarIcon={avatarIcon} teamColor={color} sizePx={30} collapse />
+            )
           )}
           <div className="min-w-0 flex-1">
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-bt-text)" }}>{label}</div>
+            {/* Team names semibold, player names regular (Zach, 2026-10-20). */}
+            {/* A result word (Halved, Tied) is not a name and keeps its weight. */}
+            <div style={{ fontSize: 15, fontWeight: isTeam || neutral ? 600 : 400, color: "var(--color-bt-text)" }}>{label}</div>
             {sub && <div style={{ fontSize: 11.5, color: "var(--color-bt-text-dim)", fontWeight: 600 }}>{sub}</div>}
           </div>
         </>
