@@ -114,7 +114,7 @@ describe("a placement split can no longer outrun the teams (#1427 · 2)", () => 
   it("deleting a team that would leave a 3-place split with 2 teams is refused, naming the game", async () => {
     const { tripId, competitionId, teamIds } = await threeTeamRace("1427 · delete refused", [5, 3, 2]);
     await expect(ctx.caller().teams.delete({ tripId, teamId: teamIds[2] })).rejects.toThrow(
-      "Day 2 Stroke pays more places than 2 teams can finish in. Shorten its points split first, or keep this team."
+      "Day 2 Stroke awards points to more places than 2 teams can finish in. Shorten its points split first, or keep this team."
     );
     expect(await teamsIn(competitionId)).toBe(3);
   }, 60_000);

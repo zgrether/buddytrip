@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import ts from "typescript";
 import {
+  AWARD_WORD,
   COMPETITION_CHOICE_WORD,
   COMPETITION_NAME_EXAMPLE,
   COMPETITION_UMBRELLA,
@@ -185,6 +186,10 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
     expect(NOT_ON_A_TEAM_WORD).toBe("Not on a team");
   });
 
+  it("points are awarded", () => {
+    expect(AWARD_WORD).toEqual({ label: "Points", unawarded: "Not awarded", none: "This game awards no points." });
+  });
+
   it("navigation, structure, and the stored margin", () => {
     expect(NAV_WORD).toEqual({ live: "Live" });
     expect(BRACKET_ROUND_WORD).toEqual({ final: "Final", semifinals: "Semi-finals", quarterfinals: "Quarter-finals" });
@@ -271,6 +276,8 @@ const DISTINCTIVE: { name: string; re: RegExp }[] = [
   { name: "Semi-finals", re: /\bSemi-finals\b/ },
   { name: "Quarter-finals", re: /\bQuarter-finals\b/ },
   { name: "Not on a team", re: /\bNot on a team\b/ },
+  { name: "Not awarded", re: /\bNot awarded\b/ },
+  { name: "This game awards no points.", re: /\bawards no points\b/i },
 ];
 
 describe("distinctive terms are spelled only in the module", () => {
@@ -319,4 +326,67 @@ describe("generic terms are never a bare literal outside the module", () => {
       expect(report(hits)).toEqual([]);
     });
   }
+});
+
+// ── 4 · Points are awarded, never paid ───────────────────────────────────────
+
+/**
+ * Pay words are MONEY words (Zach, the #1668 look): a game AWARDS points. The
+ * files below are where pay genuinely means money, and are the only places
+ * copy may say it. Each entry is a decision, not a convenience.
+ */
+const PAY = /\b(pay|pays|paid|paying|payouts?|unpaid)\b/i;
+const MONEY = new Set([
+  path.join("app", "trips", "[tripId]", "tabs", "AddExpenseModal.tsx"), // "Paid by"
+  path.join("app", "trips", "[tripId]", "tabs", "EditExpenseModal.tsx"), // "Paid by"
+  path.join("app", "trips", "[tripId]", "tabs", "ExpensesSection.tsx"), // "Paid by", "who paid"
+  path.join("app", "trips", "[tripId]", "tabs", "ExpensesTab.tsx"), // "Track who paid for what"
+  path.join("components", "HelperCards.tsx"), // the expenses helper card
+  path.join("components", "marketing", "FeaturesSection.tsx"), // the expenses feature
+  path.join("server", "routers", "expenses.ts"), // "a receipt you paid for"
+  path.join("server", "routers", "tripMembers.ts"), // "expenses they paid"
+]);
+/**
+ * SKINS: a skin is not a point, and golf calls a dead pot "unpaid". Whether
+ * that word stays is Zach's call, asked on #1668 and not yet answered; until
+ * then these files are listed rather than guessed at.
+ */
+const SKINS_POT = new Set([
+  path.join("components", "games", "quick", "QuickSkinsResult.tsx"),
+  path.join("components", "games", "skins", "SkinsEntryView.tsx"),
+  path.join("components", "games", "skins", "SkinsPotBanner.tsx"),
+  path.join("components", "games", "skins", "SkinsScorecard.tsx"),
+]);
+/** One-word literals the copy scanner skips as identifier-shaped, which is how
+ *  `one ? "pays" : "pay"` hid from the sweep that found the rest. */
+const PAY_WORDS = ["pay", "pays", "paid", "paying", "payout", "unpaid"];
+
+describe("no copy says a game pays points", () => {
+  it("CONTROL: a sentence and a bare one-word literal are both caught", () => {
+    const sample = [`const a = "This game pays no points.";`, `const b = one ? "pays" : "pay";`].join("\n");
+    expect(copyMatches(sample, "sample.ts", PAY).map((h) => h.line)).toEqual([1]);
+    expect(PAY_WORDS.flatMap((w) => exactLiterals(sample, "sample.ts", w)).map((h) => h.line)).toEqual([2, 2]);
+  });
+
+  it("CONTROL: the money files really do say it (so the exclusion is excluding something)", () => {
+    for (const rel of MONEY) {
+      const file = files.find((x) => x.rel === rel);
+      expect(file, rel).toBeDefined();
+      expect(copyMatches(file!.source, rel, PAY).length, rel).toBeGreaterThan(0);
+    }
+  });
+
+  it("in a sentence", () => {
+    const hits = files
+      .filter((x) => !MONEY.has(x.rel) && !SKINS_POT.has(x.rel))
+      .flatMap((x) => copyMatches(x.source, x.rel, PAY).map((h) => ({ rel: x.rel, ...h })));
+    expect(report(hits)).toEqual([]);
+  });
+
+  it("as a bare one-word literal", () => {
+    const hits = files
+      .filter((x) => !MONEY.has(x.rel) && !SKINS_POT.has(x.rel))
+      .flatMap((x) => PAY_WORDS.flatMap((w) => exactLiterals(x.source, x.rel, w)).map((h) => ({ rel: x.rel, ...h })));
+    expect(report(hits)).toEqual([]);
+  });
 });

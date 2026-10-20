@@ -75,7 +75,12 @@ import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
-import { gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
+import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
+import { placementAward } from "@/lib/finalizeAward";
+import { effectiveDistribution } from "@/lib/pointsDistribution";
+import { AWARD_WORD } from "@/lib/vocabulary";
+import { FinalizeAwardSummary } from "./FinalizeAwardSummary";
+import { PickemFinalizePrompt } from "./pickem/PickemFinalizePrompt";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
@@ -993,8 +998,11 @@ export function StrokeGameView() {
     () => new Set(isScramble ? [] : notOnATeamIds({ rostersApply, crewIds: fieldIds, teamOf: (id) => teamOfUserId[id] })),
     [isScramble, rostersApply, fieldIds, teamOfUserId]
   );
-  const teamTotalRows = useMemo(() => {
-    if (boardRollUp !== "team_totals") return [];
+
+  // Computed once, UNGATED: the board's team-totals section shows it when the
+  // board is set to team totals, and the finalize award (#1639) reads it
+  // whatever the board shows, because finalize banks these rows either way.
+  const teamStandings = useMemo(() => {
     const started = new Set(leaderboardRows.filter((r) => r.started).map((r) => r.entityId));
     if (started.size === 0) return [];
     const startedEntries = netLeaderboardEntries.filter((e) => started.has(e.participant_id));
@@ -1008,7 +1016,8 @@ export function StrokeGameView() {
       : startedEntries.map((e) => ({ participant_id: e.participant_id, value: e.value }));
     const standings = computeStrokePlayStandings([...started], scored, { scoring });
     return computeStrokeTeamStandings(standings, teamOfUserId, scoring);
-  }, [boardRollUp, leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId]);
+  }, [leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId]);
+  const teamTotalRows = boardRollUp === "team_totals" ? teamStandings : [];
 
   // Game-level finalize gate (just like rack): every player of the LIVE whole field
   // is thru every hole. Reuses the shipped scoreboard's own rows (no parallel path) —
@@ -1028,6 +1037,32 @@ export function StrokeGameView() {
     status: gameQ.data?.status,
     correctionsOpen: strokeCorrectionsOpen,
   });
+
+  // What finalize will award, shown beside "Save results" (#1639): the cup's own
+  // placement over the SAME team rows finalize banks. A team cup only for now;
+  // a teamless race ranks people, and comes with the other formats.
+  const strokeGame = gameQ.data as { competition_id?: string | null; points_total?: number | null; points_distribution?: PointsDistribution | null } | undefined;
+  const awardTeams = useMemo(
+    () => (teamsQ.data ?? []) as { id: string; name: string; color: string }[],
+    [teamsQ.data]
+  );
+  const finalizeAward = useMemo(() => {
+    if (!strokeGame?.competition_id || awardTeams.length === 0) return null;
+    const values = effectiveDistribution(strokeGame.points_distribution ?? null, strokeGame.points_total ?? null);
+    if (values.length === 0) return null;
+    return placementAward(values, teamStandings.map((t) => ({ unitId: t.teamId, position: t.position })));
+  }, [strokeGame?.competition_id, strokeGame?.points_distribution, strokeGame?.points_total, awardTeams.length, teamStandings]);
+  const awardUnits = useMemo(
+    () => new Map(awardTeams.map((t) => [t.id, { name: t.name, color: t.color }])),
+    [awardTeams]
+  );
+  const strokeCanFinalize = gameLifecycle({
+    canEdit,
+    status: gameQ.data?.status ?? null,
+    correctionsOpen: strokeCorrectionsOpen,
+    allComplete: allGroupsComplete,
+  }).canFinalize;
+  const [confirmAwardsNothing, setConfirmAwardsNothing] = useState(false);
 
   // The groupings list rows (FoursomeEntry) — thru = the group's furthest hole; started = any.
   const groupViews = useMemo<FoursomeGroupView[]>(
@@ -1677,6 +1712,11 @@ export function StrokeGameView() {
             not disabled); finalize only once every group is complete (all
             players, all holes, live over the current group set — a
             mid-round-added group re-blocks it). Never on a group's entry page. */}
+        {/* What finalize will award (#1639). Beside the button, no extra step:
+            finalize keeps its bare CTA. Shown only when the button is. */}
+        {strokeCanFinalize && finalizeAward && (
+          <FinalizeAwardSummary award={finalizeAward} units={awardUnits} unitWord={{ one: "team", many: "teams", none: "no team" }} />
+        )}
         <GameLifecycleActions
           canEdit={canEdit}
           status={gameQ.data?.status ?? null}
@@ -1685,9 +1725,26 @@ export function StrokeGameView() {
           relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
-          onFinalize={handleFinish}
+          // A game that awards nothing still finishes, but asks first (#1639):
+          // the backstop behind the go-live prompt. On stroke the button shows
+          // only once every player is thru every hole, so a zero award here
+          // means the field played and nobody in it is on a team.
+          onFinalize={finalizeAward?.awardsNothing ? () => setConfirmAwardsNothing(true) : handleFinish}
           onCorrect={handleCorrect}
         />
+        {confirmAwardsNothing && (
+          <PickemFinalizePrompt
+            title={AWARD_WORD.none}
+            confirmLabel="Finish anyway"
+            cancelLabel="Cancel"
+            pending={finalizePending}
+            onConfirm={() => {
+              setConfirmAwardsNothing(false);
+              void handleFinish();
+            }}
+            onCancel={() => setConfirmAwardsNothing(false)}
+          />
+        )}
       </div>
     );
   }

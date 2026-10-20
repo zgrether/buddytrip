@@ -145,7 +145,7 @@ describe("a teamless race", () => {
     await expect(
       ctx.caller().games.create({ tripId, gameTypeId: "gtt_pickem", name: "Slate", competitionId })
     ).rejects.toMatchObject({
-      message: "Pick'em pays teams, and this tournament is played as individuals. Pick one of Stroke Play, Match Play, Skins, or add teams to the tournament first.",
+      message: "Pick'em awards points to teams, and this tournament is played as individuals. Pick one of Stroke Play, Match Play, Skins, or add teams to the tournament first.",
     });
     // CONTROL: a per-person format is admitted to the same race.
     await expect(
@@ -166,7 +166,7 @@ describe("a teamless race", () => {
         matches: [{ playersPerSide: 2, sideA: { members: [owner, member] }, sideB: { members: [planner, outsider] }, matchNumber: 1 }],
       })
     ).rejects.toMatchObject({
-      message: "This tournament is played as individuals, so each side of a match is one player until split payouts are supported. Pair them as singles.",
+      message: "This tournament is played as individuals, so each side of a match is one player until a side's points can be split between players. Pair them as singles.",
     });
   }, 60_000);
 });
@@ -205,7 +205,7 @@ describe("switching between teams and individuals (rulings B, 23)", () => {
     });
     await ctx.caller().games.create({ tripId, gameTypeId: "gtt_pickem", name: "Sunday slate", competitionId });
     await expect(ctx.caller().teams.delete({ tripId, teamId: teamIds[0] })).rejects.toMatchObject({
-      message: "Without teams this tournament is played as individuals, and Sunday slate pays teams. Remove that game first, or keep a team.",
+      message: "Without teams this tournament is played as individuals, and Sunday slate awards points to teams. Remove that game first, or keep a team.",
     });
     // CONTROL: the same delete with only a per-person game in the race goes
     // through, and leaves a teamless race.
