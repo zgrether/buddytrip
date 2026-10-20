@@ -44,6 +44,8 @@ import {
 } from "@/lib/configDraft";
 import type { PointsMatch } from "@/components/games/MatchPointsRow";
 import { isPlacement, isPerMatch, effectiveDistribution, projectableMatchShare, type PointsDistribution } from "@/lib/pointsDistribution";
+import { placementFinalize, projectionAwardsNothing } from "@/lib/finalizeAward";
+import { SplitRefusalLine } from "./SplitRefusalLine";
 import { tallyMatchAwards, type SideRef as MatchSideRef } from "@/lib/matchAwards";
 import { sideUnit } from "@/lib/sideUnit";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
@@ -58,7 +60,7 @@ import { stakesFromPositions } from "@/lib/bracketStakes";
 import { DEFAULT_BRACKET_CONFIG, isDefaultBracketConfig, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
-import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
+import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal, splitPlacesWarning } from "@/lib/gameConfig";
 import { pointsReady, sideMemberIds, type ServerSide } from "@/lib/matchDraft";
 import { MatchesBuilder } from "@/components/games/MatchesBuilder";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
@@ -914,6 +916,49 @@ export function NonGolfGameView() {
   // the obvious one). Caught by the React Compiler lint, not by me.
   }, [isBracket, bracketDraw, resolvedDraw, game?.points_distribution, game?.points_total, teamBySeed]);
 
+  /**
+   * What finalize adds beside "Save results" (#1639 c). Every shape here
+   * already shows each team's projected points in the header, so it adds only
+   * the confirm when the points on offer come to nothing (Zach).
+   *
+   *  - FINISHING ORDER: no summary at all. Every team is ranked, so a place no
+   *    team can fill means the split has more places than teams, and that is
+   *    finalize's refusal (`splitRefusal` below), not a Not awarded line (the
+   *    #1679 look; the unawarded-only summary that lived here was removed).
+   *    It asks only when points have no split, through the same
+   *    `placementFinalize` the golf formats use.
+   *  - WIN/LOSE/TIE, MATCHES, BRACKET: the confirm only, off the header's own
+   *    projection. Win/lose/tie pays `[total, 0]`, so it has no third place;
+   *    a Matches game has no places; a bracket's split is refused at save if
+   *    it has more places than the field (#916).
+   */
+  const placementAwardsNothing = useMemo(() => {
+    if (isBracket || isMatches || winLoseTie || !draftPlacements) return false;
+    return placementFinalize({
+      distribution: game?.points_distribution as PointsDistribution | null | undefined,
+      pointsTotal: game?.points_total as number | null | undefined,
+      ranked: draftPlacements.map((p) => ({ unitId: p.entityId, position: p.position })),
+    }).awardsNothing;
+  }, [isBracket, isMatches, winLoseTie, draftPlacements, game?.points_distribution, game?.points_total]);
+  const finalizeAwardsNothing = useMemo(() => {
+    if (isBracket) {
+      const values = effectiveDistribution(
+        game?.points_distribution as PointsDistribution | null | undefined,
+        game?.points_total as number | null | undefined,
+      );
+      return projectionAwardsNothing(values.reduce((sum, v) => sum + (v || 0), 0), bracketProjection);
+    }
+    if (isMatches) {
+      // Every decided, paired match's value: what the game put up.
+      const offered = (serverMatchRows as { side_a: ServerSide; side_b: ServerSide; result: string | null; point_value: number | null }[])
+        .filter((mm) => mm.side_a?.id && mm.side_b?.id && mm.result)
+        .reduce((sum, mm) => sum + (mm.point_value ?? matchesPointsPerMatch), 0);
+      return projectionAwardsNothing(offered, matchesProjection);
+    }
+    if (winLoseTie) return projectionAwardsNothing(Number(game?.points_total ?? 0), draftProjection);
+    return placementAwardsNothing;
+  }, [isBracket, isMatches, winLoseTie, game?.points_distribution, game?.points_total, bracketProjection, serverMatchRows, matchesPointsPerMatch, matchesProjection, draftProjection, placementAwardsNothing]);
+
   const filledEntrants = useMemo(
     () => configDraft.bracketEntrants.filter((e) => e.length > 0),
     [configDraft.bracketEntrants],
@@ -935,6 +980,17 @@ export function NonGolfGameView() {
     }),
     [isBracket, filledEntrants.length, teams.length],
   );
+  // Finalize's own refusal, asked before the tap (#1679 look): a split with
+  // more places than teams disables Save results and says why, rather than
+  // listing the place as Not awarded and refusing the tap. A bracket stays
+  // confirm-only (Zach); its settings already refuse such a split.
+  const splitRefusal = isBracket
+    ? null
+    : finalizeSplitRefusal({
+        distribution: game?.points_distribution as PointsDistribution | null | undefined,
+        pointsTotal: game?.points_total as number | null | undefined,
+        capacity,
+      });
 
   // C1: block Save when a STARTED placement split no longer sums to the total (owner
   // changed Total Points after distributing). Re-derived from the draft, not snapshotted.
@@ -945,15 +1001,16 @@ export function NonGolfGameView() {
     // A null total blocks the SUM check (nothing to sum against) but NOT the
     // places-vs-entities one, which never reads the total — #819 nested both
     // under this guard, so a no-total game could save an unappliable split.
-    if (configDraft.pointsTotal == null) {
-      const noTotal = validatePlacement(0, d.values, capacity);
-      return noTotal.state === "too_many_places" ? placementRefusalMessage(noTotal) : null;
-    }
+    // Too many places is NOT this message: the Point Distribution row says it
+    // (`splitPlacesWarning`, the same call in NonGolfSettingsRows) and Save is
+    // blocked silently (#1679).
+    if (configDraft.pointsTotal == null) return null;
     // The ceiling is `capacity` — a bracket's field, otherwise the teams the
     // leaderboard ranks. Unknown while a read is in flight, which never refuses.
     const v = validatePlacement(configDraft.pointsTotal, d.values, capacity);
-    return v.saveable ? null : placementRefusalMessage(v);
+    return v.saveable || v.state === "too_many_places" ? null : placementRefusalMessage(v);
   }, [configDraft.pointsDistribution, configDraft.pointsTotal, capacity]);
+  const distPlacesWarning = splitPlacesWarning(configDraft.pointsDistribution, capacity);
 
   // Outbox bundle + slice reset/recover (format-specific; the shared hook below drives
   // the whole lifecycle off these).
@@ -1355,6 +1412,7 @@ export function NonGolfGameView() {
             onDiscard={confirmDiscard}
             onLeave={leave}
             saveDisabledReason={distSaveBlock}
+            saveBlocked={!!distPlacesWarning}
           />
         }
       />
@@ -1515,6 +1573,7 @@ export function NonGolfGameView() {
           )}
           canEdit={canEdit}
           onPosted={exitToBoard}
+          awardsNothing={finalizeAwardsNothing}
         />
       ) : competitionId && (
         <NonGolfScoreboard
@@ -1543,6 +1602,8 @@ export function NonGolfGameView() {
           // shared hook branches on `useInGamePanel()` and gives the non-panel
           // case an explicit destination.
           onPosted={exitToBoard}
+          awardsNothing={finalizeAwardsNothing}
+          finalizeBlockedLine={splitRefusal && <SplitRefusalLine refusal={splitRefusal} onSettings={openConfig} />}
         />
       )}
     </div>

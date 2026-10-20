@@ -52,13 +52,14 @@ import { unitsFromSchema, teeFromSchema } from "@/lib/strokePlayConfig";
 import { computeStrokeTeamStandings } from "@/lib/strokePlay";
 import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
 import { placementFinalize } from "@/lib/finalizeAward";
-import { AWARD_WORD } from "@/lib/vocabulary";
+import { finalizeSplitRefusal, splitPlacesWarning } from "@/lib/gameConfig";
 import { FinalizeAwardSummary } from "@/components/games/FinalizeAwardSummary";
-import { PickemFinalizePrompt } from "@/components/games/pickem/PickemFinalizePrompt";
+import { useAwardsNothingBackstop } from "@/components/games/useAwardsNothingBackstop";
+import { SplitRefusalLine } from "@/components/games/SplitRefusalLine";
 import { pointsReady } from "@/lib/matchDraft";
 import { isWinnerTakesAll } from "@/lib/configDraft";
 import { type PointsDistribution } from "@/lib/pointsDistribution";
-import { teamPlaceCapacity } from "@/lib/placeCapacity";
+import { peoplePlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { fmtValue } from "@/components/competition/CompetitionGamesPanel";
 import {
@@ -616,7 +617,17 @@ export function SkinsGameView() {
     if (teamlessRace) return new Map(standings.map((s) => [s.entityId, { name: nameOf.get(s.entityId) ?? "Player", color: null }]));
     return new Map(teamIds.map((id) => [id, { name: teamMeta.get(id)?.name ?? "Team", color: teamMeta.get(id)?.color ?? null }]));
   }, [teamlessRace, standings, nameOf, teamIds, teamMeta]);
-  const [confirmAwardsNothing, setConfirmAwardsNothing] = useState(false);
+  // Finalize's own refusal, asked before the tap (#1679 look), against the
+  // capacity finalize measures: the teams, or in a race with no teams the
+  // people playing. When it refuses, Save results is disabled with the reason
+  // and the summary is not shown.
+  const splitRefusal = competitionId
+    ? finalizeSplitRefusal({
+        distribution: skinsGame?.points_distribution,
+        pointsTotal: skinsGame?.points_total,
+        capacity: teamlessRace ? peoplePlaceCapacity(standings.length) : teamPlaceCapacity(teamIds.length),
+      })
+    : null;
 
   const teamList = useMemo(
     () => teamIds.map((id) => ({ id, name: teamMeta.get(id)?.name ?? "Team", color: teamMeta.get(id)?.color ?? "var(--color-bt-text-dim)" })),
@@ -651,7 +662,18 @@ export function SkinsGameView() {
     refreshSelf: () => void utils.games.getById.invalidate({ tripId: tripId!, gameId: gid! }),
     onExit: exitToBoard,
   });
+  // A game that awards nothing still finishes, but asks first (#1668).
+  const awardsNothingBackstop = useAwardsNothingBackstop({
+    awardsNothing: !!finalizeOutcome?.awardsNothing,
+    finalize,
+    pending: finalizePending,
+  });
 
+  // A split with more places than teams: the Point Distribution row's subtitle,
+  // and Save blocked (#1679). Same capacity the row's editor is given.
+  const distPlacesWarning = competitionId
+    ? splitPlacesWarning(configDraft.pointsDistribution, teamPlaceCapacity(teamsQ.data?.length))
+    : null;
   const entryDepth = entryGroupId ? (!locked && gridOpen ? 2 : 1) : 0;
   const back = useScreenHistory(entryDepth, () => {
     if (!locked && gridOpen) setGridOpen(false);
@@ -824,7 +846,9 @@ export function SkinsGameView() {
                   icon={Scale}
                   title="Point Distribution"
                   subtitle={
-                    distIsWta
+                    distPlacesWarning ? (
+                      <span style={{ color: "var(--color-bt-warning)" }} data-testid="split-places-warning">{distPlacesWarning}</span>
+                    ) : distIsWta
                       ? "Winner takes all"
                       : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
                   }
@@ -832,6 +856,7 @@ export function SkinsGameView() {
                   expanded={openAccordion === "distribution"}
                   onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
                   testId="row-point-distribution"
+                  subtitleWraps
                 >
                   <FormatPointsPanel
                     game={gameQ.data as unknown as GameRow}
@@ -946,6 +971,7 @@ export function SkinsGameView() {
               // expects, and it is what the other four views pass.
               onDiscard={confirmDiscard}
               onLeave={leave}
+              saveBlocked={!!distPlacesWarning}
             />
           }
         />
@@ -1159,7 +1185,7 @@ export function SkinsGameView() {
         {/* What finalize will award (#1639 c). Beside the button, no extra step;
             shown only when the button is. */}
         {gameLifecycle({ canEdit, status: gameQ.data?.status ?? null, correctionsOpen, allComplete }).canFinalize &&
-          finalizeOutcome?.award && (
+          finalizeOutcome?.award && !splitRefusal && (
             <FinalizeAwardSummary
               award={finalizeOutcome.award}
               kind={teamlessRace ? "person" : "team"}
@@ -1175,23 +1201,11 @@ export function SkinsGameView() {
           relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
-          // A game that awards nothing still finishes, but asks first (#1668).
-          onFinalize={finalizeOutcome?.awardsNothing ? () => setConfirmAwardsNothing(true) : () => void finalize()}
+          onFinalize={awardsNothingBackstop.onFinalize}
           onCorrect={handleCorrect}
+          finalizeBlockedLine={splitRefusal && <SplitRefusalLine refusal={splitRefusal} onSettings={openConfig} />}
         />
-        {confirmAwardsNothing && (
-          <PickemFinalizePrompt
-            title={AWARD_WORD.none}
-            confirmLabel="Finish anyway"
-            cancelLabel="Cancel"
-            pending={finalizePending}
-            onConfirm={() => {
-              setConfirmAwardsNothing(false);
-              void finalize();
-            }}
-            onCancel={() => setConfirmAwardsNothing(false)}
-          />
-        )}
+        {awardsNothingBackstop.prompt}
       </div>
     </Shell>
   );

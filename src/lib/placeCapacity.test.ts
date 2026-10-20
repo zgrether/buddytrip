@@ -111,19 +111,19 @@ describe("validatePlacement against a bracket ceiling", () => {
   });
 });
 
-describe("placementRefusalMessage names the right lever", () => {
-  it("teams: says add teams", () => {
+// Since #1679 the refusal is one short line on the Point Distribution row (Zach),
+// and it names no lever at all: the row it sits on IS the lever for the split.
+// What this guarded still holds through the unit word: a bracket's line must
+// name ENTRANTS, because "teams" would point a bracket at the wrong ceiling.
+describe("placementRefusalMessage names what can finish", () => {
+  it("teams: names the teams", () => {
     const msg = placementRefusalMessage(validatePlacement(15, [5, 4, 3, 2, 1], teamPlaceCapacity(2)))!;
-    expect(msg).toContain("2 teams");
-    expect(msg).toContain("add teams");
+    expect(msg).toBe("5 places, but only 2 teams can finish.");
   });
 
-  it("bracket: does NOT say add teams — the ceiling is the field", () => {
-    // The half of the advice that would be actively wrong. Adding teams changes
-    // nothing about a bracket's ceiling; adding entrants does.
+  it("bracket: names the entrants, never teams — the ceiling is the field", () => {
     const msg = placementRefusalMessage(validatePlacement(8, [4, 2, 1, 1], bracketPlaceCapacity(3)))!;
-    expect(msg).not.toContain("add teams");
-    expect(msg).toContain("3 entrants");
-    expect(msg).toContain("add entrants");
+    expect(msg).toBe("4 places, but only 3 entrants can finish.");
+    expect(msg).not.toMatch(/team/i);
   });
 });

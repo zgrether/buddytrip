@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NonGolfSettingsRows, usesPointsPool } from "./NonGolfSettingsRows";
+import { ChecklistRow } from "./ChecklistRow";
+import { Scale } from "lucide-react";
 import { configToNonGolfDraft, isRealSplit, isWinnerTakesAll, type NonGolfConfigDraft } from "@/lib/configDraft";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -86,5 +88,45 @@ describe("a one-place split reads winner-takes-all on the non-golf page (#920)",
   it("CONTROL: a real two-place split still reads as a custom split", () => {
     const row = subtitle({ ...configToNonGolfDraft(GAME as never, []), pointsDistribution: TWO });
     expect(row).toContain("Custom placement split");
+  });
+});
+
+describe("the row says a split has too many places, once, while it applies (#1679)", () => {
+  const THREE: PointsDistribution = { type: "placement", values: [5, 3, 1] };
+  const draft = (d: PointsDistribution | null) => ({ ...configToNonGolfDraft({ ...GAME, points_distribution: d, points_total: 9 } as never, []) });
+
+  it("3 places over 2 teams: the subtitle is the warning, in the warning colour", () => {
+    const row = subtitle(draft(THREE));
+    expect(row).toContain('style="color:var(--color-bt-warning)" data-testid="split-places-warning">3 places, but only 2 teams can finish.</span>');
+    expect(row).not.toContain("Custom placement split");
+  });
+
+  it("CONTROL: a split that fits keeps its usual subtitle and no warning", () => {
+    const row = subtitle(draft(TWO));
+    expect(row).not.toContain('data-testid="split-places-warning"');
+    expect(row).toContain("Custom placement split");
+  });
+
+  it("the warning wraps rather than being cut off (a two-digit count or \"entrants\" can outgrow a 375px row)", () => {
+    // The subtitle span is truncate-by-default; anchored on its own font size,
+    // which no other span in the row carries.
+    expect(subtitle(draft(THREE))).not.toContain('<span class="truncate" style="font-size:12.5px');
+    expect(subtitle(draft(THREE))).toContain('<span style="font-size:12.5px');
+  });
+
+  it("the row wraps whatever it says, so nothing on it is ever cut off (Zach)", () => {
+    for (const d of [null, TWO]) {
+      expect(subtitle(draft(d))).not.toContain('<span class="truncate" style="font-size:12.5px');
+      expect(subtitle(draft(d))).toContain('<span style="font-size:12.5px');
+    }
+  });
+
+  it("CONTROL: a row that does not ask to wrap still truncates", () => {
+    const html = renderToStaticMarkup(<ChecklistRow icon={Scale} title="Other" subtitle="A long line" state="resolved" />);
+    expect(html).toContain('<span class="truncate" style="font-size:12.5px');
+  });
+
+  it("no row subtitle tells the reader to tap: the chevron says it", () => {
+    for (const d of [null, TWO, THREE]) expect(subtitle(draft(d))).not.toMatch(/tap to/i);
   });
 });

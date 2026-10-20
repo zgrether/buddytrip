@@ -5,6 +5,7 @@ import { trpc } from "@/lib/trpc-client";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
+import { useAwardsNothingBackstop } from "@/components/games/useAwardsNothingBackstop";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { gameLockState } from "@/lib/gameLifecycle";
 import { applyPickCascadingWith, resolveDraw, type WinnerBySeed } from "@/lib/bracketAdvance";
@@ -78,6 +79,7 @@ export function BracketScoringSurface({
   resolve,
   canEdit,
   onPosted,
+  awardsNothing = false,
 }: {
   tripId: string;
   gameId: string;
@@ -101,6 +103,10 @@ export function BracketScoringSurface({
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
   onPosted: () => void;
+  /** Points are on offer and none would be awarded (#1639 c). Finalize still
+   *  goes through, but asks first. The parent answers it from the SAME
+   *  projection its header draws. */
+  awardsNothing?: boolean;
 }) {
   const utils = trpc.useUtils();
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +134,7 @@ export function BracketScoringSurface({
     // the one that carries "this bracket still has matches to decide".
     onError: (e) => setError(e instanceof Error ? e.message : "Failed to post"),
   });
+  const awardsNothingBackstop = useAwardsNothingBackstop({ awardsNothing, finalize, pending: finalizePending });
 
   // The SAME shared predicate every other format reads (CLAUDE.md #24), so the
   // board's pickability and the CTA beneath it cannot disagree about whether this
@@ -331,9 +338,10 @@ export function BracketScoringSurface({
           finalizePending={finalizePending}
           correctPending={correctPending}
           // No placements: the server derives them from the draw. See the header.
-          onFinalize={() => void finalize()}
+          onFinalize={awardsNothingBackstop.onFinalize}
           onCorrect={handleCorrect}
         />
+        {awardsNothingBackstop.prompt}
       </Column>
     </div>
   );

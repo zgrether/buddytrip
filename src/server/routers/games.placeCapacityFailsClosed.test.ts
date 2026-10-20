@@ -52,7 +52,7 @@ describe("placement capacity: a failed read refuses the save, it doesn't skip th
   it("control: the guard is live — three places for two teams is refused", async () => {
     await expect(
       ctx.caller().games.setPointsDistribution({ tripId, gameId, distribution: { type: "placement", values: [5, 3, 2] } })
-    ).rejects.toThrow(/places configured/);
+    ).rejects.toThrow("3 places, but only 2 teams can finish.");
   });
 
   it("the entrant count fails → refused (it used to be 'unknown capacity', never refusing)", async () => {

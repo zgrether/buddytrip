@@ -474,7 +474,9 @@ describe("saveConfig — hash invariant: every bracket field moves, none churns"
           pointsTotal: 10,
           distribution: { type: "placement", values: [4, 3, 2, 1] },
         })
-      ).rejects.toThrow(/in this tournament/);
+        // "1 team" or "2 teams": the suite runs shuffled, and another case adds a
+        // second team to this cup. What matters is TEAMS, never entrants.
+      ).rejects.toThrow(/only \d+ teams? can finish/);
     });
   });
 

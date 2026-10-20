@@ -11,7 +11,7 @@ import {
   type GameRow,
 } from "@/components/competition/CompetitionGamesPanel";
 import type { ScoringModel } from "@/lib/gameTypes";
-import type { PlaceCapacity } from "@/lib/gameConfig";
+import { splitPlacesWarning, type PlaceCapacity } from "@/lib/gameConfig";
 import { effectiveCompetitionFormat, isRealSplit, type NonGolfConfigDraft, type CompetitionFormat } from "@/lib/configDraft";
 import { type PointsDistribution } from "@/lib/pointsDistribution";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
@@ -159,6 +159,9 @@ export function NonGolfSettingsRows({
   const hasSplit = isRealSplit(draft.pointsDistribution);
   const isPool = usesPointsPool(scoringModel, draft.pointsDistribution);
   const isMatches = draft.competitionFormat === MATCHES_COMPETITION_FORMAT;
+  // More places than can finish: said here, once, while it applies; the page
+  // blocks Save with the same call (#1679).
+  const placesWarning = splitPlacesWarning(draft.pointsDistribution, capacity);
   return (
     <>
       <CompetitionFormatTiles
@@ -218,16 +221,19 @@ export function NonGolfSettingsRows({
           icon={Scale}
           title="Point Distribution"
           subtitle={
-            hasSplit
-              ? "Custom placement split — tap to edit"
+            placesWarning ? (
+              <span style={{ color: "var(--color-bt-warning)" }} data-testid="split-places-warning">{placesWarning}</span>
+            ) : hasSplit
+              ? "Custom placement split"
               : isPool
-                ? "Even — tap to set a placement split"
-                : "Winner takes all — tap to set a placement split"
+                ? "Even"
+                : "Winner takes all"
           }
           state={hasSplit ? "resolved" : "empty"}
           expanded={openAccordion === "distribution"}
           onToggle={() => setOpenAccordion((o) => (o === "distribution" ? null : "distribution"))}
           testId="row-point-distribution"
+          subtitleWraps
         >
           <FormatPointsPanel
             capacity={capacity}

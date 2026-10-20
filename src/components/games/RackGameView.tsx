@@ -59,6 +59,8 @@ import { gamesPageHref } from "@/lib/gameRoutes";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
+import { useAwardsNothingBackstop } from "@/components/games/useAwardsNothingBackstop";
+import { projectionAwardsNothing } from "@/lib/finalizeAward";
 
 const RACK = "gtt_rack_n_stack";
 
@@ -814,6 +816,15 @@ export function RackGameView() {
     refreshSelf: () => void utils.games.getById.invalidate({ tripId: tripId!, gameId: gid! }),
     onExit: exitToBoard,
   });
+  // The finish-time backstop (#1639 c). Rack's header already shows each
+  // team's projected points, so finalize adds no summary, only the question
+  // when those points come to nothing: no slot can be filled, because nobody
+  // grouped is on a team.
+  const awardsNothingBackstop = useAwardsNothingBackstop({
+    awardsNothing: projectionAwardsNothing(Number(gameQ.data?.points_total ?? 0), projectedPoints),
+    finalize: finish,
+    pending: finalizePending,
+  });
   const rackGroupName = (groupsQ.data?.groups ?? []).find((g) => g.id === entryGroupId)?.display_name as string | undefined;
   const standaloneChrome = useGameSurfaceChrome(
     gameQ.data || gid
@@ -989,7 +1000,7 @@ export function RackGameView() {
       <ChecklistRow
         icon={Users}
         title="Groupings"
-        subtitle={draftGroupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"} · tap to edit the carts` : "No groups yet — add one to start"}
+        subtitle={draftGroupsAssigned ? `${groupCount} group${groupCount === 1 ? "" : "s"}` : "No groups yet — add one to start"}
         state={draftGroupsAssigned ? "resolved" : "empty"}
         expanded={openAccordion === "groupings"}
         onToggle={toggleGroupings}
@@ -1304,9 +1315,10 @@ export function RackGameView() {
         allComplete={allThru18}
         finalizePending={finalizePending}
         correctPending={correctPending}
-        onFinalize={finish}
+        onFinalize={awardsNothingBackstop.onFinalize}
         onCorrect={handleCorrect}
       />
+      {awardsNothingBackstop.prompt}
     </Shell>
   );
 }

@@ -37,7 +37,7 @@ import { competitionNoun, SIDE_GAME_WORD, DELEGATE_WORD } from "@/lib/vocabulary
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
-import { validatePlacement, placementRefusalMessage } from "@/lib/gameConfig";
+import { validatePlacement } from "@/lib/gameConfig";
 import { CATEGORY_ICONS } from "@/lib/gameCategoryIcon";
 // Format definitions live in code (W-PERF-01) — the catalog + its type come from
 // here, read synchronously, never fetched. Re-exported below so existing
@@ -685,16 +685,13 @@ export function PlacementEditor({
             </span>
           </div>
         )}
-        {started && !placement.saveable && (
+        {started && !placement.saveable && placement.state !== "too_many_places" && (
           <p className="text-[11px]" style={{ color: "var(--color-bt-danger)" }}>
-            {/* too-many-places uses the SHARED refusal message, so the inline
-                warning and the one the save gate throws are the same sentence —
-                it reads as one rule, not two. The sum case keeps its existing
-                compact copy: the "N of M pts" line directly above already
-                carries those numbers, so the long form would just repeat them. */}
-            {placement.state === "too_many_places"
-              ? placementRefusalMessage(placement)
-              : placement.remaining > 0
+            {/* Too many places is said ONCE, by the Point Distribution row this
+                editor opens under (`splitPlacesWarning`, #1679); repeating it
+                here put the same line on screen twice. The sum case keeps its
+                compact copy: the "N of M pts" line above carries the numbers. */}
+            {placement.remaining > 0
               ? `${fmtValue(placement.remaining)} point${placement.remaining === 1 ? "" : "s"} left to allocate`
               : `${fmtValue(-placement.remaining)} point${-placement.remaining === 1 ? "" : "s"} over — must total ${fmtValue(total)}`}
           </p>
@@ -800,8 +797,7 @@ export function ManualPlacementEditor({
         </DragOverlay>
       </DndContext>
       <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        Drag to set the finishing order. Tap the link icon to tie a team with the one above it —
-        tied teams split the points for the places they share, so the game&rsquo;s total never changes.
+        Drag to set the order. Tap the link to tie with the team above.
       </p>
     </div>
   );

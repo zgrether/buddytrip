@@ -92,6 +92,7 @@ export function ChecklistRow({
   locked,
   blockedNote,
   testId,
+  subtitleWraps = false,
 }: {
   /** The row's semantic type-icon (lucide). Persists in every state. */
   icon: LucideIcon;
@@ -100,6 +101,11 @@ export function ChecklistRow({
   /** Small status line (~12.5px dim). ReactNode so a teal segment can be embedded
    *  (the Points "…: N" live value). */
   subtitle?: React.ReactNode;
+  /** Let the subtitle wrap instead of truncating. The Point Distribution rows
+   *  always pass it (Zach, #1679): their subtitle carries the split warning,
+   *  and an ellipsis can hide the part of a warning that matters at a larger
+   *  text size or a different font, so it takes a second line instead. */
+  subtitleWraps?: boolean;
   state: ChecklistRowState;
   /** Overlay-tappable row (opens a separate editor). Omit for accordion/read-only. */
   onClick?: () => void;
@@ -229,7 +235,7 @@ export function ChecklistRow({
         {title}
       </span>
       {subtitle != null && (
-        <span className="truncate" style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginTop: 1 }}>
+        <span className={subtitleWraps ? undefined : "truncate"} style={{ fontSize: 12.5, color: "var(--color-bt-text-dim)", marginTop: 1 }}>
           {subtitle}
         </span>
       )}

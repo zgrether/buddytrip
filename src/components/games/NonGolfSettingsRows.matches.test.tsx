@@ -95,10 +95,12 @@ describe("Point Distribution — Matches vs Simple (§1)", () => {
     expect(html).not.toContain("Winner takes all");
   });
 
-  it("Simple renders the placement row (subtitle names a placement split), not overrides", () => {
+  it("Simple renders the placement row (its own subtitle words), not overrides", () => {
     const simple: NonGolfConfigDraft = { ...baseDraft, competitionFormat: "head_to_head" };
     const html = rows(simple);
-    expect(html).toContain("placement split");
+    // The subtitle lost "— tap to set a placement split" (#1679: the chevron
+    // says it), so the row is found by the words it still has.
+    expect(html).toMatch(/>(Winner takes all|Even|Custom placement split)</);
     expect(html).not.toContain("per match");
   });
 
