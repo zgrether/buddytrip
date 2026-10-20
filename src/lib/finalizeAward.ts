@@ -1,4 +1,5 @@
 import { placementPoints } from "./competitionPlacement";
+import { isPlacement, type PointsDistribution } from "./pointsDistribution";
 
 /**
  * What a game will AWARD when it is finalized, shown beside "Save results"
@@ -64,4 +65,28 @@ export function placementAward(values: number[], ranked: { unitId: string; posit
   const awarded = lines.reduce((sum, l) => sum + l.points, 0);
   const offered = values.reduce((sum, v) => sum + (v || 0), 0);
   return { lines, unawarded, awarded, awardsNothing: offered > 0 && awarded === 0 };
+}
+
+/**
+ * What a PLACEMENT game's finalize shows and asks (#1674).
+ *
+ * The schedule is the one the cup's board will PAY: the authored split, or
+ * nothing. Not `effectiveDistribution`, which turns "no split, total > 0" into
+ * winner-takes-all; the board's placement arm pays nothing for that game
+ * (`competitionLeaderboard`, the `schedule: null` arm), so a summary built on it
+ * promised points that never arrive.
+ *
+ * `awardsNothing` is the finish backstop's question: points are on offer and
+ * none will be awarded. A game with a total and no split is exactly that, even
+ * though there is no schedule to summarise, so it asks first with no summary.
+ */
+export function placementFinalize(p: {
+  distribution: PointsDistribution | null | undefined;
+  pointsTotal: number | null | undefined;
+  ranked: { unitId: string; position: number }[];
+}): { award: FinalizeAward | null; awardsNothing: boolean } {
+  const values = isPlacement(p.distribution) ? p.distribution.values : [];
+  if (values.length === 0) return { award: null, awardsNothing: Number(p.pointsTotal ?? 0) > 0 };
+  const award = placementAward(values, p.ranked);
+  return { award, awardsNothing: award.awardsNothing };
 }

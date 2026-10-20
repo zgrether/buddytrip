@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { placementAward } from "./finalizeAward";
+import { placementAward, placementFinalize } from "./finalizeAward";
 
 /**
  * #1639 — what a placement game will award at finalize: each finisher's points,
@@ -63,5 +63,37 @@ describe("placementAward", () => {
 
   it("a zero-value place past the last finisher is not listed as unawarded", () => {
     expect(placementAward([5, 0], [{ unitId: "A", position: 1 }]).unawarded).toEqual([]);
+  });
+});
+
+describe("placementFinalize — the schedule the board pays (#1674)", () => {
+  const ranked = [{ unitId: "A", position: 1 }, { unitId: "B", position: 2 }];
+
+  it("an authored split is summarised", () => {
+    const r = placementFinalize({ distribution: { type: "placement", values: [6, 3] }, pointsTotal: 9, ranked });
+    expect(r.award?.lines.map((l) => [l.unitId, l.points])).toEqual([["A", 6], ["B", 3]]);
+    expect(r.awardsNothing).toBe(false);
+  });
+
+  it("points with NO split award nothing, so Save asks, and no payout is promised", () => {
+    // The board's placement arm pays nothing here; winner-takes-all would be a lie.
+    const r = placementFinalize({ distribution: null, pointsTotal: 9, ranked });
+    expect(r.award).toBeNull();
+    expect(r.awardsNothing).toBe(true);
+  });
+
+  it("a game worth nothing, with no split, has nothing to summarise and nothing to ask", () => {
+    expect(placementFinalize({ distribution: null, pointsTotal: 0, ranked })).toEqual({ award: null, awardsNothing: false });
+  });
+
+  it("a per-match shape is not a placement schedule", () => {
+    const r = placementFinalize({ distribution: { type: "per_match", value: 2 }, pointsTotal: 6, ranked });
+    expect(r.award).toBeNull();
+  });
+
+  it("nobody ranked against a real split: every place unawarded, and Save asks", () => {
+    const r = placementFinalize({ distribution: { type: "placement", values: [6, 3] }, pointsTotal: 9, ranked: [] });
+    expect(r.awardsNothing).toBe(true);
+    expect(r.award?.unawarded.map((u) => u.place)).toEqual([1, 2]);
   });
 });

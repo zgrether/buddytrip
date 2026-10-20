@@ -433,6 +433,27 @@ export interface StrokeTeamStanding {
  * Pure and client-safe (CLAUDE.md #8), so a live projected team total can reuse
  * it without a second implementation.
  */
+/**
+ * SCRAMBLE's team map: a scramble ranks PLAY GROUPS, so team standings need
+ * group -> team, not person -> team. A group belongs to the team of its first
+ * member who has one (team identity belongs to the PERSON, so moving somebody
+ * re-attributes their group). The server's finalize and the view's summary and
+ * colours read this ONE rule (#1674): the view used to map groups through the
+ * person map, found nothing, and reported a scramble that awards real points
+ * as awarding none.
+ */
+export function teamOfScrambleGroups(
+  groups: { id: string; userIds: string[] }[],
+  teamOfUser: (userId: string) => string | undefined
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const g of groups) {
+    const teamId = g.userIds.map(teamOfUser).find(Boolean);
+    if (teamId) out[g.id] = teamId;
+  }
+  return out;
+}
+
 export function computeStrokeTeamStandings(
   standings: StrokeStanding[],
   /** userId → teamId, from `team_assignments` for the game's competition. */
