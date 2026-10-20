@@ -1760,7 +1760,7 @@ export function StrokeGameView() {
         {/* What finalize will award (#1639). Beside the button, no extra step:
             finalize keeps its bare CTA. Shown only when the button is. */}
         {strokeCanFinalize && finalizeAward && (
-          <FinalizeAwardSummary award={finalizeAward} units={awardUnits} unitWord={{ one: "team", many: "teams", none: "no team" }} />
+          <FinalizeAwardSummary award={finalizeAward} kind="team" units={awardUnits} unitWord={{ one: "team", many: "teams", none: "no team" }} />
         )}
         <GameLifecycleActions
           canEdit={canEdit}

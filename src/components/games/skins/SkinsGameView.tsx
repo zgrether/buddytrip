@@ -50,7 +50,11 @@ import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { modifiersSummary, enabledCount, type ModifiersMap } from "@/lib/modifiers";
 import { unitsFromSchema, teeFromSchema } from "@/lib/strokePlayConfig";
 import { computeStrokeTeamStandings } from "@/lib/strokePlay";
-import { gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
+import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
+import { placementFinalize } from "@/lib/finalizeAward";
+import { AWARD_WORD } from "@/lib/vocabulary";
+import { FinalizeAwardSummary } from "@/components/games/FinalizeAwardSummary";
+import { PickemFinalizePrompt } from "@/components/games/pickem/PickemFinalizePrompt";
 import { pointsReady } from "@/lib/matchDraft";
 import { isWinnerTakesAll } from "@/lib/configDraft";
 import { type PointsDistribution } from "@/lib/pointsDistribution";
@@ -593,6 +597,27 @@ export function SkinsGameView() {
       ),
     [standings, teamOfUser]
   );
+  // What finalize will award, beside Save results (#1639 c). The units are what
+  // the server banks for this competition: TEAMS in a cup with teams
+  // (`teamRows`, the same roll-up `server/lib/skins.ts` writes), PEOPLE in a
+  // teamless race (the started players' own positions). The schedule is the one
+  // the board pays, so a game with points and no split awards nothing and asks
+  // (`placementFinalize`, #1674).
+  const skinsGame = gameQ.data as { points_total?: number | null; points_distribution?: PointsDistribution | null } | undefined;
+  const teamlessRace = !!competitionId && teamIds.length === 0;
+  const finalizeOutcome = useMemo(() => {
+    if (!competitionId) return null;
+    const ranked = teamlessRace
+      ? standings.filter((s) => s.started).map((s) => ({ unitId: s.entityId, position: s.position }))
+      : teamRows.map((t) => ({ unitId: t.teamId, position: t.position }));
+    return placementFinalize({ distribution: skinsGame?.points_distribution, pointsTotal: skinsGame?.points_total, ranked });
+  }, [competitionId, teamlessRace, standings, teamRows, skinsGame?.points_distribution, skinsGame?.points_total]);
+  const awardUnits = useMemo(() => {
+    if (teamlessRace) return new Map(standings.map((s) => [s.entityId, { name: nameOf.get(s.entityId) ?? "Player", color: null }]));
+    return new Map(teamIds.map((id) => [id, { name: teamMeta.get(id)?.name ?? "Team", color: teamMeta.get(id)?.color ?? null }]));
+  }, [teamlessRace, standings, nameOf, teamIds, teamMeta]);
+  const [confirmAwardsNothing, setConfirmAwardsNothing] = useState(false);
+
   const teamList = useMemo(
     () => teamIds.map((id) => ({ id, name: teamMeta.get(id)?.name ?? "Team", color: teamMeta.get(id)?.color ?? "var(--color-bt-text-dim)" })),
     [teamIds, teamMeta]
@@ -1131,6 +1156,17 @@ export function SkinsGameView() {
             rule (#24 — seven incidents, one missing abstraction). `allComplete`
             is this format's own answer to "can the server compute a real result
             yet", which is the one part that legitimately differs. */}
+        {/* What finalize will award (#1639 c). Beside the button, no extra step;
+            shown only when the button is. */}
+        {gameLifecycle({ canEdit, status: gameQ.data?.status ?? null, correctionsOpen, allComplete }).canFinalize &&
+          finalizeOutcome?.award && (
+            <FinalizeAwardSummary
+              award={finalizeOutcome.award}
+              kind={teamlessRace ? "person" : "team"}
+              units={awardUnits}
+              unitWord={teamlessRace ? { one: "player", many: "players", none: "nobody" } : { one: "team", many: "teams", none: "no team" }}
+            />
+          )}
         <GameLifecycleActions
           canEdit={canEdit}
           status={gameQ.data?.status ?? null}
@@ -1139,9 +1175,23 @@ export function SkinsGameView() {
           relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
-          onFinalize={() => void finalize()}
+          // A game that awards nothing still finishes, but asks first (#1668).
+          onFinalize={finalizeOutcome?.awardsNothing ? () => setConfirmAwardsNothing(true) : () => void finalize()}
           onCorrect={handleCorrect}
         />
+        {confirmAwardsNothing && (
+          <PickemFinalizePrompt
+            title={AWARD_WORD.none}
+            confirmLabel="Finish anyway"
+            cancelLabel="Cancel"
+            pending={finalizePending}
+            onConfirm={() => {
+              setConfirmAwardsNothing(false);
+              void finalize();
+            }}
+            onCancel={() => setConfirmAwardsNothing(false)}
+          />
+        )}
       </div>
     </Shell>
   );
