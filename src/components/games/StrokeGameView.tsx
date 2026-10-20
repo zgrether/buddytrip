@@ -1654,6 +1654,7 @@ export function StrokeGameView() {
                 // SCRAMBLE: one competitor on the card, so the running line is
                 // Total + To Par rather than a total and a "Leading" badge.
                 runningStyle={isScramble ? "toPar" : "rank"}
+                unitKind={isScramble ? "team" : "person"}
                 hideHeader={inPanel}
                 gameName={entryGroup.name}
                 units={scUnits}
@@ -1742,7 +1743,7 @@ export function StrokeGameView() {
             rubric={boardRubric}
           />
         )}
-        <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} notCountingIds={notCountingIds} rubric={boardRubric} unitCount={scUnits.length} />
+        <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} unitKind={isScramble ? "team" : "person"} notCountingIds={notCountingIds} rubric={boardRubric} unitCount={scUnits.length} />
         <FoursomeEntry
           groups={groupViews}
           onEnter={(id) => {

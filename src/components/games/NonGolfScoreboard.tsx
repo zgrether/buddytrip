@@ -339,6 +339,8 @@ function NonGolfMatchControl({
         dim={anySelected && result !== aId}
         color={a?.color}
         avatarName={a?.name}
+        isTeam
+        teamShortName={a?.short_name}
         label={a?.name ?? "Team A"}
         onClick={() => pick(aId)}
         disabled={!canEdit}
@@ -358,6 +360,8 @@ function NonGolfMatchControl({
         dim={anySelected && result !== bId}
         color={b?.color}
         avatarName={b?.name}
+        isTeam
+        teamShortName={b?.short_name}
         label={b?.name ?? "Team B"}
         onClick={() => pick(bId)}
         disabled={!canEdit}

@@ -36,6 +36,7 @@
  */
 
 import { useState } from "react";
+import { TeamBadge } from "@/components/TeamBadge";
 import { type BuilderTeam, type NotOnATeamNote } from "@/lib/builderPool";
 import { NOT_ON_A_TEAM_WORD } from "@/lib/vocabulary";
 import { NotOnATeamNoteLine, NotOnATeamRow } from "../NotOnATeam";
@@ -582,7 +583,7 @@ export function PlayerSelector({
     <div className="fixed inset-0 z-[60] flex items-end" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose} data-testid="player-selector">
       <div onClick={(e) => e.stopPropagation()} className="w-full" style={{ background: "var(--color-bt-card-float)", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: "16px 16px 28px", maxHeight: "75vh", overflowY: "auto" }}>
         <div className="flex items-center gap-2" style={{ fontSize: 16, fontWeight: 700, color: "var(--color-bt-text)" }}>
-          {teamColor && <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: teamColor }} />}
+          {teamColor && <TeamBadge name={teamLabel ?? title} color={teamColor} size={18} />}
           {title}
         </div>
         <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 14 }}>Available</div>

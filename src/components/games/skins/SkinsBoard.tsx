@@ -2,6 +2,7 @@
 
 import { Avatar } from "@/components/Avatar";
 import { ordinalShort } from "@/components/competition/CompetitionGamesPanel";
+import { TeamBadge } from "@/components/TeamBadge";
 import { thruLabel } from "@/lib/thruLabel";
 import type { StrokeTeamStanding } from "@/lib/strokePlay";
 import type { SkinsStanding } from "@/lib/skins";
@@ -122,9 +123,7 @@ export function SkinsBoard({
                   <span className="w-6 flex-shrink-0 text-center text-sm font-bold tabular-nums" style={{ color: "var(--color-bt-text-dim)" }}>
                     {ordinalShort(r.position)}
                   </span>
-                  <span
-                    style={{ width: 10, height: 10, borderRadius: "50%", background: t?.color ?? "var(--color-bt-text-dim)", flexShrink: 0 }}
-                  />
+                  <TeamBadge teamId={r.teamId} name={t?.name ?? "Team"} color={t?.color ?? "var(--color-bt-text-dim)"} size={20} />
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
                     {t?.name ?? "Team"}
                   </span>
@@ -206,7 +205,7 @@ export function SkinsBoard({
                     collapse
                     collapseAt="dense"
                   />
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold" style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
+                  <span className="min-w-0 flex-1 truncate text-sm font-normal" style={{ color: off ? "var(--color-bt-text-dim)" : "var(--color-bt-text)" }}>
                     {p?.name ?? "Player"}
                   </span>
                   <span

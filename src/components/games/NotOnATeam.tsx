@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
+import { TeamBadge } from "@/components/TeamBadge";
 import {
   NOT_ON_A_TEAM_NOTE,
   NOT_ON_A_TEAM_ROSTERS_LEAD,
@@ -65,7 +66,7 @@ export function NotOnATeamRow({ userId, name, targets, onAdd }: { userId: string
         </span>
         {targets.length === 1 && (
           <button type="button" onClick={() => onAdd(userId, targets[0].id)} data-testid={`add-to-team-${userId}`} className="flex shrink-0 items-center gap-1.5" style={pill}>
-            <span className="inline-block h-2 w-2 rounded-full" style={{ background: targets[0].color }} />
+            <TeamBadge teamId={targets[0].id} name={targets[0].name} color={targets[0].color} size={16} />
             Add to {targets[0].name}
           </button>
         )}
@@ -86,7 +87,7 @@ export function NotOnATeamRow({ userId, name, targets, onAdd }: { userId: string
               className="flex w-full items-center gap-2 text-left"
               style={{ padding: "8px 10px", borderRadius: 8, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", fontSize: 14, fontWeight: 600, color: "var(--color-bt-text)" }}
             >
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: t.color }} />
+              <TeamBadge teamId={t.id} name={t.name} color={t.color} size={18} />
               {t.name}
             </button>
           ))}

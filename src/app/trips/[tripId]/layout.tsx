@@ -3,6 +3,7 @@ import type { inferRouterOutputs } from "@trpc/server";
 import { createSSRHelpers } from "@/server/trpc-ssr";
 import { TripBootSeed } from "@/components/competition/TripBootSeed";
 import { TripIdProvider } from "@/components/TripIdProvider";
+import { TripTeamBadgeLabels } from "@/components/TeamBadgeLabels";
 import { TripMembershipGate } from "@/components/TripMembershipGate";
 import type { FaceBootstrap } from "@/components/competition/LiveFaceClient";
 import type { AppRouter } from "@/server/router";
@@ -120,7 +121,9 @@ export default async function TripLayout({
         {/* Explicit seed — the dehydrated state alone does not reach the client
             cache here; see TripBootSeed for the evidence and why. */}
         {tripId && <TripBootSeed tripId={tripId} boot={boot} members={members} />}
-        {children}
+        {/* Every team badge's letter, decided once for the trip's competition
+            (two letters where two teams would share one). */}
+        <TripTeamBadgeLabels>{children}</TripTeamBadgeLabels>
         {/* A person removed while the app is open is told so, on every route
             under the trip (PR 8d-3). Renders nothing for a member. */}
         <TripMembershipGate />
