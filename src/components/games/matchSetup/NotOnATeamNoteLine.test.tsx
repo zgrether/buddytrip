@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { NotOnATeamNoteLine } from "./MatchSetup";
+import { NotOnATeamNoteLine } from "../NotOnATeam";
 import { rostersHref } from "@/lib/gameRoutes";
 
 /**
