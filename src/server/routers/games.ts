@@ -200,7 +200,7 @@ async function refuseSplitOnPerMatchGame(
     throw new TRPCError({
       code: "BAD_REQUEST",
       message:
-        "This game pays match by match, so its points can't be split by place. " +
+        "This game awards points match by match, so its points can't be split by place. " +
         "Set the game's total points instead — each match gets its share of it.",
     });
   }
@@ -560,7 +560,7 @@ export const gamesRouter = router({
             const allowed = gameTypesForTeamlessRace().map((t) => t.name).join(", ");
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `${def?.name ?? "This format"} pays teams, and this tournament is played as individuals. Pick one of ${allowed}, or add teams to the tournament first.`,
+              message: `${def?.name ?? "This format"} awards points to teams, and this tournament is played as individuals. Pick one of ${allowed}, or add teams to the tournament first.`,
             });
           }
         }
@@ -1195,7 +1195,7 @@ export const gamesRouter = router({
           // place to fix it (copy trimmed in review, #1667).
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: `This split pays ${check.places} places, but only ${check.capacity.count} can finish. Change it in settings.`,
+            message: `This split awards points to ${check.places} places, but only ${check.capacity.count} can finish. Change it in settings.`,
           });
         }
       }
@@ -1300,7 +1300,7 @@ export const gamesRouter = router({
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: RELOCK_BLOCKED_MATCHES });
         }
         if (undecidedCount > 0) {
-          warning = `${undecidedCount} of ${assigned.length} match${assigned.length === 1 ? "" : "es"} ${undecidedCount === 1 ? "has" : "have"} no result yet — ${undecidedCount === 1 ? "its" : "their"} points will stay unpaid until entered and re-finalized.`;
+          warning = `${undecidedCount} of ${assigned.length} match${assigned.length === 1 ? "" : "es"} ${undecidedCount === 1 ? "has" : "have"} no result yet — ${undecidedCount === 1 ? "its" : "their"} points won't be awarded until entered and re-finalized.`;
         }
         if (game.competition_id) {
           // Same derivation golf's own award write uses (`matchPlay.ts`) — the

@@ -36,14 +36,9 @@
  */
 
 import { useState } from "react";
-import Link from "next/link";
-import {
-  NOT_ON_A_TEAM_NOTE,
-  NOT_ON_A_TEAM_ROSTERS_LEAD,
-  NOT_ON_A_TEAM_ROSTERS_LINK,
-  type BuilderTeam,
-  type NotOnATeamNote,
-} from "@/lib/builderPool";
+import { type BuilderTeam, type NotOnATeamNote } from "@/lib/builderPool";
+import { NOT_ON_A_TEAM_WORD } from "@/lib/vocabulary";
+import { NotOnATeamNoteLine, NotOnATeamRow } from "../NotOnATeam";
 import { createPortal } from "react-dom";
 import { Plus, X, GripVertical } from "lucide-react";
 import {
@@ -620,7 +615,7 @@ export function PlayerSelector({
         )}
         {notOnATeam && notOnATeam.ids.length > 0 && (
           <>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 16 }}>Not on a team</div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-bt-text-dim)", marginTop: 16 }}>{NOT_ON_A_TEAM_WORD}</div>
             <NotOnATeamNoteLine note={notOnATeam.note} rostersHref={notOnATeam.rostersHref} />
             <div className="mt-2 flex flex-col gap-1.5" data-testid="selector-not-on-a-team">
               {notOnATeam.ids.map((id) => (
@@ -664,78 +659,6 @@ function Slot({ player, onTap }: { player: Participant | null; onTap?: () => voi
     <button onClick={onTap} className="block w-full text-left" style={{ minWidth: 0, padding: 0, border: "none", background: "none" }}>
       <PlayerChip name={player.name} teamColor={player.color} />
     </button>
-  );
-}
-
-/** What a viewer with no add is told — exported so its copy and link are
- *  testable by static render (the selector itself portals to `document`). */
-export function NotOnATeamNoteLine({ note, rostersHref }: { note: NotOnATeamNote; rostersHref: string }) {
-  if (!note) return null;
-  return (
-    <p style={{ fontSize: 12, color: "var(--color-bt-text-dim)", marginTop: 6 }} data-testid="not-on-a-team-note">
-      {note === "rosters" ? (
-        <>
-          {NOT_ON_A_TEAM_ROSTERS_LEAD}{" "}
-          <Link href={rostersHref} data-testid="not-on-a-team-rosters-link" style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>
-            {NOT_ON_A_TEAM_ROSTERS_LINK}
-          </Link>
-          .
-        </>
-      ) : (
-        NOT_ON_A_TEAM_NOTE
-      )}
-    </p>
-  );
-}
-
-/**
- * A crew member on no team, and ONE control (9b look):
- *  - one team they could go to (head to head: the slot's own) → "Add to {team}";
- *  - several (a points race) → "Add to team…", which opens the choice in place;
- *  - none (this viewer cannot add) → no control; the section's note says who can.
- * Adding places them in the slot the picker was opened from. After results the
- * preview comes first, and the slot fills only once it is confirmed.
- */
-function NotOnATeamRow({ userId, name, targets, onAdd }: { userId: string; name: string; targets: BuilderTeam[]; onAdd: (userId: string, teamId: string) => void }) {
-  const [choosing, setChoosing] = useState(false);
-  const pill = { padding: "5px 10px", borderRadius: 999, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", fontSize: 13, fontWeight: 600, color: "var(--color-bt-text)" } as const;
-  return (
-    <div style={{ padding: "9px 12px", borderRadius: 10, background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" }} data-testid={`not-on-a-team-${userId}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-2.5">
-          <Avatar name={name} sizePx={30} collapse />
-          <span style={{ fontSize: 15, color: "var(--color-bt-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-        </span>
-        {targets.length === 1 && (
-          <button type="button" onClick={() => onAdd(userId, targets[0].id)} data-testid={`add-to-team-${userId}`} className="flex shrink-0 items-center gap-1.5" style={pill}>
-            <span className="inline-block h-2 w-2 rounded-full" style={{ background: targets[0].color }} />
-            Add to {targets[0].name}
-          </button>
-        )}
-        {targets.length > 1 && (
-          <button type="button" onClick={() => setChoosing((c) => !c)} aria-expanded={choosing} data-testid={`add-to-team-${userId}`} className="shrink-0" style={pill}>
-            Add to team…
-          </button>
-        )}
-      </div>
-      {choosing && targets.length > 1 && (
-        <div className="mt-2 flex flex-col gap-1.5" data-testid={`add-to-team-choice-${userId}`}>
-          {targets.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onAdd(userId, t.id)}
-              data-testid={`add-to-team-${userId}-${t.id}`}
-              className="flex w-full items-center gap-2 text-left"
-              style={{ padding: "8px 10px", borderRadius: 8, background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)", fontSize: 14, fontWeight: 600, color: "var(--color-bt-text)" }}
-            >
-              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: t.color }} />
-              {t.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 

@@ -9,7 +9,7 @@ import { useDepartedNames } from "@/hooks/useDepartedNames";
 import { withDeparted } from "@/lib/departedNames";
 import { STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { useScoreSaver } from "@/hooks/useScoreSaver";
-import { gamesPageHref, isScrambleFormat } from "@/lib/gameRoutes";
+import { gamesPageHref, isScrambleFormat, rostersHref } from "@/lib/gameRoutes";
 import { useConfigSync, GAME_SYNC_INTERVAL_MS } from "@/hooks/useConfigSync";
 import { useRealtimeGame } from "@/hooks/useRealtimeGame";
 import { gameEventScope, useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
@@ -33,7 +33,13 @@ import { configToStrokeDraft, strokeDraftToPayload, strokeDraftsEqual, isWinnerT
 import { StrokeScoringRow } from "@/components/games/StrokeScoringRow";
 import { scoringOf, type ScoringType } from "@/lib/stableford";
 import { UnevenTeamsNote } from "./UnevenTeamsNote";
-import { teamColorByUser, UNASSIGNED_TEAM_ID } from "@/lib/teamRosterColors";
+import { useTripRole } from "@/hooks/useTripRole";
+import { isTeamCaptain } from "@/hooks/useCanEditTeam";
+import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
+import { useRosterChangeGate } from "@/components/competition/RosterChangeGate";
+import { builderAddTargets, notOnATeamIds, notOnATeamNote, pairsFromRosters, unteamedSection } from "@/lib/builderPool";
+import { NotOnATeamSection } from "@/components/games/NotOnATeam";
+import { teamColorByUser } from "@/lib/teamRosterColors";
 import { rollUpOf, type StrokeRollUp } from "@/lib/strokeGameConfig";
 import { bottomNavInset } from "@/lib/bottomNavInset";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
@@ -69,7 +75,12 @@ import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
-import { gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
+import { gameLifecycle, gameLockState, RELOCK_BLOCKED_HOLES } from "@/lib/gameLifecycle";
+import { placementAward } from "@/lib/finalizeAward";
+import { effectiveDistribution } from "@/lib/pointsDistribution";
+import { AWARD_WORD } from "@/lib/vocabulary";
+import { FinalizeAwardSummary } from "./FinalizeAwardSummary";
+import { PickemFinalizePrompt } from "./pickem/PickemFinalizePrompt";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { showToast } from "@/lib/toast";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
@@ -323,6 +334,18 @@ export function StrokeGameView() {
   // competition id. Reuses rack's play_groups mechanism (issue path in save_game_config).
   const teamsQ = trpc.teams.list.useQuery({ tripId: tripId!, competitionId: gameCompetitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompetitionId });
   const assignQ = trpc.teamAssignments.list.useQuery({ tripId: tripId!, competitionId: gameCompetitionId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!gameCompetitionId });
+  // People on no team of this cup (#1668 look): they play, their result counts
+  // for no team, and an organizer (or their captain) can add them from the
+  // groupings. `rostersApply` is false for a side game and a teamless race,
+  // where there is no team to be off and everyone is simply the crew.
+  const rostersApply = pairsFromRosters({ inCup: !!gameCompetitionId, teamCount: (teamsQ.data ?? []).length });
+  const { canEdit: rosterStaff } = useTripRole(tripId);
+  const rosterPreview = useRosterChangeGate();
+  const hasResultsQ = trpc.teamAssignments.hasResults.useQuery(
+    { tripId: tripId!, competitionId: gameCompetitionId! },
+    { enabled: !!tripId && !!gameCompetitionId && rostersApply }
+  );
+  const { assign: assignToTeam } = useTeamAssignmentMutations(tripId ?? "", gameCompetitionId ?? "");
   const groupsQ = trpc.playGroups.listByGame.useQuery({ tripId: tripId!, gameId: urlGameId! }, { ...STRUCTURE_QUERY, enabled: !!tripId && !!urlGameId });
 
   // ── Draft-then-save (P2) machinery ──────────────────────────────────────────
@@ -435,12 +458,12 @@ export function StrokeGameView() {
       const players = crewList.filter((c) => teamOfUser.get(c.id) === t.id);
       if (players.length) sections.push({ id: t.id, name: t.name, color: t.color, players });
     }
-    const unassigned = crewList.filter((c) => !teamOfUser.has(c.id));
-    // The sentinel comes from the module that EXCLUDES it, so the producer and
-    // the excluder cannot drift onto two spellings of one string.
-    if (unassigned.length) sections.push({ id: UNASSIGNED_TEAM_ID, name: "Crew", color: "var(--color-bt-text-dim)", players: unassigned });
+    // Everyone on no team: "Not on a team" in a cup with teams, the crew
+    // elsewhere (`unteamedSection`, shared with skins).
+    const unteamed = unteamedSection({ rostersApply, crew: crewList, teamOf: (id) => teamOfUser.get(id) });
+    if (unteamed) sections.push(unteamed);
     return sections;
-  }, [teamsQ.data, assignQ.data, crew.data, avatarIconOf]);
+  }, [teamsQ.data, assignQ.data, crew.data, avatarIconOf, rostersApply]);
 
   // b2: the Handicaps roster is the LIVE DRAFTED FIELD — every player across the CURRENT
   // draft groups (`configDraft.groups`), NOT the stale create-time `game.participants`
@@ -910,11 +933,13 @@ export function StrokeGameView() {
       return {
         id,
         name: meta?.name ?? (crew.data ?? []).find((c) => c.user_id === id)?.displayName ?? "Player",
-        color: teamColorOf.get(id) ?? meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length],
+        // In a cup with teams, someone on no team is neutral grey (#1668 look):
+        // a palette colour would read as a team they are not on. Skins does the same.
+        color: teamColorOf.get(id) ?? (rostersApply ? "var(--color-bt-text-dim)" : meta?.color ?? PLAYER_COLORS[i % PLAYER_COLORS.length]),
         avatarIcon: avatarIconOf.get(id) ?? meta?.avatarIcon ?? null,
       };
     }),
-    [fieldIds, nameColorOf, crew.data, teamColorOf, avatarIconOf, isScramble, teamOfGroup, surfaceGroups],
+    [fieldIds, nameColorOf, crew.data, teamColorOf, avatarIconOf, isScramble, teamOfGroup, surfaceGroups, rostersApply],
   );
 
   // Net per-hole entries (feed to-par) + par-by-hole from the course snapshot. Nets against
@@ -968,8 +993,16 @@ export function StrokeGameView() {
     for (const a of (assignQ.data ?? []) as { user_id: string; team_id: string }[]) m[a.user_id] = a.team_id;
     return m;
   }, [assignQ.data]);
-  const teamTotalRows = useMemo(() => {
-    if (boardRollUp !== "team_totals") return [];
+  // The board's muted rows (#1668 look). A scramble ranks groups, never people.
+  const notCountingIds = useMemo(
+    () => new Set(isScramble ? [] : notOnATeamIds({ rostersApply, crewIds: fieldIds, teamOf: (id) => teamOfUserId[id] })),
+    [isScramble, rostersApply, fieldIds, teamOfUserId]
+  );
+
+  // Computed once, UNGATED: the board's team-totals section shows it when the
+  // board is set to team totals, and the finalize award (#1639) reads it
+  // whatever the board shows, because finalize banks these rows either way.
+  const teamStandings = useMemo(() => {
     const started = new Set(leaderboardRows.filter((r) => r.started).map((r) => r.entityId));
     if (started.size === 0) return [];
     const startedEntries = netLeaderboardEntries.filter((e) => started.has(e.participant_id));
@@ -983,7 +1016,8 @@ export function StrokeGameView() {
       : startedEntries.map((e) => ({ participant_id: e.participant_id, value: e.value }));
     const standings = computeStrokePlayStandings([...started], scored, { scoring });
     return computeStrokeTeamStandings(standings, teamOfUserId, scoring);
-  }, [boardRollUp, leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId]);
+  }, [leaderboardRows, netLeaderboardEntries, parByHole, boardRubric, teamOfUserId]);
+  const teamTotalRows = boardRollUp === "team_totals" ? teamStandings : [];
 
   // Game-level finalize gate (just like rack): every player of the LIVE whole field
   // is thru every hole. Reuses the shipped scoreboard's own rows (no parallel path) —
@@ -1003,6 +1037,32 @@ export function StrokeGameView() {
     status: gameQ.data?.status,
     correctionsOpen: strokeCorrectionsOpen,
   });
+
+  // What finalize will award, shown beside "Save results" (#1639): the cup's own
+  // placement over the SAME team rows finalize banks. A team cup only for now;
+  // a teamless race ranks people, and comes with the other formats.
+  const strokeGame = gameQ.data as { competition_id?: string | null; points_total?: number | null; points_distribution?: PointsDistribution | null } | undefined;
+  const awardTeams = useMemo(
+    () => (teamsQ.data ?? []) as { id: string; name: string; color: string }[],
+    [teamsQ.data]
+  );
+  const finalizeAward = useMemo(() => {
+    if (!strokeGame?.competition_id || awardTeams.length === 0) return null;
+    const values = effectiveDistribution(strokeGame.points_distribution ?? null, strokeGame.points_total ?? null);
+    if (values.length === 0) return null;
+    return placementAward(values, teamStandings.map((t) => ({ unitId: t.teamId, position: t.position })));
+  }, [strokeGame?.competition_id, strokeGame?.points_distribution, strokeGame?.points_total, awardTeams.length, teamStandings]);
+  const awardUnits = useMemo(
+    () => new Map(awardTeams.map((t) => [t.id, { name: t.name, color: t.color }])),
+    [awardTeams]
+  );
+  const strokeCanFinalize = gameLifecycle({
+    canEdit,
+    status: gameQ.data?.status ?? null,
+    correctionsOpen: strokeCorrectionsOpen,
+    allComplete: allGroupsComplete,
+  }).canFinalize;
+  const [confirmAwardsNothing, setConfirmAwardsNothing] = useState(false);
 
   // The groupings list rows (FoursomeEntry) — thru = the group's furthest hole; started = any.
   const groupViews = useMemo<FoursomeGroupView[]>(
@@ -1257,6 +1317,26 @@ export function StrokeGameView() {
           />
         )}
         <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={pickerTeams} />
+        {gameCompetitionId && tripId && (() => {
+          const teamList = ((teamsQ.data ?? []) as { id: string; name: string; color: string }[]).map((t) => ({ id: t.id, name: t.name, color: t.color }));
+          const targets = builderAddTargets({
+            teams: teamList,
+            staff: rosterStaff,
+            captainOf: (teamId) => isTeamCaptain(assignQ.data as { user_id: string; team_id: string; is_captain?: boolean }[] | undefined, me?.id, teamId),
+            hasResults: !!hasResultsQ.data,
+            previewAvailable: !!rosterPreview,
+          });
+          const ids = notOnATeamIds({ rostersApply, crewIds: configDraft.groups.flat(), teamOf: (id) => teamOfUserId[id] });
+          return (
+            <NotOnATeamSection
+              people={ids.map((id) => ({ id, name: (crew.data ?? []).find((c) => c.user_id === id)?.displayName ?? "Player" }))}
+              targets={targets}
+              note={notOnATeamNote({ targets, staff: rosterStaff, hasResults: !!hasResultsQ.data, previewAvailable: !!rosterPreview })}
+              rostersHref={rostersHref(tripId)}
+              onAdd={(userId, teamId) => assignToTeam.mutate({ tripId, competitionId: gameCompetitionId, userId, teamId })}
+            />
+          );
+        })()}
       </ChecklistRow>
     );
     // Handicaps row (GROUP SETTINGS, P3 3.3) — INLINE per-player strokes (was a full-page
@@ -1617,7 +1697,7 @@ export function StrokeGameView() {
             rubric={boardRubric}
           />
         )}
-        <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} rubric={boardRubric} unitCount={scUnits.length} />
+        <StrokeLeaderboard rows={leaderboardRows} participants={fieldParticipants} notCountingIds={notCountingIds} rubric={boardRubric} unitCount={scUnits.length} />
         <FoursomeEntry
           groups={groupViews}
           onEnter={(id) => {
@@ -1632,6 +1712,11 @@ export function StrokeGameView() {
             not disabled); finalize only once every group is complete (all
             players, all holes, live over the current group set — a
             mid-round-added group re-blocks it). Never on a group's entry page. */}
+        {/* What finalize will award (#1639). Beside the button, no extra step:
+            finalize keeps its bare CTA. Shown only when the button is. */}
+        {strokeCanFinalize && finalizeAward && (
+          <FinalizeAwardSummary award={finalizeAward} units={awardUnits} unitWord={{ one: "team", many: "teams", none: "no team" }} />
+        )}
         <GameLifecycleActions
           canEdit={canEdit}
           status={gameQ.data?.status ?? null}
@@ -1640,9 +1725,26 @@ export function StrokeGameView() {
           relockBlockedLine={RELOCK_BLOCKED_HOLES}
           finalizePending={finalizePending}
           correctPending={correctPending}
-          onFinalize={handleFinish}
+          // A game that awards nothing still finishes, but asks first (#1639):
+          // the backstop behind the go-live prompt. On stroke the button shows
+          // only once every player is thru every hole, so a zero award here
+          // means the field played and nobody in it is on a team.
+          onFinalize={finalizeAward?.awardsNothing ? () => setConfirmAwardsNothing(true) : handleFinish}
           onCorrect={handleCorrect}
         />
+        {confirmAwardsNothing && (
+          <PickemFinalizePrompt
+            title={AWARD_WORD.none}
+            confirmLabel="Finish anyway"
+            cancelLabel="Cancel"
+            pending={finalizePending}
+            onConfirm={() => {
+              setConfirmAwardsNothing(false);
+              void handleFinish();
+            }}
+            onCancel={() => setConfirmAwardsNothing(false)}
+          />
+        )}
       </div>
     );
   }

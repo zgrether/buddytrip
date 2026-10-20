@@ -533,8 +533,8 @@ export function explanationCopy(
     out.push({
       id: "multipliers",
       text: conf
-        ? "A game marked 2× pays double, so it's worth more than its rank suggests — spend your confidence accordingly."
-        : "A game marked 2× pays double.",
+        ? "A game marked 2× awards double points, so it's worth more than its rank suggests — spend your confidence accordingly."
+        : "A game marked 2× awards double points.",
     });
   }
 
@@ -554,7 +554,7 @@ export function explanationCopy(
       id: "points-placement",
       // No "the higher total", which is two-team language and the same trap one
       // level down: with four teams the payout is a POSITION, not a winner.
-      text: "Every sheet on your team adds into one team total. The teams finish in order, and each place pays out.",
+      text: "Every sheet on your team adds into one team total. The teams finish in order, and each place awards points.",
     });
   } else {
     out.push({

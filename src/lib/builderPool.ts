@@ -1,4 +1,6 @@
 import { rosterRights } from "./rosterRights";
+import { UNASSIGNED_TEAM_ID } from "./teamRosterColors";
+import { NOT_ON_A_TEAM_WORD } from "./vocabulary";
 
 /**
  * WHO THE MATCH BUILDER OFFERS, AND WHO IT CAN ADD (PR 9b, ruling 2).
@@ -46,6 +48,33 @@ export function builderPool(p: {
 }): string[] {
   if (p.slotTeamId) return p.rosterOfTeam(p.slotTeamId);
   return p.rostersApply ? p.rosterIds : p.crewIds;
+}
+
+/**
+ * The GROUPINGS picker's section for everyone on no team (stroke, skins).
+ *
+ * Unlike match play, these formats can PLAY someone on no team (their result
+ * counts for no team), so the picker offers them in their own section. In a
+ * cup with teams it is "Not on a team" (#1668 look); in a side game or a
+ * teamless race nobody has a team, and it is simply the crew.
+ *
+ * Skins built its picker from team rosters alone and had no such section, so
+ * a skins game with no teams offered NOBODY and could never be grouped
+ * (#1669). Both views read this one answer now.
+ */
+export function unteamedSection<P extends { id: string }>(p: {
+  rostersApply: boolean;
+  crew: P[];
+  teamOf: (userId: string) => string | undefined;
+}): { id: string; name: string; color: string; players: P[] } | null {
+  const players = p.crew.filter((c) => !p.teamOf(c.id));
+  if (players.length === 0) return null;
+  return {
+    id: UNASSIGNED_TEAM_ID,
+    name: p.rostersApply ? NOT_ON_A_TEAM_WORD : "Crew",
+    color: "var(--color-bt-text-dim)",
+    players,
+  };
 }
 
 /** Trip members on no team of this cup — the "Not on a team" section. */

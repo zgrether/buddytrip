@@ -88,7 +88,7 @@ export function splitSideRefusal(
     if (members.length < 2) continue;
     if (sideUnit(members, teamOf) !== null) continue;
     const names = members.map(nameOf).join(" and ");
-    return `${names} aren't on the same team. Until split payouts are supported, each side of a match has to be one team's players — pair teammates, or play them as singles.`;
+    return `${names} aren't on the same team. Until a side's points can be split between teams, each side of a match has to be one team's players — pair teammates, or play them as singles.`;
   }
   return null;
 }

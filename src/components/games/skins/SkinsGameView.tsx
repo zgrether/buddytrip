@@ -67,8 +67,14 @@ import type { ScorecardSchema } from "@/lib/courseIndex";
 import type { GameRow } from "@/components/competition/CompetitionGamesPanel";
 import type { Participant } from "@/components/games/types";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
-import { gamesPageHref } from "@/lib/gameRoutes";
+import { gamesPageHref, rostersHref } from "@/lib/gameRoutes";
 import { UnevenTeamsNote } from "@/components/games/UnevenTeamsNote";
+import { useTripRole } from "@/hooks/useTripRole";
+import { isTeamCaptain } from "@/hooks/useCanEditTeam";
+import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
+import { useRosterChangeGate } from "@/components/competition/RosterChangeGate";
+import { builderAddTargets, notOnATeamIds, notOnATeamNote, pairsFromRosters, unteamedSection } from "@/lib/builderPool";
+import { NotOnATeamSection } from "@/components/games/NotOnATeam";
 
 const SKINS = "gtt_skins";
 
@@ -178,6 +184,18 @@ export function SkinsGameView() {
     { tripId: tripId!, competitionId: competitionId! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!competitionId }
   );
+  // People on no team of this cup (#1668 look): they play, their result counts
+  // for no team, and an organizer (or their captain) can add them from the
+  // groupings. `rostersApply` is false for a side game and a teamless race,
+  // where there is no team to be off and everyone is simply the crew.
+  const rostersApply = pairsFromRosters({ inCup: !!competitionId, teamCount: (teamsQ.data ?? []).length });
+  const { canEdit: rosterStaff } = useTripRole(tripId);
+  const rosterPreview = useRosterChangeGate();
+  const hasResultsQ = trpc.teamAssignments.hasResults.useQuery(
+    { tripId: tripId!, competitionId: competitionId! },
+    { enabled: !!tripId && !!competitionId && rostersApply }
+  );
+  const { assign: assignToTeam } = useTeamAssignmentMutations(tripId ?? "", competitionId ?? "");
   const groupsQ = trpc.playGroups.listByGame.useQuery(
     { tripId: tripId!, gameId: gid! },
     { ...STRUCTURE_QUERY, enabled: !!tripId && !!gid }
@@ -252,8 +270,17 @@ export function SkinsGameView() {
         avatarIcon: avatarOf.get(uid) ?? null,
       });
     }
-    return [...byTeam.values()];
-  }, [teamIds, teamMeta, assignQ.data, nameOf, avatarOf]);
+    // Everyone on no team gets their own section, as stroke does: without it a
+    // skins game with no teams offered NOBODY and could never be grouped (#1669).
+    const sections = [...byTeam.values()].filter((t) => t.players.length > 0);
+    const unteamed = unteamedSection({
+      rostersApply,
+      crew: (crew.data ?? []).filter((c) => c.user_id).map((c) => ({ id: c.user_id, name: nameOf.get(c.user_id) ?? "Player", avatarIcon: avatarOf.get(c.user_id) ?? null })),
+      teamOf: (id) => teamOfUser.get(id),
+    });
+    if (unteamed) sections.push(unteamed);
+    return sections;
+  }, [teamIds, teamMeta, assignQ.data, nameOf, avatarOf, crew.data, teamOfUser, rostersApply]);
 
   // ── Scorecard units + the glorious config ────────────────────────────────
   const scUnits = useMemo(
@@ -537,6 +564,11 @@ export function SkinsGameView() {
     () => groupingIds.flatMap((g) => membersOf(g).map(participantOf)),
     [groupingIds, membersOf, participantOf]
   );
+  // The board's muted rows (#1668 look).
+  const notCountingIds = useMemo(
+    () => new Set(notOnATeamIds({ rostersApply, crewIds: allParticipants.map((p) => p.id), teamOf: (id) => teamOfUser.get(id) })),
+    [rostersApply, allParticipants, teamOfUser]
+  );
   /**
    * The team roll-up, through the SAME `computeStrokeTeamStandings` the server
    * finalize uses (`server/lib/skins.ts`) — so the live board and the banked
@@ -778,6 +810,26 @@ export function SkinsGameView() {
                   />
                 )}
                 <RackGroupBuilder groups={configDraft.groups} onChange={setGroupsDraft} teams={builderTeams} />
+                {competitionId && tripId && (() => {
+                  const teamList = ((teamsQ.data ?? []) as { id: string; name: string; color: string }[]).map((t) => ({ id: t.id, name: t.name, color: t.color }));
+                  const targets = builderAddTargets({
+                    teams: teamList,
+                    staff: rosterStaff,
+                    captainOf: (teamId) => isTeamCaptain(assignQ.data as { user_id: string; team_id: string; is_captain?: boolean }[] | undefined, me?.id, teamId),
+                    hasResults: !!hasResultsQ.data,
+                    previewAvailable: !!rosterPreview,
+                  });
+                  const ids = notOnATeamIds({ rostersApply, crewIds: configDraft.groups.flat(), teamOf: (id) => teamOfUser.get(id) });
+                  return (
+                    <NotOnATeamSection
+                      people={ids.map((id) => ({ id, name: nameOf.get(id) ?? "Player" }))}
+                      targets={targets}
+                      note={notOnATeamNote({ targets, staff: rosterStaff, hasResults: !!hasResultsQ.data, previewAvailable: !!rosterPreview })}
+                      rostersHref={rostersHref(tripId)}
+                      onAdd={(userId, teamId) => assignToTeam.mutate({ tripId, competitionId: competitionId, userId, teamId })}
+                    />
+                  );
+                })()}
               </ChecklistRow>
             </>
           }
@@ -1021,6 +1073,7 @@ export function SkinsGameView() {
           teamRows={teamRows}
           teams={teamList}
           participants={allParticipants}
+          notCountingIds={notCountingIds}
           unitCount={scUnits.length}
           thruOf={thruOf}
         />
