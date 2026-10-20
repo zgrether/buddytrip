@@ -199,8 +199,12 @@ export async function assertGameReady(supabase: SupabaseClient, gameId: string):
  * the moment a migration adds a column.
  */
 
-/** What the game IS. Written by the add-game modal; says nothing about setup. */
-export const IDENTITY_COLS = ["name", "game_type_id"] as const;
+/** What the game IS. Written by the add-game modal; says nothing about setup.
+ *  `competition_id` joined the hashed columns in migration 218 (a save can now
+ *  take a game OUT of its competition). It is what the game counts toward,
+ *  chosen at creation, and leaving a cup is not configuring the game, so a
+ *  game still reads New afterwards if nothing else was set. */
+export const IDENTITY_COLS = ["name", "game_type_id", "competition_id"] as const;
 
 /**
  * CLAUDE.md #25's separate lifecycle axis. `sectionOf` already branches on
