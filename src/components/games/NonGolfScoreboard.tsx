@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { MATCH_LEVEL_WORD } from "@/lib/vocabulary";
 import { trpc } from "@/lib/trpc-client";
 import {
@@ -11,7 +11,8 @@ import {
 import { OutcomeChoiceRow } from "./OutcomeChoiceRow";
 import { GameLifecycleActions } from "./GameLifecycleActions";
 import { ScoringStateBanner } from "./ScoringStateBanner";
-import { gameLockState } from "@/lib/gameLifecycle";
+import { gameLifecycle, gameLockState } from "@/lib/gameLifecycle";
+import { useAwardsNothingBackstop } from "./useAwardsNothingBackstop";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
 import type { ScoringModel } from "@/lib/gameTypes";
@@ -54,6 +55,8 @@ export function NonGolfScoreboard({
   onMatchResultPick,
   canEdit,
   onPosted,
+  awardsNothing = false,
+  awardNote,
 }: {
   tripId: string;
   competitionId: string;
@@ -99,6 +102,14 @@ export function NonGolfScoreboard({
   canEdit: boolean;
   /** Posted successfully — the page navigates back to the leaderboard. */
   onPosted: () => void;
+  /** Points are on offer and none would be awarded (#1639 c). Finalize still
+   *  goes through, but asks first. The parent answers it from the SAME
+   *  projection its header draws. */
+  awardsNothing?: boolean;
+  /** What finalize will award that the header does not already say: the
+   *  places no team can fill (#1639 c). Shown beside the button, only when
+   *  the button is. */
+  awardNote?: ReactNode;
 }) {
   const utils = trpc.useUtils();
   // Matches (170) decides FIRST — before winLoseTie is even consulted. Its
@@ -124,6 +135,8 @@ export function NonGolfScoreboard({
   // left for a confirm to ask, because an undecided match can no longer reach
   // this button in the first place.
   const matchesUndecidedCount = matches.filter((m) => m.result == null).length;
+  // The CTA's gate, read by the button and by the award note beside it.
+  const allComplete = isMatches ? matches.length > 0 && matchesUndecidedCount === 0 : !!placements;
 
   const { correct: handleCorrect, isPending: correctPending } = useOpenCorrection(
     tripId,
@@ -145,6 +158,7 @@ export function NonGolfScoreboard({
     // rather than relying only on the global toast. Kept.
     onError: (e) => setError(e instanceof Error ? e.message : "Failed to post"),
   });
+  const awardsNothingBackstop = useAwardsNothingBackstop({ awardsNothing, finalize: commit, pending: busy });
 
   /**
    * Editable = the role MAY edit AND the game's lifecycle allows it right now.
@@ -285,16 +299,19 @@ export function NonGolfScoreboard({
           borrows: one tap, no confirm, nothing left to ask about (see `commit`
           above). An empty pairing grid still refuses — there is nothing for a
           tap on this button to mean either way. */}
+      {gameLifecycle({ canEdit, status: game.status, correctionsOpen: game.corrections_open, allComplete }).canFinalize &&
+        awardNote}
       <GameLifecycleActions
         canEdit={canEdit}
         status={game.status}
         correctionsOpen={game.corrections_open}
-        allComplete={isMatches ? matches.length > 0 && matchesUndecidedCount === 0 : !!placements}
+        allComplete={allComplete}
         finalizePending={busy}
         correctPending={correctPending}
-        onFinalize={commit}
+        onFinalize={awardsNothingBackstop.onFinalize}
         onCorrect={handleCorrect}
       />
+      {awardsNothingBackstop.prompt}
     </div>
   );
 }

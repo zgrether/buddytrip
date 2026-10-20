@@ -90,3 +90,20 @@ export function placementFinalize(p: {
   const award = placementAward(values, p.ranked);
   return { award, awardsNothing: award.awardsNothing };
 }
+
+/**
+ * The backstop's question for a format whose header already projects each
+ * team's points (#1639 c — match play, rack, and the non-golf head-to-head,
+ * Matches and bracket shapes): points are on offer, and the projection on
+ * screen awards none of them.
+ *
+ * Read off the SAME per-team numbers the header draws, so the confirm cannot
+ * disagree with what the person is looking at. `offered` is what the game puts
+ * up: for a match format, every decided match's value; for a placement or
+ * head-to-head, the game's points. A game that offers nothing never asks.
+ */
+export function projectionAwardsNothing(offered: number, perTeam: Record<string, number> | null | undefined): boolean {
+  if (!(offered > 0)) return false;
+  const awarded = Object.values(perTeam ?? {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
+  return awarded === 0;
+}

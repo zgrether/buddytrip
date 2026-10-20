@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { placementAward, placementFinalize } from "./finalizeAward";
+import { placementAward, placementFinalize, projectionAwardsNothing } from "./finalizeAward";
 
 /**
  * #1639 — what a placement game will award at finalize: each finisher's points,
@@ -95,5 +95,27 @@ describe("placementFinalize — the schedule the board pays (#1674)", () => {
     const r = placementFinalize({ distribution: { type: "placement", values: [6, 3] }, pointsTotal: 9, ranked: [] });
     expect(r.awardsNothing).toBe(true);
     expect(r.award?.unawarded.map((u) => u.place)).toEqual([1, 2]);
+  });
+});
+
+describe("projectionAwardsNothing — the backstop for a format whose header projects points (#1639 c)", () => {
+  it("points on offer and every team projected at zero: asks", () => {
+    expect(projectionAwardsNothing(10, { A: 0, B: 0 })).toBe(true);
+  });
+
+  it("points on offer and no team in the projection at all: asks", () => {
+    // Matches and match play leave out a team nobody paid; an empty map is the
+    // shape every match played by people on no team produces.
+    expect(projectionAwardsNothing(10, {})).toBe(true);
+    expect(projectionAwardsNothing(10, null)).toBe(true);
+  });
+
+  it("CONTROL: one team awarded anything, however little: does not ask", () => {
+    expect(projectionAwardsNothing(10, { A: 0, B: 0.5 })).toBe(false);
+  });
+
+  it("CONTROL: a game that offers nothing never asks, whatever the projection", () => {
+    expect(projectionAwardsNothing(0, { A: 0, B: 0 })).toBe(false);
+    expect(projectionAwardsNothing(0, null)).toBe(false);
   });
 });

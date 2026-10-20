@@ -36,6 +36,8 @@ import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
 import { useExitToBoard } from "@/hooks/useExitToBoard";
 import { useGameFinalize } from "@/hooks/useGameFinalize";
+import { useAwardsNothingBackstop } from "@/components/games/useAwardsNothingBackstop";
+import { projectionAwardsNothing } from "@/lib/finalizeAward";
 import { gameLockState, isPreScoring } from "@/lib/gameLifecycle";
 import { memberCanScoreMatch, type ScoreUnitMatch } from "@/lib/scoreUnit";
 import { useOpenCorrection } from "@/hooks/useGameCorrection";
@@ -1613,6 +1615,21 @@ export function MatchGameView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups, loadedValues, values, loadedOutcomeValues, outcomeValues, outcomeMode, handicapOf, scIndex, scUnits, inCup, teamOfUser, teamById, membersOfSide, pointsPerMatch, pointValueByMatch, glorious]);
 
+  // The finish-time backstop (#1639 c). Match play's header already shows each
+  // team's projected points, so finalize adds no summary, only the question when
+  // those points come to nothing: every match was played by someone on no team.
+  // A cup with teams only; a race with no teams credits people, and the header's
+  // per-team projection is empty there by design.
+  const matchPointsOffered = useMemo(
+    () => groups.reduce((sum, g) => sum + (pointValueByMatch.get(g.matchId) ?? pointsPerMatch), 0),
+    [groups, pointValueByMatch, pointsPerMatch]
+  );
+  const awardsNothingBackstop = useAwardsNothingBackstop({
+    awardsNothing: teams.length > 0 && projectionAwardsNothing(matchPointsOffered, projectionPerTeam),
+    finalize: handleFinish,
+    pending: finishing,
+  });
+
   const entryPips = useMemo(() => {
     const m: Record<string, Set<string>> = {};
     if (selectedGroup) {
@@ -2345,6 +2362,7 @@ export function MatchGameView() {
         );
       })()}
 
+      {awardsNothingBackstop.prompt}
       {!cfgOpen && screen === "overview" && (
         <Overview
           tripId={tripId}
@@ -2357,7 +2375,7 @@ export function MatchGameView() {
           decidedFor={decidedFor}
           glorious={glorious}
           holeCount={scUnits.length}
-          onFinish={handleFinish}
+          onFinish={awardsNothingBackstop.onFinalize}
           finishing={finishing}
           correcting={correcting}
           status={status}

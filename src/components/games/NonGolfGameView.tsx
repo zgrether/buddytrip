@@ -44,6 +44,8 @@ import {
 } from "@/lib/configDraft";
 import type { PointsMatch } from "@/components/games/MatchPointsRow";
 import { isPlacement, isPerMatch, effectiveDistribution, projectableMatchShare, type PointsDistribution } from "@/lib/pointsDistribution";
+import { placementFinalize, projectionAwardsNothing } from "@/lib/finalizeAward";
+import { FinalizeAwardSummary } from "./FinalizeAwardSummary";
 import { tallyMatchAwards, type SideRef as MatchSideRef } from "@/lib/matchAwards";
 import { sideUnit } from "@/lib/sideUnit";
 import { BracketSettingsRows, ClearPairingsPrompt } from "@/components/games/bracket/BracketSettingsRows";
@@ -914,6 +916,51 @@ export function NonGolfGameView() {
   // the obvious one). Caught by the React Compiler lint, not by me.
   }, [isBracket, bracketDraw, resolvedDraw, game?.points_distribution, game?.points_total, teamBySeed]);
 
+  /**
+   * What finalize adds beside "Save results" (#1639 c). Every shape here
+   * already shows each team's projected points in the header, so it adds only
+   * what the header cannot say (Zach): a place in the split no team can fill,
+   * and a confirm when the points on offer come to nothing.
+   *
+   *  - FINISHING ORDER: the places, through the same `placementFinalize` the
+   *    golf formats use, over the exact `draftPlacements` the button posts.
+   *    Its schedule is the authored split only, as `draftDistribution` reads.
+   *  - WIN/LOSE/TIE, MATCHES, BRACKET: the confirm only, off the header's own
+   *    projection. Win/lose/tie pays `[total, 0]`, so it has no third place;
+   *    a Matches game has no places; a bracket's split is refused at save if
+   *    it has more places than the field (#916).
+   */
+  const placementOutcome = useMemo(() => {
+    if (isBracket || isMatches || winLoseTie || !draftPlacements) return null;
+    return placementFinalize({
+      distribution: game?.points_distribution as PointsDistribution | null | undefined,
+      pointsTotal: game?.points_total as number | null | undefined,
+      ranked: draftPlacements.map((p) => ({ unitId: p.entityId, position: p.position })),
+    });
+  }, [isBracket, isMatches, winLoseTie, draftPlacements, game?.points_distribution, game?.points_total]);
+  const finalizeAwardsNothing = useMemo(() => {
+    if (isBracket) {
+      const values = effectiveDistribution(
+        game?.points_distribution as PointsDistribution | null | undefined,
+        game?.points_total as number | null | undefined,
+      );
+      return projectionAwardsNothing(values.reduce((sum, v) => sum + (v || 0), 0), bracketProjection);
+    }
+    if (isMatches) {
+      // Every decided, paired match's value: what the game put up.
+      const offered = (serverMatchRows as { side_a: ServerSide; side_b: ServerSide; result: string | null; point_value: number | null }[])
+        .filter((mm) => mm.side_a?.id && mm.side_b?.id && mm.result)
+        .reduce((sum, mm) => sum + (mm.point_value ?? matchesPointsPerMatch), 0);
+      return projectionAwardsNothing(offered, matchesProjection);
+    }
+    if (winLoseTie) return projectionAwardsNothing(Number(game?.points_total ?? 0), draftProjection);
+    return placementOutcome?.awardsNothing ?? false;
+  }, [isBracket, isMatches, winLoseTie, game?.points_distribution, game?.points_total, bracketProjection, serverMatchRows, matchesPointsPerMatch, matchesProjection, draftProjection, placementOutcome]);
+  const awardTeamUnits = useMemo(
+    () => new Map(teams.map((t) => [t.id, { name: t.name, shortName: t.short_name, color: t.color }])),
+    [teams]
+  );
+
   const filledEntrants = useMemo(
     () => configDraft.bracketEntrants.filter((e) => e.length > 0),
     [configDraft.bracketEntrants],
@@ -1515,6 +1562,7 @@ export function NonGolfGameView() {
           )}
           canEdit={canEdit}
           onPosted={exitToBoard}
+          awardsNothing={finalizeAwardsNothing}
         />
       ) : competitionId && (
         <NonGolfScoreboard
@@ -1543,6 +1591,18 @@ export function NonGolfGameView() {
           // shared hook branches on `useInGamePanel()` and gives the non-panel
           // case an explicit destination.
           onPosted={exitToBoard}
+          awardsNothing={finalizeAwardsNothing}
+          awardNote={
+            placementOutcome?.award ? (
+              <FinalizeAwardSummary
+                award={placementOutcome.award}
+                kind="team"
+                units={awardTeamUnits}
+                unitWord={{ one: "team", many: "teams", none: "no team" }}
+                only="unawarded"
+              />
+            ) : undefined
+          }
         />
       )}
     </div>
