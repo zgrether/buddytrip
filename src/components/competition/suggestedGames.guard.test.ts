@@ -21,4 +21,10 @@ describe("the board's suggested games", () => {
   it("are for organizers only", () => {
     expect(board).toMatch(/if \(!canEdit \|\| !isStartingPointId\(startingPoint\)\) return \[\];/);
   });
+
+  it("replace the empty board's setup line rather than sitting under it (Zach's look on #1684)", () => {
+    const at = board.indexOf('data-testid="board-empty-line"');
+    const open = board.lastIndexOf("{canEdit", at);
+    expect(board.slice(open, at)).toMatch(/^\{canEdit && liveGames\.length === 0 && suggestions\.length === 0 && \(/);
+  });
 });

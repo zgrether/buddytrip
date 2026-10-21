@@ -469,11 +469,13 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         />
       )}
 
-      {/* Bones copy — the calm setup voice, only while the board is empty and
-          editable (nothing's required to start). */}
-      {canEdit && liveGames.length === 0 && (
-        <p className="px-1 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-          This is your scoreboard. Name the teams, add the games — it fills in as you go. Nothing&rsquo;s required to start.
+      {/* Bones copy: one line, only while the board is empty and editable. Not
+          beside a starting point's suggestions, which already say what to do
+          (Zach's look on #1684); and one line, since the empty games card below
+          already says to add the first game. */}
+      {canEdit && liveGames.length === 0 && suggestions.length === 0 && (
+        <p className="px-1 text-[12px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }} data-testid="board-empty-line">
+          It fills in as you go.
         </p>
       )}
 
