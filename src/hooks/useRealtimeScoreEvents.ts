@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getRealtimeClient } from "@/lib/supabase";
+import { isDeadChannel } from "@/lib/realtimeChannelStatus";
 import { trpc } from "@/lib/trpc-client";
 import { coalesceInvalidation } from "@/lib/invalidationCoalescer";
 import { BROADCAST_TABLES, type BroadcastTable } from "@/lib/broadcastTables";
@@ -88,6 +89,10 @@ type Entry = {
   channel: RealtimeChannel;
   handlers: Set<Handler>;
   refs: number;
+  /** Set when the last release removes the channel, BEFORE `removeChannel`,
+   *  so the `CLOSED` that supabase-js then delivers is not reported as a
+   *  dead subscription (#1565). */
+  tornDown: boolean;
 };
 
 /** topic → the one channel serving it, and everyone listening to it. */
@@ -121,7 +126,7 @@ export function acquire(topic: string, handler: Handler): () => void {
   if (!entry) {
     const supabase = getRealtimeClient();
     const channel = supabase.channel(topic);
-    const created: Entry = { channel, handlers: new Set(), refs: 0 };
+    const created: Entry = { channel, handlers: new Set(), refs: 0, tornDown: false };
 
     channel.on("broadcast", { event: SCORE_EVENT }, (message) => {
       // The trigger sends {gameId, competitionId}; realtime.send adds its own
@@ -158,7 +163,7 @@ export function acquire(topic: string, handler: Handler): () => void {
        * Reporting only, deliberately. No retry and no state change: the client
        * reconnects on its own and the SUBSCRIBED arm above backfills when it does.
        */
-      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      if (isDeadChannel(status, created.tornDown)) {
         console.error(
           `[realtime] score-event channel "${topic}" is not live (status: ${status}). ` +
             `Scores, bracket picks and lifecycle changes from other devices will not ` +
@@ -187,6 +192,7 @@ export function acquire(topic: string, handler: Handler): () => void {
     current.refs -= 1;
     if (current.refs <= 0) {
       registry.delete(topic);
+      current.tornDown = true;
       getRealtimeClient().removeChannel(current.channel);
     }
   };

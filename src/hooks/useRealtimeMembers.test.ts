@@ -192,6 +192,42 @@ describe("useRealtimeMembers — a dead subscription is not silent", () => {
     });
   }
 
+  // #1565: supabase-js also delivers CLOSED after our OWN removeChannel, so a
+  // teardown must not read as a dead subscription, while a CLOSED nobody asked
+  // for still must.
+  it("says nothing when the CLOSED follows its own teardown", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { acquire } = await import("./useRealtimeMembers");
+    acquire("trip-teardown", vi.fn())();
+    channels[0].status("CLOSED");
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("still reports a CLOSED while another surface holds the channel", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { acquire } = await import("./useRealtimeMembers");
+    const relA = acquire("trip-shared", vi.fn());
+    const relB = acquire("trip-shared", vi.fn());
+    relA();
+    channels[0].status("CLOSED");
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("CLOSED"));
+    relB();
+    spy.mockRestore();
+  });
+
+  it("still reports a CLOSED on a fresh channel for a topic torn down before", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { acquire } = await import("./useRealtimeMembers");
+    acquire("trip-again", vi.fn())();
+    const rel = acquire("trip-again", vi.fn());
+    expect(channels).toHaveLength(2);
+    channels[1].status("CLOSED");
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("CLOSED"));
+    rel();
+    spy.mockRestore();
+  });
+
   it("says nothing on a healthy SUBSCRIBED", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const { acquire } = await import("./useRealtimeMembers");

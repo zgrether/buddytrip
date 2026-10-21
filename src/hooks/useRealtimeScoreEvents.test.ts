@@ -555,6 +555,39 @@ describe("useRealtimeScoreEvents — shared channel registry", () => {
     rel();
   });
 
+  // #1565: supabase-js also delivers CLOSED after our OWN removeChannel, so a
+  // teardown must not read as a dead subscription, while a CLOSED nobody asked
+  // for still must.
+  it("says nothing when the CLOSED follows its own teardown", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    acquire(TOPIC, vi.fn())();
+    created[0].subCb?.("CLOSED");
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("still reports a CLOSED while another surface holds the channel", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const relA = acquire(TOPIC, vi.fn());
+    const relB = acquire(TOPIC, vi.fn());
+    relA();
+    created[0].subCb?.("CLOSED");
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+    relB();
+  });
+
+  it("still reports a CLOSED on a fresh channel for a topic torn down before", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    acquire(TOPIC, vi.fn())();
+    const rel = acquire(TOPIC, vi.fn());
+    expect(created).toHaveLength(2);
+    created[1].subCb?.("CLOSED");
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+    rel();
+  });
+
   it("says nothing on a healthy subscribe", () => {
     // The other half — a hook that cried wolf on every connect would be ignored
     // within a day, which is the same outcome as saying nothing.
