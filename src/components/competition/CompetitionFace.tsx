@@ -376,7 +376,16 @@ export function CompetitionFace({
       <SurfaceVisibility visible={!panelOpen}>
       {!competition ? (
         setupOpen && canEdit ? (
-          <CompetitionSetupPanel tripId={tripId} onCancel={() => setSetupOpen(false)} />
+          <CompetitionSetupPanel
+            tripId={tripId}
+            onCancel={() => setSetupOpen(false)}
+            // Just keep score makes a side game: close the picker and open the
+            // add-game sheet, which on a trip with no competition adds side games.
+            onJustKeepScore={() => {
+              setSetupOpen(false);
+              setAddingGame(true);
+            }}
+          />
         ) : (
           <SideGamesBoard
             tripId={tripId}
