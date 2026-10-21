@@ -10,6 +10,7 @@ import { Stepper } from "@/components/games/Stepper";
 import { MAX_SEED_TEAMS } from "@/lib/teamColors";
 import { STARTING_POINTS, startingPointFits, type StartingPointId } from "@/lib/startingPoints";
 import { StartingPointPicker } from "./StartingPointPicker";
+import { StartingPointReview } from "./StartingPointReview";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -76,10 +77,9 @@ const SHAPE_OPTIONS: ShapeOption[] = [
 export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel, onJustKeepScore }: Props) {
   const isEdit = !!competition;
   // Create opens on the picker (starting points, Zach 2026-10-21). A starting
-  // point fills in the choices below and is recorded on the competition;
-  // Build your own is the same form with none. (Until the starting point's
-  // own review screen lands, a starting point also opens this form.)
-  const [step, setStep] = useState<"pick" | "build">("pick");
+  // point opens its REVIEW (its art, the name, its setup) and is recorded on
+  // the competition; Build your own opens the form below with none.
+  const [step, setStep] = useState<"pick" | "review" | "build">("pick");
   const [startingPoint, setStartingPoint] = useState<StartingPointId | null>(null);
   const utils = trpc.useUtils();
 
@@ -169,7 +169,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       setPlayAs("teams");
       setTeamCount(2);
     }
-    setStep("build");
+    setStep("review");
   }
 
   async function handleSubmit() {
@@ -208,6 +208,26 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
   }
 
   const panelStyle = { background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" };
+
+  if (!isEdit && step === "review" && startingPoint) {
+    return (
+      <div className="mx-auto w-full max-w-[600px] rounded-xl p-4" style={panelStyle} data-testid="competition-setup-panel">
+        <StartingPointReview
+          startingPoint={startingPoint}
+          name={name}
+          onNameChange={setName}
+          playAs={playAs}
+          onPlayAsChange={setPlayAs}
+          teamCount={teamCount}
+          onTeamCountChange={setTeamCount}
+          onBack={() => setStep("pick")}
+          onCreate={() => void handleSubmit()}
+          submitting={isSubmitting}
+          error={error}
+        />
+      </div>
+    );
+  }
 
   if (!isEdit && step === "pick") {
     return (
