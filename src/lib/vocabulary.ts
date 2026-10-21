@@ -81,9 +81,14 @@ export const COMPETITION_CHOICE_WORD = {
 } as const satisfies Record<ScoringModel, string>;
 
 /**
- * THE UMBRELLA WORD — every starting point says "Start a Competition": the
- * create panel's title, the side games board's start card and the trip
- * settings row (Zach, 2026-10-12, on #1604's look). It sits above the two kinds
+ * THE UMBRELLA WORD — every ENTRY POINT says "Start a Competition": the side
+ * games board's start card, the trip settings row, and the create panel's
+ * Build your own form (Zach, 2026-10-12, on #1604's look). Since starting
+ * points (2026-10-21) the panel OPENS on "What are you playing?", the
+ * starting-point picker, which also offers Just keep score (a side game, no
+ * competition), so the umbrella moved to the form behind Build your own.
+ * "Starting point" now names the picker's presets (`startingPoints.ts`); the
+ * surfaces that open the panel are entry points. It sits above the two kinds
  * before either is picked, where "Start a Head-to-Head Cup or Tournament"
  * wrapped to two lines on a phone and repeated the options right below it. The
  * one place the code's word is copy; the guard admits it only from this file.
@@ -91,7 +96,7 @@ export const COMPETITION_CHOICE_WORD = {
 export const COMPETITION_UMBRELLA = "Competition";
 
 /** Help that explains both kinds (the Games tab's empty-state explainer). The
- *  starting points themselves say "Start a Competition". */
+ *  entry points themselves say "Start a Competition". */
 export const EITHER_CHOICE = `${COMPETITION_CHOICE_WORD.match_play} or ${COMPETITION_CHOICE_WORD.points}`;
 
 // ── Match states ──────────────────────────────────────────────────────────────

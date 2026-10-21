@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Swords, Trophy, Users } from "lucide-react";
+import { ChevronLeft, Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { COMPETITION_CHOICE_WORD, COMPETITION_NAME_EXAMPLE, COMPETITION_UMBRELLA, competitionNoun, competitionWord } from "@/lib/vocabulary";
 import { Stepper } from "@/components/games/Stepper";
 import { MAX_SEED_TEAMS } from "@/lib/teamColors";
+import { STARTING_POINTS, startingPointFits, type StartingPointId } from "@/lib/startingPoints";
+import { StartingPointPicker } from "./StartingPointPicker";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -26,6 +28,9 @@ interface Props {
   onSuccess?: () => void;
   /** Edit mode only — shown next to Save Changes. */
   onCancel?: () => void;
+  /** Create mode: the picker's Just keep score, which makes a side game
+   *  rather than a competition, so the caller opens the add-game sheet. */
+  onJustKeepScore?: () => void;
 }
 
 // ── Shape chooser ────────────────────────────────────────────────────────────
@@ -68,8 +73,14 @@ const SHAPE_OPTIONS: ShapeOption[] = [
  * Edit mode is name + tagline only (shape + team count are frozen — post-creation
  * team management lives in the team editor).
  */
-export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel }: Props) {
+export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel, onJustKeepScore }: Props) {
   const isEdit = !!competition;
+  // Create opens on the picker (starting points, Zach 2026-10-21). A starting
+  // point fills in the choices below and is recorded on the competition;
+  // Build your own is the same form with none. (Until the starting point's
+  // own review screen lands, a starting point also opens this form.)
+  const [step, setStep] = useState<"pick" | "build">("pick");
+  const [startingPoint, setStartingPoint] = useState<StartingPointId | null>(null);
   const utils = trpc.useUtils();
 
   const [scoringModel, setScoringModel] = useState<ScoringModel>("match_play");
@@ -149,6 +160,18 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
   const trimmedName = name.trim();
   const submitDisabled = isSubmitting || trimmedName.length < 2;
 
+  function pickStartingPoint(id: StartingPointId) {
+    const sp = STARTING_POINTS[id];
+    setStartingPoint(id);
+    setScoringModel(sp.scoringModel);
+    if (sp.players === "individuals_or_teams") setPlayAs("individuals");
+    if (sp.players === "teams") {
+      setPlayAs("teams");
+      setTeamCount(2);
+    }
+    setStep("build");
+  }
+
   async function handleSubmit() {
     setError(null);
     if (trimmedName.length < 2) {
@@ -167,6 +190,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       return;
     }
 
+    const createTeamCount = scoringModel === "points" ? (playAs === "individuals" ? 0 : teamCount) : 2;
     await createComp.mutateAsync({
       tripId,
       name: trimmedName,
@@ -174,20 +198,52 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
       scoringModel,
       // Match-play is locked at 2 teams. A points race played as individuals seeds
       // none: it has no roster, and its standings are whoever plays (ruling 22).
-      teamCount: scoringModel === "points" ? (playAs === "individuals" ? 0 : teamCount) : 2,
+      teamCount: createTeamCount,
+      // Recorded only while the choices still fit it: changing the shape
+      // after picking a starting point makes this Build your own.
+      startingPoint:
+        startingPoint && startingPointFits(startingPoint, scoringModel, createTeamCount) ? startingPoint : undefined,
     });
     onSuccess?.();
+  }
+
+  const panelStyle = { background: "var(--color-bt-card)", border: "1px solid var(--color-bt-border)" };
+
+  if (!isEdit && step === "pick") {
+    return (
+      // Capped at ~600px and centred (Zach): on a desktop the tiles would
+      // otherwise stretch, and the 2x2 reads as four banners.
+      <div className="mx-auto w-full max-w-[600px] rounded-xl p-4" style={panelStyle} data-testid="competition-setup-panel">
+        <StartingPointPicker
+          onPick={pickStartingPoint}
+          onJustKeepScore={() => onJustKeepScore?.()}
+          onBuildYourOwn={() => {
+            setStartingPoint(null);
+            setStep("build");
+          }}
+        />
+      </div>
+    );
   }
 
   return (
     <div
       className="rounded-xl p-4"
-      style={{
-        background: "var(--color-bt-card)",
-        border: "1px solid var(--color-bt-border)",
-      }}
+      style={panelStyle}
       data-testid="competition-setup-panel"
     >
+      {!isEdit && (
+        <button
+          type="button"
+          onClick={() => setStep("pick")}
+          className="-ml-1 mb-2 flex items-center gap-1 text-sm font-medium"
+          style={{ minHeight: 44, color: "var(--color-bt-text-dim)" }}
+          data-testid="starting-points-back"
+        >
+          <ChevronLeft size={18} />
+          Starting points
+        </button>
+      )}
       {!isEdit && (
         <div className="mb-4 flex items-center gap-3">
           <div
