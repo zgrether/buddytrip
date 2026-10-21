@@ -19,6 +19,7 @@
  */
 
 import { isPlacement, type PointsDistribution } from "./pointsDistribution";
+import { tooManyPlacesWords } from "./vocabulary";
 
 export type MatchFormat = "singles" | "doubles";
 
@@ -234,7 +235,7 @@ export function tooManyPlacesLine(v: PlacementValidation): string | null {
   if (v.state !== "too_many_places") return null;
   const n = v.capacity.count ?? 0;
   const unit = CAN_FINISH[v.capacity.source];
-  return `${v.places} places, but only ${n} ${n === 1 ? unit.one : unit.many} can finish.`;
+  return tooManyPlacesWords(v.places, n, unit);
 }
 
 /**

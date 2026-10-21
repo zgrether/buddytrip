@@ -56,7 +56,7 @@ import { finalizeSplitRefusal, splitPlacesWarning } from "@/lib/gameConfig";
 import { FinalizeAwardSummary } from "@/components/games/FinalizeAwardSummary";
 import { useAwardsNothingBackstop } from "@/components/games/useAwardsNothingBackstop";
 import { SplitRefusalLine } from "@/components/games/SplitRefusalLine";
-import { pointsReady } from "@/lib/matchDraft";
+import { gameSetupReasons, goLiveGate, NO_SETUP_INPUT } from "@/lib/gameReadiness";
 import { isWinnerTakesAll } from "@/lib/configDraft";
 import { type PointsDistribution } from "@/lib/pointsDistribution";
 import { peoplePlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
@@ -817,12 +817,16 @@ export function SkinsGameView() {
           management={{
             scoringEnabled: configDraft.scoringEnabled,
             // The points term does not lock a game that will ASK instead (#1668).
-            ready: draftGroupsAssigned && (!competitionId || wouldAskSideGame() || pointsReady(configDraft.pointsTotal ?? 0)),
-            blockedReason: !draftGroupsAssigned
-              ? "Add at least one group before enabling scoring"
-              : competitionId && !wouldAskSideGame() && !pointsReady(configDraft.pointsTotal ?? 0)
-                ? "Set a point value before enabling scoring"
-                : null,
+            ...goLiveGate(
+              gameSetupReasons({
+                ...NO_SETUP_INPUT,
+                gameTypeId: configDraft.gameTypeId,
+                inCompetition: !!competitionId,
+                pointsTotal: configDraft.pointsTotal ?? 0,
+                groupedPlayers: configDraft.groups.flat().length,
+              }),
+              { skip: wouldAskSideGame() ? ["points_missing"] : [] }
+            ),
             onEnable: handleEnable,
             onDisable: handleDisable,
             pending: saving,

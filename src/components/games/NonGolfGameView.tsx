@@ -57,11 +57,12 @@ import { lossesBySeed, isMustWin } from "@/lib/bracketDoubleAdvance";
 import { isDoubleElimination, resolveAnyDraw, placementsForDraw } from "@/lib/bracketFormat";
 import { doublePositionsAwarded, doubleSettledPlaces } from "@/lib/bracketDoublePlacements";
 import { stakesFromPositions } from "@/lib/bracketStakes";
-import { DEFAULT_BRACKET_CONFIG, isDefaultBracketConfig, bracketFieldReady, type BracketConfig } from "@/lib/bracketDraft";
+import { DEFAULT_BRACKET_CONFIG, isDefaultBracketConfig, type BracketConfig } from "@/lib/bracketDraft";
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
 import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal, splitPlacesWarning } from "@/lib/gameConfig";
-import { allMatchesFilled, pointsReady, sideMemberIds, type ServerSide } from "@/lib/matchDraft";
+import { sideMemberIds, type ServerSide } from "@/lib/matchDraft";
+import { gameSetupReasons, goLiveGate, NO_SETUP_INPUT, pairedPlayersOffTeam } from "@/lib/gameReadiness";
 import { MatchesBuilder } from "@/components/games/MatchesBuilder";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
@@ -1379,29 +1380,28 @@ export function NonGolfGameView() {
           // same two-answers-to-one-question shape, pointed the other way.
           // Reads the DRAFT pool, so it moves as the field is built and agrees
           // with the server's read of the pool this Save is about to write.
-          // A Matches game also needs every match paired: the same rule the RPC
-          // applies since migration 221 (#1686), which this page used to skip,
-          // so it offered go-live on a game with no matches drawn.
-          ready:
-            (!competitionId || pointsReady(configDraft.pointsTotal ?? 0)) &&
-            (!isMatches || allMatchesFilled(configDraft.matches)) &&
-            bracketFieldReady(isBracket, configDraft.bracketEntrants),
-          // Points first, so the existing reason is unchanged when both are
-          // unmet — the field is the newer and more specific complaint, and
-          // naming it while the game has no points would be answering second.
-          blockedReason:
-            competitionId && !pointsReady(configDraft.pointsTotal ?? 0)
-              ? "Set a point value before enabling scoring"
-              : isMatches && !allMatchesFilled(configDraft.matches)
-                ? "Pair every match before enabling scoring"
-              : !bracketFieldReady(isBracket, configDraft.bracketEntrants)
-                // The same SENTENCE the RPC raises, minus its closing "in this
-                // game's settings" — which is real guidance for any other caller
-                // and redundant here, where the Field row is a few inches up the
-                // page. The rule is what must not drift; the navigation clause is
-                // context, and this surface already has the context.
-                ? "A bracket needs at least two entrants before it can go live"
-                : null,
+          // From the shared readiness rule (`gameSetupReasons`), which the RPC's
+          // go-live branch follows arm for arm: a Matches game needs every match
+          // paired and, in a cup with teams, every paired player on a team (221,
+          // 222); a bracket needs a field of two; a cup game needs points.
+          ...goLiveGate(
+            gameSetupReasons({
+              ...NO_SETUP_INPUT,
+              gameTypeId: configDraft.gameTypeId,
+              competitionFormat: configDraft.competitionFormat,
+              inCompetition: !!competitionId,
+              cupHasTeams: pickerTeams.length > 0,
+              pointsTotal: configDraft.pointsTotal ?? 0,
+              pointsDistribution: configDraft.pointsDistribution,
+              matchesTotal: configDraft.matches.length,
+              matchesPaired: configDraft.matches.filter((m) => m.a.length === m.playersPerSide && m.b.length === m.playersPerSide).length,
+              pairedPlayersOffTeam: pairedPlayersOffTeam(
+                configDraft.matches,
+                new Set(pickerTeams.flatMap((t) => t.players.map((p) => p.id)))
+              ),
+              bracketEntrants: configDraft.bracketEntrants.filter((e) => e.length > 0).length,
+            })
+          ),
           onEnable: handleEnable,
           onDisable: handleDisable,
           pending: saving,

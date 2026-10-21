@@ -228,10 +228,52 @@ export const WITHDREW_WORD = "Withdrew";
 /**
  * Someone on the trip who is on no team of this cup (PR 9b; stroke and skins
  * groupings since the #1668 look). One phrase for the one state: builders,
- * groupings and their boards. The Rosters screen still says "Unassigned
- * crew" for the same pool, and is not yet moved (#1670).
+ * groupings, their boards and the Rosters screen, which said "Unassigned
+ * crew" until #1670.
  */
 export const NOT_ON_A_TEAM_WORD = "Not on a team";
+
+// ── Setup: what a game still needs ────────────────────────────────────────────
+
+/**
+ * Why a game is not ready yet (Zach's Needs-attention rulings, 2026-10-21).
+ * `gameSetupReasons` (src/lib/gameReadiness.ts) decides WHICH reasons hold;
+ * this decides the WORDS, in two forms:
+ *
+ *  - `line`: the short phrase a list shows (the board's game rows).
+ *  - `blocked`: the sentence a settings page shows beside the control it
+ *    blocks. A database refusal for the same reason says the same sentence.
+ *
+ * `too_many_places` has no entry: its words are `tooManyPlacesWords` below,
+ * because they carry the counts.
+ */
+export const SETUP_REASON_WORD = {
+  points_missing: { line: "No point value", blocked: "Set a point value before enabling scoring" },
+  matches_none: { line: "No matches drawn", blocked: "Pair every match before enabling scoring" },
+  matches_unpaired: {
+    line: (n: number) => `${n} ${n === 1 ? "match" : "matches"} not paired`,
+    blocked: "Pair every match before enabling scoring",
+  },
+  player_not_on_team: {
+    line: "A paired player isn't on a team",
+    blocked: "A paired player isn't on a team. Fix the matchups before enabling scoring.",
+  },
+  groups_none: { line: "No groups yet", blocked: "Add at least one group before enabling scoring" },
+  bracket_field: {
+    line: "Needs 2 entrants",
+    blocked: "A bracket needs at least two entrants before it can go live",
+  },
+  slate_empty: {
+    line: "No games on the slate",
+    blocked: "Add at least one game to the slate before opening picks.",
+  },
+} as const;
+
+/** "3 places, but only 2 teams can finish." The one sentence for a split with
+ *  more places than can be filled: settings, the finalize refusal and the board. */
+export function tooManyPlacesWords(places: number, count: number, unit: { one: string; many: string }): string {
+  return `${places} places, but only ${count} ${count === 1 ? unit.one : unit.many} can finish.`;
+}
 
 // ── Points ────────────────────────────────────────────────────────────────────
 

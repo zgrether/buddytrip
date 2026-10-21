@@ -71,7 +71,7 @@ import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/F
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { strokeHoles } from "@/lib/matchPlay";
-import { pointsReady } from "@/lib/matchDraft";
+import { gameSetupReasons, goLiveGate, NO_SETUP_INPUT } from "@/lib/gameReadiness";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
@@ -1532,12 +1532,16 @@ export function StrokeGameView() {
             scoringEnabled: configDraft.scoringEnabled,
             // The points term does not lock a game that will ASK instead: nobody
             // playing is on a team, so no point value could be awarded anyway.
-            ready: draftGroupCount > 0 && (!gameCompetitionId || wouldAskSideGame() || pointsReady(configDraft.pointsTotal ?? 0)),
-            blockedReason: draftGroupCount === 0
-              ? "Add at least one group before enabling scoring"
-              : gameCompetitionId && !wouldAskSideGame() && !pointsReady(configDraft.pointsTotal ?? 0)
-                ? "Set a point value before enabling scoring"
-                : null,
+            ...goLiveGate(
+              gameSetupReasons({
+                ...NO_SETUP_INPUT,
+                gameTypeId: configDraft.gameTypeId,
+                inCompetition: !!gameCompetitionId,
+                pointsTotal: configDraft.pointsTotal ?? 0,
+                groupedPlayers: configDraft.groups.flat().length,
+              }),
+              { skip: wouldAskSideGame() ? ["points_missing"] : [] }
+            ),
             onEnable: handleEnable,
             onDisable: handleDisable,
             pending: saving,

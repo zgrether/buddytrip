@@ -90,3 +90,18 @@ export function placeCapacityFor(
   if (entrantCount != null) return bracketPlaceCapacity(entrantCount);
   return teamPlaceCapacity(teamCount);
 }
+
+/**
+ * The finishers a placement split can pay at finalize (#1639): the bracket's
+ * field when there is one, else the cup's teams, else the people playing (a
+ * teamless race). The pure half of `finishPlaceCapacity` in games.ts, which
+ * reads the same three counts; the board's setup reasons read it here, so a
+ * split the board flags is one finalize would refuse.
+ */
+export function finishCapacityFor(
+  { entrantCount, teamCount, peopleCount }: { entrantCount: number; teamCount: number; peopleCount: number }
+): PlaceCapacity {
+  if (entrantCount > 0) return bracketPlaceCapacity(entrantCount);
+  if (teamCount > 0) return teamPlaceCapacity(teamCount);
+  return peoplePlaceCapacity(peopleCount);
+}
