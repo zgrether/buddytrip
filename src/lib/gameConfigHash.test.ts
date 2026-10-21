@@ -248,6 +248,11 @@ const NO_HASH_REFRESH_ALLOWED = [
   "src/components/competition/CompetitionGamesPanel.tsx",
   "src/components/competition/CompetitionLeaderboard.tsx",
   "src/components/competition/CompetitionSettingsModal.tsx",
+  // `games.create` — a starting point's suggestion rows on the board create a
+  // NEW game, so no settings draft can be frozen against it (the rack and
+  // stroke new-game exemption). Its other mutation, `competitions.skipSuggestion`,
+  // writes only the competition row, which the fingerprint does not cover.
+  "src/components/competition/SuggestedGames.tsx",
   "src/components/games/NonGolfGameView.tsx",
   // `startRack` — the NEW-GAME path creates the game. No settings draft can be
   // frozen against a game that did not exist a moment ago. (Its course used to

@@ -167,3 +167,26 @@ export function remainingSuggestions(
   );
   return suggestedGames(id, teamCount).filter((s) => !skipped.includes(s.key) && !present.has(s.key));
 }
+
+/**
+ * Add all (Zach's ruling): create every remaining suggestion, one at a time,
+ * and keep going past a failure. A failed create simply leaves that game as a
+ * suggestion; the caller shows which. One at a time, not all at once, so two
+ * creates never race for the same display position.
+ */
+export async function createInTurn(
+  suggestions: SuggestedGame[],
+  create: (s: SuggestedGame) => Promise<unknown>
+): Promise<{ added: string[]; failed: string[] }> {
+  const added: string[] = [];
+  const failed: string[] = [];
+  for (const s of suggestions) {
+    try {
+      await create(s);
+      added.push(s.key);
+    } catch {
+      failed.push(s.key);
+    }
+  }
+  return { added, failed };
+}

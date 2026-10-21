@@ -206,6 +206,9 @@ export function boardRow(g: GameRow, inputs: BoardInputs, pointsTotal: number | 
     distribution: isPlacement(rawDist) ? rawDist.values : null,
     status: g.status as string,
     gameTypeId: typeId,
+    // A manual game's format (a bracket). Starting points read it: a suggestion
+    // counts as added once a game of its format exists.
+    competitionFormat: (g.competition_format as string | null) ?? null,
     // "ready to score" = points are configured (a distribution shape or an
     // owner-set total). Kept for the games-panel/test consumers.
     ready: hasPoints,
