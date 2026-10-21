@@ -8,7 +8,7 @@
  * someone choosing a format what it is. `formatLines.test.ts` requires a line
  * for every format in the catalog and keeps each to one short line.
  *
- * The Rack-n-Stack line is pending Zach's check of the wording.
+ * Zach approved the Rack-n-Stack line as written (2026-10-21).
  */
 export const FORMAT_LINE: Record<string, string> = {
   gtt_stroke_play: "Count every stroke. Lowest total wins.",
