@@ -206,6 +206,33 @@ describe("useRealtimeChat — a dead subscription is not silent", () => {
     });
   }
 
+  // #1565: supabase-js also delivers CLOSED after our OWN removeChannel, so a
+  // teardown must not read as a dead subscription, while a CLOSED nobody asked
+  // for still must.
+  it("says nothing when the CLOSED follows its own teardown", () => {
+    acquire(TOPIC, FILTER, vi.fn())();
+    created[0].status("CLOSED");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("still reports a CLOSED while another surface holds the channel", () => {
+    const relA = acquire(TOPIC, FILTER, vi.fn());
+    const relB = acquire(TOPIC, FILTER, vi.fn());
+    relA();
+    created[0].status("CLOSED");
+    expect(spy).toHaveBeenCalledTimes(1);
+    relB();
+  });
+
+  it("still reports a CLOSED on a fresh channel for a topic torn down before", () => {
+    acquire(TOPIC, FILTER, vi.fn())();
+    const rel = acquire(TOPIC, FILTER, vi.fn());
+    expect(created).toHaveLength(2);
+    created[1].status("CLOSED");
+    expect(spy).toHaveBeenCalledTimes(1);
+    rel();
+  });
+
   it("says nothing on a healthy SUBSCRIBED", () => {
     const rel = acquire(TOPIC, FILTER, vi.fn());
     created[0].status("SUBSCRIBED");

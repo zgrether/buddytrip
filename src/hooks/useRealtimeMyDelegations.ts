@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getRealtimeClient } from "@/lib/supabase";
+import { isDeadChannel } from "@/lib/realtimeChannelStatus";
 import { trpc } from "@/lib/trpc-client";
 
 /**
@@ -42,6 +43,10 @@ type Entry = {
   channel: RealtimeChannel;
   handlers: Set<Handler>;
   refs: number;
+  /** Set when the last release removes the channel, BEFORE `removeChannel`,
+   *  so the `CLOSED` that supabase-js then delivers is not reported as a
+   *  dead subscription (#1565). */
+  tornDown: boolean;
 };
 
 const registry = new Map<string, Entry>();
@@ -56,7 +61,7 @@ export function acquire(userId: string, handler: Handler): () => void {
   if (!entry) {
     const supabase = getRealtimeClient();
     const channel = supabase.channel(topic);
-    const created: Entry = { channel, handlers: new Set(), refs: 0 };
+    const created: Entry = { channel, handlers: new Set(), refs: 0, tornDown: false };
 
     channel.on(
       "postgres_changes",
@@ -78,7 +83,7 @@ export function acquire(userId: string, handler: Handler): () => void {
         for (const h of [...created.handlers]) h();
         return;
       }
-      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      if (isDeadChannel(status, created.tornDown)) {
         console.error(
           `[realtime] my-delegations channel "${topic}" is not live (status: ${status}). ` +
             `A new delegate grant will not appear on the board until it reconnects.`
@@ -104,6 +109,7 @@ export function acquire(userId: string, handler: Handler): () => void {
     current.refs -= 1;
     if (current.refs <= 0) {
       registry.delete(topic);
+      current.tornDown = true;
       getRealtimeClient().removeChannel(current.channel);
     }
   };
