@@ -1,166 +1,190 @@
 "use client";
 
-import { TeamBadge } from "@/components/TeamBadge";
-import { SEED_TEAM_COLORS, seedTeamName } from "@/lib/teamColors";
+import { SEED_TEAM_COLORS } from "@/lib/teamColors";
+import { teamTextColor } from "@/lib/teamTextColor";
 import type { StartingPointId } from "@/lib/startingPoints";
 
 /**
  * The art on a starting point's tile, and larger on its review (Zach's rulings,
  * 2026-10-21): built from the app's OWN pieces, so a picture of a team cup is
  * the badges a team cup shows, a golf week is the leaderboard's bars, a
- * bracket is a bracket and keeping score is a scorecard strip. Theme tokens
- * only, plus the seed team palette the teams themselves will be given.
+ * bracket is a bracket and keeping score is a scorecard strip.
  *
+ * SCALABLE (Zach, on the picker's look): each piece is one SVG on a 160×96
+ * canvas that fills its container's width at that aspect ratio, up to
+ * `maxHeight`, so a phone tile, a desktop tile and the review all draw the
+ * same picture at their own size. A team badge is drawn in SVG with
+ * `TeamBadge`'s own geometry (corner radius 0.28 of its size, the letter at
+ * 0.56 and weight 800, its colour picked by `teamTextColor`) so it scales with
+ * the rest instead of staying a fixed-pixel element.
+ *
+ * Theme tokens only, plus the seed team palette the teams will be given.
  * Decorative: the tile's name says what it is, so the art is aria-hidden.
  */
 
 export type ArtKind = StartingPointId | "just_keep_score";
 
+const W = 160;
+const H = 96;
+
 const TRACK = "var(--color-bt-card-raised)";
 const MUTED = "var(--color-bt-border)";
 const ACCENT = "var(--color-bt-accent)";
+const DIM = "var(--color-bt-text-dim)";
+const TEXT = "var(--color-bt-text)";
 
 const team = (i: number) => SEED_TEAM_COLORS[i % SEED_TEAM_COLORS.length].color;
 
 export function StartingPointArt({
   kind,
-  scale = 1,
+  maxHeight = 140,
   teams,
 }: {
   kind: ArtKind;
-  /** 1 on the tile; larger on the review. */
-  scale?: number;
+  /** The tallest it may draw; it is otherwise as wide as its container. */
+  maxHeight?: number;
   /** Golf week only: show teams (2+) instead of individuals. */
   teams?: number;
 }) {
   return (
-    <div aria-hidden="true" className="flex items-center justify-center" style={{ height: 96 * scale }}>
-      <div style={{ transform: `scale(${scale})`, transformOrigin: "center" }}>
-        {kind === "team_cup_weekend" && <TeamCupArt />}
-        {kind === "golf_week" && (teams && teams >= 2 ? <TeamBarsArt teams={teams} /> : <PlayerBarsArt />)}
-        {kind === "bar_night_bracket" && <BracketArt />}
-        {kind === "just_keep_score" && <ScorecardArt />}
-      </div>
-    </div>
+    <svg
+      aria-hidden="true"
+      viewBox={`0 0 ${W} ${H}`}
+      width="100%"
+      preserveAspectRatio="xMidYMid meet"
+      style={{ display: "block", height: "auto", maxHeight }}
+      data-art={kind}
+    >
+      {kind === "team_cup_weekend" && <TeamCupArt />}
+      {kind === "golf_week" && (teams && teams >= 2 ? <TeamBarsArt teams={teams} /> : <PlayerBarsArt />)}
+      {kind === "bar_night_bracket" && <BracketArt />}
+      {kind === "just_keep_score" && <ScorecardArt />}
+    </svg>
+  );
+}
+
+/** `TeamBadge`'s shape, in SVG: a rounded square in the team colour, its letter. */
+function Badge({ x, y, size, i }: { x: number; y: number; size: number; i: number }) {
+  const color = team(i);
+  return (
+    <g>
+      <rect x={x} y={y} width={size} height={size} rx={Math.max(3, size * 0.28)} style={{ fill: color }} />
+      <text
+        x={x + size / 2}
+        y={y + size / 2}
+        textAnchor="middle"
+        dominantBaseline="central"
+        style={{ fill: teamTextColor(color), fontSize: size * 0.56, fontWeight: 800 }}
+      >
+        {String.fromCharCode(65 + i)}
+      </text>
+    </g>
   );
 }
 
 /** Two team badges facing off, over the cup's tug-of-war bar. */
 function TeamCupArt() {
   return (
-    <div className="flex flex-col items-center gap-3" style={{ width: 140 }}>
-      <div className="flex w-full items-center justify-between px-3">
-        <TeamBadge {...seedTeamName(0)} color={team(0)} size={34} />
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "var(--color-bt-text-dim)" }}>VS</span>
-        <TeamBadge {...seedTeamName(1)} color={team(1)} size={34} />
-      </div>
-      <div className="relative w-full" style={{ height: 8 }}>
-        <div className="absolute inset-0 rounded-full" style={{ background: TRACK }} />
-        <div className="absolute inset-y-0 left-0 rounded-l-full" style={{ width: "55%", background: team(0) }} />
-        <div className="absolute inset-y-0 right-0 rounded-r-full" style={{ width: "36%", background: team(1) }} />
-        <div className="absolute" style={{ left: "50%", top: -6, width: 1.5, height: 20, marginLeft: -0.75, background: "var(--color-bt-text-dim)" }} />
-      </div>
-    </div>
+    <g>
+      <Badge x={22} y={12} size={38} i={0} />
+      <text x={80} y={31} textAnchor="middle" dominantBaseline="central" style={{ fill: DIM, fontSize: 11, fontWeight: 700, letterSpacing: "0.08em" }}>
+        VS
+      </text>
+      <Badge x={100} y={12} size={38} i={1} />
+      <rect x={22} y={68} width={116} height={8} rx={4} style={{ fill: TRACK }} />
+      <rect x={22} y={68} width={64} height={8} rx={4} style={{ fill: team(0) }} />
+      <rect x={96} y={68} width={42} height={8} rx={4} style={{ fill: team(1) }} />
+      <rect x={79.25} y={62} width={1.5} height={20} rx={0.75} style={{ fill: DIM }} />
+    </g>
   );
 }
 
 /** The leaderboard's bars, one per player, the leader's in the accent. */
 function PlayerBarsArt() {
-  const widths = [100, 76, 56, 34];
+  const widths = [104, 80, 60, 38];
   return (
-    <div className="flex flex-col gap-2.5" style={{ width: 140 }}>
+    <g>
       {widths.map((w, i) => (
-        <div key={i} className="flex items-center gap-2.5">
-          <span className="rounded-full" style={{ width: 13, height: 13, background: team(i + 4), flexShrink: 0 }} />
-          <span className="flex-1">
-            <span className="block rounded-full" style={{ height: 8, width: `${w}%`, background: i === 0 ? ACCENT : MUTED }} />
-          </span>
-        </div>
+        <g key={i}>
+          <circle cx={22} cy={18 + i * 20} r={7} style={{ fill: team(i + 4) }} />
+          <rect x={36} y={14 + i * 20} width={w} height={8} rx={4} style={{ fill: i === 0 ? ACCENT : MUTED }} />
+        </g>
       ))}
-    </div>
+    </g>
   );
 }
 
 /** The same bars, led by team badges: a golf week played as teams. */
 function TeamBarsArt({ teams }: { teams: number }) {
   const shown = Math.min(teams, 4);
-  const widths = [100, 72, 48, 30];
+  const widths = [100, 76, 54, 34];
+  const step = shown <= 3 ? 30 : 22;
+  const top = (H - (shown - 1) * step - 20) / 2;
   return (
-    <div className="flex flex-col gap-2" style={{ width: 140 }}>
+    <g>
       {Array.from({ length: shown }, (_, i) => (
-        <div key={i} className="flex items-center gap-2.5">
-          <TeamBadge {...seedTeamName(i)} color={team(i)} size={16} />
-          <span className="flex-1">
-            <span className="block rounded-full" style={{ height: 8, width: `${widths[i]}%`, background: i === 0 ? team(0) : MUTED }} />
-          </span>
-        </div>
+        <g key={i}>
+          <Badge x={18} y={top + i * step} size={20} i={i} />
+          <rect x={46} y={top + i * step + 6} width={widths[i]} height={8} rx={4} style={{ fill: i === 0 ? team(0) : MUTED }} />
+        </g>
       ))}
-    </div>
+    </g>
   );
 }
 
 /** Four entrants, two semis, a final, and the trophy. */
 function BracketArt() {
-  const entrant = (i: number) => (
-    <span className="flex items-center rounded" style={{ width: 30, height: 12, padding: "0 3px", background: TRACK }}>
-      <span className="rounded-sm" style={{ width: 6, height: 6, background: team(i) }} />
-    </span>
+  const entrant = (x: number, y: number, i: number) => (
+    <g key={`${x}-${y}`}>
+      <rect x={x} y={y} width={34} height={13} rx={3.5} style={{ fill: TRACK }} />
+      <rect x={x + 4} y={y + 3.5} width={6} height={6} rx={1.5} style={{ fill: team(i) }} />
+    </g>
   );
   const line = { stroke: MUTED, strokeWidth: 1.5, fill: "none" } as const;
   return (
-    <div className="relative" style={{ width: 150, height: 84 }}>
-      <div className="absolute flex flex-col" style={{ left: 0, top: 4, gap: 6 }}>{entrant(0)}{entrant(1)}</div>
-      <div className="absolute flex flex-col" style={{ left: 0, top: 50, gap: 6 }}>{entrant(2)}{entrant(3)}</div>
-      <div className="absolute" style={{ left: 48, top: 13 }}>{entrant(0)}</div>
-      <div className="absolute" style={{ left: 48, top: 59 }}>{entrant(2)}</div>
-      <svg className="absolute inset-0" width="150" height="84" viewBox="0 0 150 84">
-        <path d="M30 10H38V28H30M38 19H48" style={line} />
-        <path d="M30 56H38V74H30M38 65H48" style={line} />
-        <path d="M78 19H88V65H78M88 42H104" style={line} />
-      </svg>
-      <div
-        className="absolute flex items-center justify-center rounded-full"
-        style={{ left: 106, top: 27, width: 30, height: 30, background: "var(--color-bt-accent-faint)", color: ACCENT }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-          <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-          <path d="M4 22h16" />
-          <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-        </svg>
-      </div>
-    </div>
+    <g>
+      {entrant(8, 9, 0)}
+      {entrant(8, 27, 1)}
+      {entrant(8, 56, 2)}
+      {entrant(8, 74, 3)}
+      <path d="M42 15.5H52V33.5H42M52 24.5H62" style={line} />
+      <path d="M42 62.5H52V80.5H42M52 71.5H62" style={line} />
+      {entrant(62, 18, 0)}
+      {entrant(62, 65, 2)}
+      <path d="M96 24.5H106V71.5H96M106 48H118" style={line} />
+      <circle cx={134} cy={48} r={15} style={{ fill: "var(--color-bt-accent-faint)" }} />
+      <path d="M128 41h12v5a6 6 0 0 1-12 0z" style={{ stroke: ACCENT, strokeWidth: 1.8, strokeLinejoin: "round", fill: "none" }} />
+      <path d="M134 52v4M130 57h8" style={{ stroke: ACCENT, strokeWidth: 1.8, strokeLinecap: "round", fill: "none" }} />
+    </g>
   );
 }
 
 /** A scorecard strip: nine holes, one round's scores, a birdie circled. */
 function ScorecardArt() {
-  const holes = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   const scores = [4, 5, 2, 4, 4, 5, 3, 4, 4];
-  const cell = { width: 15, textAlign: "center" as const };
+  const x = (i: number) => 15 + i * 16.25;
   return (
-    <div className="flex flex-col gap-1.5" style={{ width: 150 }}>
-      <div className="flex justify-between px-1" style={{ fontSize: 9, color: "var(--color-bt-text-dim)" }}>
-        {holes.map((h) => (
-          <span key={h} style={cell}>{h}</span>
-        ))}
-      </div>
-      <div className="flex items-center justify-between rounded-md px-1" style={{ height: 24, background: TRACK, fontSize: 11, fontWeight: 600 }}>
-        {scores.map((s, i) => (
-          <span
-            key={i}
-            className="flex items-center justify-center rounded-full"
-            style={{
-              ...cell,
-              height: 15,
-              color: i === 2 ? ACCENT : "var(--color-bt-text)",
-              boxShadow: i === 2 ? `inset 0 0 0 1.5px ${ACCENT}` : undefined,
-            }}
-          >
+    <g>
+      {scores.map((_, i) => (
+        <text key={`h${i}`} x={x(i)} y={22} textAnchor="middle" style={{ fill: DIM, fontSize: 9 }}>
+          {i + 1}
+        </text>
+      ))}
+      <rect x={6} y={30} width={148} height={26} rx={5} style={{ fill: TRACK }} />
+      {scores.map((s, i) => (
+        <g key={`s${i}`}>
+          {i === 2 && <circle cx={x(i)} cy={43} r={8} style={{ fill: "none", stroke: ACCENT, strokeWidth: 1.5 }} />}
+          <text x={x(i)} y={43} textAnchor="middle" dominantBaseline="central" style={{ fill: i === 2 ? ACCENT : TEXT, fontSize: 11, fontWeight: 600 }}>
             {s}
-          </span>
-        ))}
-      </div>
-    </div>
+          </text>
+        </g>
+      ))}
+      <rect x={6} y={62} width={148} height={26} rx={5} style={{ fill: TRACK }} />
+      {[5, 4, 3, 5, 4].map((s, i) => (
+        <text key={`t${i}`} x={x(i)} y={75} textAnchor="middle" dominantBaseline="central" style={{ fill: DIM, fontSize: 11, fontWeight: 600 }}>
+          {s}
+        </text>
+      ))}
+    </g>
   );
 }

@@ -211,7 +211,9 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
 
   if (!isEdit && step === "pick") {
     return (
-      <div className="rounded-xl p-4" style={panelStyle} data-testid="competition-setup-panel">
+      // Capped at ~600px and centred (Zach): on a desktop the tiles would
+      // otherwise stretch, and the 2x2 reads as four banners.
+      <div className="mx-auto w-full max-w-[600px] rounded-xl p-4" style={panelStyle} data-testid="competition-setup-panel">
         <StartingPointPicker
           onPick={pickStartingPoint}
           onJustKeepScore={() => onJustKeepScore?.()}

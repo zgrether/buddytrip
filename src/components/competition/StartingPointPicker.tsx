@@ -68,12 +68,14 @@ export function StartingPointPicker({
             className="flex flex-col gap-2.5 rounded-2xl p-2 pb-3 text-left"
             style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}
           >
-            {/* The art is drawn ~150px wide; a tile at phone width has ~139, so it is
-                shown at 85% here (the review shows it larger) and clipped. */}
-            <div className="flex items-center justify-center overflow-hidden rounded-xl" style={{ height: 104, background: "var(--color-bt-card)" }}>
-              <StartingPointArt kind={t.key} scale={0.85} />
+            {/* The art fills the box at its own aspect ratio, so a phone tile and a
+                desktop tile draw the same picture at their own size (Zach). */}
+            <div className="flex items-center justify-center rounded-xl px-3 py-2.5" style={{ background: "var(--color-bt-card)" }}>
+              <StartingPointArt kind={t.key} maxHeight={132} />
             </div>
-            <div className="flex flex-col gap-0.5 px-1">
+            {/* A blurb may wrap; the block keeps room for two lines so the tiles in
+                a row stay aligned whichever wraps. */}
+            <div className="flex flex-col gap-0.5 px-1" style={{ minHeight: 56 }}>
               <span style={{ fontSize: TYPE_SCALE.name, fontWeight: 600, color: "var(--color-bt-text)" }}>{t.name}</span>
               <span style={{ fontSize: TYPE_SCALE.captionPlus, lineHeight: 1.35, color: "var(--color-bt-text-dim)" }}>{t.blurb}</span>
             </div>
