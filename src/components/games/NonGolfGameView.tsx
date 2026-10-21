@@ -61,7 +61,7 @@ import { DEFAULT_BRACKET_CONFIG, isDefaultBracketConfig, bracketFieldReady, type
 import type { GroupBuilderTeam } from "@/components/games/rack/RackGroupBuilder";
 import { placeCapacityFor } from "@/lib/placeCapacity";
 import { validatePlacement, placementRefusalMessage, finalizeSplitRefusal, splitPlacesWarning } from "@/lib/gameConfig";
-import { pointsReady, sideMemberIds, type ServerSide } from "@/lib/matchDraft";
+import { allMatchesFilled, pointsReady, sideMemberIds, type ServerSide } from "@/lib/matchDraft";
 import { MatchesBuilder } from "@/components/games/MatchesBuilder";
 import { MATCHES_COMPETITION_FORMAT } from "@/lib/resultStrategy";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
@@ -1379,8 +1379,12 @@ export function NonGolfGameView() {
           // same two-answers-to-one-question shape, pointed the other way.
           // Reads the DRAFT pool, so it moves as the field is built and agrees
           // with the server's read of the pool this Save is about to write.
+          // A Matches game also needs every match paired: the same rule the RPC
+          // applies since migration 221 (#1686), which this page used to skip,
+          // so it offered go-live on a game with no matches drawn.
           ready:
             (!competitionId || pointsReady(configDraft.pointsTotal ?? 0)) &&
+            (!isMatches || allMatchesFilled(configDraft.matches)) &&
             bracketFieldReady(isBracket, configDraft.bracketEntrants),
           // Points first, so the existing reason is unchanged when both are
           // unmet — the field is the newer and more specific complaint, and
@@ -1388,6 +1392,8 @@ export function NonGolfGameView() {
           blockedReason:
             competitionId && !pointsReady(configDraft.pointsTotal ?? 0)
               ? "Set a point value before enabling scoring"
+              : isMatches && !allMatchesFilled(configDraft.matches)
+                ? "Pair every match before enabling scoring"
               : !bracketFieldReady(isBracket, configDraft.bracketEntrants)
                 // The same SENTENCE the RPC raises, minus its closing "in this
                 // game's settings" — which is real guidance for any other caller
