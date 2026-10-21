@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { Scale, Sparkles, Users } from "lucide-react";
@@ -123,7 +124,13 @@ export function SkinsGameView() {
   const [entryGroupId, setEntryGroupId] = useState<string | null>(null);
   const [gridOpen, setGridOpen] = useState(false);
   const [currentHole, setCurrentHole] = useState(1);
-  const [openAccordion, setOpenAccordion] = useState<"groupings" | "modifiers" | "distribution" | null>(null);
+  // A link from the board opens the row that fixes the problem it named
+  // (`&row=`, src/lib/settingsRows.ts); the screen scrolls to it.
+  const linkedRow = useSettingsRowLink();
+  useScrollToSettingsRow(linkedRow);
+  const [openAccordion, setOpenAccordion] = useState<"groupings" | "modifiers" | "distribution" | null>(
+    linkedRow === "groupings" ? "groupings" : linkedRow === "point-distribution" ? "distribution" : null
+  );
 
   // ── Composite draft SLICES (null = untouched → tracks the server) ─────────
   const [nameDraft, setNameDraft] = useState<string | null>(null);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
@@ -106,6 +107,8 @@ export function PickemGameView() {
   const search = useSearchParams();
   const gameId = search.get("game");
   const settingsDeepLink = search.get("settings") === "1";
+  // A link from the board scrolls to the row it named (`&row=the-picks`).
+  useScrollToSettingsRow(useSettingsRowLink());
 
   const { canEdit, canManageGame } = useGameEditAccess(tripId, gameId);
   const me = useCurrentUser();

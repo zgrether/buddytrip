@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { Settings } from "lucide-react";
 import {useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
@@ -527,7 +528,11 @@ export function NonGolfGameView() {
   // The Matches accordion's own expand state — independent of Point
   // Distribution's, mirroring golf's `openRows` (a Set, so its sections
   // expand/collapse independently rather than mutually excluding each other).
-  const [matchesRowExpanded, setMatchesRowExpanded] = useState(false);
+  // A link from the board opens the row that fixes the problem it named
+  // (`&row=`, src/lib/settingsRows.ts); the screen scrolls to it.
+  const linkedRow = useSettingsRowLink();
+  useScrollToSettingsRow(linkedRow);
+  const [matchesRowExpanded, setMatchesRowExpanded] = useState(linkedRow === "matches");
   // Point Distribution's own expand state under Matches lives INSIDE
   // `NonGolfSettingsRows` (its existing `openAccordion`) — no state needed
   // here, unlike the pairing row above (`matchesRowExpanded`), which this

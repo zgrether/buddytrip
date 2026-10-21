@@ -1,4 +1,5 @@
 import { isManualGameType } from "@/lib/gameTypes";
+import { SETTINGS_ROW_PARAM, type SettingsRow } from "./settingsRows";
 
 /**
  * Game-board routing — the pure mapping from a game's type to the page you land
@@ -39,14 +40,17 @@ export function gameHref(
    *  course structure (par/yardage/stroke-index, front+back) read from the game's
    *  PERSISTED snapshot, no scores. Format-agnostic (one page for every golf
    *  format — it only needs the schema), so it's a single route, not per-format.
-   *  Golf-only; a non-golf game (no course) returns null → no scorecard link. */
-  opts?: { settings?: boolean; scorecard?: boolean }
+   *  Golf-only; a non-golf game (no course) returns null → no scorecard link.
+   *
+   *  `row` (with `settings`) opens the settings at that row
+   *  (src/lib/settingsRows.ts): the row a setup reason is fixed in. */
+  opts?: { settings?: boolean; scorecard?: boolean; row?: SettingsRow }
 ): string | null {
   if (!gameTypeId) return null;
   if (opts?.scorecard) {
     return isGolfFormat(gameTypeId) ? `/trips/${tripId}/games/scorecard?game=${gameId}` : null;
   }
-  const suffix = opts?.settings ? "&settings=1" : "";
+  const suffix = opts?.settings ? `&settings=1${opts.row ? `&${SETTINGS_ROW_PARAM}=${opts.row}` : ""}` : "";
   const seg = GAME_ROUTES[gameTypeId];
   if (seg) return `/trips/${tripId}/games/${seg}?game=${gameId}${suffix}`;
   // Pick'em has its own route rather than a `GAME_ROUTES` entry: that map is

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { Scale, Settings, SlidersHorizontal, Users } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
@@ -194,7 +195,13 @@ export function StrokeGameView() {
   });
   // GROUP SETTINGS single-open accordion (P3): Point Distribution / Groupings / Handicaps /
   // Modifiers — all inline panels now (3.3 removed the full-page drill-downs).
-  const [openAccordion, setOpenAccordion] = useState<null | "distribution" | "groupings" | "handicaps" | "modifiers">(null);
+  // A link from the board opens the row that fixes the problem it named
+  // (`&row=`, src/lib/settingsRows.ts); the screen scrolls to it.
+  const linkedRow = useSettingsRowLink();
+  useScrollToSettingsRow(linkedRow);
+  const [openAccordion, setOpenAccordion] = useState<null | "distribution" | "groupings" | "handicaps" | "modifiers">(
+    linkedRow === "groupings" ? "groupings" : linkedRow === "point-distribution" ? "distribution" : null
+  );
   // ── Composite draft SLICES (null/undefined = untouched → tracks the server) ──
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [rulesDraft, setRulesDraft] = useState<string | null>(null);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
@@ -246,7 +247,11 @@ export function MatchGameView() {
   // retires the incidental one-open gating of Handicaps behind Matches — Handicaps
   // keeps its OWN explicit prerequisite gate (`handicapsReady`), which is the honest
   // rule anyway.
-  const [openRows, setOpenRows] = useState<Set<RowId>>(() => new Set());
+  // A link from the board opens the row that fixes the problem it named
+  // (`&row=`, src/lib/settingsRows.ts); the screen scrolls to it.
+  const linkedRow = useSettingsRowLink();
+  useScrollToSettingsRow(linkedRow);
+  const [openRows, setOpenRows] = useState<Set<RowId>>(() => new Set(linkedRow === "matches" ? ["matches"] : []));
   const toggleRow = (row: RowId) =>
     setOpenRows((prev) => {
       const next = new Set(prev);
