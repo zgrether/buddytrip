@@ -72,7 +72,9 @@ function PlayerBarsArt() {
       {widths.map((w, i) => (
         <div key={i} className="flex items-center gap-2.5">
           <span className="rounded-full" style={{ width: 13, height: 13, background: team(i + 4), flexShrink: 0 }} />
-          <span className="rounded-full" style={{ height: 8, width: `${w}%`, background: i === 0 ? ACCENT : MUTED }} />
+          <span className="flex-1">
+            <span className="block rounded-full" style={{ height: 8, width: `${w}%`, background: i === 0 ? ACCENT : MUTED }} />
+          </span>
         </div>
       ))}
     </div>
@@ -88,7 +90,9 @@ function TeamBarsArt({ teams }: { teams: number }) {
       {Array.from({ length: shown }, (_, i) => (
         <div key={i} className="flex items-center gap-2.5">
           <TeamBadge {...seedTeamName(i)} color={team(i)} size={16} />
-          <span className="rounded-full" style={{ height: 8, width: `${widths[i]}%`, background: i === 0 ? team(0) : MUTED }} />
+          <span className="flex-1">
+            <span className="block rounded-full" style={{ height: 8, width: `${widths[i]}%`, background: i === 0 ? team(0) : MUTED }} />
+          </span>
         </div>
       ))}
     </div>
