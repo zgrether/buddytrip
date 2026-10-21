@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { STARTING_POINTS, suggestedGames, type StartingPointId } from "@/lib/startingPoints";
 import { COMPETITION_NAME_EXAMPLE, competitionNoun, competitionWord } from "@/lib/vocabulary";
 import { categoryIcon } from "@/lib/gameCategoryIcon";
+import { formatLine } from "@/lib/formatLines";
 import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
 import { MAX_SEED_TEAMS, SEED_TEAM_COLORS, seedTeamName } from "@/lib/teamColors";
 import { TeamBadge } from "@/components/TeamBadge";
@@ -165,15 +166,19 @@ export function StartingPointReview({
             return (
               <div
                 key={s.key}
-                className="flex items-center gap-3 px-3.5 py-3"
+                className="flex items-start gap-3 px-3.5 py-3"
                 style={{ borderTop: i === 0 ? undefined : "1px solid var(--color-bt-subtle-border)" }}
                 data-testid={`review-suggestion-${s.key}`}
               >
-                <Icon size={18} style={{ color: "var(--color-bt-accent)", flexShrink: 0 }} />
-                <span className="flex-1" style={{ fontSize: TYPE_SCALE.name, fontWeight: 500, color: "var(--color-bt-text)" }}>
-                  {s.name}
+                <Icon size={18} style={{ color: "var(--color-bt-accent)", flexShrink: 0, marginTop: 1 }} />
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span style={{ fontSize: TYPE_SCALE.name, fontWeight: 500, color: "var(--color-bt-text)" }}>{s.name}</span>
+                  {/* The format's one plain line, from the descriptions module (Zach). */}
+                  <span style={{ fontSize: TYPE_SCALE.captionPlus, lineHeight: 1.4, color: "var(--color-bt-text-dim)" }} data-testid={`review-suggestion-line-${s.key}`}>
+                    {formatLine(s.gameTypeId, s.competitionFormat)}
+                  </span>
                 </span>
-                <span style={{ fontSize: TYPE_SCALE.emphasis, color: "var(--color-bt-text-dim)" }}>{s.pointsTotal} pts</span>
+                <span style={{ fontSize: TYPE_SCALE.emphasis, color: "var(--color-bt-text-dim)", flexShrink: 0 }}>{s.pointsTotal} pts</span>
               </div>
             );
           })}
@@ -189,16 +194,37 @@ export function StartingPointReview({
         </p>
       )}
 
+      {/* PINNED to the bottom of the screen (Zach, on the Golf week review's
+          look; CLAUDE.md #14: a bottom CTA anchors to the viewport, never the
+          end of the content). STICKY in the page's own scroll, not fixed, so
+          it keeps the panel's width and centre on a desktop, where the panel
+          is centred in the content column rather than the window. The bar
+          bleeds over the panel's padding and carries its surface, so the
+          content scrolls under it rather than showing through. */}
+      <div
+        className="sticky z-10 -mx-4 -mb-4 px-4 pb-4 pt-3"
+        style={{
+          // Above the fixed bottom nav, which the page scrolls under: its MEASURED
+          // height, as the game panel uses (`--bt-bottomnav-height`, published by
+          // AppTabBar). Where there is no bar the fallback is the safe-area inset.
+          // Measured at 390px: `bottom: 0` put the button under the nav.
+          bottom: "var(--bt-bottomnav-height, env(safe-area-inset-bottom, 0px))",
+          background: "var(--color-bt-card)",
+          borderTop: "1px solid var(--color-bt-subtle-border)",
+        }}
+        data-testid="starting-point-review-cta"
+      >
       <button
         type="button"
         onClick={onCreate}
         disabled={!canCreate}
-        className="flex items-center justify-center rounded-xl disabled:opacity-50"
+        className="flex w-full items-center justify-center rounded-xl disabled:opacity-50"
         style={{ minHeight: 52, background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)", fontSize: 16, fontWeight: 700 }}
         data-testid="competition-setup-submit"
       >
         {submitting ? "Creating…" : `Create ${competitionNoun(sp.scoringModel)}`}
       </button>
+      </div>
     </div>
   );
 }

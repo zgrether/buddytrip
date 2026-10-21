@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StartingPointReview } from "./StartingPointReview";
 import type { StartingPointId } from "@/lib/startingPoints";
+import { FORMAT_LINE } from "@/lib/formatLines";
 
 /**
  * A starting point's review (Zach's rulings, 2026-10-21): art, name, setup.
@@ -31,7 +32,7 @@ const between = (html: string, testId: string) => {
   const at = html.indexOf(`data-testid="${testId}"`);
   return at < 0 ? null : html.slice(html.indexOf(">", at) + 1, html.indexOf("</", at));
 };
-const suggestionKeys = (html: string) => [...html.matchAll(/data-testid="review-suggestion-([^"]+)"/g)].map((m) => m[1]);
+const suggestionKeys = (html: string) => [...html.matchAll(/data-testid="review-suggestion-(?!line-)([^"]+)"/g)].map((m) => m[1]);
 
 describe("Golf week's review", () => {
   it("as individuals: the chip says so, no team stepper, Stroke Play and Skins", () => {
@@ -49,6 +50,19 @@ describe("Golf week's review", () => {
     const teams = html.slice(html.indexOf('data-testid="starting-point-teams"'));
     expect((teams.match(/data-testid="team-badge"/g) ?? []).length).toBe(3);
     expect(suggestionKeys(html)).toEqual(["gtt_stroke_play", "gtt_skins", "gtt_scramble"]);
+  });
+
+  it("each suggestion carries its format's one line, from the descriptions module", () => {
+    const html = render("golf_week");
+    expect(between(html, "review-suggestion-line-gtt_stroke_play")).toBe(FORMAT_LINE.gtt_stroke_play);
+    expect(between(html, "review-suggestion-line-gtt_skins")).toBe(FORMAT_LINE.gtt_skins);
+  });
+
+  it("the Create button sits in the pinned bar, above the bottom nav", () => {
+    const html = render("golf_week");
+    const bar = html.slice(html.lastIndexOf("<div", html.indexOf('data-testid="starting-point-review-cta"')));
+    expect(bar).toMatch(/class="sticky[^"]*"[^>]*style="bottom:var\(--bt-bottomnav-height, env\(safe-area-inset-bottom, 0px\)\)/);
+    expect(bar).toContain('data-testid="competition-setup-submit"');
   });
 
   it("says what it creates, and needs a name of at least 2 characters", () => {
