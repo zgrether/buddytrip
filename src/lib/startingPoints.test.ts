@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   STARTING_POINT_IDS,
   STARTING_POINTS,
+  createInTurn,
   remainingSuggestions,
   startingPointFits,
   suggestedGames,
@@ -121,5 +122,31 @@ describe("remainingSuggestions — added once a game of the format exists, or sk
     const left = remainingSuggestions("bar_night_bracket", 2, [{ game_type_id: "gtt_generic_bar", competition_format: null }], []);
     expect(left.map((s) => s.key)).toEqual([suggestionKey("gtt_generic_bar", "bracket")]);
     expect(remainingSuggestions("bar_night_bracket", 2, [{ game_type_id: "gtt_generic_bar", competition_format: "bracket" }], [])).toEqual([]);
+  });
+});
+
+describe("createInTurn — Add all (Zach's ruling)", () => {
+  const games = suggestedGames("golf_week", 2);
+
+  it("creates each in turn and keeps going past a failure, which stays a suggestion", async () => {
+    const order: string[] = [];
+    const result = await createInTurn(games, async (s) => {
+      order.push(s.key);
+      if (s.key === "gtt_skins") throw new Error("boom");
+    });
+    expect(order).toEqual(["gtt_stroke_play", "gtt_skins", "gtt_scramble"]);
+    expect(result).toEqual({ added: ["gtt_stroke_play", "gtt_scramble"], failed: ["gtt_skins"] });
+  });
+
+  it("one at a time: a create starts only after the previous one finished", async () => {
+    let inFlight = 0;
+    let most = 0;
+    await createInTurn(games, async () => {
+      inFlight++;
+      most = Math.max(most, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+    });
+    expect(most).toBe(1);
   });
 });

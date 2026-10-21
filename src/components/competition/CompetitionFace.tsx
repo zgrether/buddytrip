@@ -34,6 +34,9 @@ interface Competition {
    *  non-golf result editor: match_play → win/lose/tie; points → #430 placement.
    *  Defaults to match_play when absent (matches the DB default + backfill). */
   scoring_model?: "match_play" | "points";
+  /** Migration 220: the starting point it came from, and skipped suggestions. */
+  starting_point?: string | null;
+  skipped_suggestions?: string[] | null;
 }
 
 /**
@@ -410,6 +413,8 @@ export function CompetitionFace({
         // count (PR 2): match_play → Ryder hero, points → standings + matrix.
         scoringModel={scoringModel}
         onAddGame={() => setAddingGame(true)}
+        startingPoint={competition.starting_point ?? null}
+        skippedSuggestions={competition.skipped_suggestions ?? null}
         // A hero team-name tap → the consolidated Edit Team modal (the team-
         // management home). It self-gates by role: owner edits everything, captain
         // edits identity (roster read-only), a plain member sees it read-only.

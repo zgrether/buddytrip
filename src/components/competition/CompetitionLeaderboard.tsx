@@ -20,6 +20,8 @@ import type { CannotProjectReason } from "@/lib/gameProjection";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, type GameSection } from "./GameRow";
 import { StickyCollapseHero } from "./CompetitionHero";
 import { ReorderableSection } from "./ReorderableGames";
+import { SuggestedGames } from "./SuggestedGames";
+import { isStartingPointId, remainingSuggestions } from "@/lib/startingPoints";
 import { listStateOf } from "@/lib/listState";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -32,6 +34,9 @@ export interface LBTeam {
 }
 
 export interface LBGame {
+  /** A manual game's format (a bracket); null for the others. Optional so
+   *  hand-built fixtures need not carry it. */
+  competitionFormat?: string | null;
   id: string;
   name: string;
   /**
@@ -189,9 +194,13 @@ interface Props {
   /** Tap a team name on the hero/list → opens Rosters focused on that team's
    *  identity editor (captain-scoped; routed by the face). Member-visible. */
   onEditTeam?: (teamId: string) => void;
+  /** The starting point this competition came from, and the suggestions its
+   *  organizers skipped (migration 220): drives the suggested-game rows. */
+  startingPoint?: string | null;
+  skippedSuggestions?: string[] | null;
 }
 
-export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline, onSettings, scoringModel = "match_play", canEdit = false, isOwner = false, onAddGame, onEditTeam }: Props) {
+export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline, onSettings, scoringModel = "match_play", canEdit = false, isOwner = false, onAddGame, onEditTeam, startingPoint, skippedSuggestions }: Props) {
   // Live standings: migration 096's trigger broadcasts on every score /
   // lifecycle write and this invalidates within a tick. LEADERBOARD_QUERY's
   // interval is now only the dead-socket backstop behind it (5 min), not the
@@ -233,6 +242,19 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     () => data?.games ?? [],
     [data]
   );
+
+  // Starting points (Zach's rulings, 2026-10-21): the suggestions still to
+  // show. Judged against THIS competition's games only, never side games: a
+  // side Stroke Play is not the golf week's. Organizers only.
+  const suggestions = useMemo(() => {
+    if (!canEdit || !isStartingPointId(startingPoint)) return [];
+    return remainingSuggestions(
+      startingPoint,
+      (data?.teams ?? []).length,
+      (liveGames as LBGame[]).map((g) => ({ game_type_id: g.gameTypeId, competition_format: g.competitionFormat ?? null })),
+      skippedSuggestions ?? []
+    );
+  }, [canEdit, startingPoint, data?.teams, liveGames, skippedSuggestions]);
 
   /**
    * SIDE games (PR 6b) — the trip's games that count toward no competition. They
@@ -471,6 +493,11 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         onPrefetch={prefetchGame}
         canEdit={canEdit}
         onAddGame={onAddGame}
+        suggested={
+          isStartingPointId(startingPoint) && suggestions.length > 0 ? (
+            <SuggestedGames tripId={tripId} competitionId={competitionId} startingPoint={startingPoint} suggestions={suggestions} />
+          ) : null
+        }
       />
     </div>
   );
@@ -595,7 +622,7 @@ export function useGameRowContext({
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 export function GamesSection({
-  games, competitionId, teams, cellsByGame, projections, cannotProject, scoringModel, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame,
+  games, competitionId, teams, cellsByGame, projections, cannotProject, scoringModel, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame, suggested,
 }: {
   games: LBGame[];
   /** Absent on a trip with no competition — the games page lists side games only. */
@@ -614,6 +641,9 @@ export function GamesSection({
   onPrefetch: (gameId: string) => void;
   canEdit: boolean;
   onAddGame?: () => void;
+  /** A starting point's suggested-game rows (organizers only), between the
+   *  games and Add a game. Null when there are none. */
+  suggested?: React.ReactNode;
 }) {
   /**
    * SESSION-ONLY, deliberately: plain `useState`, no localStorage, no URL param.
@@ -717,6 +747,17 @@ export function GamesSection({
     </button>
   );
 
+  // A new competition from a starting point has its suggestions to offer, so
+  // it shows those and Add a game rather than the blank invitation.
+  if (games.length === 0 && suggested) {
+    return (
+      <div className="space-y-2">
+        {suggested}
+        {addBtn}
+      </div>
+    );
+  }
+
   if (games.length === 0) {
     // Owner/editor with a fresh, empty board → the whole panel is an invitation
     // to begin (§4 invitation styling: dashed border + surface-invitation), and
@@ -781,6 +822,7 @@ export function GamesSection({
         reorderMode={reorderMode && canReorder}
         onReorderSection={handleReorderSection}
       />
+      {suggested}
       {/* ASYMMETRIC on purpose: adding a game is the frequent action and keeps
           the full-width invitation; reordering happens roughly once, before the
           trip, so it gets a compact button beside it rather than equal billing. */}
