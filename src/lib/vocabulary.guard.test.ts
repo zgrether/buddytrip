@@ -231,7 +231,9 @@ describe("the scanner (controls)", () => {
 
 // ── 1 · Retired words, and the code's word as copy (from the competition guard)
 
-const RETIRED = /\b(races?|tourneys?|ryder|presidents\s+cup|solheim|walker\s+cup)\b/i;
+// "Unassigned crew" was the Rosters screen's name for the pool the builders call
+// "Not on a team" (#1670): one state, one name.
+const RETIRED = /\b(races?|tourneys?|ryder|presidents\s+cup|solheim|walker\s+cup|unassigned\s+crew)\b/i;
 const CODE_WORD = /\bcompetitions?\b/i;
 
 /** Files whose copy uses "competition" as plain English for the ACTIVITY, not
