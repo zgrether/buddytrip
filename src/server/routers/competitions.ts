@@ -9,6 +9,7 @@ import { myDelegateGameIds as computeMyDelegateGameIds } from "../lib/myDelegate
 import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
 import { competitionNoun, EITHER_COMPETITION } from "@/lib/vocabulary";
 import { maybeRowOrThrow } from "../lib/rowOrThrow";
+import { STARTING_POINT_IDS, isStartingPointId, startingPointFits, suggestedGames } from "@/lib/startingPoints";
 
 const SCOREBOARD_STYLES = [
   "grid",
@@ -306,6 +307,9 @@ export const competitionsRouter = router({
           .max(MAX_SEED_TEAMS)
           .refine((n) => n === 0 || n >= 2, "A tournament is played as individuals (no teams) or by two or more teams.")
           .default(2),
+        // The starting point this was made from (migration 220). Omitted for
+        // Build your own. Its suggestions are derived from the catalog.
+        startingPoint: z.enum(STARTING_POINT_IDS).optional(),
       })
     )
     .use(requireTripRole("Organizer"))
@@ -349,6 +353,19 @@ export const competitionsRouter = router({
         });
       }
 
+      // A starting point is stored only for a setup that can hold its
+      // suggestions; the picker always sends one that fits, so this is the
+      // door for a direct call.
+      if (
+        input.startingPoint &&
+        !startingPointFits(input.startingPoint, input.scoringModel, input.scoringModel === "match_play" ? 2 : input.teamCount)
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This setup doesn't match the starting point. Pick the starting point again, or use Build your own.",
+        });
+      }
+
       // RLS INSERT RETURNING split — see CLAUDE.md
       const { data: inserted, error: insertErr } = await ctx.supabase
         .from("competitions")
@@ -357,6 +374,7 @@ export const competitionsRouter = router({
           name: input.name,
           tagline: input.tagline ?? null,
           scoring_model: input.scoringModel,
+          starting_point: input.startingPoint ?? null,
         })
         .select("id")
         .single();
@@ -472,6 +490,54 @@ export const competitionsRouter = router({
       }
 
       return data;
+    }),
+
+  // -----------------------------------------------------------------------
+  // skipSuggestion — an organizer's ✕ on a suggested game (starting points).
+  // Stored on the competition (migration 220, Zach's ruling), so the skip
+  // survives a reload and reaches every organizer. Added suggestions need no
+  // write: a suggestion counts as added once a game of its format exists.
+  //
+  // Two organizers skipping at the same instant can each write the list they
+  // read, and one skip is then lost. The cost is a suggestion showing again,
+  // with nothing else lost, so a read-modify-write is enough here.
+  // -----------------------------------------------------------------------
+  skipSuggestion: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string(), key: z.string().min(1).max(100) }))
+    .use(requireCompetitionRole("organizer"))
+    .mutation(async ({ ctx, input }) => {
+      const comp = maybeRowOrThrow(
+        await ctx.supabase
+          .from("competitions")
+          .select("starting_point, skipped_suggestions")
+          .eq("id", input.competitionId)
+          .eq("trip_id", ctx.tripId)
+          .maybeSingle(),
+        "competition"
+      );
+      if (!comp) throw new TRPCError({ code: "NOT_FOUND", message: `That ${EITHER_COMPETITION} no longer exists.` });
+      const sp = comp.starting_point as string | null;
+      // Either team shape's suggestions: Scramble is a Golf week suggestion
+      // only with teams, and a skip is judged against what can be suggested.
+      const keys = isStartingPointId(sp)
+        ? new Set([...suggestedGames(sp, 0), ...suggestedGames(sp, 2)].map((s) => s.key))
+        : new Set<string>();
+      if (!keys.has(input.key)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "That isn't one of this game list's suggestions." });
+      }
+      const current = (comp.skipped_suggestions as string[] | null) ?? [];
+      if (current.includes(input.key)) return { skippedSuggestions: current };
+      const { data, error } = await ctx.supabase
+        .from("competitions")
+        .update({ skipped_suggestions: [...current, input.key] })
+        .eq("id", input.competitionId)
+        .eq("trip_id", ctx.tripId)
+        .select("skipped_suggestions")
+        .single();
+      if (error || !data) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't skip that suggestion: ${error?.message}` });
+      }
+      return { skippedSuggestions: data.skipped_suggestions as string[] };
     }),
 
   // -----------------------------------------------------------------------

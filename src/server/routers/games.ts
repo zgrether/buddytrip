@@ -224,6 +224,10 @@ async function refuseSplitOnPerMatchGame(
  * fixture in a state the app forbids. If a way into that state is ever added,
  * this is the line to revisit.
  *
+ * REVISITED (starting points, 2026-10-21): `games.create` now takes a format,
+ * and judges it with the same `headToHeadResultRefusal` at create. So the state
+ * stays unreachable and this guard's value-judging stays correct.
+ *
  * `nextFormat` is the format this write establishes; `undefined` means the write
  * leaves it alone (the RPC's COALESCE-preserve), and there is nothing to judge.
  */
@@ -506,6 +510,10 @@ export const gamesRouter = router({
         // (total derived = value × matchCount). Set here on create from the
         // Game tab; changed later only via setPointsTotal (owner-only).
         pointsTotal: z.number().min(0).nullable().optional(),
+        // A manual game's format, set at create (starting points: a Bar-night
+        // bracket's suggested game is a bar game played as a bracket, added in
+        // one tap). Judged below by the same rules the settings save applies.
+        competitionFormat: z.enum(COMPETITION_FORMATS).nullable().optional(),
         // Optional, one-directional agenda link — never a gate. (§9)
         scheduleItemId: z.string().uuid().nullable().optional(),
       })
@@ -546,6 +554,13 @@ export const gamesRouter = router({
           ? formatRefusalForScoringModel(input.gameTypeId, comp.scoring_model as ScoringModel | null)
           : null;
         if (refusal) throw new TRPCError({ code: "BAD_REQUEST", message: refusal });
+        // Ruling 2 (PR 4) at create, now that create can take a format: a
+        // head-to-head cup never holds a bracket. `refuseRankedFormatInHeadToHead`
+        // judges the same thing on the settings save.
+        if (input.competitionFormat && (comp?.scoring_model as string | null) === "match_play") {
+          const h2h = headToHeadResultRefusal(input.gameTypeId, input.competitionFormat);
+          if (h2h) throw new TRPCError({ code: "BAD_REQUEST", message: h2h });
+        }
         // PR 7 — a TEAMLESS race (a points race with no teams; a race plays as
         // teams if and only if it has them, ruling B) holds only formats that
         // record a result per person. Its units are people, and a format that
@@ -582,6 +597,22 @@ export const gamesRouter = router({
         }
       }
 
+      // A format belongs to a MANUAL game: an engine format scores itself, and a
+      // format on it would be a value nothing reads.
+      if (input.competitionFormat) {
+        const def = getGameTypeDefinition(input.gameTypeId);
+        if (def && def.resultStrategy !== null) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `${def.name} scores itself, so it takes no format.` });
+        }
+        // #1381: a game that awards match by match cannot carry a split by place.
+        if (awardsPerMatch(input.gameTypeId, input.competitionFormat) && input.pointsDistribution?.type === "placement") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This game awards points match by match, so its points can't be split by place. Set the game's total points instead.",
+          });
+        }
+      }
+
       // Display order is per TRIP (PR 6b): side games and the cup's games share
       // one order on the games page. Every game gets one — a side game used to
       // get NULL because this was computed per competition. Read through the
@@ -607,7 +638,10 @@ export const gamesRouter = router({
           await ctx.supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", input.competitionId),
           "team count"
         );
-        const check = validatePlacement(input.pointsTotal ?? 0, input.pointsDistribution.values, teamPlaceCapacity(teams));
+        // A bracket's places are its entrants (#916), and a new bracket has none
+        // yet: nothing to refuse until its field is built.
+        const capacity = input.competitionFormat === "bracket" ? bracketPlaceCapacity(0) : teamPlaceCapacity(teams);
+        const check = validatePlacement(input.pointsTotal ?? 0, input.pointsDistribution.values, capacity);
         if (check.state === "too_many_places") {
           throw new TRPCError({ code: "BAD_REQUEST", message: placementRefusalMessage(check)! });
         }
@@ -624,6 +658,7 @@ export const gamesRouter = router({
         tee_time: input.teeTime ?? null,
         points_distribution: input.pointsDistribution ?? null,
         points_total: input.pointsTotal ?? null,
+        competition_format: input.competitionFormat ?? null,
         schedule_item_id: input.scheduleItemId ?? null,
         status: "pending",
       });
