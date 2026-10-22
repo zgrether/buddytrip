@@ -10,8 +10,10 @@ import { parseSettingsRow, SETTINGS_ROW_PARAM, settingsRowTestId, type SettingsR
  * later tap is the reader's own and is never overridden.
  */
 export function useSettingsRowLink(): SettingsRow | null {
-  const search = useSearchParams();
-  const [row] = useState(() => parseSettingsRow(search.get(SETTINGS_ROW_PARAM)));
+  // Null outside the app router (a component rendered on its own, as the row
+  // groups are in their tests): no link, so nothing opens.
+  const search = useSearchParams() as ReturnType<typeof useSearchParams> | null;
+  const [row] = useState(() => parseSettingsRow(search?.get(SETTINGS_ROW_PARAM)));
   return row;
 }
 

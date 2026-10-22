@@ -7,6 +7,7 @@ import {
   gameSetupReasons,
   goLiveGate,
   MATCH_PLAY_TYPES,
+  ROSTER_TYPES,
   pairedMatchCount,
   pairedMemberIds,
   PICKEM_TYPE,
@@ -95,15 +96,27 @@ export async function readSetupInput(supabase: SupabaseClient, gameId: string): 
 }
 
 /**
- * Server-side enable guard. Throws PRECONDITION_FAILED, naming the first thing
- * to fix, when `games.enableScoring` or `matches.enableScoring` would take a
- * game live that `save_game_config` would refuse. The same reasons the board
- * and the settings pages show (`gameSetupReasons`).
+ * The enable guard for `games.enableScoring` and `matches.enableScoring`.
+ * Throws PRECONDITION_FAILED, naming the first thing to fix, from the shared
+ * reasons (`gameSetupReasons`).
+ *
+ * It keeps the reach it had before the shared rule, which is NARROWER than
+ * `save_game_config`'s: the structural reasons, plus points only for a game in
+ * the general arm. No screen calls these two procedures (the settings pages take
+ * a game live through the Save, where the database applies the whole rule), and
+ * forty-odd test fixtures switch scoring on through them, on cup games with no
+ * points and players paired before teams existed. Widening this door would
+ * change those fixtures, not the app; retiring or rerouting it is #1689.
  */
 export async function assertGameReady(supabase: SupabaseClient, gameId: string): Promise<void> {
   const input = await readSetupInput(supabase, gameId);
   if (!input) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-  const { ready, blockedReason } = goLiveGate(gameSetupReasons(input));
+  const structural =
+    (input.gameTypeId != null && (MATCH_PLAY_TYPES.has(input.gameTypeId) || ROSTER_TYPES.has(input.gameTypeId))) ||
+    isMatchesGame(input.gameTypeId, input.competitionFormat);
+  const { ready, blockedReason } = goLiveGate(gameSetupReasons(input), {
+    skip: structural ? ["points_missing", "player_not_on_team"] : ["player_not_on_team"],
+  });
   if (!ready) throw new TRPCError({ code: "PRECONDITION_FAILED", message: blockedReason ?? undefined });
 }
 

@@ -45,7 +45,7 @@ describe("the enable guard reads the same answer (#1029)", () => {
     })) as { id: string };
 
     await expect(ctx.caller().games.enableScoring({ tripId, gameId: g.id })).rejects.toThrow(
-      "Finish setting up this game before switching it to scoring."
+      "Set a point value before enabling scoring"
     );
     const { data: before } = await ctx.admin.from("games").select("scoring_enabled").eq("id", g.id).single();
     expect(before?.scoring_enabled).toBe(false);
