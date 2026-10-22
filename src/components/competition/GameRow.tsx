@@ -2,7 +2,7 @@
 
 import { createElement } from "react";
 import { TeamBadge } from "@/components/TeamBadge";
-import { PROJECTED_RESULTS, RECREDIT_WORD, GAME_STATE_WORD, SIDE_GAME_WORD } from "@/lib/vocabulary";
+import { PROJECTED_RESULTS, RECREDIT_WORD, GAME_STATE_WORD, SIDE_GAME_WORD, fmtPts } from "@/lib/vocabulary";
 import { resultTiles } from "@/lib/standingsRows";
 import { formatOwnStanding, ownStandingIsSettled } from "@/lib/ownStanding";
 import { stateText } from "@/lib/stateText";
@@ -140,12 +140,6 @@ export function cannotProjectCopy(reason: CannotProjectReason): string | null {
 
 /** "8.5" → "8½", "14" → "14", "0.5" → "½", "1.25" → "1.25" (other fractions kept
  *  exact to 2dp — fractional shares must survive display end to end, #585). */
-export function fmtPts(n: number): string {
-  if (Number.isInteger(n)) return String(n);
-  const whole = Math.floor(n);
-  if (Math.abs(n - whole - 0.5) < 0.001) return whole === 0 ? "½" : `${whole}½`;
-  return String(Math.round(n * 100) / 100);
-}
 
 /** §A1 format icon — the leading glyph that names the game's format, glanceable
  *  down the board. Its COLOR carries the arming tell (§A4, applied in Commit 3);

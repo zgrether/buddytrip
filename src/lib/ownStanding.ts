@@ -1,4 +1,4 @@
-import { MATCH_LEVEL_WORD } from "./vocabulary";
+import { MATCH_LEVEL_WORD, ptsWord } from "./vocabulary";
 import { RESULT_WORD } from "@/lib/vocabulary";
 import { fmtToPar } from "./rackNStack";
 import { fmtSkins } from "./quickGame";
@@ -43,7 +43,7 @@ const DOWN = "DN";
  *  STYLE says it's finished, so no "F" (Zach, #1607's look). */
 const withThru = (head: string, thru: string) => (thru === "F" ? head : `${head} thru ${thru}`);
 
-const pts = (n: number) => `${n} ${n === 1 ? "pt" : "pts"}`;
+const pts = (n: number) => `${n} ${ptsWord(n)}`;
 
 /**
  * Is this standing SETTLED — the game's result for you is decided, so it wears

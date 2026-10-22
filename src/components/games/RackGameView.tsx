@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
-import { GAME_STATE_WORD } from "@/lib/vocabulary";
+import { GAME_STATE_WORD, PER_MATCH_WORD } from "@/lib/vocabulary";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { Users, Settings, SlidersHorizontal } from "lucide-react";
@@ -1101,7 +1101,7 @@ export function RackGameView() {
               {...setupRowsProps}
               slot="config"
               matchCount={draftSlotCount}
-              pointsTitle="Points per Slot"
+              pointsTitle={PER_MATCH_WORD.slotLabel}
               rackPoints={{ value: configDraft.pointsTotal, onChange: (total) => setPointsTotalDraft(total) }}
             />
           }

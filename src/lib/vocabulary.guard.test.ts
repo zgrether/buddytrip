@@ -27,6 +27,16 @@ import {
   WITHDREW_WORD,
   competitionNoun,
   competitionWord,
+  CLINCH_WORD,
+  COMPETITION_KIND_LINE,
+  COMPETITION_SHAPE_WORD,
+  fmtPts,
+  NONGOLF_FORMAT_WORD,
+  PER_MATCH_WORD,
+  ptsWord,
+  RACE_WORD,
+  SPLIT_WORD,
+  splitValuesLine,
 } from "./vocabulary";
 
 /**
@@ -192,6 +202,38 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
     expect(SKINS_DEAD_POT).toBe("Nobody won the last skins.");
   });
 
+  it("how scoring is described (moved 2026-10-22, no screen changed)", () => {
+    expect([fmtPts(8), fmtPts(8.5), fmtPts(0.5), fmtPts(16 / 7)]).toEqual(["8", "8½", "½", "2.29"]);
+    expect([ptsWord(1), ptsWord(2), ptsWord(0.5)]).toEqual(["pt", "pts", "pts"]);
+    expect(RACE_WORD.firstTo("14½")).toBe("First to 14½ wins");
+    expect(RACE_WORD.wins("Blue")).toBe("Blue wins");
+    expect(RACE_WORD.hasClinched("Blue", 1)).toBe("Blue has clinched · 1 game remains");
+    expect(RACE_WORD.hasClinched("Blue", 3)).toBe("Blue has clinched · 3 games remain");
+    expect([RACE_WORD.noPointsInPlay, RACE_WORD.noPoints]).toEqual(["No points in play yet", "No points yet"]);
+    expect([CLINCH_WORD.pill, CLINCH_WORD.pushTitle("Blue"), CLINCH_WORD.rollUp("Blue", 4)]).toEqual(["Clinched", "Blue clinched", "Blue has clinched — 4 still to play."]);
+    expect(SPLIT_WORD).toEqual({
+      winnerTakesAll: "Winner takes all",
+      custom: "Custom placement split",
+      even: "Even",
+      winnerTakesAllHelp: "1st place takes the whole pool. Add places to split it across the field.",
+    });
+    expect(splitValuesLine([5, 3, 2])).toBe("5 · 3 · 2 pts");
+    expect([PER_MATCH_WORD.label, PER_MATCH_WORD.slotLabel, PER_MATCH_WORD.custom, PER_MATCH_WORD.customLine]).toEqual(["Points per match", "Points per Slot", "Custom", "Custom — some matches overridden"]);
+    expect([PER_MATCH_WORD.evenLine("2"), PER_MATCH_WORD.winDraw("2", "1")]).toEqual(["Even — 2 per match", "Win 2 · Draw 1 each"]);
+    expect(PER_MATCH_WORD.rackPending).toBe("Splits across the rack’s slots once groups are set.");
+    expect(COMPETITION_KIND_LINE).toEqual({
+      match_play: "Two teams play matches against each other. First to the target wins.",
+      points: "Everyone earns points across the games you add. Play as individuals, or split into teams.",
+    });
+    expect(COMPETITION_SHAPE_WORD).toEqual({ match_play: "Head to head", points: "Points across the games" });
+    expect(NONGOLF_FORMAT_WORD).toEqual({
+      head_to_head: { label: "Simple", desc: "Choose winner/loser of game." },
+      bracket: { label: "Bracket", desc: "We support single and double elimination." },
+      best_of_n: { label: "Best of N", desc: "First to win the majority of games." },
+      matches: { label: "Matches", desc: "Head to head matches across teams." },
+    });
+  });
+
   it("navigation, structure, and the stored margin", () => {
     expect(NAV_WORD).toEqual({ live: "Live" });
     expect(BRACKET_ROUND_WORD).toEqual({ final: "Final", semifinals: "Semi-finals", quarterfinals: "Quarter-finals" });
@@ -283,6 +325,13 @@ const DISTINCTIVE: { name: string; re: RegExp }[] = [
   { name: "Not awarded", re: /\bNot awarded\b/ },
   { name: "Nobody won the last skins.", re: /Nobody won the last skins/ },
   { name: "This game awards no points.", re: /\bawards no points\b/i },
+  // How scoring is described (2026-10-22): each moved out of a screen.
+  { name: "First to … wins", re: /\bFirst to\b/ },
+  { name: "has clinched", re: /\bhas clinched\b/ },
+  { name: "Winner takes all", re: /\bWinner takes all\b/ },
+  { name: "Custom placement split", re: /\bCustom placement split\b/ },
+  { name: "Points per match / slot", re: /\bPoints per (match|Slot)\b/ },
+  { name: "Head to head matches across teams.", re: /\bHead to head matches across teams\b/ },
 ];
 
 describe("distinctive terms are spelled only in the module", () => {

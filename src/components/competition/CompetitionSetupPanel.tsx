@@ -5,7 +5,7 @@ import { ChevronLeft, Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { COMPETITION_CHOICE_WORD, COMPETITION_NAME_EXAMPLE, COMPETITION_UMBRELLA, competitionNoun, competitionWord } from "@/lib/vocabulary";
+import { COMPETITION_CHOICE_WORD, COMPETITION_NAME_EXAMPLE, COMPETITION_UMBRELLA, competitionNoun, competitionWord, COMPETITION_KIND_LINE } from "@/lib/vocabulary";
 import { Stepper } from "@/components/games/Stepper";
 import { MAX_SEED_TEAMS } from "@/lib/teamColors";
 import { STARTING_POINTS, startingPointFits, type StartingPointId } from "@/lib/startingPoints";
@@ -53,13 +53,13 @@ const SHAPE_OPTIONS: ShapeOption[] = [
     model: "match_play",
     icon: <Swords size={18} />,
     title: COMPETITION_CHOICE_WORD.match_play,
-    blurb: "Two teams play matches against each other. First to the target wins.",
+    blurb: COMPETITION_KIND_LINE.match_play,
   },
   {
     model: "points",
     icon: <Users size={18} />,
     title: COMPETITION_CHOICE_WORD.points,
-    blurb: "Everyone earns points across the games you add. Play as individuals, or split into teams.",
+    blurb: COMPETITION_KIND_LINE.points,
   },
 ];
 

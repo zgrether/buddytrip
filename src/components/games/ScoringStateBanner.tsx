@@ -1,7 +1,7 @@
 "use client";
 
 import { ValueUnit } from "@/components/ValueUnit";
-import { fmtValue } from "@/components/competition/CompetitionGamesPanel";
+import { fmtPts } from "@/lib/vocabulary";
 import { gameLockState, type GameLifecycleInput } from "@/lib/gameLifecycle";
 
 /**
@@ -143,7 +143,7 @@ export function ScoringStateBanner({
            is a label like the unit is. */
         <span className="flex items-baseline" style={{ gap: 4, fontSize: 12.5, fontWeight: 600 }}>
           <span style={{ color: "var(--color-bt-text-dim)" }}>This game is worth</span>
-          <ValueUnit value={fmtValue(worth)} unit="pts" size={12.5} color={tone.fg} />
+          <ValueUnit value={fmtPts(worth)} unit="pts" size={12.5} color={tone.fg} />
         </span>
       )}
     </div>

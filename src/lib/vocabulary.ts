@@ -308,6 +308,107 @@ export function tooManyPlacesWords(places: number, count: number, unit: { one: s
   return `${places} places, but only ${count} ${count === 1 ? unit.one : unit.many} can finish.`;
 }
 
+// ── How scoring is described ──────────────────────────────────────────────────
+//
+// Moved here from the screens that spelled them (2026-10-22), so the How
+// scoring works card can be written from shared words and every screen that
+// already says these things says them from one place. Each value is EXACTLY
+// what its screen showed before the move; vocabulary.guard.test.ts pins them.
+
+/** A point value as people read it: "8", "8½", "½", or "2.67" for anything
+ *  that is not a whole or a half. Points come in halves (a halved match, an
+ *  averaged tie). One formatter: the board and the game screens had a copy each. */
+export function fmtPts(n: number): string {
+  if (Number.isInteger(n)) return String(n);
+  const whole = Math.floor(n);
+  if (Math.abs(n - whole - 0.5) < 0.001) return whole === 0 ? "½" : `${whole}½`;
+  return String(Math.round(n * 100) / 100);
+}
+
+/** "pt" for exactly one point, "pts" otherwise. */
+export function ptsWord(n: number): string {
+  return n === 1 ? "pt" : "pts";
+}
+
+/** The Cup's race, as the hero says it. */
+export const RACE_WORD = {
+  /** "First to 14½ wins". `target` is already formatted (`fmtPts`). */
+  firstTo: (target: string) => `First to ${target} wins`,
+  /** "Blue wins". */
+  wins: (name: string) => `${name} wins`,
+  /** "Blue has clinched · 3 games remain". */
+  hasClinched: (name: string, gamesRemaining: number) =>
+    `${name} has clinched · ${gamesRemaining} game${gamesRemaining === 1 ? "" : "s"} remain${gamesRemaining === 1 ? "s" : ""}`,
+  /** The expanded hero before any game is worth anything. */
+  noPointsInPlay: "No points in play yet",
+  /** The collapsed bar's shorter form of the same fact. */
+  noPoints: "No points yet",
+} as const;
+
+/** Clinching, wherever it is announced. */
+export const CLINCH_WORD = {
+  /** The pick'em match card's state pill. */
+  pill: "Clinched",
+  /** The push to the whole trip: "Blue clinched". */
+  pushTitle: (teamName: string) => `${teamName} clinched`,
+  /** Pick'em's team roll-up: "Blue has clinched — 4 still to play." */
+  rollUp: (teamName: string, remaining: number) => `${teamName} has clinched — ${remaining} still to play.`,
+} as const;
+
+/** How a game's points are split across finishing places. */
+export const SPLIT_WORD = {
+  /** One place takes the whole value. */
+  winnerTakesAll: "Winner takes all",
+  /** The non-golf row's name for a split of two or more places. */
+  custom: "Custom placement split",
+  /** The non-golf row's name for an even pool. */
+  even: "Even",
+  /** The Winner takes all row's explanation. */
+  winnerTakesAllHelp: "1st place takes the whole pool. Add places to split it across the field.",
+} as const;
+
+/** "5 · 3 · 2 pts": a split's values, highest place first. */
+export function splitValuesLine(values: readonly number[]): string {
+  return `${values.map(fmtPts).join(" · ")} pts`;
+}
+
+/** What a game that awards match by match (or slot by slot) is worth. */
+export const PER_MATCH_WORD = {
+  label: "Points per match",
+  /** Rack-n-Stack's unit is a slot. */
+  slotLabel: "Points per Slot",
+  /** The share when some matches carry their own value. */
+  custom: "Custom",
+  customLine: "Custom — some matches overridden",
+  /** "Even — 2 per match". `share` is already formatted. */
+  evenLine: (share: string) => `Even — ${share} per match`,
+  /** "Win 2 · Draw 1 each". Both already formatted. */
+  winDraw: (win: string, draw: string) => `Win ${win} · Draw ${draw} each`,
+  /** Rack before it has groups. */
+  rackPending: "Splits across the rack’s slots once groups are set.",
+} as const;
+
+/** What each kind of competition is, in one sentence (the create panel) and in
+ *  a few words (its settings). Keyed by `scoring_model`. */
+export const COMPETITION_KIND_LINE = {
+  match_play: "Two teams play matches against each other. First to the target wins.",
+  points: "Everyone earns points across the games you add. Play as individuals, or split into teams.",
+} as const;
+export const COMPETITION_SHAPE_WORD = {
+  match_play: "Head to head",
+  points: "Points across the games",
+} as const;
+
+/** The non-golf formats: the name and the one line the add-game picker shows.
+ *  Keyed by `games.competition_format`. The Matches line is also pick'em's
+ *  description of its individual matches: the same idea. */
+export const NONGOLF_FORMAT_WORD = {
+  head_to_head: { label: "Simple", desc: "Choose winner/loser of game." },
+  bracket: { label: "Bracket", desc: "We support single and double elimination." },
+  best_of_n: { label: "Best of N", desc: "First to win the majority of games." },
+  matches: { label: "Matches", desc: "Head to head matches across teams." },
+} as const;
+
 // ── Points ────────────────────────────────────────────────────────────────────
 
 /**

@@ -30,8 +30,8 @@
  */
 
 import type { ResolvedMatch } from "./bracketAdvance";
+import { fmtPts } from "./vocabulary";
 import { pointsForPlacements } from "./placementGroups";
-import { fmtValue } from "@/components/competition/CompetitionGamesPanel";
 
 export interface MatchStakes {
   /** Ready-to-render, e.g. `1st: 3 · 2nd: 1½`. */
@@ -128,6 +128,6 @@ export function stakesFromPositions(
   return {
     better,
     worse,
-    label: `${name(betterPlace)}: ${fmtValue(better)} · ${name(worsePlace)}: ${fmtValue(worse)}`,
+    label: `${name(betterPlace)}: ${fmtPts(better)} · ${name(worsePlace)}: ${fmtPts(worse)}`,
   };
 }

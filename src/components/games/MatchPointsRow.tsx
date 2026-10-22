@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { PER_MATCH_WORD } from "@/lib/vocabulary";
 import { Hash, Scale, X } from "lucide-react";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
@@ -128,9 +129,9 @@ export function MatchPointsRow({
         title="Total Points"
         subtitle={
           <>
-            Points per match:{" "}
+            {PER_MATCH_WORD.label}:{" "}
             <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>
-              {anyOverride ? "Custom" : fmt(even)}
+              {anyOverride ? PER_MATCH_WORD.custom : fmt(even)}
             </span>
           </>
         }
@@ -159,7 +160,7 @@ export function MatchPointsRow({
     <ChecklistRow
       icon={Scale}
       title="Point Distribution"
-      subtitle={anyOverride ? "Custom — some matches overridden" : `Even — ${fmt(even)} per match`}
+      subtitle={anyOverride ? PER_MATCH_WORD.customLine : PER_MATCH_WORD.evenLine(fmt(even))}
       // "Not set" ONLY when there are no matches. Once ≥1 match exists the even-share
       // default is already a valid distribution (fixed even when no override is set) —
       // there is no "matches exist but distribution unset" state. `matchCount` is the

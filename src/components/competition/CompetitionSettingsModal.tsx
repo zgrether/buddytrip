@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
-import { COMPETITION_NAME_EXAMPLE, COMPETITION_WORD, competitionNoun, competitionWord, type CompetitionWord } from "@/lib/vocabulary";
+import { COMPETITION_NAME_EXAMPLE, COMPETITION_WORD, competitionNoun, competitionWord, type CompetitionWord, COMPETITION_SHAPE_WORD } from "@/lib/vocabulary";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 
@@ -85,8 +85,8 @@ const MODEL_DISPLAY: Record<
   "match_play" | "points",
   { label: string; shape: string; icon: ReactNode }
 > = {
-  match_play: { label: COMPETITION_WORD.match_play, shape: "Head to head", icon: <Swords size={16} /> },
-  points: { label: COMPETITION_WORD.points, shape: "Points across the games", icon: <Users size={16} /> },
+  match_play: { label: COMPETITION_WORD.match_play, shape: COMPETITION_SHAPE_WORD.match_play, icon: <Swords size={16} /> },
+  points: { label: COMPETITION_WORD.points, shape: COMPETITION_SHAPE_WORD.points, icon: <Users size={16} /> },
 };
 
 export function CompetitionSettingsModal({

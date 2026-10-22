@@ -1,6 +1,6 @@
 "use client";
+import { fmtPts } from "@/lib/vocabulary";
 
-import { fmtPts } from "@/components/competition/GameRow";
 
 /**
  * PointsAtStake — what this game (or this match / this slot) is worth, on the

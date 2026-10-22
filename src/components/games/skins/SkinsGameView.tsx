@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SPLIT_WORD, splitValuesLine } from "@/lib/vocabulary";
 import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
@@ -62,7 +63,6 @@ import { isWinnerTakesAll } from "@/lib/configDraft";
 import { type PointsDistribution } from "@/lib/pointsDistribution";
 import { peoplePlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
-import { fmtValue } from "@/components/competition/CompetitionGamesPanel";
 import {
   tallySkins,
   computeSkinsStandings,
@@ -860,8 +860,8 @@ export function SkinsGameView() {
                     distPlacesWarning ? (
                       <span style={{ color: "var(--color-bt-warning)" }} data-testid="split-places-warning">{distPlacesWarning}</span>
                     ) : distIsWta
-                      ? "Winner takes all"
-                      : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
+                      ? SPLIT_WORD.winnerTakesAll
+                      : splitValuesLine((configDraft.pointsDistribution as { values: number[] }).values)
                   }
                   state="resolved"
                   expanded={openAccordion === "distribution"}

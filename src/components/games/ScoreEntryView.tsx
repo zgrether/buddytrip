@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ptsWord } from "@/lib/vocabulary";
 import { TeamBadge } from "@/components/TeamBadge";
 import { ChevronLeft, Table2, Settings } from "lucide-react";
 import { computeStrokePlayStandings, netStrokeEntries, netStrokeEntriesByHole, stablefordEntries, type RawStrokeEntry } from "@/lib/strokePlay";
@@ -121,7 +122,7 @@ interface ScoreEntryViewProps {
  * rubric hands out exactly one point often enough for it to be seen constantly.
  */
 function ptsLabel(points: number): string {
-  return `${points} ${points === 1 ? "pt" : "pts"}`;
+  return `${points} ${ptsWord(points)}`;
 }
 
 export function ScoreEntryView({

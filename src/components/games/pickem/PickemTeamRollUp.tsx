@@ -1,6 +1,7 @@
 "use client";
 
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { CLINCH_WORD, ptsWord } from "@/lib/vocabulary";
 import { ValueUnit } from "@/components/ValueUnit";
 import { placementPointsByTeam } from "@/lib/placementGroups";
 import {
@@ -468,7 +469,7 @@ export function rollUpNote(
   if (resolved === 0 || ranked.length < 2) return null;
   const [first, second] = ranked;
   if (clinched && leadId != null) {
-    return `${first.team.name} has clinched — ${remaining} still to play.`;
+    return CLINCH_WORD.rollUp(first.team.name, remaining);
   }
   const margin = first.standing.total - second.standing.total;
   if (margin === 0) return `Level at the top with ${remaining} to play.`;
@@ -507,7 +508,7 @@ export function formatPayoutValue(v: number): number {
 /** Just the unit, pluralised off the same rounded number the value shows — so
  *  "1 pt" can never appear beside a displayed 1.5, or "1.5 pt" beside a 1. */
 export function payoutUnit(v: number): string {
-  return formatPayoutValue(v) === 1 ? "pt" : "pts";
+  return ptsWord(formatPayoutValue(v));
 }
 
 function YouTag() {

@@ -1,9 +1,9 @@
 "use client";
 
 import { standingsRows, type StandingsUnit } from "@/lib/standingsRows";
+import { fmtPts } from "@/lib/vocabulary";
 import { teamInk } from "@/lib/teamTextColor";
 import { TeamBadge } from "@/components/TeamBadge";
-import { fmtPts } from "./GameRow";
 
 /**
  * A POINTS TOURNAMENT'S STANDINGS (PR 9c-2) — its teams, or in a tournament of

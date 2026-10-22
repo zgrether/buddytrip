@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { PER_MATCH_WORD } from "@/lib/vocabulary";
 import { Flag, Hash } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { GAME_TYPES } from "@/lib/gameTypes";
@@ -272,7 +273,7 @@ export function GameSetupRows({
             subtitle={
               slotCount > 0 ? (
                 <>
-                  {pointsTitle ?? "Points per match"}:{" "}
+                  {pointsTitle ?? PER_MATCH_WORD.label}:{" "}
                   <span
                     style={{
                       color: pointsReady(derivedPerSlot) ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)",
@@ -289,7 +290,7 @@ export function GameSetupRows({
                 // No groups yet: the total is settable, the SPLIT isn't knowable.
                 // Says what will happen rather than issuing an instruction — the
                 // row is no longer blocking on it.
-                <span style={{ color: "var(--color-bt-text-dim)" }}>Splits across the rack&rsquo;s slots once groups are set.</span>
+                <span style={{ color: "var(--color-bt-text-dim)" }}>{PER_MATCH_WORD.rackPending}</span>
               )
             }
             // Same `pointsReady` truth as the C3 Enable gate — row-resolved ⟺ gate's

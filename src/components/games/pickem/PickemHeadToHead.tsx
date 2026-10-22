@@ -15,7 +15,7 @@ import { RESULT_LABEL, resultTone } from "./PickemRunView";
 import { matchStanding, type BoardRow, type ZeroKind } from "@/lib/pickemBoard";
 import { paysOut, type SlateResult } from "@/lib/pickemScoring";
 import type { BoardSlateGame } from "./PickemBoard";
-import { SLATE_RESULT_WORD, GAME_STATE_WORD } from "@/lib/vocabulary";
+import { SLATE_RESULT_WORD, GAME_STATE_WORD, CLINCH_WORD } from "@/lib/vocabulary";
 
 /**
  * Screen D — the head-to-head.
@@ -161,7 +161,7 @@ export function h2hPill(
   const s = matchStanding(rows);
   const pill = matchPill(s, resolved, picked);
   if (pill === "final") return GAME_STATE_WORD.final;
-  if (pill === "clinched") return "Clinched";
+  if (pill === "clinched") return CLINCH_WORD.pill;
   if (pill === "no-sheet" && !opts.noSheetOnSides) return "Nothing submitted";
   return `${s.remaining} left`;
 }
