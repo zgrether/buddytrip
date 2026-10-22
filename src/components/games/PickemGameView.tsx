@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
+import { COMPETING_WORD } from "@/lib/vocabulary";
 import { useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
 import { trpc } from "@/lib/trpc-client";
@@ -1625,7 +1626,7 @@ export function PickemGameView() {
             matchesLabel={
               individualMatches
                 ? `${matchPairs.length} match${matchPairs.length === 1 ? "" : "es"}`
-                : `${q.data.teams.length} teams`
+                : COMPETING_WORD.teamCount(q.data.teams.length)
             }
             /* Null, not zero, for somebody with no sheet: "0 pts · 16 of 16"
                reads as a bad weekend rather than as an absence. */

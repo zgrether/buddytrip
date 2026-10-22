@@ -343,6 +343,8 @@ export const RACE_WORD = {
   noPointsInPlay: "No points in play yet",
   /** The collapsed bar's shorter form of the same fact. */
   noPoints: "No points yet",
+  /** A Cup that ended level (Zach, 2026-10-22): "Final · Shared". */
+  shared: "Shared",
 } as const;
 
 /** Clinching, wherever it is announced. */
@@ -386,6 +388,32 @@ export const PER_MATCH_WORD = {
   winDraw: (win: string, draw: string) => `Win ${win} · Draw ${draw} each`,
   /** Rack before it has groups. */
   rackPending: "Splits across the rack’s slots once groups are set.",
+} as const;
+
+/** The How scoring works card's title (the roadmap's own name for it). */
+export const HOW_SCORING_WORKS_TITLE = "How scoring works";
+
+/**
+ * How the winner is decided, in the card's sentences (approved by Zach,
+ * 2026-10-22). The numbers behind them are `winThreshold` / `rollUp`
+ * (src/lib/competitionPlacement.ts) and `placementPoints` (a tie shares the
+ * average of its places' points); these say what that arithmetic does.
+ */
+export const WIN_RULE = {
+  tournament: "Most points wins.",
+  tournamentTie: "Finish level and you share the place.",
+  cupTarget: `Win the ${COMPETITION_WORD.match_play} with more than half the points in play.`,
+  cupTargetDrops: "The target drops if a finished game awards less than it was worth.",
+  cupLevel: `A ${COMPETITION_WORD.match_play} that ends level is shared.`,
+  tiedPlaces: "Tied places split their points.",
+} as const;
+
+/** Who is competing: a tournament of individuals, or N teams. Moved from the
+ *  create panel and the starting-point review, which spelled them. */
+export const COMPETING_WORD = {
+  individuals: "Individuals",
+  teams: "Teams",
+  teamCount: (n: number) => `${n} teams`,
 } as const;
 
 /** What each kind of competition is, in one sentence (the create panel) and in
