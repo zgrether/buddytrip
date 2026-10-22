@@ -413,6 +413,8 @@ export function CompetitionFace({
         // count (PR 2): match_play → Ryder hero, points → standings + matrix.
         scoringModel={scoringModel}
         onAddGame={() => setAddingGame(true)}
+        // The Needs attention card's items are all fixed in Rosters.
+        onOpenRosters={() => setRostersOpen(true)}
         startingPoint={competition.starting_point ?? null}
         skippedSuggestions={competition.skipped_suggestions ?? null}
         // A hero team-name tap → the consolidated Edit Team modal (the team-

@@ -106,7 +106,7 @@ export async function readSetupInput(supabase: SupabaseClient, gameId: string): 
  * a game live through the Save, where the database applies the whole rule), and
  * forty-odd test fixtures switch scoring on through them, on cup games with no
  * points and players paired before teams existed. Widening this door would
- * change those fixtures, not the app; retiring or rerouting it is #1689.
+ * change those fixtures, not the app; retiring or rerouting it is #1645.
  */
 export async function assertGameReady(supabase: SupabaseClient, gameId: string): Promise<void> {
   const input = await readSetupInput(supabase, gameId);

@@ -39,6 +39,10 @@ export interface BoardInputs {
   /** The people in each game's FULLY PAIRED matches (a side is a user or a
    *  play group). Read only to count who is on no team; no id leaves the server. */
   pairedMembersByGame: Map<string, string[]>;
+  /** Everyone playing in each game: its participants and the people in its
+   *  paired matches. Read for the board's Needs attention card (who is
+   *  playing on no team); ids never leave the server. */
+  playerIdsByGame: Map<string, string[]>;
   /** Players with an account in each game: a teamless race's finishing places. */
   peopleCountByGame: Map<string, number>;
   /** Pick'em only: games on each slate. */
@@ -161,6 +165,16 @@ export async function readBoardInputs(
     slateCountByGame.set(r.game_id, (slateCountByGame.get(r.game_id) ?? 0) + 1);
   }
 
+  const playerIdsByGame = new Map<string, string[]>();
+  for (const g of games) {
+    const gid = g.id as string;
+    const ids = [
+      ...(participantsByGame.get(gid) ?? []).map((p) => p.user_id).filter((id): id is string => !!id),
+      ...(pairedMembersByGame.get(gid) ?? []),
+    ];
+    playerIdsByGame.set(gid, [...new Set(ids)]);
+  }
+
   return {
     participantCountByGame,
     groupedParticipantCountByGame,
@@ -168,6 +182,7 @@ export async function readBoardInputs(
     totalMatchRowsByGame,
     entrantCountByGame,
     pairedMembersByGame,
+    playerIdsByGame,
     peopleCountByGame,
     slateCountByGame,
     startedByGame,

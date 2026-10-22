@@ -21,6 +21,9 @@ import { GameRow, CompletedRow, GridColumnHeader, sectionOf, type GameSection } 
 import { StickyCollapseHero } from "./CompetitionHero";
 import { ReorderableSection } from "./ReorderableGames";
 import { SuggestedGames } from "./SuggestedGames";
+import { NeedsAttentionCard } from "./NeedsAttentionCard";
+import type { SetupReason } from "@/lib/gameReadiness";
+import type { NeedsAttention } from "@/lib/needsAttention";
 import { isStartingPointId, remainingSuggestions } from "@/lib/startingPoints";
 import { listStateOf } from "@/lib/listState";
 
@@ -37,6 +40,9 @@ export interface LBGame {
   /** A manual game's format (a bracket); null for the others. Optional so
    *  hand-built fixtures need not carry it. */
   competitionFormat?: string | null;
+  /** Why it is not ready yet, first thing to fix first (`gameSetupReasons`).
+   *  Optional so hand-built fixtures need not carry it. */
+  setupReasons?: SetupReason[];
   id: string;
   name: string;
   /**
@@ -144,6 +150,9 @@ interface LeaderboardData {
   units: LBUnit[];
   /** A points race with no teams: its units are people (PR 7, ruling B). */
   teamless: boolean;
+  /** The organizer's Needs attention card (people on no team, empty and uneven
+   *  teams). Optional so hand-built fixtures need not carry it. */
+  needsAttention?: NeedsAttention;
   games: LBGame[];
   cells: LBCell[];
   /** gameId → teamId → projected points, for LIVE match/rack games only (the
@@ -194,13 +203,15 @@ interface Props {
   /** Tap a team name on the hero/list → opens Rosters focused on that team's
    *  identity editor (captain-scoped; routed by the face). Member-visible. */
   onEditTeam?: (teamId: string) => void;
+  /** Opens the Rosters overlay: where every Needs attention item is fixed. */
+  onOpenRosters?: () => void;
   /** The starting point this competition came from, and the suggestions its
    *  organizers skipped (migration 220): drives the suggested-game rows. */
   startingPoint?: string | null;
   skippedSuggestions?: string[] | null;
 }
 
-export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline, onSettings, scoringModel = "match_play", canEdit = false, isOwner = false, onAddGame, onEditTeam, startingPoint, skippedSuggestions }: Props) {
+export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline, onSettings, scoringModel = "match_play", canEdit = false, isOwner = false, onAddGame, onEditTeam, onOpenRosters, startingPoint, skippedSuggestions }: Props) {
   // Live standings: migration 096's trigger broadcasts on every score /
   // lifecycle write and this invalidates within a tick. LEADERBOARD_QUERY's
   // interval is now only the dead-socket backstop behind it (5 min), not the
@@ -467,6 +478,13 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           projections={data.projections}
           viewerUnitId={data.teamless ? me?.id : myTeamId}
         />
+      )}
+
+      {/* Needs attention (Zach's rulings, 2026-10-21): the cup-wide problems,
+          Owners and Organizers only, gone when empty. A game's own problems
+          are on its row below. */}
+      {canEdit && onOpenRosters && data.needsAttention && (
+        <NeedsAttentionCard attention={data.needsAttention} onOpenRosters={onOpenRosters} />
       )}
 
       {/* Bones copy: one line, only while the board is empty and editable. Not
