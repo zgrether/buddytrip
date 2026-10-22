@@ -38,6 +38,7 @@ import { trpc } from "@/lib/trpc-client";
 import { TEAM_COLORS } from "@/lib/teamColors";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
+import { NoTeamAvatar } from "@/components/NoTeamAvatar";
 import { RowNumber } from "@/components/games/RowNumber";
 import { isTeamCaptain, useCanEditTeam } from "@/hooks/useCanEditTeam";
 import { RecreditButton, useRecreditCandidates } from "./Recredit";
@@ -1102,11 +1103,9 @@ function CrewRoster({
                     className="flex-shrink-0"
                     style={{ color: "var(--color-bt-text-dim)" }}
                   />
-                  <Avatar
-                    name={m.displayName}
-                    avatarIcon={m.user?.avatar_icon ?? null}
-                    size="md"
-                  />
+                  {/* On no team: the outlined no-team avatar, as on the board's
+                      Needs attention card (Zach's look on #1691). */}
+                  <NoTeamAvatar name={m.displayName} size={34} />
                   <span
                     className="truncate text-sm"
                     style={{ color: "var(--color-bt-text)" }}
@@ -1163,12 +1162,7 @@ function CrewRoster({
                       border: "1px solid var(--color-bt-border)",
                     }}
                   >
-                    <Avatar
-                      name={m.displayName}
-                      avatarIcon={m.user?.avatar_icon ?? null}
-                      size="md"
-                      collapse
-                    />
+                    <NoTeamAvatar name={m.displayName} size={34} />
                     <span
                       className="flex-1 truncate text-sm font-medium"
                       style={{ color: "var(--color-bt-text)" }}
@@ -2355,7 +2349,7 @@ function AddPlayerSheet({
                     }}
                     data-testid={`teamsheet-add-${id}`}
                   >
-                    <Avatar name={m.displayName} avatarIcon={m.user?.avatar_icon ?? null} size="md" collapse />
+                    <NoTeamAvatar name={m.displayName} size={34} />
                     <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--color-bt-text)" }}>
                       {m.displayName}
                     </span>

@@ -269,6 +269,39 @@ export const SETUP_REASON_WORD = {
   },
 } as const;
 
+// ── Needs attention: the organizer's board card ───────────────────────────────
+
+/** The card's title (Zach's rulings, 2026-10-21). */
+export const NEEDS_ATTENTION_TITLE = "Needs attention";
+
+/** "A and B", "A, B and C": a short list read aloud. */
+export function joinAnd(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** "Mo and Oz aren't on a team". Three names at most, then a count. */
+export function notOnATeamLine(names: readonly string[]): string {
+  const shown = names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} others`] : names;
+  return `${joinAnd(shown)} ${names.length === 1 ? "isn't" : "aren't"} on a team`;
+}
+
+/** "Playing Day 2 Stroke — won't count": the games those people are in. */
+export function wontCountLine(games: readonly string[]): string {
+  const shown = games.length > 2 ? [games[0], `${games.length - 1} more`] : games;
+  return `Playing ${joinAnd(shown)} — won't count`;
+}
+
+/** "Bravo has no players". */
+export function emptyTeamLine(teamName: string): string {
+  return `${teamName} has no players`;
+}
+
+/** "Teams are uneven: 6 v 5", in team order. */
+export function unevenTeamsLine(sizes: readonly number[]): string {
+  return `Teams are uneven: ${sizes.join(" v ")}`;
+}
+
 /** "3 places, but only 2 teams can finish." The one sentence for a split with
  *  more places than can be filled: settings, the finalize refusal and the board. */
 export function tooManyPlacesWords(places: number, count: number, unit: { one: string; many: string }): string {

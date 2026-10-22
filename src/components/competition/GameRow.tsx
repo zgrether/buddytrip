@@ -20,6 +20,8 @@ import type { ScoringModel } from "@/lib/gameTypes";
 import type { CannotProjectReason } from "@/lib/gameProjection";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
+import { setupReasonLine, type SetupReason } from "@/lib/gameReadiness";
+import { SETTINGS_ROW_PARAM, SETUP_REASON_ROW, type SettingsRow } from "@/lib/settingsRows";
 
 export { gameHref, isGolfFormat } from "@/lib/gameRoutes";
 
@@ -50,7 +52,7 @@ function withParams(pathname: string, patch: Record<string, string | null>) {
   return q ? `${pathname}?${q}` : pathname;
 }
 
-export function openGamePanel(pathname: string, gameId: string, settings: boolean) {
+export function openGamePanel(pathname: string, gameId: string, settings: boolean, row?: SettingsRow) {
   // Tagged via pushMarker, not a bare pushState(null): an UNTAGGED entry reads as
   // depth 0, which makes every marker below it think it sits above them — so
   // popping this entry would make the settings overlay / a modal / an in-page
@@ -58,7 +60,12 @@ export function openGamePanel(pathname: string, gameId: string, settings: boolea
   pushMarker(
     "panel",
     undefined,
-    withParams(pathname, { game: gameId, settings: settings ? "1" : null }),
+    withParams(pathname, {
+      game: gameId,
+      settings: settings ? "1" : null,
+      // The settings row that fixes the game's first setup reason (`&row=`).
+      [SETTINGS_ROW_PARAM]: settings && row ? row : null,
+    }),
   );
 }
 
@@ -306,8 +313,14 @@ export function GameRow({
   const setupMode =
     usesScoringLifecycle(game.gameTypeId) &&
     isPreScoring({ status: game.status, scoringEnabled: game.scoringEnabled === true });
+  // What this game still needs, for the people who can fix it (Needs
+  // attention, 2026-10-21): an editor of a game still being set up. Members
+  // keep the plain subtitle. The tap opens the row that fixes the first one.
+  const reasons = canEditThisGame && setupMode ? (game.setupReasons ?? []) : [];
+  const fixRow = reasons[0] ? SETUP_REASON_ROW[reasons[0].code] : undefined;
   const href = gameHref(tripId, game.gameTypeId, game.id, {
     settings: canEditThisGame && setupMode,
+    row: fixRow,
   });
   // Spec 2: panel-capable games (match play + rack + non-golf — Phase 1 & 2) open
   // as a PANEL over the persistent board (no route teardown), driven by `?game=`
@@ -318,7 +331,7 @@ export function GameRow({
   // the panel; back pops this entry). STROKE still navigates via `href` below (its
   // full-screen-overlay re-host is a separate phase).
   const panelFormat = opensAsPanel(game.gameTypeId);
-  const openPanel = () => openGamePanel(pathname, game.id, canEditThisGame && setupMode);
+  const openPanel = () => openGamePanel(pathname, game.id, canEditThisGame && setupMode, fixRow);
   // The scorecard icon opens the EMPTY scorecard PREVIEW (Spec 5a) — its own
   // destination, distinct from the row's game link. Golf-with-course only (null
   // for non-golf, which never shows the icon anyway).
@@ -370,7 +383,7 @@ export function GameRow({
   //  - skeleton  → a tap-to-continue CTA, but only when the row is tappable; an
   //                inert crew row leans on the dashed outline alone (§A3).
   //  - completed → none; the compressed row + outer result speak for it.
-  const subtitle =
+  const subtitle: React.ReactNode =
     section === "on-tap"
       ? liveSubtitle({ showProjectionPills, scoringModel, cannotProject })
       : section === "ready"
@@ -387,7 +400,12 @@ export function GameRow({
         // server refuses it (`assertGameReady`) and the setup page's gate is shut.
         // `configured` keeps its exact meaning here; it just stopped deciding the
         // section.
-        game.configured
+        //
+        // For an editor, the first thing still to fix replaces it, in the
+        // warning colour, with how many more (Zach's Needs-attention ruling 1).
+        reasons.length > 0
+        ? <SetupReasonSubtitle reasons={reasons} />
+        : game.configured
         ? // "enable scoring" names a step pick'em does not have: there is no
           // scoring_enabled flip for it, and migration 135's CHECK forbids the
           // state that copy describes. What it is actually doing at this point
@@ -1199,3 +1217,19 @@ function CompletedTiles({ teams, cells }: { teams: LBTeam[]; cells: Map<string, 
 }
 
 
+
+/** "2 matches not paired · +1 more": a game's first setup reason in the warning
+ *  colour, and a count of the rest in grey (Zach's Needs-attention ruling 1). */
+function SetupReasonSubtitle({ reasons }: { reasons: readonly SetupReason[] }) {
+  return (
+    <span data-testid="game-row-setup-reason">
+      <span style={{ color: "var(--color-bt-warning)" }}>{setupReasonLine(reasons[0])}</span>
+      {reasons.length > 1 && (
+        <span style={{ color: "var(--color-bt-text-dim)" }} data-testid="game-row-setup-more">
+          {" · +"}
+          {reasons.length - 1} more
+        </span>
+      )}
+    </span>
+  );
+}

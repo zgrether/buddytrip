@@ -13,6 +13,7 @@ import { MATCH_PLAY_TYPES, RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE } from "@/server
 import { readBoardInputs, boardRow } from "@/server/lib/boardGames";
 import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
 import { tripDisplayNames } from "./tripDisplayNames";
+import { needsAttention as deriveNeedsAttention, NOTHING_NEEDS_ATTENTION } from "@/lib/needsAttention";
 import { readSideGameWinners } from "./sideBoard";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
@@ -1172,7 +1173,37 @@ export async function computeCompetitionLeaderboard(
   const unitsWithResult = new Set<string>();
   for (const g of liveGames) for (const st of g.standings) unitsWithResult.add(st.entityId);
 
+  // The organizer's Needs attention card (Zach's rulings, 2026-10-21): who is
+  // playing on no team, empty teams, uneven teams where a sum makes it count.
+  // A teamless race has none. Names only for the people it lists.
+  let attention = NOTHING_NEEDS_ATTENTION;
+  if (teamIds.length > 0) {
+    const offIds = [...new Set(
+      allGames
+        .filter((g) => g.status !== "complete")
+        .flatMap((g) => board.playerIdsByGame.get(g.id as string) ?? [])
+        .filter((id) => !teamedUserIds.has(id))
+    )];
+    const offNames = offIds.length
+      ? await tripDisplayNames(supabase, (comp?.trip_id as string | null) ?? "", offIds)
+      : new Map<string, string>();
+    attention = deriveNeedsAttention({
+      teams: (teams ?? []).map((t) => ({ id: t.id as string, name: t.name as string, color: (t.color as string | null) ?? "" })),
+      teamSizes: sizeByTeam,
+      teamed: teamedUserIds,
+      games: allGames.map((g) => ({
+        name: (g.name as string | null) ?? "Game",
+        status: g.status as string,
+        gameTypeId: (g.game_type_id as string | null) ?? null,
+        config: g.config,
+        playerIds: board.playerIdsByGame.get(g.id as string) ?? [],
+      })),
+      nameOf: (id) => offNames.get(id) ?? "Someone",
+    });
+  }
+
   return {
+    needsAttention: attention,
     teams: teams ?? [],
     /**
      * The competitors, in board order: the cup's teams, or (teamless race) its

@@ -298,7 +298,15 @@ async function driveToSetupWithHandicap(page: Page, title = "E2E Match Spine", e
 
   const toggle = (tid: string) => page.getByTestId(tid).getByRole("button").first();
 
-  await toggle("row-matches").click();
+  // From the board, the row names what the game still needs ("No matches
+  // drawn") and its tap opens the settings at that row, already expanded
+  // (Needs attention, ruling 4). The game's own page has no such link, so
+  // there the reader opens Matches themselves.
+  if (entry === "panel") {
+    await expect(toggle("row-matches")).toHaveAttribute("aria-expanded", "true", { timeout: 20_000 });
+  } else {
+    await toggle("row-matches").click();
+  }
   const pairings = page.getByTestId("match-pairings");
   await expect(pairings).toBeVisible({ timeout: 20_000 });
   await pairings.getByRole("button", { name: "Add match" }).click();
