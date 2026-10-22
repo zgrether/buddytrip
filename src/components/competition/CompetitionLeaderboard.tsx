@@ -23,6 +23,7 @@ import { ReorderableSection } from "./ReorderableGames";
 import { SuggestedGames } from "./SuggestedGames";
 import { NeedsAttentionCard } from "./NeedsAttentionCard";
 import { HowScoringWorksCard } from "./HowScoringWorksCard";
+import { awardedSoFar } from "@/lib/howScoringWorks";
 import type { SetupReason } from "@/lib/gameReadiness";
 import type { NeedsAttention } from "@/lib/needsAttention";
 import { isStartingPointId, remainingSuggestions } from "@/lib/startingPoints";
@@ -173,6 +174,9 @@ interface LeaderboardData {
   winNumber: number;
   pointsToClinch: Record<string, number>;
   defendingTeamId: string | null;
+  /** Every game pays 1 point per match (`cupCountsInHalves`): the hero and the
+   *  match cells write a half as ½. Everywhere else a half is 0.5. */
+  halfPoints?: boolean;
 }
 
 // ── Root component ────────────────────────────────────────────────────────────
@@ -441,6 +445,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         clincher={clincher}
         cupComplete={cupComplete}
         cupShared={cupShared}
+        halfPoints={data.halfPoints ?? false}
         gamesRemaining={gamesLeft}
         // First view of THIS cup's THIS winner, on this device, BY SOMEONE WHO
         // WON. Gated on `cupComplete` so a clinched-but-unfinished cup never
@@ -462,6 +467,8 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           already has them; no new data reaches members. */}
       <HowScoringWorksCard
         scoringModel={scoringModel === "points" ? "points" : "match_play"}
+        pointsAvailable={pointsAvailable}
+        awarded={awardedSoFar(liveGames, unitTotals)}
         teams={teams}
         teamless={data.teamless}
         games={liveGames.map((g) => ({
@@ -530,6 +537,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         projections={data.projections ?? {}}
         cannotProject={data.cannotProject ?? {}}
         scoringModel={scoringModel}
+        halfPoints={data.halfPoints ?? false}
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
@@ -666,7 +674,7 @@ export function useGameRowContext({
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 export function GamesSection({
-  games, competitionId, teams, cellsByGame, projections, cannotProject, scoringModel, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame, suggested,
+  games, competitionId, teams, cellsByGame, projections, cannotProject, scoringModel, halfPoints = false, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame, suggested,
 }: {
   games: LBGame[];
   /** Absent on a trip with no competition — the games page lists side games only. */
@@ -676,6 +684,8 @@ export function GamesSection({
   projections: Record<string, Record<string, number>>;
   cannotProject: Record<string, CannotProjectReason>;
   scoringModel: ScoringModel;
+  /** The cup counts in halves (`cupCountsInHalves`): the match cells write ½. */
+  halfPoints?: boolean;
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
@@ -857,6 +867,7 @@ export function GamesSection({
         projections={projections}
         cannotProject={cannotProject}
         scoringModel={scoringModel}
+        halfPoints={halfPoints}
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
@@ -939,6 +950,7 @@ function SessionBreakdown({
   projections,
   cannotProject,
   scoringModel,
+  halfPoints,
   tripId,
   mineSet,
   viewer,
@@ -954,6 +966,7 @@ function SessionBreakdown({
   projections: Record<string, Record<string, number>>;
   cannotProject: Record<string, CannotProjectReason>;
   scoringModel: ScoringModel;
+  halfPoints: boolean;
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
@@ -987,6 +1000,7 @@ function SessionBreakdown({
           teams={teams}
           cells={cellsByGame.get(game.id)}
           scoringModel={scoringModel}
+          halfPoints={halfPoints}
           tripId={tripId}
           isLast={isLast}
           onPrefetch={onPrefetch}
@@ -1000,6 +1014,7 @@ function SessionBreakdown({
           projection={projections[game.id]}
           cannotProject={cannotProject[game.id]}
           scoringModel={scoringModel}
+          halfPoints={halfPoints}
           tripId={tripId}
           mine={mineSet.has(game.id)}
           canEdit={canEdit}
@@ -1011,7 +1026,7 @@ function SessionBreakdown({
         />
       );
     },
-    [teams, cellsByGame, scoringModel, tripId, projections, cannotProject, mineSet, canEdit, viewer, delegateOfByGame, onPrefetch]
+    [teams, cellsByGame, scoringModel, halfPoints, tripId, projections, cannotProject, mineSet, canEdit, viewer, delegateOfByGame, onPrefetch]
   );
 
   // Group games by board section (single source: sectionOf) — every game lands

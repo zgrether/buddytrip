@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { howScoringWorks, type HowScoringInput } from "@/lib/howScoringWorks";
 import { EYEBROW_SEPARATOR, TYPE_SCALE } from "@/lib/typeScale";
 import { HOW_SCORING_WORKS_TITLE } from "@/lib/vocabulary";
 
 /**
  * How scoring works (Zach's rulings, 2026-10-22): a collapsed row under the
- * hero, for everyone. Open, it says who is competing, how the winner is decided
- * and what each game is worth, from the competition's own settings
+ * hero, for everyone. Open, it says who is competing, the points in play and
+ * awarded so far, and what each game is worth, from the competition's own settings
  * (`howScoringWorks`). Every word comes from a shared module; this component
  * adds none.
  */
@@ -33,11 +33,11 @@ export function HowScoringWorksCard(props: HowScoringInput) {
         data-testid="how-scoring-works-toggle"
       >
         <span style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 600 }}>{HOW_SCORING_WORKS_TITLE}</span>
-        <ChevronDown
-          size={16}
-          aria-hidden="true"
-          style={{ color: "var(--color-bt-text-dim)", transform: open ? "rotate(180deg)" : undefined, transition: "transform 150ms" }}
-        />
+        {open ? (
+          <ChevronUp size={16} aria-hidden="true" style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+        ) : (
+          <ChevronDown size={16} aria-hidden="true" style={{ color: "var(--color-bt-text-dim)", flexShrink: 0 }} />
+        )}
       </button>
 
       {open && (
@@ -52,13 +52,9 @@ export function HowScoringWorksCard(props: HowScoringInput) {
             )}
           </p>
 
-          <div className="flex flex-col gap-1" data-testid="how-scoring-works-rules">
-            {card.rules.map((rule) => (
-              <p key={rule} className="m-0" style={{ fontSize: TYPE_SCALE.body, lineHeight: 1.45, color: "var(--color-bt-text)" }}>
-                {rule}
-              </p>
-            ))}
-          </div>
+          <p className="m-0" style={{ fontSize: TYPE_SCALE.body, color: "var(--color-bt-text-dim)" }} data-testid="how-scoring-works-points">
+            {card.points}
+          </p>
 
           {card.games.length > 0 && (
             <ul className="m-0 flex list-none flex-col p-0" data-testid="how-scoring-works-games">
@@ -69,9 +65,11 @@ export function HowScoringWorksCard(props: HowScoringInput) {
                   style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }}
                   data-testid={`how-scoring-works-game-${g.id}`}
                 >
-                  <span className="flex items-baseline justify-between gap-3">
-                    <span style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 600, color: "var(--color-bt-text)" }}>{g.name}</span>
-                    <span className="shrink-0 tabular-nums" style={{ fontSize: TYPE_SCALE.captionPlus, color: "var(--color-bt-text)" }}>
+                  {/* A long name pushes the value onto its own line, right-aligned
+                      under it, rather than squeezing either (Zach's look on #1694). */}
+                  <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+                    <span className="min-w-0" style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 600, color: "var(--color-bt-text)" }}>{g.name}</span>
+                    <span className="ml-auto text-right tabular-nums" style={{ fontSize: TYPE_SCALE.captionPlus, color: "var(--color-bt-text)" }} data-testid={`how-scoring-works-worth-${g.id}`}>
                       {g.worth}
                     </span>
                   </span>

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { howScoringWorks, type HowScoringGameInput, type HowScoringInput } from "./howScoringWorks";
+import { awardedSoFar, howScoringWorks, type HowScoringGameInput, type HowScoringInput } from "./howScoringWorks";
 import { FORMAT_LINE } from "./formatLines";
-import { AWARD_WORD, COMPETING_WORD, NONGOLF_FORMAT_WORD, SPLIT_WORD, WIN_RULE } from "./vocabulary";
+import { AWARD_WORD, COMPETING_WORD, NONGOLF_FORMAT_WORD, SPLIT_WORD } from "./vocabulary";
 
 /**
  * The How scoring works card's lines (Zach's rulings, 2026-10-22). Each case
@@ -13,7 +13,7 @@ const game = (over: Partial<HowScoringGameInput>): HowScoringGameInput => ({
   id: "g", name: "Game", gameTypeId: "gtt_stroke_play", competitionFormat: null, pointsTotal: 10, distribution: null, ...over,
 });
 const cup = (games: HowScoringGameInput[], over: Partial<HowScoringInput> = {}) =>
-  howScoringWorks({ scoringModel: "match_play", teams: [{ name: "Alpha" }, { name: "Bravo" }], teamless: false, games, ...over });
+  howScoringWorks({ scoringModel: "match_play", pointsAvailable: 24, awarded: null, teams: [{ name: "Alpha" }, { name: "Bravo" }], teamless: false, games, ...over });
 
 describe("who is competing", () => {
   it("teams, by name", () => {
@@ -24,15 +24,23 @@ describe("who is competing", () => {
   });
 });
 
-describe("how the winner is decided", () => {
-  it("a Cup of match games: the target, why it drops, a level Cup is shared", () => {
-    expect(cup([game({ gameTypeId: "gtt_match_play" })]).rules).toEqual([WIN_RULE.cupTarget, WIN_RULE.cupTargetDrops, WIN_RULE.cupLevel]);
+describe("the points line (Zach's look on #1694)", () => {
+  it("before any game has finished: the points in play alone", () => {
+    expect(cup([]).points).toBe("24 points in play");
   });
-  it("tied places only where a game awards by place", () => {
-    expect(cup([game({ gameTypeId: "gtt_match_play" }), game({ gameTypeId: "gtt_generic_yard" })]).rules).toContain(WIN_RULE.tiedPlaces);
+  it("once a game has finished: and what has been awarded", () => {
+    expect(cup([], { awarded: 8 }).points).toBe("24 points in play · 8 awarded");
   });
-  it("a Tournament: most points wins, level shares the place", () => {
-    expect(cup([], { scoringModel: "points" }).rules).toEqual([WIN_RULE.tournament, WIN_RULE.tournamentTie]);
+  it("nothing awarded yet still says 0 once a game has finished, and one point is singular", () => {
+    expect(cup([], { pointsAvailable: 1, awarded: 0 }).points).toBe("1 point in play · 0 awarded");
+  });
+  it("awarded is null until a game has finished, then the banked totals summed", () => {
+    expect(awardedSoFar([{ status: "active" }, { status: "pending" }], { a: 0, b: 0 })).toBeNull();
+    expect(awardedSoFar([{ status: "active" }, { status: "complete" }], { a: 3, b: 1.5 })).toBe(4.5);
+    expect(awardedSoFar([{ status: "complete" }], { a: 0, b: 0 })).toBe(0);
+  });
+  it("a half is a decimal here: the card is not one of the ½ places", () => {
+    expect(cup([], { pointsAvailable: 17, awarded: 8.5 }).points).toBe("17 points in play · 8.5 awarded");
   });
 });
 
@@ -54,11 +62,12 @@ describe("what each game is worth", () => {
     expect(worth({ gameTypeId: "gtt_pickem", pointsTotal: 6 })).toBe("6 pts");
   });
   it("a game with no points says so", () => {
-    expect(worth({ pointsTotal: 0 })).toBe(AWARD_WORD.none);
+    expect(worth({ pointsTotal: 0 })).toBe(AWARD_WORD.noPoints);
+    expect(AWARD_WORD.noPoints).toBe("No points");
   });
-  it("one point reads pt, a half reads ½", () => {
+  it("one point reads pt, a half is a decimal", () => {
     expect(worth({ gameTypeId: "gtt_match_play", pointsTotal: 1 })).toBe("1 pt");
-    expect(worth({ gameTypeId: "gtt_match_play", pointsTotal: 2.5 })).toBe("2½ pts");
+    expect(worth({ gameTypeId: "gtt_match_play", pointsTotal: 2.5 })).toBe("2.5 pts");
   });
 });
 
@@ -70,6 +79,12 @@ describe("each game's line", () => {
   it("a non-golf game played as Matches or Best of N says that", () => {
     expect(line({ gameTypeId: "gtt_generic_card", competitionFormat: "matches" })).toBe(NONGOLF_FORMAT_WORD.matches.desc);
     expect(line({ gameTypeId: "gtt_generic_card", competitionFormat: "best_of_n" })).toBe(NONGOLF_FORMAT_WORD.best_of_n.desc);
+  });
+  it("every non-golf type has its own line, never another type's", () => {
+    const types = ["gtt_generic_card", "gtt_generic_yard", "gtt_generic_bar", "gtt_manual"] as const;
+    const lines = types.map((t) => line({ gameTypeId: t }));
+    expect(lines).toEqual(types.map((t) => FORMAT_LINE[t]));
+    expect(new Set(lines).size).toBe(types.length);
   });
   it("Simple keeps the type's line", () => {
     expect(line({ gameTypeId: "gtt_generic_card", competitionFormat: "head_to_head" })).toBe(FORMAT_LINE.gtt_generic_card);

@@ -315,13 +315,19 @@ export function tooManyPlacesWords(places: number, count: number, unit: { one: s
 // already says these things says them from one place. Each value is EXACTLY
 // what its screen showed before the move; vocabulary.guard.test.ts pins them.
 
-/** A point value as people read it: "8", "8½", "½", or "2.67" for anything
- *  that is not a whole or a half. Points come in halves (a halved match, an
- *  averaged tie). One formatter: the board and the game screens had a copy each. */
-export function fmtPts(n: number): string {
+/** A point value as people read it: "8", or a fraction as a decimal with its
+ *  trailing zeros dropped ("2.5", "0.5", "2.29"). With `halves`, a half is ½
+ *  ("8½", "½"): Zach's half-points rule (2026-10-22, and his look on #1694) keeps
+ *  the glyph for a halved match worth 1 point, so a caller passes it only on a
+ *  cup that counts in halves (`cupCountsInHalves`), and only on that cup's
+ *  totals, projected totals, target and match result cells. One formatter: the
+ *  board and the game screens had a copy each. */
+export function fmtPts(n: number, opts?: { halves?: boolean }): string {
   if (Number.isInteger(n)) return String(n);
-  const whole = Math.floor(n);
-  if (Math.abs(n - whole - 0.5) < 0.001) return whole === 0 ? "½" : `${whole}½`;
+  if (opts?.halves && Number.isInteger(n * 2)) {
+    const whole = Math.floor(n);
+    return whole === 0 ? "½" : `${whole}½`;
+  }
   return String(Math.round(n * 100) / 100);
 }
 
@@ -371,7 +377,7 @@ export const SPLIT_WORD = {
 
 /** "5 · 3 · 2 pts": a split's values, highest place first. */
 export function splitValuesLine(values: readonly number[]): string {
-  return `${values.map(fmtPts).join(" · ")} pts`;
+  return `${values.map((v) => fmtPts(v)).join(" · ")} pts`;
 }
 
 /** What a game that awards match by match (or slot by slot) is worth. */
@@ -392,21 +398,6 @@ export const PER_MATCH_WORD = {
 
 /** The How scoring works card's title (the roadmap's own name for it). */
 export const HOW_SCORING_WORKS_TITLE = "How scoring works";
-
-/**
- * How the winner is decided, in the card's sentences (approved by Zach,
- * 2026-10-22). The numbers behind them are `winThreshold` / `rollUp`
- * (src/lib/competitionPlacement.ts) and `placementPoints` (a tie shares the
- * average of its places' points); these say what that arithmetic does.
- */
-export const WIN_RULE = {
-  tournament: "Most points wins.",
-  tournamentTie: "Finish level and you share the place.",
-  cupTarget: `Win the ${COMPETITION_WORD.match_play} with more than half the points in play.`,
-  cupTargetDrops: "The target drops if a finished game awards less than it was worth.",
-  cupLevel: `A ${COMPETITION_WORD.match_play} that ends level is shared.`,
-  tiedPlaces: "Tied places split their points.",
-} as const;
 
 /** Who is competing: a tournament of individuals, or N teams. Moved from the
  *  create panel and the starting-point review, which spelled them. */
@@ -460,4 +451,14 @@ export const AWARD_WORD = {
   label: "Points",
   unawarded: "Not awarded",
   none: "This game awards no points.",
+  /** A finished game that awarded nothing, and a game worth nothing on the
+   *  How scoring works card: the short form, for a value column. */
+  noPoints: "No points",
 } as const;
+
+/** "24 points in play · 8 awarded" (Zach's look on #1694). The awarded half
+ *  appears only once a game has finished; before that it is null. */
+export function pointsInPlayLine(inPlay: number, awarded: number | null): string {
+  const head = `${fmtPts(inPlay)} ${inPlay === 1 ? "point" : "points"} in play`;
+  return awarded == null ? head : `${head} · ${fmtPts(awarded)} awarded`;
+}

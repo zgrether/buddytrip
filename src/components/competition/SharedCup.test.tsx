@@ -60,8 +60,35 @@ describe("the hero on a shared Cup", () => {
   });
   it("CONTROL: the same Cup not yet finished still says First to X wins", () => {
     const html = hero({ cupShared: false, gamesRemaining: 1 });
-    expect(html).toContain("First to 4½ wins");
+    expect(html).toContain("First to 4.5 wins");
     expect(html).not.toContain("Shared");
+  });
+});
+
+describe("the hero counts in halves only on a cup that does (Zach's half-points rule)", () => {
+  const teamsHalf = { teamTotals: { a: 3.5, b: 2.5 }, cupShared: false, gamesRemaining: 1 };
+  it("with the flag: the totals and the target write ½", () => {
+    const html = hero({ ...teamsHalf, halfPoints: true });
+    expect(html).toContain("First to 4½ wins");
+    expect(html).toContain(">3½<");
+    expect(html).toContain(">2½<");
+    expect(html).not.toContain(">3.5<");
+  });
+  it("CONTROL, without it: the same numbers are decimals", () => {
+    const html = hero(teamsHalf);
+    expect(html).toContain("First to 4.5 wins");
+    expect(html).toContain(">3.5<");
+    expect(html).not.toContain("½");
+  });
+  it("the collapsed bar follows the same flag", () => {
+    const bar = (halfPoints: boolean) =>
+      renderToStaticMarkup(
+        <CollapsedHero teams={teams} teamTotals={{ a: 3.5, b: 2.5 }} winNumber={4.5} pointsAvailable={8} clincher={null} halfPoints={halfPoints} />
+      );
+    expect(bar(true)).toContain("First to 4½ wins");
+    expect(bar(true)).toContain(">3½<");
+    expect(bar(false)).toContain("First to 4.5 wins");
+    expect(bar(false)).not.toContain("½");
   });
   it("the collapsed bar says the same", () => {
     const html = renderToStaticMarkup(

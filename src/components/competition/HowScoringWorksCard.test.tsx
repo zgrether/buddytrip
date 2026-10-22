@@ -13,6 +13,8 @@ import { HOW_SCORING_WORKS_TITLE } from "@/lib/vocabulary";
 
 const props = {
   scoringModel: "match_play" as const,
+  pointsAvailable: 8,
+  awarded: null,
   teams: [{ name: "Alpha" }, { name: "Bravo" }],
   teamless: false,
   games: [{ id: "g1", name: "Day 1", gameTypeId: "gtt_match_play", competitionFormat: null, pointsTotal: 8, distribution: null }],
@@ -24,6 +26,14 @@ describe("the row", () => {
     expect(html).toContain(`>${HOW_SCORING_WORKS_TITLE}</span>`);
     expect(html).toMatch(/<button type="button" aria-expanded="false"[^>]*data-testid="how-scoring-works-toggle"/);
     expect(html).not.toContain('data-testid="how-scoring-works-body"');
+  });
+  it("its chevron points down closed and up open: two icons, never a rotated one", () => {
+    const src = readFileSync(join(__dirname, "HowScoringWorksCard.tsx"), "utf8");
+    expect(src).toMatch(/open \? \(\s*<ChevronUp[\s\S]*?\) : \(\s*<ChevronDown/);
+    expect(src).not.toContain("rotate(");
+    const closed = renderToStaticMarkup(<HowScoringWorksCard {...props} />);
+    expect(closed).toContain("lucide-chevron-down");
+    expect(closed).not.toContain("lucide-chevron-up");
   });
 });
 

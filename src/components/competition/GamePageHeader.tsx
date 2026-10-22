@@ -91,6 +91,7 @@ export function GamePageHeader({
         winNumber={d.winNumber}
         pointsAvailable={d.pointsAvailable}
         clincher={clincher}
+        halfPoints={d.halfPoints ?? false}
         // Type-gate the "first to X" target line off for points cups — the same
         // gate #655 applied to the competition board (points has no clinch ceiling).
         scoringModel={d.scoringModel}

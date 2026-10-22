@@ -117,6 +117,7 @@ export function CompetitionHero({
   variant = "expanded",
   cupComplete = false,
   cupShared = false,
+  halfPoints = false,
   celebrateFirstView = false,
   canReplayCelebration = false,
   onCelebrated,
@@ -161,6 +162,9 @@ export function CompetitionHero({
   /** The Cup ended level (`isCupShared`): every game final, nobody clinched,
    *  totals equal. A level Cup is shared, so the line reads "Final · Shared". */
   cupShared?: boolean;
+  /** The cup counts in halves (`cupCountsInHalves`): totals, projected totals
+   *  and the target write a half as ½. */
+  halfPoints?: boolean;
   /** This device hasn't seen this cup's celebration yet → play the burst once.
    *  Only ever true alongside `cupComplete` and `variant === "expanded"`. */
   celebrateFirstView?: boolean;
@@ -196,6 +200,7 @@ export function CompetitionHero({
         pointsAvailable={pointsAvailable}
         clincher={clincher}
         cupShared={cupShared}
+        halfPoints={halfPoints}
         scoringModel={scoringModel}
         onEditTeam={onEditTeam}
       />
@@ -309,8 +314,8 @@ export function CompetitionHero({
                 so they stay a matched pair rather than one shrinking alone. */}
             <div className="mt-1 flex items-baseline justify-between gap-4">
               {(() => {
-                const aStr = fmtPts(aTotal);
-                const bStr = fmtPts(bTotal);
+                const aStr = fmtPts(aTotal, { halves: halfPoints });
+                const bStr = fmtPts(bTotal, { halves: halfPoints });
                 // tabular digits run ~0.6em wide, so N chars ≈ 0.6·N·size per side;
                 // these steps keep the pair inside 375px minus the card's padding.
                 const longest = Math.max(aStr.length, bStr.length);
@@ -384,7 +389,7 @@ export function CompetitionHero({
                 : cupShared
                 ? `${GAME_STATE_WORD.final} · ${RACE_WORD.shared}`
                 : pointsAvailable > 0
-                ? RACE_WORD.firstTo(fmtPts(winNumber))
+                ? RACE_WORD.firstTo(fmtPts(winNumber, { halves: halfPoints }))
                 : RACE_WORD.noPointsInPlay}
             </p>
 
@@ -428,8 +433,8 @@ export function CompetitionHero({
                   Projected if today holds
                 </p>
                 <div className="flex items-center justify-between">
-                  <HeroProjSide team={a} projected={projectedTeamTotals?.[a.id] ?? aTotal} banked={aTotal} winNumber={winNumber} align="left" />
-                  <HeroProjSide team={b} projected={projectedTeamTotals?.[b.id] ?? bTotal} banked={bTotal} winNumber={winNumber} align="right" />
+                  <HeroProjSide team={a} projected={projectedTeamTotals?.[a.id] ?? aTotal} banked={aTotal} winNumber={winNumber} halves={halfPoints} align="left" />
+                  <HeroProjSide team={b} projected={projectedTeamTotals?.[b.id] ?? bTotal} banked={bTotal} winNumber={winNumber} halves={halfPoints} align="right" />
                 </div>
               </div>
             )}
@@ -582,6 +587,7 @@ export function CollapsedHero({
   pointsAvailable,
   clincher,
   cupShared = false,
+  halfPoints = false,
   scoringModel = "match_play",
   footer,
   onEditTeam,
@@ -593,6 +599,8 @@ export function CollapsedHero({
   clincher: LBTeam | null;
   /** The Cup ended level: "Final · Shared" in place of the target. */
   cupShared?: boolean;
+  /** The cup counts in halves: the scores and the target write a half as ½. */
+  halfPoints?: boolean;
   /** Points cups have no clinch target ("first to X" isn't calculable) — for points the
    *  collapsed bar drops the target line + the race-bar, showing just the team scores.
    *  Defaults to match_play (the game-page header usage keeps its behavior). */
@@ -616,7 +624,7 @@ export function CollapsedHero({
         : cupShared
           ? `${GAME_STATE_WORD.final} · ${RACE_WORD.shared}`
         : pointsAvailable > 0
-          ? RACE_WORD.firstTo(fmtPts(winNumber))
+          ? RACE_WORD.firstTo(fmtPts(winNumber, { halves: halfPoints }))
           : RACE_WORD.noPoints;
   const card: React.CSSProperties = {
     borderRadius: 12,
@@ -674,7 +682,7 @@ export function CollapsedHero({
           </div>
           {/* Scores flank the target + inline bar. */}
           <div className="flex items-center gap-3.5" style={{ marginTop: 5 }}>
-            <MiniScore team={a} points={aTotal} />
+            <MiniScore team={a} points={aTotal} halves={halfPoints} />
             <div className="min-w-0 flex-1">
               {targetLabel && (
                 <div
@@ -700,7 +708,7 @@ export function CollapsedHero({
                 </div>
               )}
             </div>
-            <MiniScore team={b} points={bTotal} />
+            <MiniScore team={b} points={bTotal} halves={halfPoints} />
           </div>
         </div>
         {footerBlock}
@@ -714,7 +722,7 @@ export function CollapsedHero({
       <div style={{ padding: "11px 14px 12px" }}>
         <div className="flex items-stretch justify-between gap-2.5">
           {teams.map((t) => (
-            <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} name={t.short_name ?? t.name} align="left" onEditTeam={onEditTeam} />
+            <CollapsedTeam key={t.id} team={t} points={teamTotals[t.id] ?? 0} halves={halfPoints} name={t.short_name ?? t.name} align="left" onEditTeam={onEditTeam} />
           ))}
         </div>
         {targetLabel && (
@@ -729,14 +737,14 @@ export function CollapsedHero({
 }
 
 /** One team's big score in the collapsed bar's scores row (team-colored). */
-function MiniScore({ team, points }: { team: LBTeam | undefined; points: number }) {
+function MiniScore({ team, points, halves }: { team: LBTeam | undefined; points: number; halves: boolean }) {
   if (!team) return <span style={{ width: 1 }} />;
   return (
     <span
       className="tabular-nums"
       style={{ fontSize: 28, fontWeight: 800, lineHeight: 1, letterSpacing: "-0.02em", color: teamInk(team.color) }}
     >
-      {fmtPts(points)}
+      {fmtPts(points, { halves })}
     </span>
   );
 }
@@ -953,12 +961,14 @@ function ProjTeam({
 function CollapsedTeam({
   team,
   points,
+  halves,
   name,
   align,
   onEditTeam,
 }: {
   team: LBTeam | undefined;
   points: number;
+  halves: boolean;
   name: string | undefined;
   align: "left" | "right";
   onEditTeam?: (teamId: string) => void;
@@ -977,7 +987,7 @@ function CollapsedTeam({
         {name ?? team.name}
       </div>
       <div className="tabular-nums" style={{ fontSize: 26, fontWeight: 800, color: teamInk(team.color), lineHeight: 1, marginTop: 1 }}>
-        {fmtPts(points)}
+        {fmtPts(points, { halves })}
       </div>
     </button>
   );
@@ -1147,19 +1157,21 @@ function HeroProjSide({
   projected,
   banked,
   winNumber,
+  halves,
   align,
 }: {
   team: LBTeam;
   projected: number;
   banked: number;
   winNumber: number;
+  halves: boolean;
   align: "left" | "right";
 }) {
   const delta = projected - banked; // ≥ 0 (projections are awarded points)
   const projectsWin = projected >= winNumber;
   const num = (
     <span className="tabular-nums" style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: teamInk(team.color) }}>
-      {fmtPts(projected)}
+      {fmtPts(projected, { halves })}
     </span>
   );
   // Pill only when the team projects a gain; delta 0 → bare number (no pill).

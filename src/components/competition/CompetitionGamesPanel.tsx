@@ -979,5 +979,3 @@ export function ordinalShort(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-/** Whole numbers as-is, halves as ½ (0.5 → "½", 1.5 → "1½"); other fractions kept
- *  exact to 2dp (1.25 → "1.25") so fractional shares survive display (#585). */
