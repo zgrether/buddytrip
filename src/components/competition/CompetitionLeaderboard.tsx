@@ -484,7 +484,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           Owners and Organizers only, gone when empty. A game's own problems
           are on its row below. */}
       {canEdit && onOpenRosters && data.needsAttention && (
-        <NeedsAttentionCard attention={data.needsAttention} onOpenRosters={onOpenRosters} />
+        <NeedsAttentionCard attention={data.needsAttention} onOpenRosters={onOpenRosters} onEditTeam={onEditTeam} />
       )}
 
       {/* Bones copy: one line, only while the board is empty and editable. Not

@@ -2,6 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import { TeamBadge } from "@/components/TeamBadge";
+import { NoTeamAvatar } from "@/components/NoTeamAvatar";
 import { needsAttentionCount, unevenTeamsWhy, type NeedsAttention } from "@/lib/needsAttention";
 import { EYEBROW, EYEBROW_SEPARATOR, TYPE_SCALE } from "@/lib/typeScale";
 import {
@@ -21,14 +22,18 @@ import {
  * Owners and Organizers only (the caller passes nothing otherwise), gone when
  * empty. Every item is advisory, so it is MUTED: the warning colour is for what
  * blocks something, and that is on the game rows. Each item is one row that
- * opens where it is fixed, which for all three is Rosters.
+ * opens where it is fixed: Rosters for people and sizes, and an empty team's
+ * own Edit Team sheet (Zach's look on #1691).
  */
 export function NeedsAttentionCard({
   attention,
   onOpenRosters,
+  onEditTeam,
 }: {
   attention: NeedsAttention;
   onOpenRosters: () => void;
+  /** Opens a team's Edit Team sheet; without it an empty team opens Rosters. */
+  onEditTeam?: (teamId: string) => void;
 }) {
   const count = needsAttentionCount(attention);
   if (count === 0) return null;
@@ -51,29 +56,19 @@ export function NeedsAttentionCard({
         <Item onClick={onOpenRosters} testId="needs-attention-off-team" title={notOnATeamLine(offTeam.names)} detail={wontCountLine(offTeam.games)}>
           <span className="flex" aria-hidden="true">
             {offTeam.names.slice(0, 3).map((name, i) => (
-              <span
-                key={`${name}-${i}`}
-                className="flex items-center justify-center rounded-full"
-                style={{
-                  width: 26,
-                  height: 26,
-                  marginLeft: i === 0 ? 0 : -8,
-                  border: "1.5px dashed var(--color-bt-text-dim)",
-                  background: "var(--color-bt-base)",
-                  color: "var(--color-bt-text-dim)",
-                  fontSize: TYPE_SCALE.caption,
-                  fontWeight: 600,
-                }}
-              >
-                {name.charAt(0).toUpperCase()}
-              </span>
+              <NoTeamAvatar key={`${name}-${i}`} name={name} size={26} style={{ marginLeft: i === 0 ? 0 : -8 }} />
             ))}
           </span>
         </Item>
       )}
 
       {emptyTeams.map((t) => (
-        <Item key={t.id} onClick={onOpenRosters} testId={`needs-attention-empty-team-${t.id}`} title={emptyTeamLine(t.name)}>
+        <Item
+          key={t.id}
+          onClick={onEditTeam ? () => onEditTeam(t.id) : onOpenRosters}
+          testId={`needs-attention-empty-team-${t.id}`}
+          title={emptyTeamLine(t.name)}
+        >
           <TeamBadge teamId={t.id} name={t.name} color={t.color} size={24} />
         </Item>
       ))}

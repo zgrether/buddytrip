@@ -65,3 +65,22 @@ describe("who sees it, and where a game row goes (source)", () => {
     expect(row).toMatch(/row: fixRow,/);
   });
 });
+
+describe("Zach's look on #1691", () => {
+  const card = readFileSync(join(__dirname, "NeedsAttentionCard.tsx"), "utf8");
+  const board = readFileSync(join(__dirname, "CompetitionLeaderboard.tsx"), "utf8");
+  const rosters = readFileSync(join(__dirname, "TeamsPanel.tsx"), "utf8");
+
+  it("the card draws the outlined no-team avatar for each person", () => {
+    expect((render(full).match(/data-testid="no-team-avatar"/g) ?? []).length).toBe(2);
+  });
+
+  it("an empty team opens that team's Edit Team sheet", () => {
+    expect(card).toMatch(/onClick=\{onEditTeam \? \(\) => onEditTeam\(t\.id\) : onOpenRosters\}/);
+    expect(board).toMatch(/<NeedsAttentionCard attention=\{data\.needsAttention\} onOpenRosters=\{onOpenRosters\} onEditTeam=\{onEditTeam\} \/>/);
+  });
+
+  it("Rosters draws the same avatar in all three Not on a team lists (desktop, phone, the team sheet's picker)", () => {
+    expect((rosters.match(/<NoTeamAvatar name=\{m\.displayName\} size=\{34\} \/>/g) ?? []).length).toBe(3);
+  });
+});
