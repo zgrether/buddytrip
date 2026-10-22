@@ -22,6 +22,7 @@ import { StickyCollapseHero } from "./CompetitionHero";
 import { ReorderableSection } from "./ReorderableGames";
 import { SuggestedGames } from "./SuggestedGames";
 import { NeedsAttentionCard } from "./NeedsAttentionCard";
+import { HowScoringWorksCard } from "./HowScoringWorksCard";
 import type { SetupReason } from "@/lib/gameReadiness";
 import type { NeedsAttention } from "@/lib/needsAttention";
 import { isStartingPointId, remainingSuggestions } from "@/lib/startingPoints";
@@ -454,6 +455,23 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         canEdit={canEdit}
         onSettings={onSettings}
         onEditTeam={onEditTeam}
+      />
+
+      {/* How scoring works (Zach's rulings, 2026-10-22): a collapsed row under the
+          hero, for everyone. Built from this competition's own games, as the board
+          already has them; no new data reaches members. */}
+      <HowScoringWorksCard
+        scoringModel={scoringModel === "points" ? "points" : "match_play"}
+        teams={teams}
+        teamless={data.teamless}
+        games={liveGames.map((g) => ({
+          id: g.id,
+          name: g.name,
+          gameTypeId: g.gameTypeId,
+          competitionFormat: g.competitionFormat ?? null,
+          pointsTotal: g.pointsTotal ?? null,
+          distribution: g.distribution ?? null,
+        }))}
       />
 
       {/* POINTS body (board-body branching, left untouched): the standings glance

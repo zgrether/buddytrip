@@ -37,6 +37,9 @@ import {
   RACE_WORD,
   SPLIT_WORD,
   splitValuesLine,
+  COMPETING_WORD,
+  HOW_SCORING_WORKS_TITLE,
+  WIN_RULE,
 } from "./vocabulary";
 
 /**
@@ -232,6 +235,20 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
       best_of_n: { label: "Best of N", desc: "First to win the majority of games." },
       matches: { label: "Matches", desc: "Head to head matches across teams." },
     });
+  });
+
+  it("the How scoring works card (approved by Zach, 2026-10-22)", () => {
+    expect(HOW_SCORING_WORKS_TITLE).toBe("How scoring works");
+    expect(WIN_RULE).toEqual({
+      tournament: "Most points wins.",
+      tournamentTie: "Finish level and you share the place.",
+      cupTarget: "Win the Cup with more than half the points in play.",
+      cupTargetDrops: "The target drops if a finished game awards less than it was worth.",
+      cupLevel: "A Cup that ends level is shared.",
+      tiedPlaces: "Tied places split their points.",
+    });
+    expect(RACE_WORD.shared).toBe("Shared");
+    expect([COMPETING_WORD.individuals, COMPETING_WORD.teams, COMPETING_WORD.teamCount(3)]).toEqual(["Individuals", "Teams", "3 teams"]);
   });
 
   it("navigation, structure, and the stored margin", () => {
