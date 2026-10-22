@@ -65,4 +65,28 @@ describe("the board's halfPoints flag", () => {
     await setMatches(2, [2, null]);
     expect(await halfPoints()).toBe(false);
   });
+
+  it("a mixed cup: a Simple game beside the 1-point match game makes it no, and removing it makes it yes again", async () => {
+    await setMatches(2, [null, null]);
+    expect(await halfPoints()).toBe(true);
+    const simple = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_generic_card", name: "Euchre", competitionId: comp })) as { id: string };
+    await ctx.admin.from("games").update({ competition_format: "head_to_head", points_total: 2 }).eq("id", simple.id);
+    try {
+      expect(await halfPoints()).toBe(false);
+    } finally {
+      await ctx.admin.from("games").delete().eq("id", simple.id);
+    }
+    expect(await halfPoints()).toBe(true);
+  });
+
+  it("an unpaired match game is ignored: a second match game with no pairings leaves it yes", async () => {
+    await setMatches(2, [null, null]);
+    const unpaired = (await ctx.caller().games.create({ tripId, gameTypeId: "gtt_match_play", name: "Day 2", competitionId: comp })) as { id: string };
+    await ctx.admin.from("games").update({ points_total: 8 }).eq("id", unpaired.id);
+    try {
+      expect(await halfPoints()).toBe(true);
+    } finally {
+      await ctx.admin.from("games").delete().eq("id", unpaired.id);
+    }
+  });
 });

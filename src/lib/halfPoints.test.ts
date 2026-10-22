@@ -46,10 +46,32 @@ describe("cupCountsInHalves", () => {
     expect(cupCountsInHalves("match_play", [match(), match({ gameTypeId: "gtt_generic_card", competitionFormat: "matches" })])).toBe(true);
   });
 
-  it("any game that does not award match by match: no (stroke, rack, pick'em, a placement game)", () => {
-    for (const gameTypeId of ["gtt_stroke_play", "gtt_rack_n_stack", "gtt_pickem", "gtt_generic_yard"]) {
-      expect(cupCountsInHalves("match_play", [match(), match({ gameTypeId })])).toBe(false);
+  describe("a mixed cup: one game that is not a match game makes it no", () => {
+    // Each beside a qualifying match game, with no paired matches of its own, so
+    // the ONLY thing that can turn the answer is the game's kind.
+    const others: [string, Partial<HalfPointsGame>][] = [
+      ["Simple (a non-golf head-to-head)", { gameTypeId: "gtt_generic_card", competitionFormat: "head_to_head" }],
+      ["a placement game", { gameTypeId: "gtt_generic_yard", competitionFormat: null }],
+      ["a bracket", { gameTypeId: "gtt_generic_card", competitionFormat: "bracket" }],
+      ["pick'em", { gameTypeId: "gtt_pickem", competitionFormat: null }],
+      ["Best of N", { gameTypeId: "gtt_generic_bar", competitionFormat: "best_of_n" }],
+      ["stroke play", { gameTypeId: "gtt_stroke_play" }],
+      ["skins", { gameTypeId: "gtt_skins" }],
+      ["a scramble", { gameTypeId: "gtt_scramble" }],
+      ["Rack-n-Stack", { gameTypeId: "gtt_rack_n_stack" }],
+      ["any game", { gameTypeId: "gtt_manual", competitionFormat: null }],
+    ];
+    it("CONTROL: the match game alone is yes", () => {
+      expect(cupCountsInHalves("match_play", [match()])).toBe(true);
+    });
+    for (const [label, over] of others) {
+      it(`with ${label}: no`, () => {
+        expect(cupCountsInHalves("match_play", [match(), match({ pointsTotal: 4, pairedMatchValues: [], ...over })])).toBe(false);
+      });
     }
+    it("pick'em with paired matches at 1 point each is still no: it awards by its own schedule", () => {
+      expect(cupCountsInHalves("match_play", [match(), match({ gameTypeId: "gtt_pickem", pairedMatchValues: [null, null, null, null] })])).toBe(false);
+    });
   });
 
   it("a game with no paired matches neither qualifies nor disqualifies", () => {
