@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { competitionNoun, SIDE_GAME_WORD, DELEGATE_WORD } from "@/lib/vocabulary";
+import { competitionNoun, SIDE_GAME_WORD, DELEGATE_WORD, fmtPts, NONGOLF_FORMAT_WORD } from "@/lib/vocabulary";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -59,7 +59,7 @@ export type { GameType };
  * and reconciles the delegate grant.
  *
  * This module also hosts shared scoring-UI bits (ManualPlacementEditor,
- * PlacementEditor, PointStepper, fmtValue, …) used by the non-golf
+ * PlacementEditor, PointStepper, fmtPts, …) used by the non-golf
  * board + config views and the game-setup pages, plus the `GameRow`/`LBTeamLite`
  * row types and `DND_GAME_KEY`. (The old CompetitionGamesPanel list + RunSheet
  * post/correct modal that lived here were removed once GameSheet became Add-only
@@ -111,18 +111,18 @@ export const COMP_FORMATS = [
   // games using it (a yard game with four players is not head-to-head). A
   // DISPLAY-STRING change only: the key stays `head_to_head`, which is the DB value
   // RLS and `resultStrategy` branch on.
-  { key: "head_to_head", label: "Simple", desc: "Choose winner/loser of game.", Icon: Swords },
+  { key: "head_to_head", ...NONGOLF_FORMAT_WORD.head_to_head, Icon: Swords },
   // ONE entry. Single vs double is a SETTING inside the bracket, exactly as entry
   // mode is inside match play — two picker entries made a configuration choice
   // look like two different formats.
-  { key: "bracket", label: "Bracket", desc: "We support single and double elimination.", Icon: ListTree },
-  { key: "best_of_n", label: "Best of N", desc: "First to win the majority of games.", Icon: Target },
+  { key: "bracket", ...NONGOLF_FORMAT_WORD.bracket, Icon: ListTree },
+  { key: "best_of_n", ...NONGOLF_FORMAT_WORD.best_of_n, Icon: Target },
   // Matches takes the SLOT `live_results` used to occupy in this list, not its
   // VALUE — the value is `MATCHES_COMPETITION_FORMAT` ("matches"), a new one.
   // `live_results` named a feature nobody built; this is the feature. The
   // explainer matches pick'em's own wording for individual matches — it's the
   // same idea, applied to a declared rather than picked outcome.
-  { key: MATCHES_COMPETITION_FORMAT, label: "Matches", desc: "Head to head matches across teams.", Icon: ArrowLeftRight },
+  { key: MATCHES_COMPETITION_FORMAT, ...NONGOLF_FORMAT_WORD.matches, Icon: ArrowLeftRight },
 ] as const;
 
 /**
@@ -135,8 +135,8 @@ export const COMP_FORMATS = [
  * Read-only compatibility; nothing offers them.
  */
 const LEGACY_FORMAT_LABELS: Record<string, string> = {
-  bracket_se: "Bracket",
-  bracket_de: "Bracket",
+  bracket_se: NONGOLF_FORMAT_WORD.bracket.label,
+  bracket_de: NONGOLF_FORMAT_WORD.bracket.label,
 };
 
 export function formatLabel(key: string | null): string | null {
@@ -506,12 +506,12 @@ export function PointStepper({
   label: string; caption: string; value: number; onChange: (n: number) => void; footer?: React.ReactNode; max?: number;
 }) {
   // A Field + footer composition over the canonical <Stepper> (P-B). The bespoke
-  // step-buttons are gone; min stays 1 and fmtValue keeps the ½-point display.
+  // step-buttons are gone; min stays 1 and fmtPts keeps the ½-point display.
   return (
     <Field label={label} required>
       <div className="rounded-xl" style={{ background: "var(--color-bt-card-raised)", border: "1px solid var(--color-bt-border)" }}>
         <div className="px-3 py-3">
-          <Stepper size="full" value={value} min={1} max={max} onChange={onChange} label={caption} formatValue={fmtValue} />
+          <Stepper size="full" value={value} min={1} max={max} onChange={onChange} label={caption} formatValue={fmtPts} />
         </div>
         {footer && (
           <div className="px-3 py-2.5" style={{ borderTop: "1px solid var(--color-bt-border)" }}>
@@ -585,7 +585,7 @@ export function PlacementEditor({
   return (
     <Field label="Point distribution">
       <p className="mb-2 text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text)" }}>
-        The owner set this game at <span className="font-semibold" style={{ color: "var(--color-bt-accent)" }}>{fmtValue(total)} points</span>. Spread them across team places — the split must total {fmtValue(total)} exactly.
+        The owner set this game at <span className="font-semibold" style={{ color: "var(--color-bt-accent)" }}>{fmtPts(total)} points</span>. Spread them across team places — the split must total {fmtPts(total)} exactly.
       </p>
       <div className="space-y-2">
         {placeInputs.map((p, i) => (
@@ -641,8 +641,8 @@ export function PlacementEditor({
             {started && placement.saveable && <Check size={13} />}
             {/* STYLE_GUIDE 2c. Two values and a unit, not a sentence: the
                 numbers carry, "of" and "pts" are the connective and the label. */}
-            <ValueUnit value={fmtValue(placement.allocated)} unit="of" size={14} color="inherit" />
-            <ValueUnit value={fmtValue(total)} unit="pts" size={14} color="inherit" />
+            <ValueUnit value={fmtPts(placement.allocated)} unit="of" size={14} color="inherit" />
+            <ValueUnit value={fmtPts(total)} unit="pts" size={14} color="inherit" />
           </span>
         </div>
         {/* Places vs teams — the second half of "is this split valid", shown while
@@ -692,8 +692,8 @@ export function PlacementEditor({
                 here put the same line on screen twice. The sum case keeps its
                 compact copy: the "N of M pts" line above carries the numbers. */}
             {placement.remaining > 0
-              ? `${fmtValue(placement.remaining)} point${placement.remaining === 1 ? "" : "s"} left to allocate`
-              : `${fmtValue(-placement.remaining)} point${-placement.remaining === 1 ? "" : "s"} over — must total ${fmtValue(total)}`}
+              ? `${fmtPts(placement.remaining)} point${placement.remaining === 1 ? "" : "s"} left to allocate`
+              : `${fmtPts(-placement.remaining)} point${-placement.remaining === 1 ? "" : "s"} over — must total ${fmtPts(total)}`}
           </p>
         )}
       </div>
@@ -916,7 +916,7 @@ function PlacementRowBody({
         className="text-sm font-bold tabular-nums"
         style={{ color: points > 0 ? "var(--color-bt-accent)" : "var(--color-bt-text-dim)" }}
       >
-        {fmtValue(points)}
+        {fmtPts(points)}
       </span>
       {tieButton}
       {handle}
@@ -981,9 +981,3 @@ export function ordinalShort(n: number): string {
 
 /** Whole numbers as-is, halves as ½ (0.5 → "½", 1.5 → "1½"); other fractions kept
  *  exact to 2dp (1.25 → "1.25") so fractional shares survive display (#585). */
-export function fmtValue(n: number): string {
-  if (Number.isInteger(n)) return String(n);
-  const whole = Math.floor(n);
-  if (Math.abs(n - whole - 0.5) < 0.001) return whole === 0 ? "½" : `${whole}½`;
-  return String(Math.round(n * 100) / 100);
-}

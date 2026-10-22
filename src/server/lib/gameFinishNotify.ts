@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { competitionNoun, GAME_STATE_WORD } from "@/lib/vocabulary";
+import { competitionNoun, GAME_STATE_WORD, CLINCH_WORD } from "@/lib/vocabulary";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { gameHref, gamePanelHref, gamesPageHref, opensAsPanel } from "@/lib/gameRoutes";
 import { readSideGameWinners } from "./sideBoard";
@@ -371,7 +371,7 @@ const COPY = {
   }),
   /** The highest-value push in the app — ~1-3 per trip. */
   clinched: (teamName: string, competitionName: string | null, summary: string, noun: string) => ({
-    title: `${teamName} clinched`,
+    title: CLINCH_WORD.pushTitle(teamName),
     body: [competitionName, summary].filter(Boolean).join(" · ") || `The ${noun} is decided.`,
   }),
 };

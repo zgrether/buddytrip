@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Settings, Trophy } from "lucide-react";
-import { fmtPts, ProjectionPill } from "./GameRow";
+import { ProjectionPill } from "./GameRow";
 import { ClinchCelebration } from "./ClinchCelebration";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { teamInk } from "@/lib/teamTextColor";
@@ -15,7 +15,7 @@ const MINI_NAME_SIZES = [14, 13, 12, 11];
 import type { TrophySlot } from "./CupTrophy";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { competitionWord, GAME_STATE_WORD } from "@/lib/vocabulary";
+import { competitionWord, GAME_STATE_WORD, fmtPts, RACE_WORD } from "@/lib/vocabulary";
 
 // `useIsoLayoutEffect` lived here to drive StickyCollapseHero's measured pull.
 // That mechanism is gone (see StickyCollapseHero), and with it the only layout
@@ -374,11 +374,11 @@ export function CompetitionHero({
             <p className="mt-2 text-center" style={{ fontSize: 13, fontWeight: 600, color: "var(--color-bt-text-dim)" }}>
               {clincher
                 ? cupComplete
-                  ? `${GAME_STATE_WORD.final} · ${clincher.name} wins`
-                  : `${clincher.name} has clinched · ${gamesRemaining} game${gamesRemaining === 1 ? "" : "s"} remain${gamesRemaining === 1 ? "s" : ""}`
+                  ? `${GAME_STATE_WORD.final} · ${RACE_WORD.wins(clincher.name)}`
+                  : RACE_WORD.hasClinched(clincher.name, gamesRemaining)
                 : pointsAvailable > 0
-                ? `First to ${fmtPts(winNumber)} wins`
-                : "No points in play yet"}
+                ? RACE_WORD.firstTo(fmtPts(winNumber))
+                : RACE_WORD.noPointsInPlay}
             </p>
 
             {/* Set off the fireworks — the winning team's own re-fire.
@@ -602,10 +602,10 @@ export function CollapsedHero({
     scoringModel === "points"
       ? null
       : clincher
-        ? `${clincher.short_name ?? clincher.name} wins`
+        ? RACE_WORD.wins(clincher.short_name ?? clincher.name)
         : pointsAvailable > 0
-          ? `First to ${fmtPts(winNumber)} wins`
-          : "No points yet";
+          ? RACE_WORD.firstTo(fmtPts(winNumber))
+          : RACE_WORD.noPoints;
   const card: React.CSSProperties = {
     borderRadius: 12,
     // Same two-color TEAM glow as the expanded hero (2-team cup) so the two

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fmtPts, SPLIT_WORD, PER_MATCH_WORD } from "@/lib/vocabulary";
 import { useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { Check, Hash, Scale } from "lucide-react";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
@@ -8,7 +9,6 @@ import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
 import {
   COMP_FORMATS,
-  fmtValue,
   type GameRow,
 } from "@/components/competition/CompetitionGamesPanel";
 import type { ScoringModel } from "@/lib/gameTypes";
@@ -227,10 +227,10 @@ export function NonGolfSettingsRows({
             placesWarning ? (
               <span style={{ color: "var(--color-bt-warning)" }} data-testid="split-places-warning">{placesWarning}</span>
             ) : hasSplit
-              ? "Custom placement split"
+              ? SPLIT_WORD.custom
               : isPool
-                ? "Even"
-                : "Winner takes all"
+                ? SPLIT_WORD.even
+                : SPLIT_WORD.winnerTakesAll
           }
           state={hasSplit ? "resolved" : "empty"}
           expanded={openAccordion === "distribution"}
@@ -377,7 +377,7 @@ function MatchValueRow({
     <ChecklistRow
       icon={Hash}
       title="Total Points"
-      subtitle={<>Win {fmtValue(value)} · Draw {fmtValue(value / 2)} each</>}
+      subtitle={PER_MATCH_WORD.winDraw(fmtPts(value), fmtPts(value / 2))}
       state={value > 0 ? "resolved" : "empty"}
       testId="row-total-points"
       control={

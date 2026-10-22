@@ -1,9 +1,9 @@
 "use client";
 
 import type { FinalizeAward } from "@/lib/finalizeAward";
-import { AWARD_WORD } from "@/lib/vocabulary";
+import { AWARD_WORD, fmtPts, ptsWord } from "@/lib/vocabulary";
 import { TeamBadge } from "@/components/TeamBadge";
-import { ordinalShort, fmtValue } from "@/components/competition/CompetitionGamesPanel";
+import { ordinalShort } from "@/components/competition/CompetitionGamesPanel";
 
 /**
  * What a game will award, shown beside "Save results" before it is final
@@ -17,7 +17,7 @@ import { ordinalShort, fmtValue } from "@/components/competition/CompetitionGame
  * the bare CTA it has always had (Zach, 2026-10-19).
  */
 
-const pts = (n: number) => `${fmtValue(n)} ${n === 1 ? "pt" : "pts"}`;
+const pts = (n: number) => `${fmtPts(n)} ${ptsWord(n)}`;
 
 export function FinalizeAwardSummary({
   award,

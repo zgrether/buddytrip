@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { PER_MATCH_WORD, NONGOLF_FORMAT_WORD } from "@/lib/vocabulary";
 import { Hash, ListOrdered } from "lucide-react";
 import { FormatCards as SharedFormatCards } from "@/components/games/FormatCards";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
@@ -283,7 +284,7 @@ function PointsSubtitle({
 
   return (
     <span data-testid="pickem-per-match">
-      Points per match:{" "}
+      {PER_MATCH_WORD.label}:{" "}
       <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>
         {perMatch.toFixed(2)}
       </span>
@@ -323,7 +324,7 @@ function FormatCards({
         {
           key: "individual_matches",
           title: "Individual matches",
-          body: "Head to head matches across teams.",
+          body: NONGOLF_FORMAT_WORD.matches.desc,
         },
         { key: "team_totals", title: "Team totals", body: "One score submitted for the entire team" },
       ]}

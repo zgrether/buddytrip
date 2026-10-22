@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { fmtPts, SPLIT_WORD, PER_MATCH_WORD } from "@/lib/vocabulary";
 import { ValueUnit } from "@/components/ValueUnit";
 import { GAME_TYPES } from "@/lib/gameTypes";
 import { validatePlacement, type PlaceCapacity } from "@/lib/gameConfig";
 import {
-  PointStepper, PlacementEditor, fmtValue,
+  PointStepper, PlacementEditor,
   type GameRow,
 } from "@/components/competition/CompetitionGamesPanel";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -135,7 +136,7 @@ export function FormatPointsPanel({
       {isMatchPlay ? (
         <>
           <PointStepper
-            label="Points per match"
+            label={PER_MATCH_WORD.label}
             caption="POINTS PER MATCH"
             value={perMatchValue}
             onChange={readOnly ? () => {} : onPerMatch}
@@ -206,10 +207,10 @@ function WinnerTakesAllRow({ total, readOnly, onAddPlace }: { total: number; rea
       >
         <span className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--color-bt-text)" }}>
           <Trophy size={15} style={{ color: "var(--color-bt-accent)" }} />
-          Winner takes all
+          {SPLIT_WORD.winnerTakesAll}
         </span>
         <ValueUnit
-          value={fmtValue(total)}
+          value={fmtPts(total)}
           unit="pts"
           size={14}
           color="var(--color-bt-accent)"
@@ -217,7 +218,7 @@ function WinnerTakesAllRow({ total, readOnly, onAddPlace }: { total: number; rea
         />
       </div>
       <p className="text-[11px] leading-relaxed" style={{ color: "var(--color-bt-text-dim)" }}>
-        1st place takes the whole pool. Add places to split it across the field.
+        {SPLIT_WORD.winnerTakesAllHelp}
       </p>
       {!readOnly && (
         <button

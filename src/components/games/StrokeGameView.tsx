@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SPLIT_WORD, splitValuesLine } from "@/lib/vocabulary";
 import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { Scale, Settings, SlidersHorizontal, Users } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -48,7 +49,7 @@ import { bottomNavInset } from "@/lib/bottomNavInset";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
 import { useConfigDraft } from "@/hooks/useConfigDraft";
-import { fmtValue, type GameRow } from "@/components/competition/CompetitionGamesPanel";
+import { type GameRow } from "@/components/competition/CompetitionGamesPanel";
 import { getGameTypeDefinition } from "@/lib/gameTypes";
 import { type ModifiersMap } from "@/lib/modifiers";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
@@ -1341,8 +1342,8 @@ export function StrokeGameView() {
           distPlacesWarning ? (
             <span style={{ color: "var(--color-bt-warning)" }} data-testid="split-places-warning">{distPlacesWarning}</span>
           ) : distIsWta
-            ? "Winner takes all"
-            : `${(configDraft.pointsDistribution as { values: number[] }).values.map(fmtValue).join(" · ")} pts`
+            ? SPLIT_WORD.winnerTakesAll
+            : splitValuesLine((configDraft.pointsDistribution as { values: number[] }).values)
         }
         state="resolved"
         expanded={openAccordion === "distribution"}
