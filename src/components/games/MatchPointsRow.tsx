@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PER_MATCH_WORD } from "@/lib/vocabulary";
+import { fmtPts, PER_MATCH_WORD } from "@/lib/vocabulary";
 import { Hash, Scale, X } from "lucide-react";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { Stepper } from "@/components/games/Stepper";
@@ -52,7 +52,7 @@ export interface PointsMatch {
   pointValue: number | null;
 }
 
-const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+const fmt = (n: number) => fmtPts(n);
 
 export function MatchPointsRow({
   part,

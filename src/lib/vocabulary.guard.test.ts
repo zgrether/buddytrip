@@ -37,6 +37,9 @@ import {
   RACE_WORD,
   SPLIT_WORD,
   splitValuesLine,
+  COMPETING_WORD,
+  HOW_SCORING_WORKS_TITLE,
+  pointsInPlayLine,
 } from "./vocabulary";
 
 /**
@@ -198,12 +201,16 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
   });
 
   it("points are awarded", () => {
-    expect(AWARD_WORD).toEqual({ label: "Points", unawarded: "Not awarded", none: "This game awards no points." });
+    expect(AWARD_WORD).toEqual({ label: "Points", unawarded: "Not awarded", none: "This game awards no points.", noPoints: "No points" });
     expect(SKINS_DEAD_POT).toBe("Nobody won the last skins.");
   });
 
   it("how scoring is described (moved 2026-10-22, no screen changed)", () => {
-    expect([fmtPts(8), fmtPts(8.5), fmtPts(0.5), fmtPts(16 / 7)]).toEqual(["8", "8½", "½", "2.29"]);
+    // Zach's half-points rule: a decimal, trailing zeros dropped, unless the
+    // caller is one of a halves cup's ½ places.
+    expect([fmtPts(8), fmtPts(8.5), fmtPts(0.5), fmtPts(16 / 7), fmtPts(2.25)]).toEqual(["8", "8.5", "0.5", "2.29", "2.25"]);
+    const halves = { halves: true };
+    expect([fmtPts(8, halves), fmtPts(8.5, halves), fmtPts(0.5, halves), fmtPts(16 / 7, halves), fmtPts(2.25, halves)]).toEqual(["8", "8½", "½", "2.29", "2.25"]);
     expect([ptsWord(1), ptsWord(2), ptsWord(0.5)]).toEqual(["pt", "pts", "pts"]);
     expect(RACE_WORD.firstTo("14½")).toBe("First to 14½ wins");
     expect(RACE_WORD.wins("Blue")).toBe("Blue wins");
@@ -232,6 +239,18 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
       best_of_n: { label: "Best of N", desc: "First to win the majority of games." },
       matches: { label: "Matches", desc: "Head to head matches across teams." },
     });
+  });
+
+  it("the How scoring works card (approved by Zach, 2026-10-22)", () => {
+    expect(HOW_SCORING_WORKS_TITLE).toBe("How scoring works");
+    // The rule sentences came off the card at Zach's look on #1694; its points line replaced them.
+    expect([pointsInPlayLine(24, null), pointsInPlayLine(24, 8), pointsInPlayLine(1, 0)]).toEqual([
+      "24 points in play",
+      "24 points in play · 8 awarded",
+      "1 point in play · 0 awarded",
+    ]);
+    expect(RACE_WORD.shared).toBe("Shared");
+    expect([COMPETING_WORD.individuals, COMPETING_WORD.teams, COMPETING_WORD.teamCount(3)]).toEqual(["Individuals", "Teams", "3 teams"]);
   });
 
   it("navigation, structure, and the stored margin", () => {

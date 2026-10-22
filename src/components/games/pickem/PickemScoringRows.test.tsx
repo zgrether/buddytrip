@@ -6,6 +6,17 @@ import {
   type PickemSettingsDraft,
 } from "./PickemScoringRows";
 
+/** The per-match value's own node: the first span inside the per-match line.
+ *  Since the share is written by `fmtPts` ("1", not "1.00"), a bare substring
+ *  like "1" would match any digit on the row, so the value is read from the
+ *  one span that carries it. */
+function perMatchValue(html: string): string | null {
+  const at = html.indexOf('data-testid="pickem-per-match"');
+  if (at < 0) return null;
+  const start = html.indexOf(">", html.indexOf("<span", at)) + 1;
+  return html.slice(start, html.indexOf("<", start));
+}
+
 /**
  * The two scoring settings, now on the settings page rather than buried in the
  * slate modal.
@@ -79,14 +90,14 @@ describe("total points — the setting that decides whether any of this matters"
       .not.toContain('data-testid="pickem-per-match"');
   });
 
-  it("DIVIDES BY VALID MATCHES — 8 over 8 is 1.00, 8 over 7 is 1.14", () => {
+  it("DIVIDES BY VALID MATCHES — 8 over 8 is 1, 8 over 7 is 1.14", () => {
     // The §10 test that must fail against a divisor assuming 8. An uneven field
     // is the normal case the moment one person sits out.
     const eight = indiv({ pointsTotal: 8, matches: paired(8) });
     expect(eight).toContain("Points per match:");
-    expect(eight).toContain("1.00");
+    expect(perMatchValue(eight)).toBe("1");
     const seven = indiv({ pointsTotal: 8, matches: paired(7) });
-    expect(seven).toContain("1.14");
+    expect(perMatchValue(seven)).toBe("1.14");
   });
 
   it("an UNPAIRED match does not count toward the divisor", () => {
@@ -94,14 +105,14 @@ describe("total points — the setting that decides whether any of this matters"
     // half-filled match rather than a shorter list, because that is the state
     // the pairing grid actually produces.
     const withGap = [...paired(7), { sideAId: "a7", sideBId: null, pointValue: null }];
-    expect(indiv({ pointsTotal: 8, matches: withGap })).toContain("1.14");
+    expect(perMatchValue(indiv({ pointsTotal: 8, matches: withGap }))).toBe("1.14");
   });
 
   it("WARNS when matches are set and the total is 0 — surfaced, never blocking", () => {
     // The silent-wrong this phase exists to end: pairing looked right and
     // awarded nothing, because nothing ever set a total.
     const html = indiv({ pointsTotal: 0, matches: paired(8) });
-    expect(html).toContain("0.00");
+    expect(perMatchValue(html)).toBe("0");
     expect(html).toContain("the game decides nothing");
     // Still editable — a runner may legitimately set the total later.
     expect(html).toContain('data-testid="row-total-points"');
@@ -252,7 +263,7 @@ describe("the per-match line — the helper slot that carried the false sentence
       matches: paired(4),
     });
     expect(html).toContain("Points per match:");
-    expect(html).toContain("2.00");
+    expect(perMatchValue(html)).toBe("2");
   });
 
   it("counts only matches with BOTH sides filled — the same rows the divisor uses", () => {
@@ -263,7 +274,7 @@ describe("the per-match line — the helper slot that carried the false sentence
       pointsTotal: 6,
       matches: [...paired(3), { sideAId: "x", sideBId: null, pointValue: null }],
     });
-    expect(html).toContain("2.00");
+    expect(perMatchValue(html)).toBe("2");
   });
 
   it("divides by one match without inventing a plural", () => {
@@ -271,7 +282,7 @@ describe("the per-match line — the helper slot that carried the false sentence
     // number with itself. The subtitle no longer states the count — the
     // Matches row does — so what survives here is the arithmetic.
     const html = points({ rollUp: "individual_matches", pointsTotal: 5, matches: paired(1) });
-    expect(html).toContain("5.00");
+    expect(perMatchValue(html)).toBe("5");
     expect(html).not.toContain("1 matches");
   });
 
@@ -319,6 +330,6 @@ describe("the per-match line — the helper slot that carried the false sentence
 
     const filled = points({ rollUp: "individual_matches", pointsTotal: 8, matches: paired(2) });
     expect(filled).not.toContain("to split once matches are set");
-    expect(filled).toContain("4.00");
+    expect(perMatchValue(filled)).toBe("4");
   });
 });
