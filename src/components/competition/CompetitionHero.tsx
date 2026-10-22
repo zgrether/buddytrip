@@ -116,6 +116,7 @@ export function CompetitionHero({
   onEditTeam,
   variant = "expanded",
   cupComplete = false,
+  cupShared = false,
   celebrateFirstView = false,
   canReplayCelebration = false,
   onCelebrated,
@@ -157,6 +158,9 @@ export function CompetitionHero({
    *  Drives the lit trophy + winner-colour wash. Clinched-with-games-remaining
    *  stays on the resting watermark; that distinction is the whole feature. */
   cupComplete?: boolean;
+  /** The Cup ended level (`isCupShared`): every game final, nobody clinched,
+   *  totals equal. A level Cup is shared, so the line reads "Final · Shared". */
+  cupShared?: boolean;
   /** This device hasn't seen this cup's celebration yet → play the burst once.
    *  Only ever true alongside `cupComplete` and `variant === "expanded"`. */
   celebrateFirstView?: boolean;
@@ -191,6 +195,7 @@ export function CompetitionHero({
         winNumber={winNumber}
         pointsAvailable={pointsAvailable}
         clincher={clincher}
+        cupShared={cupShared}
         scoringModel={scoringModel}
         onEditTeam={onEditTeam}
       />
@@ -376,6 +381,8 @@ export function CompetitionHero({
                 ? cupComplete
                   ? `${GAME_STATE_WORD.final} · ${RACE_WORD.wins(clincher.name)}`
                   : RACE_WORD.hasClinched(clincher.name, gamesRemaining)
+                : cupShared
+                ? `${GAME_STATE_WORD.final} · ${RACE_WORD.shared}`
                 : pointsAvailable > 0
                 ? RACE_WORD.firstTo(fmtPts(winNumber))
                 : RACE_WORD.noPointsInPlay}
@@ -574,6 +581,7 @@ export function CollapsedHero({
   winNumber,
   pointsAvailable,
   clincher,
+  cupShared = false,
   scoringModel = "match_play",
   footer,
   onEditTeam,
@@ -583,6 +591,8 @@ export function CollapsedHero({
   winNumber: number;
   pointsAvailable: number;
   clincher: LBTeam | null;
+  /** The Cup ended level: "Final · Shared" in place of the target. */
+  cupShared?: boolean;
   /** Points cups have no clinch target ("first to X" isn't calculable) — for points the
    *  collapsed bar drops the target line + the race-bar, showing just the team scores.
    *  Defaults to match_play (the game-page header usage keeps its behavior). */
@@ -603,6 +613,8 @@ export function CollapsedHero({
       ? null
       : clincher
         ? RACE_WORD.wins(clincher.short_name ?? clincher.name)
+        : cupShared
+          ? `${GAME_STATE_WORD.final} · ${RACE_WORD.shared}`
         : pointsAvailable > 0
           ? RACE_WORD.firstTo(fmtPts(winNumber))
           : RACE_WORD.noPoints;

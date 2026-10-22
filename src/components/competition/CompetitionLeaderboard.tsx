@@ -14,7 +14,7 @@ import { useFirstClinchView } from "@/hooks/useFirstClinchView";
 import { useMyTeamId } from "@/hooks/useMyTeamColor";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { StandingsRows } from "./StandingsRows";
-import { isCupComplete, gamesRemaining } from "@/lib/cupCompletion";
+import { isCupComplete, isCupShared, gamesRemaining } from "@/lib/cupCompletion";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { CannotProjectReason } from "@/lib/gameProjection";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, type GameSection } from "./GameRow";
@@ -369,6 +369,11 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // inventing the surface first.
   const isMatchPlay = scoringModel === "match_play";
   const cupComplete = isMatchPlay && isCupComplete(data.games, !!clincher);
+  // A Cup that ended level is shared (Zach, 2026-10-22): every game final,
+  // nobody clinched, the two totals equal. The hero then reads "Final ·
+  // Shared" where it would otherwise go on saying "First to X wins".
+  const cupShared =
+    isMatchPlay && teams.length === 2 && isCupShared(data.games, !!clincher, teams.map((t) => teamTotals[t.id] ?? 0));
   // The hero's "clinched · N games remain" line — same `data.games` +
   // `gameLockState` reasoning `isCupComplete` already runs, so the count and
   // the completion gate can't disagree about which games are still open.
@@ -434,6 +439,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         winNumber={winNumber}
         clincher={clincher}
         cupComplete={cupComplete}
+        cupShared={cupShared}
         gamesRemaining={gamesLeft}
         // First view of THIS cup's THIS winner, on this device, BY SOMEONE WHO
         // WON. Gated on `cupComplete` so a clinched-but-unfinished cup never

@@ -106,3 +106,24 @@ export function gamesRemaining(games: CupCompletionGame[]): number {
     (g) => !gameLockState({ status: g.status, correctionsOpen: g.correctionsOpen === true }).isLocked,
   ).length;
 }
+
+/**
+ * A Cup that ended LEVEL (Zach's ruling, 2026-10-22): every game is final,
+ * nobody has clinched, and the two teams' totals are equal. A level Cup is
+ * shared; the hero reads "Final · Shared" and nobody is announced as having
+ * clinched.
+ *
+ * Stricter than `isCupComplete` on purpose: that one lets an unarmed game sit
+ * unplayed once the Cup is decided, because a clinch cannot be undone. A level
+ * Cup is only level once nothing is left that could break the tie, so every
+ * game must be final. At least one game, so an empty Cup is not "level at 0".
+ *
+ * `totals` are the two teams' banked points, in either order. Without a
+ * defending team (#1692) nobody clinches at exactly half, which is what makes a
+ * finished level Cup reachable at all.
+ */
+export function isCupShared(games: CupCompletionGame[], hasClincher: boolean, totals: readonly number[]): boolean {
+  if (hasClincher || games.length === 0 || totals.length !== 2) return false;
+  if (gamesRemaining(games) > 0) return false;
+  return Math.abs(totals[0] - totals[1]) < 1e-9;
+}
