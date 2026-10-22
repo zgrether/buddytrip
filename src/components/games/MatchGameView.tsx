@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
@@ -65,7 +66,7 @@ import { gloriousConfig, type GloriousConfig } from "@/lib/gloriousHoles";
 import { rollupMatchPlay, type ProjMatch } from "@/lib/gameProjection";
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
-import { assignInDraft, filledMatches, allMatchesFilled, hasValidMatch, pointsReady, sideMemberIds } from "@/lib/matchDraft";
+import { assignInDraft, filledMatches, hasValidMatch, sideMemberIds } from "@/lib/matchDraft";
 import {
   configToDraft,
   configDraftToPayload,
@@ -78,7 +79,7 @@ import {
 } from "@/lib/configDraft";
 import { buildComposedCourseSnapshot, buildCourseSnapshot, type CourseSnapshotInput } from "@/lib/courseSnapshot";
 import type { ScorecardSchema } from "@/lib/courseIndex";
-import { matchRosterValid } from "@/lib/teamRoster";
+import { gameSetupReasons, goLiveGate, NO_SETUP_INPUT, pairedPlayersOffTeam } from "@/lib/gameReadiness";
 import { sideUnit } from "@/lib/sideUnit";
 import { pairingShape } from "@/lib/pairingShape";
 import { GAME_TYPES, getGameTypeDefinition } from "@/lib/gameTypes";
@@ -246,7 +247,11 @@ export function MatchGameView() {
   // retires the incidental one-open gating of Handicaps behind Matches — Handicaps
   // keeps its OWN explicit prerequisite gate (`handicapsReady`), which is the honest
   // rule anyway.
-  const [openRows, setOpenRows] = useState<Set<RowId>>(() => new Set());
+  // A link from the board opens the row that fixes the problem it named
+  // (`&row=`, src/lib/settingsRows.ts); the screen scrolls to it.
+  const linkedRow = useSettingsRowLink();
+  useScrollToSettingsRow(linkedRow);
+  const [openRows, setOpenRows] = useState<Set<RowId>>(() => new Set(linkedRow === "matches" ? ["matches"] : []));
   const toggleRow = (row: RowId) =>
     setOpenRows((prev) => {
       const next = new Set(prev);
@@ -1905,14 +1910,10 @@ export function MatchGameView() {
         // a commit, so any number of rows can be open at once and every row reads the
         // ONE composite draft. The page's single Save (the bar at the top) is the
         // only thing that writes.
-        const allFilled = allMatchesFilled(draft);
-        // Roster integrity (team-identity PR 1, the D-gap catch): a paired side whose
-        // player has LOST their team is invalid even though its SLOTS are full
-        // (dropped-after-paired). The keystone predicate (teamRoster.ts) — distinct
-        // from the slot-filled `allFilled` above. Only meaningful in a 2-team
-        // competition (standalone match play has no teams → always roster-valid).
+        // Roster integrity (team-identity PR 1, the D-gap catch): a paired player
+        // with no team is a reason this game is not ready, even with every slot
+        // full. Counted by the shared rule below, only in a cup that has teams.
         const teamedUserIds = new Set(teamOfUser.keys());
-        const allRosterValid = !inCup || draft.every((d) => matchRosterValid(d.a, d.b, d.playersPerSide, teamedUserIds));
         // C3: points > 0 joins the Enable gate (Phase C) — but ONLY for a
         // COMPETITION game. Points-per-match is a cup concept: the inline Points row
         // exists only when `gameCompId` is set (GameSetupRows gates it on
@@ -1925,18 +1926,21 @@ export function MatchGameView() {
         // SAME resolved truth the Total Points row shows (total > 0), so the row's
         // state and the gate agree; pointsReady is the family's client-gate extension.
         const effectiveTotal = configDraft.pointsTotal ?? 0;
-        const enableReady = allFilled && allRosterValid && (!gameCompId || pointsReady(effectiveTotal));
-        // The C3 points term was already silent about WHY the Scoring segment was locked
-        // — same disabled-with-no-explanation bug #703 records for the settings-load
-        // window. Say why, adjacent to the toggle, in priority order matching the gate's
-        // own && short-circuit.
-        const enableBlockedReason = !allFilled
-          ? "Pair every match before enabling scoring"
-          : !allRosterValid
-            ? "A paired player lost their team — fix the matchups before enabling scoring"
-            : gameCompId && !pointsReady(effectiveTotal)
-              ? "Set a point value before enabling scoring"
-              : null;
+        // The Game State gate and its sentence come from the shared readiness rule
+        // (`gameSetupReasons`), the one the board and the database follow, so this
+        // page cannot offer a go-live the Save would refuse.
+        const { ready: enableReady, blockedReason: enableBlockedReason } = goLiveGate(
+          gameSetupReasons({
+            ...NO_SETUP_INPUT,
+            gameTypeId: (gameQ.data?.game_type_id as string | null) ?? null,
+            inCompetition: !!gameCompId,
+            cupHasTeams: inCup,
+            pointsTotal: effectiveTotal,
+            matchesTotal: draft.length,
+            matchesPaired: filledMatches(draft).length,
+            pairedPlayersOffTeam: pairedPlayersOffTeam(draft, teamedUserIds),
+          })
+        );
         const anyHandicap = draft.some((d) => d.handicap !== 0);
         // ≥1 valid (paired) match — the downstream gate (readiness rework P3). Points
         // and Handicaps stay LOCKED until a match exists (they attach to a matchup).

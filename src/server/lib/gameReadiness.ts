@@ -1,159 +1,123 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { TRPCError } from "@trpc/server";
-import { matchPlayReady } from "@/lib/matchDraft";
 import { isMatchesGame } from "@/lib/resultStrategy";
-import { maybeRowOrThrow } from "./rowOrThrow";
+import type { PointsDistribution } from "@/lib/pointsDistribution";
+import { finishCapacityFor } from "@/lib/placeCapacity";
+import {
+  gameSetupReasons,
+  goLiveGate,
+  MATCH_PLAY_TYPES,
+  ROSTER_TYPES,
+  pairedMatchCount,
+  pairedMemberIds,
+  PICKEM_TYPE,
+  type SetupInput,
+  type StoredMatchRow,
+} from "@/lib/gameReadiness";
+import { countOrThrow, maybeRowOrThrow, rowsOrThrow } from "./rowOrThrow";
 
 /**
- * Game readiness — the ONE "is this game configured enough to score?" signal,
- * shared (A2-core) by the competition leaderboard's Setting-up↔Ready display AND
- * the server-side enable guard (`assertGameReady`). Lifted out of
- * competitionLeaderboard.ts so the mode toggle's Setup→Scoring flip is refused
- * server-side for an under-configured game, for ALL three formats — not just the
- * client gate match play had. The format's REQUIRED roster is the bar; course +
+ * Game readiness, server half. The RULE is `gameSetupReasons` in
+ * src/lib/gameReadiness.ts, shared with the board and every settings page; this
+ * file reads its inputs from the database (`readSetupInput`), refuses an
+ * under-configured enable (`assertGameReady`), and decides New vs Configuring
+ * (`isNew`, below). The format's REQUIRED structure is the bar; course and
  * handicaps are optional and NEVER gate readiness.
  */
 
-// One unified match-play type (Refactor A1) — 1v1/2v2/mixed is per-match, not a
-// game type. A Set is kept (rather than an equality) so any future match-play
-// variant slots in without touching call sites.
-export const MATCH_PLAY_TYPES = new Set(["gtt_match_play"]);
-export const RACK_TYPE = "gtt_rack_n_stack";
-// Roster-gated golf formats: both stroke and rack are "configured" once they have
-// participants assigned to a PLAYING GROUP (the manual group builder). Groupings are
-// MANDATORY for both (089) — an ungrouped player isn't in the game — so the caller
-// passes the GROUPED participant count (see the grouped-count branch below).
-export const SCRAMBLE_TYPE = "gtt_scramble";
-/**
- * Scramble belongs here for a STRONGER reason than stroke and rack do, and it is
- * worth stating because the arm it would otherwise fall to (`hasPoints`) looks
- * survivable.
- *
- * For stroke and rack, an ungrouped roster means players nobody has put in a
- * cart. For scramble the play_group IS the scoring unit — migration 181 resolves
- * a member's right to write through `game_participants.play_group_id` — so a
- * scramble game with no groups has literally nobody who can enter a score. Going
- * live would produce a board that cannot be filled in.
- *
- * ── This rule is implemented TWICE and both had to learn it ─────────────────
- *
- * `save_game_config`'s go-live branch (migration 182) carries the same
- * condition in SQL. That duplication is not introduced here — it predates
- * scramble — but scramble is the first format to prove it is a real maintenance
- * cost rather than defence in depth: adding a format means editing two
- * enumerations in two languages that no test compares. Filed rather than fixed
- * in passing.
- */
-export const SKINS_TYPE = "gtt_skins";
-/**
- * Skins belongs here for scramble's reason AND one of its own.
- *
- * A member's right to record a hole resolves through
- * `game_participants.play_group_id` (`can_score_skins_grouping`, migration 184),
- * so a groupless skins game has nobody who may enter anything — that half is
- * scramble's argument verbatim.
- *
- * The extra half is that the grouping is also the CARRYOVER BOUNDARY. Skins is
- * several independent contests on one round and the grouping is what separates
- * them, so a game with no groups has no contests in it at all — not merely
- * nobody to write, but nothing to write into.
- *
- * Added in the same change as migration 185's matching SQL arm, which is the
- * duplication the note above describes (#1332) being paid a second time rather
- * than discovered a second time.
- */
-export const ROSTER_TYPES = new Set(["gtt_stroke_play", RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE]);
+// The format-type sets live with the shared readiness rule (src/lib/gameReadiness.ts),
+// which the browser imports too; re-exported so server callers keep their imports.
+export { MATCH_PLAY_TYPES, RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE, ROSTER_TYPES } from "@/lib/gameReadiness";
 
 /**
- * Is the game configured enough to be Ready (vs still Setting up)?
- *  - match play → ALL pairings assigned (`matchPlayReady`: paired === total, ≥1) —
- *    the SAME threshold the setup-page Enable gate uses, so list-ready ⟺
- *    setup-can-enable (readiness rework P1b).
- *  - Matches (non-golf) → the SAME threshold. Phase 0's decision, made
- *    structural rather than merely documented: "an unpaired match isn't
- *    resolvable" is exactly what `matchPlayReady` already enforces for golf, and
- *    a Matches game with zero paired matches reading Ready — passing the enable
- *    guard with nothing to score — is the kind of wrong-and-looks-right this
- *    predicate exists to prevent. Without this branch it falls to the LAST arm
- *    (`hasPoints`), and a fresh non-golf game always has a points sentinel
- *    (`CONFIG_COL_DEPARTED`'s own header explains why), so it would read Ready
- *    at creation.
- *  - stroke / rack → participants assigned to a PLAYING GROUP (the manual group
- *    builder); groupings are MANDATORY for both (089), so the caller passes the
- *    GROUPED participant count — ungrouped players (not in the game) don't read as ready
- *  - manual / side events → points configured (no roster to assign)
+ * A game's setup inputs, read from the database: the shape `gameSetupReasons`
+ * takes, built from the same rows `save_game_config`'s go-live branch reads.
+ * The enable guard below and the parity test both read through here, so the
+ * server's answer and the database's are computed from one set of reads.
  *
- * `competitionFormat` is optional so every caller that has no descriptor to hand
- * — everything before Matches existed — keeps its exact prior answer: Matches
- * is not a game type, so a type check alone can never mistake a generic manual
- * game for one, and an absent format is treated as "not Matches" rather than
- * throwing.
+ * Every read succeeds or throws (`rowOrThrow` family, #1468): a failed match
+ * read must not become "no matches", and a failed roster read must not become
+ * "everyone is on a team". Null when the game does not exist.
  */
-export function isConfigured(
-  typeId: string | null,
-  matchPaired: number,
-  matchTotal: number,
-  participantCount: number,
-  hasPoints: boolean,
-  competitionFormat?: string | null
-): boolean {
-  if (typeId && MATCH_PLAY_TYPES.has(typeId)) return matchPlayReady(matchPaired, matchTotal);
-  if (isMatchesGame(typeId, competitionFormat)) return matchPlayReady(matchPaired, matchTotal);
-  if (typeId && ROSTER_TYPES.has(typeId)) return participantCount > 0;
-  return hasPoints;
+export async function readSetupInput(supabase: SupabaseClient, gameId: string): Promise<SetupInput | null> {
+  const game = maybeRowOrThrow(
+    await supabase
+      .from("games")
+      .select("game_type_id, competition_format, competition_id, points_total, points_distribution")
+      .eq("id", gameId)
+      .maybeSingle(),
+    "game"
+  );
+  if (!game) return null;
+  const typeId = (game.game_type_id as string | null) ?? null;
+  const competitionFormat = (game.competition_format as string | null) ?? null;
+  const competitionId = (game.competition_id as string | null) ?? null;
+  const matchShaped = (typeId != null && MATCH_PLAY_TYPES.has(typeId)) || isMatchesGame(typeId, competitionFormat);
+  const none = Promise.resolve({ data: [] as never[], error: null, count: 0 });
+
+  const [matchRes, partRes, entrantRes, slateRes, teamRes, assignRes] = await Promise.all([
+    matchShaped ? supabase.from("game_matches").select("side_a, side_b").eq("game_id", gameId) : none,
+    supabase.from("game_participants").select("user_id, play_group_id").eq("game_id", gameId),
+    supabase.from("bracket_entrants").select("id", { count: "exact", head: true }).eq("game_id", gameId),
+    typeId === PICKEM_TYPE
+      ? supabase.from("pickem_slate_games").select("id", { count: "exact", head: true }).eq("game_id", gameId)
+      : none,
+    competitionId
+      ? supabase.from("teams").select("id", { count: "exact", head: true }).eq("competition_id", competitionId)
+      : none,
+    competitionId ? supabase.from("team_assignments").select("user_id").eq("competition_id", competitionId) : none,
+  ]);
+
+  const matches = rowsOrThrow(matchRes, "game's matches") as StoredMatchRow[];
+  const participants = rowsOrThrow(partRes, "game's players") as { user_id: string | null; play_group_id: string | null }[];
+  const entrants = countOrThrow(entrantRes, "bracket's entrant count");
+  const teamCount = competitionId ? countOrThrow(teamRes, "cup's team count") : 0;
+  const teamed = new Set((rowsOrThrow(assignRes, "cup's rosters") as { user_id: string }[]).map((r) => r.user_id));
+
+  return {
+    gameTypeId: typeId,
+    competitionFormat,
+    inCompetition: competitionId != null,
+    cupHasTeams: teamCount > 0,
+    pointsTotal: (game.points_total as number | null) ?? null,
+    pointsDistribution: (game.points_distribution as PointsDistribution | null) ?? null,
+    matchesTotal: matches.length,
+    matchesPaired: pairedMatchCount(matches),
+    pairedPlayersOffTeam: pairedMemberIds(matches, participants).filter((id) => !teamed.has(id)).length,
+    groupedPlayers: participants.filter((p) => p.play_group_id != null).length,
+    bracketEntrants: entrants,
+    placeCapacity: finishCapacityFor({
+      entrantCount: entrants,
+      teamCount,
+      peopleCount: participants.filter((p) => p.user_id != null).length,
+    }),
+    slateGames: typeId === PICKEM_TYPE ? countOrThrow(slateRes, "slate's game count") : 0,
+  };
 }
 
 /**
- * Server-side enable guard (A2-core, decision 4). Throws PRECONDITION_FAILED if the
- * game isn't configured enough to switch to scoring. The client toggle is gated too
- * (UX), but THIS is the enforcement — and it covers stroke/rack/manual, which had no
- * client gate at all. Reads the same inputs the leaderboard derives `configured` from.
+ * The enable guard for `games.enableScoring` and `matches.enableScoring`.
+ * Throws PRECONDITION_FAILED, naming the first thing to fix, from the shared
+ * reasons (`gameSetupReasons`).
+ *
+ * It keeps the reach it had before the shared rule, which is NARROWER than
+ * `save_game_config`'s: the structural reasons, plus points only for a game in
+ * the general arm. No screen calls these two procedures (the settings pages take
+ * a game live through the Save, where the database applies the whole rule), and
+ * forty-odd test fixtures switch scoring on through them, on cup games with no
+ * points and players paired before teams existed. Widening this door would
+ * change those fixtures, not the app; retiring or rerouting it is #1689.
  */
 export async function assertGameReady(supabase: SupabaseClient, gameId: string): Promise<void> {
-  const game = maybeRowOrThrow(await supabase
-    .from("games")
-    .select("game_type_id, competition_format, points_distribution, points_total")
-    .eq("id", gameId)
-    .maybeSingle(), "game");
-  if (!game) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
-
-  const typeId = (game.game_type_id as string | null) ?? null;
-  const competitionFormat = (game.competition_format as string | null) ?? null;
-  const hasPoints = hasPositivePoints(game);
-  let matchPaired = 0;
-  let matchTotal = 0;
-  let participantCount = 0;
-
-  // Same query, same paired/total derivation, for BOTH shapes that read matches
-  // through `game_matches` — golf match play by game type, Matches by descriptor.
-  // One query, because the table and the shape are identical; only the reason a
-  // game lands here differs.
-  if ((typeId && MATCH_PLAY_TYPES.has(typeId)) || isMatchesGame(typeId, competitionFormat)) {
-    const { data: rows } = await supabase
-      .from("game_matches")
-      .select("side_a, side_b")
-      .eq("game_id", gameId);
-    const matches = (rows ?? []) as { side_a: { id?: string } | null; side_b: { id?: string } | null }[];
-    matchTotal = matches.length;
-    matchPaired = matches.filter((m) => m.side_a?.id && m.side_b?.id).length;
-  } else if (typeId && ROSTER_TYPES.has(typeId)) {
-    let query = supabase
-      .from("game_participants")
-      .select("user_id", { count: "exact", head: true })
-      .eq("game_id", gameId);
-    // Both stroke and rack require players actually GROUPED (the manual group builder) —
-    // a bare roster with no playing groups isn't ready (mandatory groupings, 089).
-    query = query.not("play_group_id", "is", null);
-    const { count } = await query;
-    participantCount = count ?? 0;
-  }
-
-  if (!isConfigured(typeId, matchPaired, matchTotal, participantCount, hasPoints, competitionFormat)) {
-    throw new TRPCError({
-      code: "PRECONDITION_FAILED",
-      message: "Finish setting up this game before switching it to scoring.",
-    });
-  }
+  const input = await readSetupInput(supabase, gameId);
+  if (!input) throw new TRPCError({ code: "NOT_FOUND", message: "Game not found" });
+  const structural =
+    (input.gameTypeId != null && (MATCH_PLAY_TYPES.has(input.gameTypeId) || ROSTER_TYPES.has(input.gameTypeId))) ||
+    isMatchesGame(input.gameTypeId, input.competitionFormat);
+  const { ready, blockedReason } = goLiveGate(gameSetupReasons(input), {
+    skip: structural ? ["points_missing", "player_not_on_team"] : ["player_not_on_team"],
+  });
+  if (!ready) throw new TRPCError({ code: "PRECONDITION_FAILED", message: blockedReason ?? undefined });
 }
 
 /**

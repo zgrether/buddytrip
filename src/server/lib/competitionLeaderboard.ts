@@ -417,7 +417,9 @@ export async function computeCompetitionLeaderboard(
     // value × min team size. Match play instead counts its configured rows.
     supabase
       .from("team_assignments")
-      .select("team_id")
+      // `user_id` for the board rows' setup reasons (a paired player on no team);
+      // it is read here and does not reach the payload.
+      .select("team_id, user_id")
       .eq("competition_id", competitionId),
   ]);
   // EVERY read below either succeeds or throws (#1411, #1468) — see the note at
@@ -446,7 +448,9 @@ export async function computeCompetitionLeaderboard(
   const isManualType = (typeId: string | null) => isManualGameType(typeId);
   const allGames = rowsOrThrow(gameRowsRes, "games");
   const sizeByTeam = new Map<string, number>();
+  const teamedUserIds = new Set<string>();
   for (const a of rowsOrThrow(assignmentsRes, "rosters")) {
+    teamedUserIds.add(a.user_id as string);
     const tid = a.team_id as string;
     sizeByTeam.set(tid, (sizeByTeam.get(tid) ?? 0) + 1);
   }
@@ -1200,7 +1204,7 @@ export async function computeCompetitionLeaderboard(
     // One derivation of a board row, shared with the side-game board (PR 6b).
     games: allGames.map((g) => {
       const row = {
-        ...boardRow(g, board, ptsInPlayByGame.get(g.id as string) ?? null),
+        ...boardRow(g, board, ptsInPlayByGame.get(g.id as string) ?? null, { teamCount: teamIds.length, teamedUserIds }),
         // #1599: only the viewer's own value, and only on a live game they play in.
         standing: live.ownStanding[g.id as string] ?? null,
       };

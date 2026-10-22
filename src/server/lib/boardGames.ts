@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { rowsOrThrow } from "@/server/lib/rowOrThrow";
 import { isPlacement, type PointsDistribution } from "@/lib/pointsDistribution";
 import { isBracketGame } from "@/lib/resultStrategy";
-import { hasPositivePoints, isConfigured, isNew, ROSTER_TYPES } from "@/server/lib/gameReadiness";
+import { hasPositivePoints, isNew } from "@/server/lib/gameReadiness";
+import { gameSetupReasons, isSetUp, pairedMemberIds, PICKEM_TYPE, type StoredMatchRow } from "@/lib/gameReadiness";
+import { finishCapacityFor } from "@/lib/placeCapacity";
 import { tripDisplayNames } from "@/server/lib/tripDisplayNames";
 
 /**
@@ -34,6 +36,13 @@ export interface BoardInputs {
   totalMatchRowsByGame: Map<string, number>;
   /** Seeded bracket entrants — a configuration act, so it feeds `isNew`. */
   entrantCountByGame: Map<string, number>;
+  /** The people in each game's FULLY PAIRED matches (a side is a user or a
+   *  play group). Read only to count who is on no team; no id leaves the server. */
+  pairedMembersByGame: Map<string, string[]>;
+  /** Players with an account in each game: a teamless race's finishing places. */
+  peopleCountByGame: Map<string, number>;
+  /** Pick'em only: games on each slate. */
+  slateCountByGame: Map<string, number>;
   /** Games that have begun producing results (`game_started`, migration 161). */
   startedByGame: Set<string>;
   /** The latest re-credit of each finished game (PR 8c): who, by their trip
@@ -79,8 +88,9 @@ export async function readBoardInputs(
   const bracketGameIds = games
     .filter((g) => isBracketGame(g.game_type_id as string | null, (g.competition_format as string | null) ?? null))
     .map((g) => g.id as string);
+  const pickemGameIds = games.filter((g) => g.game_type_id === PICKEM_TYPE).map((g) => g.id as string);
 
-  const [matchRowsRes, participantRowsRes, startedRowsRes, entrantRowsRes, delegateRowsRes] = await Promise.all([
+  const [matchRowsRes, participantRowsRes, startedRowsRes, entrantRowsRes, delegateRowsRes, slateRowsRes] = await Promise.all([
     gameIds.length
       ? supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[], error: null }),
@@ -103,6 +113,10 @@ export async function readBoardInputs(
     viewerId && gameIds.length
       ? supabase.from("game_delegates").select("game_id").eq("user_id", viewerId).in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string }[], error: null }),
+    // A pick'em's slate: an empty one is its setup reason (it cannot open picks).
+    pickemGameIds.length
+      ? supabase.from("pickem_slate_games").select("game_id").in("game_id", pickemGameIds)
+      : Promise.resolve({ data: [] as { game_id: string }[], error: null }),
   ]);
 
   const entrantCountByGame = new Map<string, number>();
@@ -116,10 +130,14 @@ export async function readBoardInputs(
   // tracked separately — the same bar the server enable guard uses.
   const participantCountByGame = new Map<string, number>();
   const groupedParticipantCountByGame = new Map<string, number>();
+  const peopleCountByGame = new Map<string, number>();
+  const participantsByGame = new Map<string, { user_id: string | null; play_group_id: string | null }[]>();
   const viewerGameIds = new Set<string>();
   for (const r of rowsOrThrow(participantRowsRes, `${owner} participants`) as { game_id: string; play_group_id: string | null; user_id: string }[]) {
     if (viewerId && r.user_id === viewerId) viewerGameIds.add(r.game_id);
     participantCountByGame.set(r.game_id, (participantCountByGame.get(r.game_id) ?? 0) + 1);
+    if (r.user_id != null) peopleCountByGame.set(r.game_id, (peopleCountByGame.get(r.game_id) ?? 0) + 1);
+    participantsByGame.set(r.game_id, [...(participantsByGame.get(r.game_id) ?? []), r]);
     if (r.play_group_id != null) {
       groupedParticipantCountByGame.set(r.game_id, (groupedParticipantCountByGame.get(r.game_id) ?? 0) + 1);
     }
@@ -128,10 +146,19 @@ export async function readBoardInputs(
   // doesn't make the game Ready, so only BOTH-sides-paired rows count here.
   const matchCountByGame = new Map<string, number>();
   const totalMatchRowsByGame = new Map<string, number>();
-  for (const r of rowsOrThrow(matchRowsRes, `${owner} matches`) as { game_id: string; side_a: unknown; side_b: unknown }[]) {
+  const matchRowsByGame = new Map<string, StoredMatchRow[]>();
+  for (const r of rowsOrThrow(matchRowsRes, `${owner} matches`) as ({ game_id: string } & StoredMatchRow)[]) {
     totalMatchRowsByGame.set(r.game_id, (totalMatchRowsByGame.get(r.game_id) ?? 0) + 1);
-    if (r.side_a == null || r.side_b == null) continue;
+    matchRowsByGame.set(r.game_id, [...(matchRowsByGame.get(r.game_id) ?? []), r]);
+    if (!r.side_a?.id || !r.side_b?.id) continue;
     matchCountByGame.set(r.game_id, (matchCountByGame.get(r.game_id) ?? 0) + 1);
+  }
+
+  const pairedMembersByGame = new Map<string, string[]>();
+  for (const [gid, rows] of matchRowsByGame) pairedMembersByGame.set(gid, pairedMemberIds(rows, participantsByGame.get(gid) ?? []));
+  const slateCountByGame = new Map<string, number>();
+  for (const r of rowsOrThrow(slateRowsRes, `${owner} slates`) as { game_id: string }[]) {
+    slateCountByGame.set(r.game_id, (slateCountByGame.get(r.game_id) ?? 0) + 1);
   }
 
   return {
@@ -140,6 +167,9 @@ export async function readBoardInputs(
     matchCountByGame,
     totalMatchRowsByGame,
     entrantCountByGame,
+    pairedMembersByGame,
+    peopleCountByGame,
+    slateCountByGame,
     startedByGame,
     recreditByGame: await readRecredits(supabase, games, owner, recreditsTripId),
     viewerGameIds: (() => {
@@ -190,16 +220,45 @@ async function readRecredits(
   return out;
 }
 
+/** The cup a board row's game belongs to, for its setup reasons: how many
+ *  teams, and who is on one. Null on the side board (a side game has neither). */
+export interface BoardCup {
+  teamCount: number;
+  teamedUserIds: ReadonlySet<string>;
+}
+
 /**
- * One game's board row. Pure: everything it needs is in `g`, `inputs` and
- * `pointsTotal` (the leaderboard's points-in-play; a side game has none).
+ * One game's board row. Pure: everything it needs is in `g`, `inputs`,
+ * `pointsTotal` (the leaderboard's points-in-play; a side game has none) and
+ * `cup`.
  */
-export function boardRow(g: GameRow, inputs: BoardInputs, pointsTotal: number | null) {
+export function boardRow(g: GameRow, inputs: BoardInputs, pointsTotal: number | null, cup: BoardCup | null = null) {
   const rawDist = g.points_distribution as PointsDistribution | null;
   const typeId = (g.game_type_id as string | null) ?? null;
   // POSITIVE, not non-null (#1029): every game is created with a 0 sentinel.
   const hasPoints = hasPositivePoints({ points_total: g.points_total, points_distribution: g.points_distribution });
   const gid = g.id as string;
+  // What this game still needs (`gameSetupReasons`, the rule the settings pages
+  // and the enable guard share). Codes and counts only: no id leaves here.
+  const setupReasons = gameSetupReasons({
+    gameTypeId: typeId,
+    competitionFormat: (g.competition_format as string | null) ?? null,
+    inCompetition: cup != null,
+    cupHasTeams: (cup?.teamCount ?? 0) > 0,
+    pointsTotal: (g.points_total as number | null) ?? null,
+    pointsDistribution: rawDist,
+    matchesTotal: inputs.totalMatchRowsByGame.get(gid) ?? 0,
+    matchesPaired: inputs.matchCountByGame.get(gid) ?? 0,
+    pairedPlayersOffTeam: cup ? (inputs.pairedMembersByGame.get(gid) ?? []).filter((id) => !cup.teamedUserIds.has(id)).length : 0,
+    groupedPlayers: inputs.groupedParticipantCountByGame.get(gid) ?? 0,
+    bracketEntrants: inputs.entrantCountByGame.get(gid) ?? 0,
+    placeCapacity: finishCapacityFor({
+      entrantCount: inputs.entrantCountByGame.get(gid) ?? 0,
+      teamCount: cup?.teamCount ?? 0,
+      peopleCount: inputs.peopleCountByGame.get(gid) ?? 0,
+    }),
+    slateGames: inputs.slateCountByGame.get(gid) ?? 0,
+  });
   return {
     id: gid,
     name: (g.name as string | null) ?? "Game",
@@ -215,15 +274,10 @@ export function boardRow(g: GameRow, inputs: BoardInputs, pointsTotal: number | 
     // The §A readiness gate: is the format's REQUIRED roster assigned? Drives
     // the Setting-up↔Ready transition AND the `N PTS`/`—` outer column from ONE
     // signal so they can't disagree (course/handicaps never gate this).
-    configured: isConfigured(
-      typeId,
-      inputs.matchCountByGame.get(gid) ?? 0,
-      inputs.totalMatchRowsByGame.get(gid) ?? 0,
-      // Stroke + rack both gate on GROUPED players (mandatory groupings, 089).
-      ((typeId && ROSTER_TYPES.has(typeId)) ? inputs.groupedParticipantCountByGame : inputs.participantCountByGame).get(gid) ?? 0,
-      hasPoints,
-      (g.competition_format as string | null) ?? null
-    ),
+    configured: isSetUp(setupReasons),
+    // Why it is not ready yet, first thing to fix first (Needs attention). The
+    // board's rows show these to the people who can fix them.
+    setupReasons,
     /**
      * NEW — nothing configured yet, only what the add-game modal wrote. A
      * separate, earlier question than `configured`. The child-row count is

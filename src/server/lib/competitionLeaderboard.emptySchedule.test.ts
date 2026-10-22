@@ -66,6 +66,8 @@ function client(game: { gameTypeId: string; pointsTotal: number | null; distribu
     ],
     game_matches: [], game_participants: [], play_groups: [], game_started: [{ game_id: GAME }],
     bracket_entrants: [], score_entries: [], match_hole_outcomes: [],
+    // The board reads a pick'em's slate for its setup reason (an empty slate).
+    pickem_slate_games: [],
   };
   return {
     from: (n: string) => {

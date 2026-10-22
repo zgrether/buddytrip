@@ -34,6 +34,13 @@ describe("gameHref", () => {
     );
   });
 
+  it("a settings link can name the row to open, and a row without settings is dropped", () => {
+    expect(gameHref("trip1", "gtt_match_play", "g1", { settings: true, row: "matches" })).toBe(
+      "/trips/trip1/games/match/new?game=g1&settings=1&row=matches"
+    );
+    expect(gameHref("trip1", "gtt_match_play", "g1", { row: "matches" })).toBe("/trips/trip1/games/match/new?game=g1");
+  });
+
   it("omits the settings param when not requested (default = scoreboard target)", () => {
     expect(gameHref("trip1", "gtt_stroke_play", "g1", { settings: false })).toBe(
       "/trips/trip1/games/new?game=g1"

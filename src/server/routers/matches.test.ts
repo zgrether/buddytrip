@@ -133,7 +133,7 @@ describe("matches router (Slice B — setup + visibility)", () => {
     });
     await expect(
       ctx.callerAs("planner").matches.enableScoring({ tripId, gameId: g.id })
-    ).rejects.toThrow(/finish setting up/i);
+    ).rejects.toThrow(/Pair every match before enabling scoring/);
     // fully paired → enable succeeds: publishes, member can see, status goes active
     await ctx.callerAs("planner").matches.setPairings({
       tripId, gameId: g.id,

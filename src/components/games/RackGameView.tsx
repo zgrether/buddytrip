@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
@@ -48,7 +49,7 @@ import { ChecklistRow } from "@/components/games/ChecklistRow";
 import { useScreenHistory } from "@/hooks/useScreenHistory";
 import { playerStats, computeRack, rackProjectedTeamPoints, rackSides, scoringSlotThrus, type RackPlayer, type RackMode } from "@/lib/rackNStack";
 import { liveRackPointsPerSlot } from "@/lib/pointsDistribution";
-import { pointsReady } from "@/lib/matchDraft";
+import { gameSetupReasons, goLiveGate, NO_SETUP_INPUT } from "@/lib/gameReadiness";
 import { strokeHoles } from "@/lib/matchPlay";
 import { unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
@@ -118,7 +119,13 @@ export function RackGameView() {
   // of the 2v2 Matches/Handicaps rows), single-open. Draft-then-save (P2): every row
   // edits ONE composite draft (`configDraft` below) and nothing reaches the server
   // until Save — no per-collapse persist. `openAccordion` is UI-only now.
-  const [openAccordion, setOpenAccordion] = useState<"groupings" | "handicaps" | "modifiers" | null>(null);
+  // A link from the board opens the row that fixes the problem it named
+  // (`&row=`, src/lib/settingsRows.ts); the screen scrolls to it.
+  const linkedRow = useSettingsRowLink();
+  useScrollToSettingsRow(linkedRow);
+  const [openAccordion, setOpenAccordion] = useState<"groupings" | "handicaps" | "modifiers" | null>(
+    linkedRow === "groupings" ? "groupings" : null
+  );
   // ── Composite draft SLICES (null = untouched → tracks the server). Assembled over
   //    the server mirror in `configDraft`, mirroring MatchGameView / NonGolfGameView.
   const [nameDraft, setNameDraft] = useState<string | null>(null);
@@ -1107,12 +1114,15 @@ export function RackGameView() {
           // GameSetupRows' Points-per-Slot row already reads (row-resolved ⟺ gate satisfied).
           management={{
             scoringEnabled: configDraft.scoringEnabled,
-            ready: draftGroupsAssigned && (!gameCompId || pointsReady(configDraft.pointsTotal ?? 0)),
-            blockedReason: !draftGroupsAssigned
-              ? "Add at least one group before enabling scoring"
-              : gameCompId && !pointsReady(configDraft.pointsTotal ?? 0)
-                ? "Set a point value before enabling scoring"
-                : null,
+            ...goLiveGate(
+              gameSetupReasons({
+                ...NO_SETUP_INPUT,
+                gameTypeId: configDraft.gameTypeId,
+                inCompetition: !!gameCompId,
+                pointsTotal: configDraft.pointsTotal ?? 0,
+                groupedPlayers: configDraft.groups.flat().length,
+              })
+            ),
             onEnable: handleEnable,
             onDisable: handleDisable,
             pending: saving,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { createPortal } from "react-dom";
 import { ListTree, Medal, Shuffle, Users } from "lucide-react";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
@@ -132,7 +133,9 @@ export function BracketSettingsRows({
 }) {
   // Bracket Type and Match Format are inline controls now, so only the three
   // rows with real editors take part in the single-open accordion.
-  const [open, setOpen] = useState<null | "pool" | "partners" | "seeding">(null);
+  const [open, setOpen] = useState<null | "pool" | "partners" | "seeding">(
+    useSettingsRowLink() === "bracket-pool" ? "pool" : null
+  );
   const [confirmDropConsolation, setConfirmDropConsolation] = useState(false);
   const toggle = (k: "pool" | "partners" | "seeding") => setOpen((o) => (o === k ? null : k));
 

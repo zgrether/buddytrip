@@ -45,6 +45,7 @@ import { DiscardChangesPrompt } from "@/components/games/DiscardChangesPrompt";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
 import { useTeamAssignmentMutations } from "@/hooks/useTeamAssignmentMutations";
 import { CAPTAIN_LOCKED_NOTE, rosterRights, type RemoveControl, type RosterRights } from "@/lib/rosterRights";
+import { NOT_ON_A_TEAM_WORD } from "@/lib/vocabulary";
 import {
   identityDiffers,
   orderDiffers,
@@ -1037,7 +1038,7 @@ function CrewRoster({
               className="text-[11px] font-semibold uppercase tracking-wider"
               style={{ color: "var(--color-bt-text-dim)" }}
             >
-              Unassigned Crew
+              {NOT_ON_A_TEAM_WORD}
             </h4>
           </div>
           {canEdit && (
@@ -1128,7 +1129,7 @@ function CrewRoster({
           className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
           style={{ color: "var(--color-bt-text-dim)" }}
         >
-          Unassigned Crew
+          {NOT_ON_A_TEAM_WORD}
         </p>
         {mobileVisible.length === 0 ? (
           <p
@@ -2332,7 +2333,7 @@ function AddPlayerSheet({
             className="mt-3 text-[11px] font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-bt-text-dim)" }}
           >
-            Unassigned crew
+            {NOT_ON_A_TEAM_WORD}
           </p>
           <div className="mt-2 flex flex-col gap-1.5">
             {unassigned.length === 0 ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useScrollToSettingsRow, useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { Scale, Settings, SlidersHorizontal, Users } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTripId } from "@/components/TripIdProvider";
@@ -71,7 +72,7 @@ import { FoursomeEntry, type FoursomeGroupView } from "@/components/games/rack/F
 import { PLAYER_COLORS, unitsFromSchema, strokeIndexOf, teeFromSchema } from "@/lib/strokePlayConfig";
 import { effectiveStrokes } from "@/lib/handicap";
 import { strokeHoles } from "@/lib/matchPlay";
-import { pointsReady } from "@/lib/matchDraft";
+import { gameSetupReasons, goLiveGate, NO_SETUP_INPUT } from "@/lib/gameReadiness";
 import { unconfirmedCount, type Participant, type ScoreValues } from "@/components/games/types";
 import { GameLifecycleActions } from "@/components/games/GameLifecycleActions";
 import { ScoringStateBanner } from "@/components/games/ScoringStateBanner";
@@ -194,7 +195,13 @@ export function StrokeGameView() {
   });
   // GROUP SETTINGS single-open accordion (P3): Point Distribution / Groupings / Handicaps /
   // Modifiers — all inline panels now (3.3 removed the full-page drill-downs).
-  const [openAccordion, setOpenAccordion] = useState<null | "distribution" | "groupings" | "handicaps" | "modifiers">(null);
+  // A link from the board opens the row that fixes the problem it named
+  // (`&row=`, src/lib/settingsRows.ts); the screen scrolls to it.
+  const linkedRow = useSettingsRowLink();
+  useScrollToSettingsRow(linkedRow);
+  const [openAccordion, setOpenAccordion] = useState<null | "distribution" | "groupings" | "handicaps" | "modifiers">(
+    linkedRow === "groupings" ? "groupings" : linkedRow === "point-distribution" ? "distribution" : null
+  );
   // ── Composite draft SLICES (null/undefined = untouched → tracks the server) ──
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [rulesDraft, setRulesDraft] = useState<string | null>(null);
@@ -1532,12 +1539,16 @@ export function StrokeGameView() {
             scoringEnabled: configDraft.scoringEnabled,
             // The points term does not lock a game that will ASK instead: nobody
             // playing is on a team, so no point value could be awarded anyway.
-            ready: draftGroupCount > 0 && (!gameCompetitionId || wouldAskSideGame() || pointsReady(configDraft.pointsTotal ?? 0)),
-            blockedReason: draftGroupCount === 0
-              ? "Add at least one group before enabling scoring"
-              : gameCompetitionId && !wouldAskSideGame() && !pointsReady(configDraft.pointsTotal ?? 0)
-                ? "Set a point value before enabling scoring"
-                : null,
+            ...goLiveGate(
+              gameSetupReasons({
+                ...NO_SETUP_INPUT,
+                gameTypeId: configDraft.gameTypeId,
+                inCompetition: !!gameCompetitionId,
+                pointsTotal: configDraft.pointsTotal ?? 0,
+                groupedPlayers: configDraft.groups.flat().length,
+              }),
+              { skip: wouldAskSideGame() ? ["points_missing"] : [] }
+            ),
             onEnable: handleEnable,
             onDisable: handleDisable,
             pending: saving,

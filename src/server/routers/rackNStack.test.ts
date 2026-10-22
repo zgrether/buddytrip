@@ -197,7 +197,7 @@ describe("rack-n-stack — scoring is blocked until playing groups are assigned"
     // No groups yet → the enable guard refuses (manual grouping is required).
     await expect(
       ctx.callerAs("planner").games.enableScoring({ tripId, gameId })
-    ).rejects.toThrow(/setting up/i);
+    ).rejects.toThrow(/Add at least one group before enabling scoring/);
 
     // Build one group → now ready.
     await ctx.callerAs("planner").playGroups.setFoursomes({
@@ -209,7 +209,7 @@ describe("rack-n-stack — scoring is blocked until playing groups are assigned"
   });
 
   it("clearing all groups makes the leaderboard read Setting-up again (grouped-count gate)", async () => {
-    const game = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name: "Clear", competitionId });
+    const game = await ctx.caller().games.create({ tripId, gameTypeId: RACK, name: "Clear", competitionId, pointsTotal: 4 });
     const gameId = game.id as string;
     await ctx.callerAs("planner").playGroups.setFoursomes({
       tripId,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSettingsRowLink } from "@/hooks/useSettingsRowLink";
 import { Check, Hash, Scale } from "lucide-react";
 import { FormatPointsPanel } from "@/components/games/FormatPointsPanel";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
@@ -149,7 +150,9 @@ export function NonGolfSettingsRows({
 }) {
   // Only the distribution row is an accordion now — the format is a tile row that
   // is always open, so it no longer takes part in the single-open rule.
-  const [openAccordion, setOpenAccordion] = useState<null | "distribution">(null);
+  const [openAccordion, setOpenAccordion] = useState<null | "distribution">(
+    useSettingsRowLink() === "point-distribution" ? "distribution" : null
+  );
   // The distribution row's THREE outputs — the subtitle, the resolved/empty state,
   // and the panel's winner-takes-all mode — all derive from here. They used to be
   // spelled three different ways in the JSX below (and the third wasn't wired at

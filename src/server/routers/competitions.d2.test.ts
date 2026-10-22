@@ -273,6 +273,9 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     const g = await ctx.caller().games.create({
       tripId, gameTypeId: MANUAL, name: "Shape Test", competitionId: comp,
       pointsDistribution: { type: "placement", values: [9] },
+      // A cup game is set up only with a point total: the database refuses to
+      // take one live without it, and the board now says what the database says.
+      pointsTotal: 9,
     }) as { id: string };
     gameIds.push(g.id);
 
@@ -307,7 +310,8 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
   it("a match-play game is Setting up until pairings are assigned, then earns Ready (§A readiness gate)", async () => {
     const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Roster Gate Comp" });
     const teamA = await ctx.createTeam(comp, "A", { shortName: "A" });
-    await ctx.createTeam(comp, "B", { shortName: "B" });
+    const teamB = await ctx.createTeam(comp, "B", { shortName: "B" });
+    await ctx.assignTeam(comp, teamB, [ctx.getUser("member").id]);
     // Rostered before pairing — a Ryder cup refuses an unrostered participant
     // (migration 193), and the app's picker offers only rostered players.
     await ctx.assignTeam(comp, teamA, [ctx.user.id]);
@@ -337,7 +341,10 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     expect(game.configured).toBe(false);
     expect(game.pointsTotal ?? 0).toBe(0);
 
-    // Fully pair it → it EARNS Ready in place, and points in play appear.
+    // Fully pair it, with the point total a cup game needs to go live (the
+    // database refuses one without it, and the board says what it says) → it
+    // EARNS Ready in place, and points in play appear.
+    await ctx.admin.from("games").update({ points_total: 2 }).eq("id", g.id);
     await ctx.admin.from("game_matches").delete().eq("game_id", g.id);
     await ctx.admin.from("game_matches").insert({
       id: crypto.randomUUID(), game_id: g.id, match_number: 1, display_order: 0,
@@ -356,11 +363,15 @@ describe("D2 §6 — leaderboard response shape includes D2 fields", () => {
     // setup page only enables when ALL are paired. A 1-of-2 game must now read
     // Setting up (not Ready), so the two surfaces agree.
     const { tripId, competitionId: comp } = await ctx.createCupTrip({ name: "D2 Partial Pairing Comp" });
-    await ctx.createTeam(comp, "A", { shortName: "A" });
-    await ctx.createTeam(comp, "B", { shortName: "B" });
+    // Everyone paired is on a team: the app pairs only rostered players.
+    const teamA = await ctx.createTeam(comp, "A", { shortName: "A" });
+    const teamB = await ctx.createTeam(comp, "B", { shortName: "B" });
+    await ctx.assignTeam(comp, teamA, [ctx.getUser("owner").id, ctx.getUser("planner").id]);
+    await ctx.assignTeam(comp, teamB, [ctx.getUser("member").id, ctx.getUser("outsider").id]);
     const g = await ctx.caller().games.create({
       tripId, gameTypeId: "gtt_match_play", name: "Partial", competitionId: comp,
       pointsDistribution: { type: "per_match", value: 2 },
+      pointsTotal: 4,
     }) as { id: string };
     gameIds.push(g.id);
 
