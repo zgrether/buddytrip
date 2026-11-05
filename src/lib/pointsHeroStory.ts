@@ -19,8 +19,8 @@ export interface StoryUnit {
 }
 
 export interface HeroStory {
-  /** The unit above the headline, or null when the story is about nobody yet. */
-  unitId: string | null;
+  /** The units above the headline: one, both at a shared 1st, or nobody yet. */
+  unitIds: string[];
   headline: string;
   sub: string;
   /** The headline is the winner's score: the Final row's big number. */
@@ -45,7 +45,12 @@ export function pointsHeroStory(
     const unit = units.find((u) => u.id === id);
     return unit?.shortName ?? unit?.name ?? "";
   };
-  const story = (unitId: string | null, headline: string, sub: string): HeroStory => ({ unitId, headline, sub, isScore: false });
+  const story = (unitId: string | null, headline: string, sub: string): HeroStory => ({
+    unitIds: unitId ? [unitId] : [],
+    headline,
+    sub,
+    isScore: false,
+  });
   const gamesLeft = WORD.gamesLeft(w.gamesLeft);
 
   if (final) {
@@ -53,9 +58,14 @@ export function pointsHeroStory(
     const tail = sharedPlaces(units, totals).map((p) => WORD.placeShared(ordinalShort(p)));
     if (w.clincherId) {
       const sub = [GAME_STATE_WORD.final, RACE_WORD.wins(nameOf(w.clincherId)), ...tail].join(WORD.separator);
-      return { unitId: w.clincherId, headline: fmtPts(top), sub, isScore: true };
+      return { unitIds: [w.clincherId], headline: fmtPts(top), sub, isScore: true };
     }
-    return { unitId: null, headline: fmtPts(top), sub: [GAME_STATE_WORD.final, RACE_WORD.shared, ...tail].join(WORD.separator), isScore: true };
+    return {
+      unitIds: units.filter((u) => (totals[u.id] ?? 0) === top).map((u) => u.id),
+      headline: fmtPts(top),
+      sub: [GAME_STATE_WORD.final, WORD.sharedFirst, ...tail].join(WORD.separator),
+      isScore: true,
+    };
   }
 
   if (w.bankedGames === 0) return story(null, WORD.anyonesCup, gamesLeft);
@@ -65,15 +75,14 @@ export function pointsHeroStory(
   // Every place is settled with something still to play or under correction.
   if (w.place == null) {
     if (!w.clincherId) return story(null, WORD.tiedAtTop, gamesLeft);
-    const scores = units.map((u) => totals[u.id] ?? 0).sort((a, b) => b - a);
-    return story(w.clincherId, WORD.leadBy(fmtPts(scores[0] - (scores[1] ?? 0))), clinchedLine);
+    const sub = w.gamesLeft > 0 ? [WORD.everyPlaceSet, gamesLeft].join(WORD.separator) : WORD.everyPlaceSet;
+    return story(w.clincherId, WORD.clinchedHeadline, sub);
   }
 
-  const placeWord = ordinalShort(w.place);
+  // Below 1st there is no ladder: the place is simply open.
+  if (w.place > 1) return story(null, WORD.upForGrabs(ordinalShort(w.place)), clinchedLine);
   if (w.leaderIds.length > 1) {
-    return w.place === 1
-      ? story(null, WORD.tiedAtTop, [WORD.joinLevel(w.leaderIds.map(shortOf)), gamesLeft].join(WORD.separator))
-      : story(null, WORD.upForGrabs(placeWord), clinchedLine);
+    return story(null, WORD.tiedAtTop, [WORD.joinLevel(w.leaderIds.map(shortOf)), gamesLeft].join(WORD.separator));
   }
 
   const leader = w.leaderIds[0];
@@ -82,17 +91,17 @@ export function pointsHeroStory(
       ? WORD.isOut(joinAnd(w.newlyOutIds.map(nameOf)), w.newlyOutIds.length)
       : WORD.stillAlive(w.alive, w.field.length);
   const line = (head: string) => [head, tail].join(WORD.separator);
-  const winsFrom = (wins: 1 | 2) => (w.place === 1 ? WORD.winsFromTheCup(wins) : WORD.winsFromPlace(wins, placeWord));
+  const headline = w.wins?.wins ? WORD.winsFromTheCup(w.wins.wins) : WORD.leadBy(fmtPts(w.lead));
 
-  if (w.clinchesIfHolds) return story(leader, winsFrom(1), WORD.leadingGame(w.clinchesIfHolds));
+  // What is true today, under whichever headline the banked math allows.
+  if (w.clinchesIfHolds) return story(leader, headline, WORD.leadingGame(w.clinchesIfHolds));
 
   if (w.wins?.wins === 1) {
     const anyOf = w.wins.anySet && w.gamesLeft > 1;
-    return story(leader, winsFrom(1), line(anyOf ? WORD.winAnyOf(w.gamesLeft) : WORD.aWinIn(w.winGameNames)));
+    return story(leader, headline, line(anyOf ? WORD.winAnyOf(w.gamesLeft) : WORD.aWinIn(w.winGameNames)));
   }
   if (w.wins?.wins === 2) {
-    return story(leader, winsFrom(2), line(w.wins.anySet ? WORD.winAnyTwoOf(w.gamesLeft) : gamesLeft));
+    return story(leader, headline, line(w.wins.anySet ? WORD.winAnyTwoOf(w.gamesLeft) : gamesLeft));
   }
-
-  return w.place === 1 ? story(leader, WORD.leadBy(fmtPts(w.lead)), line(gamesLeft)) : story(null, WORD.upForGrabs(placeWord), clinchedLine);
+  return story(leader, headline, line(gamesLeft));
 }

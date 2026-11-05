@@ -152,13 +152,40 @@ export function pointsClinch({ unitIds, totals, unbanked }: PointsClinchInput): 
   return { swing, safe, out, places, clincher: clincher ?? null };
 }
 
-/** What each chaser takes from a game the leader wins, at the leader's best: the
- *  other awards go lowest to the closest chaser. */
-function chaserAwards(game: ClinchGame, chasers: readonly string[], unitCount: number) {
-  const award = game.award;
-  if (award.kind !== "placement") return new Map(chasers.map((c) => [c, 0]));
-  const rest = paddedSchedule(award.values, unitCount).slice(1).sort((a, b) => a - b);
-  return new Map(chasers.map((c, i) => [c, rest[i] ?? 0]));
+/**
+ * What a win in this game is certain to do, for one chaser. Never early applies
+ * to the headline too (Zach, 2026-11-05), so this is the leader's least and the
+ * chaser's most, given the leader won:
+ *
+ *  - placement: the leader takes the top award, the chaser the best one left;
+ *  - match games: the leader wins its own matches, and the chaser keeps every
+ *    match it plays that is not against the leader, plus any points not yet in a
+ *    paired match. A game that has not started has no pairings to win, so the
+ *    leader is promised nothing from it;
+ *  - a bracket: the leader's best entrant wins it, and the chaser's entrants take
+ *    the places below.
+ */
+function afterAWin(award: ClinchAward, leader: string, chaser: string): { leaderGain: number; chaserGain: number } {
+  switch (award.kind) {
+    case "placement": {
+      const [top = 0, next = 0] = [...award.values].sort((a, b) => b - a);
+      return { leaderGain: Math.max(0, top), chaserGain: next };
+    }
+    case "matches": {
+      if (award.matches == null) return { leaderGain: 0, chaserGain: award.total };
+      const mine = award.matches.filter((m) => m.unitIds.includes(leader));
+      const theirs = award.matches.filter((m) => m.unitIds.includes(chaser) && !m.unitIds.includes(leader));
+      const unpaired = Math.max(0, award.total - sum(award.matches.map((m) => m.value)));
+      return { leaderGain: sum(mine.map((m) => m.value)), chaserGain: sum(theirs.map((m) => m.value)) + unpaired };
+    }
+    case "bracket": {
+      const top = Math.max(0, ...award.values);
+      if (award.entrantsByUnit == null) return { leaderGain: top, chaserGain: Math.max(0, award.total - top) };
+      if ((award.entrantsByUnit[leader] ?? 0) === 0) return { leaderGain: 0, chaserGain: unitHi(award, chaser) };
+      const places = paddedSchedule(award.values, award.fieldSize).sort((a, b) => b - a);
+      return { leaderGain: places[0] ?? 0, chaserGain: sum(places.slice(1, 1 + (award.entrantsByUnit[chaser] ?? 0))) };
+    }
+  }
 }
 
 export interface WinsNeeded {
@@ -166,7 +193,8 @@ export interface WinsNeeded {
   wins: 1 | 2 | null;
   /** The sets of games that would do it, by id. */
   sets: string[][];
-  /** Whether every game (or every pair of games) left would do it. */
+  /** Whether every game (or every pair of games) left would do it, whatever else
+   *  happens in them. */
   anySet: boolean;
 }
 
@@ -176,18 +204,16 @@ export interface WinsNeeded {
  * pairs, so it is O(n²) in the games left whatever the size of the cup.
  */
 export function winsNeeded(input: PointsClinchInput, leader: string, mustBeat: readonly string[]): WinsNeeded {
-  const { unitIds, totals, unbanked } = input;
+  const { totals, unbanked } = input;
   const pts = (id: string) => totals[id] ?? 0;
-  const chasers = [...mustBeat].sort((a, b) => pts(b) - pts(a));
 
   const clinches = (won: readonly ClinchGame[]) => {
-    const after = new Map(unitIds.map((id) => [id, pts(id)]));
-    for (const g of won) {
-      after.set(leader, after.get(leader)! + unitHi(g.award, leader));
-      for (const [c, gain] of chaserAwards(g, chasers, unitIds.length)) after.set(c, after.get(c)! + gain);
-    }
     const left = unbanked.filter((g) => !won.includes(g));
-    return chasers.every((c) => after.get(leader)! - after.get(c)! > sum(left.map((g) => unitHi(g.award, c))) + EPSILON);
+    return mustBeat.every((c) => {
+      const wins = won.map((g) => afterAWin(g.award, leader, c));
+      const lead = pts(leader) - pts(c) + sum(wins.map((w) => w.leaderGain - w.chaserGain));
+      return lead > sum(left.map((g) => unitHi(g.award, c))) + EPSILON;
+    });
   };
 
   const singles = unbanked.filter((g) => clinches([g]));
@@ -272,16 +298,19 @@ export function clinchWatch(input: ClinchWatchInput): ClinchWatch {
 
   const soleLeader = leaderIds.length === 1 ? leader : null;
   const mustBeat = field.filter((id) => id !== soleLeader);
-  const wins = soleLeader && unbanked.length > 0 ? winsNeeded(input, soleLeader, mustBeat) : null;
+  // The team-specific ladder is for 1st only (Zach, 2026-11-05): a place below it
+  // is simply up for grabs.
+  const raceForFirst = place === 1 ? soleLeader : null;
+  const wins = raceForFirst && unbanked.length > 0 ? winsNeeded(input, raceForFirst, mustBeat) : null;
   const gameNameOf = (id: string) => unbanked.find((g) => g.id === id)?.name ?? "";
 
-  const clinchesIfHolds = soleLeader
+  const clinchesIfHolds = raceForFirst
     ? projecting.find((g) => {
         const today = projections[g.id];
-        if (Object.values(today).some((p) => p > (today[soleLeader] ?? 0))) return false;
+        if (Object.values(today).some((p) => p > (today[raceForFirst] ?? 0))) return false;
         const after = Object.fromEntries(unitIds.map((id) => [id, pts(id) + (today[id] ?? 0)]));
         const then = pointsClinch({ unitIds, totals: after, unbanked: unbanked.filter((x) => x !== g) });
-        return mustBeat.every((id) => then.safe(soleLeader, id));
+        return mustBeat.every((id) => then.safe(raceForFirst, id));
       })?.name ?? null
     : null;
 

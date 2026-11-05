@@ -56,7 +56,7 @@ function ClinchWatchTier({ watch, units }: { watch: ClinchWatch; units: readonly
     <div className="mt-[18px] flex flex-col gap-[9px] pt-3.5" style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }} data-testid="clinch-watch">
       <p className="text-center" style={{ fontSize: 11, color: "var(--color-bt-text-dim)" }}>
         <span style={{ fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-          {watch.place === 1 ? WORD.clinchWatch : WORD.raceFor(ordinalShort(watch.place ?? 1))}
+          {watch.place === 1 ? WORD.clinchWatch : WORD.clinchWatchFor(ordinalShort(watch.place ?? 1))}
         </span>
         {WORD.separator}
         {WORD.gamesLeft(watch.gamesLeft)}
@@ -124,15 +124,17 @@ export function PointsHeroTiers({
   final: boolean;
 }) {
   const story = pointsHeroStory(watch, units, totals, final);
-  const subject = units.find((u) => u.id === story.unitId);
-  const subjectColor = subject ? (subject.color ? teamInk(subject.color) : PERSON_COLOR) : undefined;
+  const subjects = units.filter((u) => story.unitIds.includes(u.id));
+  // One unit reads in its own ink. A shared 1st has no one color to read in.
+  const sole = subjects.length === 1 ? subjects[0] : null;
+  const subjectColor = sole ? (sole.color ? teamInk(sole.color) : PERSON_COLOR) : "var(--color-bt-text)";
 
   return (
     <>
       <div className="mt-5 flex flex-col items-center text-center" data-testid="points-hero-story">
-        {subject && (
+        {subjects.length > 0 && (
           <span style={{ fontSize: 17, fontWeight: 600, color: subjectColor }} data-testid="points-hero-unit">
-            {subject.name}
+            {WORD.joinLevel(subjects.map((u) => u.name))}
           </span>
         )}
         <span
@@ -141,7 +143,7 @@ export function PointsHeroTiers({
             fontSize: story.isScore ? 74 : 30,
             fontWeight: 700,
             lineHeight: story.isScore ? 1 : 1.1,
-            color: story.isScore ? subjectColor ?? "var(--color-bt-text)" : "var(--color-bt-text)",
+            color: story.isScore ? subjectColor : "var(--color-bt-text)",
           }}
           data-testid="points-hero-headline"
         >

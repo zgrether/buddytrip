@@ -42,8 +42,8 @@ const watch = (over: Partial<ClinchWatch> = {}): ClinchWatch => ({
   ...over,
 });
 
-const render = (w: ClinchWatch, final = false, units = teams) =>
-  renderToStaticMarkup(<PointsHeroTiers watch={w} units={units} totals={{ he: 18.5, ba: 14, hs: 10 }} final={final} />);
+const render = (w: ClinchWatch, final = false, units = teams, totals: Record<string, number> = { he: 18.5, ba: 14, hs: 10 }) =>
+  renderToStaticMarkup(<PointsHeroTiers watch={w} units={units} totals={totals} final={final} />);
 
 /** One element's opening tag, by testid. */
 function tag(html: string, testid: string): string {
@@ -55,7 +55,7 @@ function tag(html: string, testid: string): string {
 describe("the clinch watch", () => {
   it("the label says what is being raced for, and how many games are left", () => {
     expect(render(watch())).toContain("Clinch watch</span> · 3 games left");
-    expect(render(watch({ place: 2, gamesLeft: 1, clincherId: "he" }))).toContain("Race for 2nd</span> · 1 game left");
+    expect(render(watch({ place: 2, gamesLeft: 1, clincherId: "he" }))).toContain("Clinch watch · 2nd</span> · 1 game left");
   });
   it("one segment per game left, sized by its swing", () => {
     const html = render(watch());
@@ -126,6 +126,12 @@ describe("the story tier", () => {
     expect(tag(html, "points-hero-headline")).toContain("font-size:30px");
     expect(tag(html, "points-hero-sub")).toContain("font-size:13px");
     expect(html).toContain(">Lead by 4.5<");
+  });
+  it("a shared 1st: both names, and no one team's color", () => {
+    const html = render(watch({ place: null, gamesLeft: 0, leaderIds: [] }), true, teams, { he: 20, ba: 20, hs: 9 });
+    expect(html).toContain(">Hot Eagles Cold Beers &amp; Bogey Army<");
+    expect(html).toContain("Final · Shared 1st");
+    expect(tag(html, "points-hero-unit")).toContain("color:var(--color-bt-text)");
   });
   it("final: the winner's score at 74", () => {
     const html = render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true);

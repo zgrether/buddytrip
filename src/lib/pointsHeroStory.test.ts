@@ -38,7 +38,7 @@ const watch = (over: Partial<ClinchWatch> = {}): ClinchWatch => ({
 });
 
 const story = (w: ClinchWatch, totals: Record<string, number> = {}, final = false) => pointsHeroStory(w, units, totals, final);
-const lines = (s: ReturnType<typeof story>) => [s.unitId, s.headline, s.sub];
+const lines = (s: ReturnType<typeof story>) => [s.unitIds[0] ?? null, s.headline, s.sub];
 
 describe("the spec's table", () => {
   it("no game banked", () => {
@@ -71,8 +71,12 @@ describe("the spec's table", () => {
     expect(story(w).sub).toBe("A win in Skins clinches it · 2 still alive");
   });
   it("a projecting live game would clinch", () => {
-    const w = watch({ wins: { wins: 2, sets: [], anySet: false }, clinchesIfHolds: "Stableford" });
+    const w = watch({ wins: { wins: 1, sets: [["s"]], anySet: false }, winGameNames: ["Stableford"], clinchesIfHolds: "Stableford" });
     expect(lines(story(w))).toEqual(["ba", "One win from the cup", "Leading Stableford · clinches if it holds"]);
+  });
+  it("it would clinch if it holds, but a win alone would not: the headline does not promise one", () => {
+    const w = watch({ wins: { wins: null, sets: [], anySet: false }, clinchesIfHolds: "Stableford" });
+    expect(lines(story(w))).toEqual(["ba", "Lead by 2.5", "Leading Stableford · clinches if it holds"]);
   });
   it("1st clinched, the race for 2nd wide open", () => {
     const w = watch({ clincherId: "he", place: 2, leaderIds: ["ba"], field: field(["ba", "om", "hs"]), alive: 3 });
@@ -94,14 +98,14 @@ describe("the spec's table", () => {
   });
 });
 
-describe("the ladder", () => {
-  it("repeats for the highest open place", () => {
-    const w = watch({ clincherId: "he", place: 2, gamesLeft: 3, alive: 3, field: field(["ba", "om", "hs"]), wins: { wins: 1, sets: [["a"], ["b"], ["c"]], anySet: true } });
-    expect(lines(story(w))).toEqual(["ba", "One win from 2nd", "Win any of the 3 left · all 3 still alive"]);
+describe("below 1st there is no ladder (Zach, 2026-11-05)", () => {
+  it("one game from settling 2nd still reads as open, as on F2", () => {
+    const w = watch({ clincherId: "he", place: 2, gamesLeft: 1, alive: 3, wins: null, field: field(["ba", "om", "hs"]) });
+    expect(lines(story(w))).toEqual([null, "2nd is up for grabs", "Hot Eagles Cold Beers clinched the cup"]);
   });
-  it("two wins from a lower place", () => {
-    const w = watch({ clincherId: "he", place: 3, wins: { wins: 2, sets: [["a", "b"]], anySet: false }, alive: 2, field: field(["om", "hs"]), leaderIds: ["om"] });
-    expect(lines(story(w))).toEqual(["om", "Two wins from 3rd", "6 games left · all 2 still alive"]);
+  it("a lower place reads the same", () => {
+    const w = watch({ clincherId: "he", place: 3, wins: null, leaderIds: ["om"], field: field(["om", "hs"]), alive: 2 });
+    expect(lines(story(w))).toEqual([null, "3rd is up for grabs", "Hot Eagles Cold Beers clinched the cup"]);
   });
 });
 
@@ -115,14 +119,23 @@ describe("a unit dropping out", () => {
 });
 
 describe("the edges the table leaves open", () => {
-  it("a shared 1st at the end: the score, and no winner named", () => {
+  it("a shared 1st at the end: both units named, and the score", () => {
     const w = watch({ clincherId: null, place: null, leaderIds: [], gamesLeft: 0 });
     const s = story(w, { he: 20, ba: 20, om: 9, hs: 1 }, true);
-    expect(lines(s)).toEqual([null, "20", "Final · Shared"]);
+    expect(s.unitIds).toEqual(["he", "ba"]);
+    expect([s.headline, s.sub]).toEqual(["20", "Final · Shared 1st"]);
   });
-  it("every place locked with a game still open: the clincher's lead, and who clinched", () => {
+  it("a shared 1st with a shared place below it says both", () => {
+    const w = watch({ clincherId: null, place: null, leaderIds: [], gamesLeft: 0 });
+    expect(story(w, { he: 20, ba: 20, om: 9, hs: 9 }, true).sub).toBe("Final · Shared 1st · 3rd shared");
+  });
+  it("every place locked with a game still open", () => {
     const w = watch({ clincherId: "he", place: null, leaderIds: [], gamesLeft: 1 });
-    expect(lines(story(w, { he: 25, ba: 16, om: 9, hs: 1 }))).toEqual(["he", "Lead by 9", "Hot Eagles Cold Beers clinched the cup"]);
+    expect(lines(story(w, { he: 25, ba: 16, om: 9, hs: 1 }))).toEqual(["he", "Clinched the cup", "Every place is set · 1 game left"]);
+  });
+  it("every place locked with only a correction open: no \"0 games left\"", () => {
+    const w = watch({ clincherId: "he", place: null, leaderIds: [], gamesLeft: 0 });
+    expect(story(w, { he: 25, ba: 16, om: 9, hs: 1 }).sub).toBe("Every place is set");
   });
   it("a person has no short name, so reads by name", () => {
     const people: StoryUnit[] = [{ id: "a", name: "Pat", shortName: null }, { id: "b", name: "Mo", shortName: null }];

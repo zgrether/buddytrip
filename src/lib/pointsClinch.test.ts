@@ -286,11 +286,11 @@ describe("winsNeeded", () => {
   it("nothing left is null", () => {
     expect(need({ unitIds: units, totals: { A: 3 }, unbanked: [] }).wins).toBeNull();
   });
-  it("the other awards go lowest to the closest chaser", () => {
-    // A wins g. With B on the 1 and C on the 3, A is 6 clear of B and 7 of C, past
-    // the 5 left in h. Handing the 3 to B instead would leave A only 4 clear.
-    const r = need({ unitIds: units, totals: { A: 5, B: 3 }, unbanked: [split("g", [5, 3, 1]), split("h", [5])] });
-    expect(r.sets).toContainEqual(["g"]);
+  it("a chaser takes the best award left, every one of them: a win has to clinch whoever comes second", () => {
+    // A wins g: 10 clear of C, but if B comes 2nd only 2 clear of it, with 3 left.
+    const r = need({ unitIds: units, totals: { A: 1 }, unbanked: [split("g", [5, 4, 1]), split("h", [3])] });
+    expect(r.sets).not.toContainEqual(["g"]);
+    expect(r.wins).toBe(2);
   });
   it("names no next game: the answer does not depend on the order of the games", () => {
     const games = [split("skins", [9, 3]), split("pickem", [9, 3]), split("pool", [1])];
@@ -299,14 +299,64 @@ describe("winsNeeded", () => {
     expect(a.wins).toBe(b.wins);
     expect(a.sets.flat().sort()).toEqual(b.sets.flat().sort());
   });
-  it("the ladder repeats for a lower place: only the units below count", () => {
+  it("only the units named have to be beaten", () => {
     const input = { unitIds: ["A", "B", "C"], totals: { A: 30, B: 10, C: 8 }, unbanked: [split("g", [4, 1]), split("h", [4, 1])] };
     expect(winsNeeded(input, "B", ["C"]).wins).toBe(1);
   });
-  it("match games: the leader's own matches, with the chaser at its worst", () => {
-    const award: ClinchAward = { kind: "matches", total: 4, matches: [{ unitIds: ["A", "B"], value: 2 }, { unitIds: ["A", "C"], value: 2 }] };
-    const r = need({ unitIds: units, totals: { A: 2 }, unbanked: [game("g", award)] });
-    expect(r.wins).toBe(1);
+  it("match games: the leader wins its own matches, and a chaser keeps the ones it plays elsewhere", () => {
+    const award: ClinchAward = { kind: "matches", total: 6, matches: [{ unitIds: ["A", "B"], value: 2 }, { unitIds: ["B", "C"], value: 2 }, { unitIds: ["A", "C"], value: 2 }] };
+    // A's win takes it 4 clear before B's 2 from B v C: 3 + 4 − 2 = 5 over B.
+    expect(need({ unitIds: units, totals: { A: 3 }, unbanked: [game("g", award), split("h", [4])] }).sets).toContainEqual(["g"]);
+    // With 1 fewer banked, that same win is 4 over B, which does not clear the 4 left.
+    expect(need({ unitIds: units, totals: { A: 2 }, unbanked: [game("g", award), split("h", [4])] }).sets).not.toContainEqual(["g"]);
+  });
+  it("a match game that has not started promises the leader nothing: it has no pairings to win", () => {
+    const award: ClinchAward = { kind: "matches", total: 20, matches: null };
+    expect(need({ unitIds: units, totals: { A: 1 }, unbanked: [game("g", award)] }).wins).toBeNull();
+  });
+  it("a bracket win is 1st place alone, however many entrants the leader has", () => {
+    const award: ClinchAward = { kind: "bracket", values: [7, 3, 1], total: 11, fieldSize: 4, entrantsByUnit: { A: 2, B: 1, C: 1 } };
+    // 7 for winning, 3 to B's entrant behind it: A is 5 clear, with 5 left.
+    expect(need({ unitIds: units, totals: { A: 1 }, unbanked: [game("g", award), split("h", [5])] }).sets).not.toContainEqual(["g"]);
+    expect(need({ unitIds: units, totals: { A: 2 }, unbanked: [game("g", award), split("h", [5])] }).sets).toContainEqual(["g"]);
+  });
+});
+
+describe("the headline is never early either (played out)", () => {
+  const units = ["A", "B", "C"];
+
+  /** Every finish where A wins game `won`, through the real award functions. */
+  function expectWinClinches(banked: Record<string, number>, won: Record<string, number>[], rest: Record<string, number>[][]) {
+    const finishes = everyFinish([won, ...rest], banked);
+    for (const f of finishes) for (const b of ["B", "C"]) expect((f.A ?? 0) > (f[b] ?? 0), JSON.stringify(f)).toBe(true);
+  }
+  const aWon = (outcomes: Record<string, number>[], top: number) => outcomes.filter((o) => (o.A ?? 0) >= top);
+
+  it("placement: every game winsNeeded names clinches in every finish where A wins it", () => {
+    const g = [5, 4, 1], h = [3];
+    for (let lead = 0; lead <= 12; lead += 0.5) {
+      const input = { unitIds: units, totals: { A: lead }, unbanked: [split("g", g), split("h", h)] };
+      const r = winsNeeded(input, "A", ["B", "C"]);
+      if (r.wins === 1 && r.sets.some(([id]) => id === "g")) {
+        expectWinClinches({ A: lead }, aWon(placementOutcomes(g, units), 5), [placementOutcomes(h, units)]);
+      }
+    }
+    // It must have said so at least once, or the loop proved nothing.
+    expect(winsNeeded({ unitIds: units, totals: { A: 4 }, unbanked: [split("g", g), split("h", h)] }, "A", ["B", "C"]).sets).toContainEqual(["g"]);
+  });
+
+  it("match games: the same, with every match the leader is not in still in play", () => {
+    const matches = [{ a: "A", b: "B", value: 2 }, { a: "B", b: "C", value: 2 }];
+    const award: ClinchAward = { kind: "matches", total: 4, matches: matches.map((m) => ({ unitIds: [m.a, m.b], value: m.value })) };
+    const won = matchOutcomes(matches).filter((o) => (o.A ?? 0) === 2);
+    for (let lead = 0; lead <= 12; lead += 0.5) {
+      const input = { unitIds: units, totals: { A: lead }, unbanked: [game("g", award), split("h", [3])] };
+      const r = winsNeeded(input, "A", ["B", "C"]);
+      if (r.wins === 1 && r.sets.some(([id]) => id === "g")) {
+        expectWinClinches({ A: lead }, won, [placementOutcomes([3], units)]);
+      }
+    }
+    expect(winsNeeded({ unitIds: units, totals: { A: 4 }, unbanked: [game("g", award), split("h", [3])] }, "A", ["B", "C"]).sets).toContainEqual(["g"]);
   });
 });
 
@@ -326,6 +376,7 @@ describe("clinchWatch", () => {
     expect(clinched.place).toBe(2);
     expect(clinched.leaderIds).toEqual(["B"]);
     expect(clinched.chaserId).toBe("C");
+    expect(clinched.wins).toBeNull(); // the team-specific ladder is for 1st only
     expect(clinched.field.map((f) => f.id)).toEqual(["B", "C", "D"]);
   });
   it("level at the top: every leader is named and nobody needs wins", () => {
@@ -333,6 +384,11 @@ describe("clinchWatch", () => {
     expect(w.leaderIds).toEqual(["A", "B"]);
     expect(w.lead).toBe(0);
     expect(w.wins).toBeNull();
+  });
+  it("a live game below 1st never reads as clinching: the ladder stops at 1st", () => {
+    const w = watch({ totals: { A: 40, B: 9, C: 8, D: 1 }, unbanked: [split("live", [4])], bankedGames: 2, projections: { live: { B: 4, C: 0, D: 0 } } });
+    expect(w.place).toBe(2);
+    expect(w.clinchesIfHolds).toBeNull();
   });
   it("every place locked: no race left", () => {
     const w = watch({ totals: { A: 30, B: 20, C: 10, D: 1 }, unbanked: [], bankedGames: 3 });
