@@ -331,6 +331,11 @@ export function fmtPts(n: number, opts?: { halves?: boolean }): string {
   return String(Math.round(n * 100) / 100);
 }
 
+/** A place two units share: "T3" on both rows of a points cup's standings. */
+export function sharedPlaceWord(rank: number): string {
+  return `T${rank}`;
+}
+
 /** "pt" for exactly one point, "pts" otherwise. */
 export function ptsWord(n: number): string {
   return n === 1 ? "pt" : "pts";

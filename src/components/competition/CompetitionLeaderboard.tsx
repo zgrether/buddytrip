@@ -174,6 +174,8 @@ interface LeaderboardData {
   winNumber: number;
   pointsToClinch: Record<string, number>;
   defendingTeamId: string | null;
+  /** A points cup's place locks (`pointsClinch`), null on a head-to-head Cup. */
+  clinch?: { clincherId: string | null; lockedUnitIds: string[] } | null;
   /** Every game pays 1 point per match (`cupCountsInHalves`): the hero and the
    *  match cells write a half as ½. Everywhere else a half is 0.5. */
   halfPoints?: boolean;
@@ -499,14 +501,16 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           kind={data.teamless ? "players" : "teams"}
           units={data.units.map((u) => ({
             id: u.id,
-            // A team's SHORT name: a standings row is a label slot (STYLE_GUIDE
-            // "Team names — subject slots vs label slots").
-            label: u.kind === "team" ? u.short_name ?? u.name : u.name,
+            // The FULL name: a standings row is a subject slot (STYLE_GUIDE "Team
+            // names — subject slots vs label slots"). The badge keeps the short one.
+            label: u.name,
+            shortName: u.short_name,
             color: u.color,
             hasResult: u.hasResult,
           }))}
           unitTotals={unitTotals}
           projections={data.projections}
+          lockedUnitIds={data.clinch?.lockedUnitIds}
           viewerUnitId={data.teamless ? me?.id : myTeamId}
         />
       )}

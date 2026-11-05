@@ -84,3 +84,32 @@ describe("resultTiles — fixed team order, never re-sorted", () => {
     expect(resultTiles(["blue", "red"], undefined)).toBeNull();
   });
 });
+
+describe("standingsRows: locked and shared places", () => {
+  const rows = (over: Partial<Parameters<typeof standingsRows>[0]> = {}) =>
+    standingsRows({
+      units: [unit("a"), unit("b"), unit("c"), unit("d", false)],
+      unitTotals: { a: 10, b: 6, c: 6 },
+      projections: {},
+      viewerUnitId: null,
+      ...over,
+    });
+  const of = (id: string, r = rows()) => r.find((x) => x.id === id)!;
+
+  it("a place is shared only where two ranked units are level", () => {
+    expect(of("a").shared).toBe(false);
+    expect(of("b").shared).toBe(true);
+    expect(of("c").shared).toBe(true);
+  });
+  it("a unit with no points yet shares nothing, whoever else has none", () => {
+    expect(of("d").shared).toBe(false);
+  });
+  it("locked comes from the units handed in, and defaults to open", () => {
+    expect(of("a").locked).toBe(false);
+    expect(of("a", rows({ lockedUnitIds: ["a"] })).locked).toBe(true);
+    expect(of("b", rows({ lockedUnitIds: ["a"] })).locked).toBe(false);
+  });
+  it("a unit with no result has no place to lock", () => {
+    expect(of("d", rows({ lockedUnitIds: ["d"] })).locked).toBe(false);
+  });
+});

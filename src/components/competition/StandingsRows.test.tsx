@@ -83,3 +83,52 @@ describe("StandingsRows — no points yet, and your row", () => {
     expect(tag(html, "standings-banked-ann")).toContain("background:var(--color-bt-accent)");
   });
 });
+
+describe("the rank chip (spec §2)", () => {
+  /** One row's rank chip: its opening tag and its text. */
+  const chip = (html: string, id: string) => {
+    const at = html.indexOf(`data-testid="standings-rank-${id}"`);
+    const open = html.lastIndexOf("<", at);
+    const close = html.indexOf(">", at);
+    return { tag: html.slice(open, close + 1), text: html.slice(close + 1, html.indexOf("<", close)) };
+  };
+
+  it("a locked place sits on a filled square; an open one is the plain dim number", () => {
+    const html = render({ lockedUnitIds: ["blue"] });
+    expect(chip(html, "blue").tag).toContain("background:var(--color-bt-text)");
+    expect(chip(html, "blue").tag).toContain("color:var(--color-bt-base)");
+    expect(chip(html, "blue").tag).toContain("border-radius:5px");
+    expect(chip(html, "red").tag).not.toContain("background:");
+    expect(chip(html, "red").tag).toContain("color:var(--color-bt-text-dim)");
+  });
+  it("a shared place reads T and the rank on both rows", () => {
+    const html = render({ unitTotals: { blue: 6, red: 6 }, lockedUnitIds: ["blue", "red"] });
+    expect(chip(html, "blue").text).toBe("T1");
+    expect(chip(html, "red").text).toBe("T1");
+  });
+  it("no points yet keeps the dash, never a chip", () => {
+    const html = render({ lockedUnitIds: ["green"], projections: { live: { green: 2 } } });
+    expect(chip(html, "green").text).toBe("–");
+    expect(chip(html, "green").tag).not.toContain("background:");
+  });
+  it("points are decimals (fmtPts), per the 2026-10-22 rule", () => {
+    expect(render({ unitTotals: { blue: 18.5, red: 2 } })).toContain(">18.5<");
+  });
+});
+
+describe("the full name (spec §2)", () => {
+  const named = [{ id: "blue", label: "Eagles Cold Beers", shortName: "HE", color: "#3b82f6", hasResult: true }];
+  it("the row reads the full name, unclipped, and the badge keeps the short one", () => {
+    const html = render({ units: named, unitTotals: { blue: 6 }, projections: {} });
+    expect(html).toContain(">Eagles Cold Beers<");
+    expect(html).not.toContain("truncate");
+    expect(html).toContain(">H<"); // the badge reads the short name's initial, not the full name's
+  });
+  it("the bar sits under the name: indented past the rank and the badge", () => {
+    expect(render({ units: named, unitTotals: { blue: 6 }, projections: {} })).toContain("padding-left:56px");
+  });
+  it("a person has no badge, so the bar indents only past the rank", () => {
+    const html = render({ kind: "players", units: [{ id: "ann", label: "Ann", color: null, hasResult: true }], unitTotals: { ann: 3 }, projections: {} });
+    expect(html).toContain("padding-left:30px");
+  });
+});

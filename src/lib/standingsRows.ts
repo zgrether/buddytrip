@@ -22,8 +22,10 @@
 
 export interface StandingsUnit {
   id: string;
-  /** What the row reads: a team's SHORT name (a label slot), a person's name. */
+  /** What the row reads: a team's or a person's full name (a subject slot). */
   label: string;
+  /** What a team's badge reads. Absent for a person, who has no badge. */
+  shortName?: string | null;
   /** A team's colour; null for a person. */
   color: string | null;
   hasResult: boolean;
@@ -32,6 +34,7 @@ export interface StandingsUnit {
 export interface StandingsRow {
   id: string;
   label: string;
+  shortName: string | null;
   color: string | null;
   banked: number;
   /** Σ of this unit's live-game projections; 0 when nothing is live for it. */
@@ -39,6 +42,10 @@ export interface StandingsRow {
   hasResult: boolean;
   /** Competition ranking (1, 2, 2, 4) on BANKED; null = no points yet. */
   rank: number | null;
+  /** Level with another ranked unit: "T3" on both rows. */
+  shared: boolean;
+  /** Nothing left can move this unit's place (`pointsClinch`). */
+  locked: boolean;
   isViewer: boolean;
   /** The two bar segments as % of the shared scale. */
   bankedPct: number;
@@ -50,6 +57,8 @@ export function standingsRows(p: {
   unitTotals: Record<string, number>;
   /** gameId → unitId → projected points, live games only. */
   projections: Record<string, Record<string, number>>;
+  /** The units whose place is locked. */
+  lockedUnitIds?: readonly string[];
   /** The viewer's unit: their team, or in a teamless race themselves. */
   viewerUnitId: string | null | undefined;
 }): StandingsRow[] {
@@ -78,14 +87,19 @@ export function standingsRows(p: {
   const scale = Math.max(0, ...base.map((r) => r.banked + r.projected));
   const pct = (n: number) => (scale > 0 ? (n / scale) * 100 : 0);
 
+  const ranks = [...rankOf.values()];
+
   return [...scored, ...waiting].map((r) => ({
     id: r.u.id,
     label: r.u.label,
+    shortName: r.u.shortName ?? null,
     color: r.u.color,
     banked: r.banked,
     projected: r.projected,
     hasResult: r.u.hasResult,
     rank: rankOf.get(r.u.id) ?? null,
+    shared: ranks.filter((rank) => rank === rankOf.get(r.u.id)).length > 1,
+    locked: r.u.hasResult && (p.lockedUnitIds ?? []).includes(r.u.id),
     isViewer: p.viewerUnitId != null && r.u.id === p.viewerUnitId,
     bankedPct: pct(r.banked),
     projectedPct: pct(r.projected),

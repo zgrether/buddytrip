@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { placementPoints } from "./competitionPlacement";
-import { awardMatches } from "./gameAward";
+import { awardMatches, type MatchOutcome } from "./gameAward";
 import { pointsClinch, unitBound, winsNeeded, type ClinchAward, type ClinchGame, type PointsClinchInput } from "./pointsClinch";
 
 /**
@@ -54,7 +54,7 @@ const placementOutcomes = (values: number[], units: string[]) =>
   );
 
 function matchOutcomes(matches: { a: string; b: string; value: number }[]) {
-  const outcomes: ("a" | "b" | "halve" | null)[] = ["a", "b", "halve", null];
+  const outcomes: MatchOutcome[] = ["a", "b", "split", null];
   let all: (typeof outcomes)[] = [[]];
   for (let i = 0; i < matches.length; i++) all = all.flatMap((o) => outcomes.map((x) => [...o, x]));
   return all.map((o) => awardMatches(matches.map((m, i) => ({ aTeamId: m.a, bTeamId: m.b, outcome: o[i], value: m.value }))).byTeam);

@@ -13,6 +13,8 @@ import { MATCH_PLAY_TYPES, RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE } from "@/server
 import { readBoardInputs, boardRow } from "@/server/lib/boardGames";
 import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
 import { cupCountsInHalves } from "@/lib/halfPoints";
+import { pointsClinch } from "@/lib/pointsClinch";
+import { clinchGames } from "./clinchGames";
 import { tripDisplayNames } from "./tripDisplayNames";
 import { needsAttention as deriveNeedsAttention, NOTHING_NEEDS_ATTENTION } from "@/lib/needsAttention";
 import { readSideGameWinners } from "./sideBoard";
@@ -451,8 +453,10 @@ export async function computeCompetitionLeaderboard(
   const allGames = rowsOrThrow(gameRowsRes, "games");
   const sizeByTeam = new Map<string, number>();
   const teamedUserIds = new Set<string>();
+  const teamOfUser = new Map<string, string>();
   for (const a of rowsOrThrow(assignmentsRes, "rosters")) {
     teamedUserIds.add(a.user_id as string);
+    teamOfUser.set(a.user_id as string, a.team_id as string);
     const tid = a.team_id as string;
     sizeByTeam.set(tid, (sizeByTeam.get(tid) ?? 0) + 1);
   }
@@ -1203,6 +1207,16 @@ export async function computeCompetitionLeaderboard(
     });
   }
 
+  const pointsCupClinch = (() => {
+    if (scoringModel !== "points") return null;
+    const unitOfUser = (userId: string) => (teamless ? (personUnits.has(userId) ? userId : null) : teamOfUser.get(userId) ?? null);
+    const view = pointsClinch({ unitIds, totals: unitTotals, unbanked: clinchGames(allGames, board, unitOfUser) });
+    return {
+      clincherId: view.clincher,
+      lockedUnitIds: unitIds.filter((id) => view.places.get(id)?.locked),
+    };
+  })();
+
   return {
     needsAttention: attention,
     teams: teams ?? [],
@@ -1251,6 +1265,9 @@ export async function computeCompetitionLeaderboard(
     cannotProject,
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,
+    // A points cup's place locks (spec §1), from banked points only. Never
+    // `pointsToClinch`, which is the head-to-head more-than-half rule.
+    clinch: pointsCupClinch,
     // Zach's half-points rule: ½ on this cup's totals, target and match cells
     // only when every game pays 1 point per match (`cupCountsInHalves`).
     halfPoints: cupCountsInHalves(
