@@ -387,7 +387,7 @@ describe("clinchWatch", () => {
       // Before Pool, A led C by 6 with 8 left, so C was alive. Pool's 4 took the
       // lead to 10, which would read as already out if Pool's points stayed in.
       const w = watch({
-        totals: { A: 14, B: 12, C: 4, D: 13 },
+        totals: { A: 14, B: 12, C: 4, D: 11 },
         unbanked: [split("left", [4])],
         bankedGames: 2,
         lastBanked: { game: pool, paid: { A: 4 } },
