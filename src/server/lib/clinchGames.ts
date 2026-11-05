@@ -1,5 +1,4 @@
 import { effectiveDistribution, evenShare, isPerMatch, pointsDivideByMatchRows, type PointsDistribution } from "@/lib/pointsDistribution";
-import { isManualGameType } from "@/lib/gameTypes";
 import { isBracketGame, isPickemGame } from "@/lib/resultStrategy";
 import type { ClinchAward, ClinchGame } from "@/lib/pointsClinch";
 import type { BoardInputs } from "./boardGames";
@@ -29,7 +28,7 @@ interface ClinchGameRow {
 
 type ClinchInputs = Pick<
   BoardInputs,
-  "startedByGame" | "pairedMatchesByGame" | "entrantTeamsByGame" | "playerIdsByGame"
+  "startedByGame" | "pairedMatchesByGame" | "entrantTeamsByGame"
 >;
 
 function awardFor(g: ClinchGameRow, inputs: ClinchInputs, unitOfUser: (userId: string) => string | null): ClinchAward {
@@ -72,11 +71,13 @@ function awardFor(g: ClinchGameRow, inputs: ClinchInputs, unitOfUser: (userId: s
     };
   }
 
-  // A manual game's places are entered by hand, and a pick'em's come from sheets,
-  // so neither has a field to read. Nobody in a game yet means nobody is out of it.
-  const players = isManualGameType(gameTypeId) || isPickemGame(gameTypeId, format) ? [] : inputs.playerIdsByGame.get(id) ?? [];
-  const fieldUnitIds = [...new Set(players.map(unitOfUser).filter((u): u is string => u != null))];
-  return { kind: "placement", values, fieldUnitIds: players.length > 0 ? fieldUnitIds : null };
+  return { kind: "placement", values };
+}
+
+/** One game as the math reads it, banked or not: the board also asks what the
+ *  game banked last put out. */
+export function clinchGame(g: ClinchGameRow, inputs: ClinchInputs, unitOfUser: (userId: string) => string | null): ClinchGame {
+  return { id: g.id as string, name: (g.name as string | null) ?? "", award: awardFor(g, inputs, unitOfUser) };
 }
 
 export function clinchGames(
@@ -86,5 +87,5 @@ export function clinchGames(
 ): ClinchGame[] {
   return games
     .filter((g) => g.status !== "complete" && g.status !== "dropped")
-    .map((g) => ({ id: g.id as string, name: (g.name as string | null) ?? "", award: awardFor(g, inputs, unitOfUser) }));
+    .map((g) => clinchGame(g, inputs, unitOfUser));
 }

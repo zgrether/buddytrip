@@ -11,7 +11,6 @@ const none = {
   startedByGame: new Set<string>(),
   pairedMatchesByGame: new Map<string, { memberIds: string[]; pointValue: number | null }[]>(),
   entrantTeamsByGame: new Map<string, (string | null)[]>(),
-  playerIdsByGame: new Map<string, string[]>(),
 };
 const teamOf: Record<string, string> = { u1: "A", u2: "B", u3: "C" };
 const unitOf = (id: string) => teamOf[id] ?? null;
@@ -32,27 +31,13 @@ describe("which games count", () => {
 });
 
 describe("placement", () => {
-  it("stroke reads its split, and the units with someone in it", () => {
-    const [g] = build(
-      { game_type_id: "gtt_stroke_play", points_total: 9, points_distribution: placed },
-      { playerIdsByGame: new Map([["g", ["u1", "u2", "stranger"]]]) }
-    );
-    expect(g.award).toEqual({ kind: "placement", values: [5, 3, 1], fieldUnitIds: ["A", "B"] });
-  });
-  it("nobody in the game yet means nobody is out of it", () => {
+  it("stroke reads its split", () => {
     const [g] = build({ game_type_id: "gtt_stroke_play", points_total: 9, points_distribution: placed });
-    expect(g.award).toEqual({ kind: "placement", values: [5, 3, 1], fieldUnitIds: null });
-  });
-  it("a manual game has no field: its places are entered by hand", () => {
-    const [g] = build(
-      { game_type_id: "gtt_generic_yard", points_total: 9, points_distribution: placed },
-      { playerIdsByGame: new Map([["g", ["u1"]]]) }
-    );
-    expect(g.award).toEqual({ kind: "placement", values: [5, 3, 1], fieldUnitIds: null });
+    expect(g.award).toEqual({ kind: "placement", values: [5, 3, 1] });
   });
   it("no split, pick'em included: the winner takes the total", () => {
     const [g] = build({ game_type_id: "gtt_pickem", points_total: 6, points_distribution: null });
-    expect(g.award).toEqual({ kind: "placement", values: [6], fieldUnitIds: null });
+    expect(g.award).toEqual({ kind: "placement", values: [6] });
   });
 });
 
