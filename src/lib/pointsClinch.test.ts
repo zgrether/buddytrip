@@ -272,6 +272,13 @@ describe("winsNeeded", () => {
     expect(r.sets).toHaveLength(3);
     expect(r.anySet).toBe(true);
   });
+  it("2, but only some pairs would do it: \"Win any 2\" must not be said", () => {
+    // Any two big games clinch; a big game and the small one leave 10 in reach.
+    const r = need({ unitIds: units, totals: { A: 1 }, unbanked: [split("a", [5]), split("b", [5]), split("c", [5]), split("d", [1])] });
+    expect(r.wins).toBe(2);
+    expect(r.sets).toEqual([["a", "b"], ["a", "c"], ["b", "c"]]);
+    expect(r.anySet).toBe(false);
+  });
   it("null for 3 or more", () => {
     const r = need({ unitIds: units, totals: {}, unbanked: ["g", "h", "i", "j", "k"].map((id) => split(id, [4])) });
     expect(r).toEqual({ wins: null, sets: [], anySet: false });
