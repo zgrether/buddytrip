@@ -106,9 +106,10 @@ export function StandingsRows({
             Add a game to start the standings.
           </p>
         )}
-        {rows.map((r, idx) => {
+        {rows.map((r) => {
           const color = r.color ?? PERSON_COLOR;
-          const isLeader = idx === 0 && r.hasResult && r.banked > 0;
+          // A shared 1st has no single leader, so every row in it reads the same.
+          const isLeader = r.rank === 1 && r.banked > 0;
           return (
             <div
               key={r.id}

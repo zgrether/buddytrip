@@ -132,3 +132,17 @@ describe("the full name (spec §2)", () => {
     expect(html).toContain("padding-left:30px");
   });
 });
+
+describe("the leader's number", () => {
+  const size = (html: string, id: string) => html.slice(html.lastIndexOf("<", html.indexOf(`data-testid="standings-points-${id}"`)), html.indexOf(`data-testid="standings-points-${id}"`));
+  it("the leader alone reads larger", () => {
+    const html = render();
+    expect(size(html, "blue")).toContain("font-size:19px");
+    expect(size(html, "red")).toContain("font-size:15px");
+  });
+  it("a shared 1st reads the same on both rows: neither leads", () => {
+    const html = render({ unitTotals: { blue: 6, red: 6 } });
+    expect(size(html, "blue")).toContain("font-size:19px");
+    expect(size(html, "red")).toContain("font-size:19px");
+  });
+});
