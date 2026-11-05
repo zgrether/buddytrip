@@ -310,6 +310,11 @@ describe("winsNeeded", () => {
     // With 1 fewer banked, that same win is 4 over B, which does not clear the 4 left.
     expect(need({ unitIds: units, totals: { A: 2 }, unbanked: [game("g", award), split("h", [4])] }).sets).not.toContainEqual(["g"]);
   });
+  it("points not yet in a paired match are the chaser's to win, not the leader's", () => {
+    // A wins its one match for 2. The other 4 are unpaired, so B could still get them.
+    const award: ClinchAward = { kind: "matches", total: 6, matches: [{ unitIds: ["A", "B"], value: 2 }] };
+    expect(need({ unitIds: units, totals: { A: 1 }, unbanked: [game("g", award)] }).wins).toBeNull();
+  });
   it("a match game that has not started promises the leader nothing: it has no pairings to win", () => {
     const award: ClinchAward = { kind: "matches", total: 20, matches: null };
     expect(need({ unitIds: units, totals: { A: 1 }, unbanked: [game("g", award)] }).wins).toBeNull();
