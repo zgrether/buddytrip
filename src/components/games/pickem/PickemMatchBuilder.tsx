@@ -6,6 +6,7 @@ import { PickemMismatchNote } from "./PickemMismatchNote";
 import type { DraftMatchConfig } from "@/lib/configDraft";
 import { liveMatchPointsPerMatch } from "@/lib/pointsDistribution";
 import { TYPE_SCALE, EYEBROW } from "@/lib/typeScale";
+import { fmtPts } from "@/lib/vocabulary";
 
 /**
  * Pick'em's pairing, in settings — the SHARED match-play builder plus the two
@@ -135,7 +136,7 @@ export function PickemMatchBuilder({
         >
           {valid === 0
             ? "Nobody paired yet"
-            : `${valid} match${valid === 1 ? "" : "es"} · ${perMatch.toFixed(2)} pts each`}
+            : `${valid} match${valid === 1 ? "" : "es"} · ${fmtPts(perMatch)} pts each`}
         </span>
       </div>
 

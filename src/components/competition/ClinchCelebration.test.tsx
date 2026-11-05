@@ -116,9 +116,9 @@ describe("the burst belongs to the winners; the result belongs to everyone", () 
 describe("the loser's score survives the celebration", () => {
   it("both totals are still rendered when the cup is won", () => {
     const html = hero({ clincher: teams[1], cupComplete: true, celebrateFirstView: true });
-    // 39½–28: the result is a SCORELINE. A celebration that erases the loser
+    // 39.5–28: the result is a SCORELINE. A celebration that erases the loser
     // becomes a trophy screen instead.
-    expect(html).toContain("39½");
+    expect(html).toContain("39.5");
     expect(html).toContain("28");
     expect(html).toContain("Manhattans");
   });

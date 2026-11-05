@@ -67,7 +67,7 @@ describe("ProjectionRow — N-team (points cup) row, not 2-hardcoded", () => {
       <ProjectionRow teams={teams} perTeam={{ a: 3, b: 1.5, c: 0 }} final={false} />
     );
     expect(html).toContain(">3<"); // a's contribution
-    expect(html).toContain("1½"); // b's, with fmtPts rendering a half as ½
+    expect(html).toContain(">1.5<"); // b's: a game's projected delta is a decimal, not one of the ½ places
     expect(html).not.toContain(">13<"); // no realized+delta total
     for (const c of ["#f87171", "#c084fc", "#34d399"]) expect(html).toContain(c);
   });

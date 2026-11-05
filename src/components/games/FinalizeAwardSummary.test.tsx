@@ -69,7 +69,7 @@ describe("FinalizeAwardSummary", () => {
     expect(html).toContain("1st place: nobody finished");
   });
 
-  it("writes a half point as ½", () => {
+  it("writes a half point as a decimal: the finalize summary is not one of the ½ places", () => {
     const html = renderToStaticMarkup(
       <FinalizeAwardSummary
         kind={T}
@@ -78,7 +78,7 @@ describe("FinalizeAwardSummary", () => {
         unitWord={teams}
       />
     );
-    expect(rowText(html, "finalize-award-row-A")).toBe("1stAlpha2½ pts");
+    expect(rowText(html, "finalize-award-row-A")).toBe("1stAlpha2.5 pts");
   });
 
   it("a race of people lists only the places that win points: no 0-point rows, no marks", () => {

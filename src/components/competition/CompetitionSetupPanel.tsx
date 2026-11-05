@@ -5,7 +5,7 @@ import { ChevronLeft, Plus, Swords, Trophy, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
 import type { ScoringModel } from "@/lib/gameTypes";
-import { COMPETITION_CHOICE_WORD, COMPETITION_NAME_EXAMPLE, COMPETITION_UMBRELLA, competitionNoun, competitionWord, COMPETITION_KIND_LINE } from "@/lib/vocabulary";
+import { COMPETITION_CHOICE_WORD, COMPETITION_NAME_EXAMPLE, COMPETITION_UMBRELLA, competitionNoun, competitionWord, COMPETITION_KIND_LINE, COMPETING_WORD } from "@/lib/vocabulary";
 import { Stepper } from "@/components/games/Stepper";
 import { MAX_SEED_TEAMS } from "@/lib/teamColors";
 import { STARTING_POINTS, startingPointFits, type StartingPointId } from "@/lib/startingPoints";
@@ -319,7 +319,7 @@ export function CompetitionSetupPanel({ tripId, competition, onSuccess, onCancel
                     color: playAs === v ? "var(--color-bt-accent)" : "var(--color-bt-text)",
                   }}
                 >
-                  {v === "individuals" ? "Individuals" : "Teams"}
+                  {v === "individuals" ? COMPETING_WORD.individuals : COMPETING_WORD.teams}
                 </button>
               ))}
             </div>

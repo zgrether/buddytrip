@@ -2,7 +2,7 @@
 
 import { ChevronLeft } from "lucide-react";
 import { STARTING_POINTS, suggestedGames, type StartingPointId } from "@/lib/startingPoints";
-import { COMPETITION_NAME_EXAMPLE, competitionNoun, competitionWord } from "@/lib/vocabulary";
+import { COMPETITION_NAME_EXAMPLE, competitionNoun, competitionWord, COMPETING_WORD } from "@/lib/vocabulary";
 import { categoryIcon } from "@/lib/gameCategoryIcon";
 import { formatLine } from "@/lib/formatLines";
 import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
@@ -84,7 +84,7 @@ export function StartingPointReview({
             {sp.name}
           </h2>
           <div style={{ ...EYEBROW, color: "var(--color-bt-accent)" }} data-testid="starting-point-review-chip">
-            {word} · {teams === 0 ? "Individuals" : `${teams} teams`}
+            {word} · {teams === 0 ? COMPETING_WORD.individuals : COMPETING_WORD.teamCount(teams)}
           </div>
         </div>
       </div>
@@ -133,7 +133,7 @@ export function StartingPointReview({
                   color: playAs === v ? "var(--color-bt-on-accent)" : "var(--color-bt-text)",
                 }}
               >
-                {v === "individuals" ? "Individuals" : "Teams"}
+                {v === "individuals" ? COMPETING_WORD.individuals : COMPETING_WORD.teams}
               </button>
             ))}
           </div>
@@ -153,7 +153,7 @@ export function StartingPointReview({
             min={2}
             max={MAX_SEED_TEAMS}
             onChange={onTeamCountChange}
-            formatValue={(n) => `${n} teams`}
+            formatValue={COMPETING_WORD.teamCount}
             testId="team-count-stepper"
           />
         </div>

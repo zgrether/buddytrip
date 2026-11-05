@@ -118,9 +118,9 @@ describe("IN PROGRESS — what the game is worth", () => {
     expect(html).not.toContain("var(--color-bt-warning-faint)");
   });
 
-  it("uses the app's half formatter, so 4½ is not 4.5", () => {
-    // The value is its own node now, so the half glyph is asserted there.
-    expect(render("active", false, 4.5)).toContain(">4½<");
+  it("uses the app's formatter: a half is 4.5 here, not one of the ½ places", () => {
+    // The value is its own node now, so the half is asserted there.
+    expect(render("active", false, 4.5)).toContain(">4.5<");
   });
 
   it("stays ABSENT when the game is worth nothing", () => {

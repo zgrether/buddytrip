@@ -2,7 +2,7 @@
 
 import { createElement } from "react";
 import { TeamBadge } from "@/components/TeamBadge";
-import { PROJECTED_RESULTS, RECREDIT_WORD, GAME_STATE_WORD, SIDE_GAME_WORD, fmtPts } from "@/lib/vocabulary";
+import { AWARD_WORD, PROJECTED_RESULTS, RECREDIT_WORD, GAME_STATE_WORD, SIDE_GAME_WORD, fmtPts } from "@/lib/vocabulary";
 import { resultTiles } from "@/lib/standingsRows";
 import { formatOwnStanding, ownStandingIsSettled } from "@/lib/ownStanding";
 import { stateText } from "@/lib/stateText";
@@ -138,9 +138,6 @@ export function cannotProjectCopy(reason: CannotProjectReason): string | null {
   }
 }
 
-/** "8.5" → "8½", "14" → "14", "0.5" → "½", "1.25" → "1.25" (other fractions kept
- *  exact to 2dp — fractional shares must survive display end to end, #585). */
-
 /** §A1 format icon — the leading glyph that names the game's format, glanceable
  *  down the board. Its COLOR carries the arming tell (§A4, applied in Commit 3);
  *  the glyph itself identifies the game's CATEGORY (golf/card/yard/bar/other),
@@ -241,6 +238,7 @@ export function GameRow({
   teams,
   cells,
   scoringModel,
+  halfPoints = false,
   projection,
   cannotProject,
   tripId,
@@ -259,6 +257,8 @@ export function GameRow({
    *  to match_play boards (the same boards whose completed rows use the team-column
    *  grid). Points cups keep the plain outer column on live rows. */
   scoringModel: ScoringModel;
+  /** The cup counts in halves: a finished match game's team cells write ½. */
+  halfPoints?: boolean;
   /** teamId → projected points for THIS game (LIVE match/rack only). Present →
    *  the row renders the ▲ pill grid instead of the outer `N PTS` column. */
   projection?: Record<string, number>;
@@ -601,7 +601,7 @@ export function GameRow({
         ))
       ) : (
         <div className="flex shrink-0 flex-col items-end" style={{ minWidth: 44 }}>
-          <OuterColumn game={game} teams={teams} cells={cells} isFinal={isFinal} hasScores={!!hasScores} />
+          <OuterColumn game={game} teams={teams} cells={cells} isFinal={isFinal} hasScores={!!hasScores} halves={halfPoints} />
         </div>
       )}
     </div>
@@ -655,12 +655,14 @@ function OuterColumn({
   cells,
   isFinal,
   hasScores,
+  halves,
 }: {
   game: LBGame;
   teams: LBTeam[];
   cells: Map<string, LBCell> | undefined;
   isFinal: boolean;
   hasScores: boolean;
+  halves: boolean;
 }) {
   if (isFinal && hasScores) {
     return (
@@ -672,7 +674,7 @@ function OuterColumn({
               <TeamBadge teamId={team.id} name={team.name} shortName={team.short_name} color={team.color} size={13} />
               {/* Completed game: a team with no cell scored a real zero, not
                   "not-applicable" — show 0, reserve the dash for unplayed (W3-LB5). */}
-              <span style={{ color: "var(--color-bt-text)" }}>{cell ? fmtPts(cell.points) : "0"}</span>
+              <span style={{ color: "var(--color-bt-text)" }}>{cell ? fmtPts(cell.points, { halves }) : "0"}</span>
             </span>
           );
         })}
@@ -863,6 +865,7 @@ export function CompletedRow({
   teams,
   cells,
   scoringModel,
+  halfPoints = false,
   tripId,
   isLast,
   onPrefetch,
@@ -871,6 +874,8 @@ export function CompletedRow({
   teams: LBTeam[];
   cells: Map<string, LBCell> | undefined;
   scoringModel: ScoringModel;
+  /** The cup counts in halves: the team cells write ½. */
+  halfPoints?: boolean;
   tripId: string;
   /** Suppresses the between-rows hairline on the last completed row. */
   isLast?: boolean;
@@ -946,7 +951,7 @@ export function CompletedRow({
       ) : scoringModel === "points" ? (
         <CompletedTiles teams={teams} cells={cells} />
       ) : (
-        <CompletedGridCells teams={teams} cells={cells} />
+        <CompletedGridCells teams={teams} cells={cells} halves={halfPoints} />
       )}
     </div>
   );
@@ -1102,7 +1107,7 @@ function WinnersText({ winners }: { winners: string[] }) {
   );
 }
 
-function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined }) {
+function CompletedGridCells({ teams, cells, halves }: { teams: LBTeam[]; cells: Map<string, LBCell> | undefined; halves: boolean }) {
   const values = teams.map((t) => cells?.get(t.id)?.points ?? null);
   const numeric = values.filter((v): v is number => v != null);
   const max = numeric.length ? Math.max(...numeric) : null;
@@ -1129,7 +1134,7 @@ function CompletedGridCells({ teams, cells }: { teams: LBTeam[]; cells: Map<stri
             }}
           >
             {/* completed → a no-score team is a real 0, not unplayed (W3-LB5). */}
-            {v != null ? fmtPts(v) : "0"}
+            {v != null ? fmtPts(v, { halves }) : "0"}
           </span>
         );
       })}
@@ -1175,7 +1180,7 @@ function CompletedTiles({ teams, cells }: { teams: LBTeam[]; cells: Map<string, 
         style={{ width: tilesWidth(teams.length), color: "var(--color-bt-text-dim)" }}
         data-testid="game-no-points"
       >
-        No points
+        {AWARD_WORD.noPoints}
       </span>
     );
   }

@@ -14,7 +14,7 @@ import { useFirstClinchView } from "@/hooks/useFirstClinchView";
 import { useMyTeamId } from "@/hooks/useMyTeamColor";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { StandingsRows } from "./StandingsRows";
-import { isCupComplete, gamesRemaining } from "@/lib/cupCompletion";
+import { isCupComplete, isCupShared, gamesRemaining } from "@/lib/cupCompletion";
 import type { ScoringModel } from "@/lib/gameTypes";
 import type { CannotProjectReason } from "@/lib/gameProjection";
 import { GameRow, CompletedRow, GridColumnHeader, sectionOf, type GameSection } from "./GameRow";
@@ -22,6 +22,8 @@ import { StickyCollapseHero } from "./CompetitionHero";
 import { ReorderableSection } from "./ReorderableGames";
 import { SuggestedGames } from "./SuggestedGames";
 import { NeedsAttentionCard } from "./NeedsAttentionCard";
+import { HowScoringWorksCard } from "./HowScoringWorksCard";
+import { awardedSoFar } from "@/lib/howScoringWorks";
 import type { SetupReason } from "@/lib/gameReadiness";
 import type { NeedsAttention } from "@/lib/needsAttention";
 import { isStartingPointId, remainingSuggestions } from "@/lib/startingPoints";
@@ -172,6 +174,9 @@ interface LeaderboardData {
   winNumber: number;
   pointsToClinch: Record<string, number>;
   defendingTeamId: string | null;
+  /** Every game pays 1 point per match (`cupCountsInHalves`): the hero and the
+   *  match cells write a half as ½. Everywhere else a half is 0.5. */
+  halfPoints?: boolean;
 }
 
 // ── Root component ────────────────────────────────────────────────────────────
@@ -369,6 +374,11 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // inventing the surface first.
   const isMatchPlay = scoringModel === "match_play";
   const cupComplete = isMatchPlay && isCupComplete(data.games, !!clincher);
+  // A Cup that ended level is shared (Zach, 2026-10-22): every game final,
+  // nobody clinched, the two totals equal. The hero then reads "Final ·
+  // Shared" where it would otherwise go on saying "First to X wins".
+  const cupShared =
+    isMatchPlay && teams.length === 2 && isCupShared(data.games, !!clincher, teams.map((t) => teamTotals[t.id] ?? 0));
   // The hero's "clinched · N games remain" line — same `data.games` +
   // `gameLockState` reasoning `isCupComplete` already runs, so the count and
   // the completion gate can't disagree about which games are still open.
@@ -434,6 +444,8 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         winNumber={winNumber}
         clincher={clincher}
         cupComplete={cupComplete}
+        cupShared={cupShared}
+        halfPoints={data.halfPoints ?? false}
         gamesRemaining={gamesLeft}
         // First view of THIS cup's THIS winner, on this device, BY SOMEONE WHO
         // WON. Gated on `cupComplete` so a clinched-but-unfinished cup never
@@ -448,6 +460,25 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         canEdit={canEdit}
         onSettings={onSettings}
         onEditTeam={onEditTeam}
+      />
+
+      {/* How scoring works (Zach's rulings, 2026-10-22): a collapsed row under the
+          hero, for everyone. Built from this competition's own games, as the board
+          already has them; no new data reaches members. */}
+      <HowScoringWorksCard
+        scoringModel={scoringModel === "points" ? "points" : "match_play"}
+        pointsAvailable={pointsAvailable}
+        awarded={awardedSoFar(liveGames, unitTotals)}
+        teams={teams}
+        teamless={data.teamless}
+        games={liveGames.map((g) => ({
+          id: g.id,
+          name: g.name,
+          gameTypeId: g.gameTypeId,
+          competitionFormat: g.competitionFormat ?? null,
+          pointsTotal: g.pointsTotal ?? null,
+          distribution: g.distribution ?? null,
+        }))}
       />
 
       {/* POINTS body (board-body branching, left untouched): the standings glance
@@ -506,6 +537,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         projections={data.projections ?? {}}
         cannotProject={data.cannotProject ?? {}}
         scoringModel={scoringModel}
+        halfPoints={data.halfPoints ?? false}
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
@@ -642,7 +674,7 @@ export function useGameRowContext({
 // entry). Empty → the bones prompt + "Add a game"; populated → the session
 // breakdown + "Add a game". Editor-gated; the crew sees the list only.
 export function GamesSection({
-  games, competitionId, teams, cellsByGame, projections, cannotProject, scoringModel, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame, suggested,
+  games, competitionId, teams, cellsByGame, projections, cannotProject, scoringModel, halfPoints = false, tripId, mineSet, viewer, delegateOfByGame, onPrefetch, canEdit, onAddGame, suggested,
 }: {
   games: LBGame[];
   /** Absent on a trip with no competition — the games page lists side games only. */
@@ -652,6 +684,8 @@ export function GamesSection({
   projections: Record<string, Record<string, number>>;
   cannotProject: Record<string, CannotProjectReason>;
   scoringModel: ScoringModel;
+  /** The cup counts in halves (`cupCountsInHalves`): the match cells write ½. */
+  halfPoints?: boolean;
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
@@ -833,6 +867,7 @@ export function GamesSection({
         projections={projections}
         cannotProject={cannotProject}
         scoringModel={scoringModel}
+        halfPoints={halfPoints}
         tripId={tripId}
         mineSet={mineSet}
         viewer={viewer}
@@ -915,6 +950,7 @@ function SessionBreakdown({
   projections,
   cannotProject,
   scoringModel,
+  halfPoints,
   tripId,
   mineSet,
   viewer,
@@ -930,6 +966,7 @@ function SessionBreakdown({
   projections: Record<string, Record<string, number>>;
   cannotProject: Record<string, CannotProjectReason>;
   scoringModel: ScoringModel;
+  halfPoints: boolean;
   tripId: string;
   mineSet: Set<string>;
   viewer: LBViewer;
@@ -963,6 +1000,7 @@ function SessionBreakdown({
           teams={teams}
           cells={cellsByGame.get(game.id)}
           scoringModel={scoringModel}
+          halfPoints={halfPoints}
           tripId={tripId}
           isLast={isLast}
           onPrefetch={onPrefetch}
@@ -976,6 +1014,7 @@ function SessionBreakdown({
           projection={projections[game.id]}
           cannotProject={cannotProject[game.id]}
           scoringModel={scoringModel}
+          halfPoints={halfPoints}
           tripId={tripId}
           mine={mineSet.has(game.id)}
           canEdit={canEdit}
@@ -987,7 +1026,7 @@ function SessionBreakdown({
         />
       );
     },
-    [teams, cellsByGame, scoringModel, tripId, projections, cannotProject, mineSet, canEdit, viewer, delegateOfByGame, onPrefetch]
+    [teams, cellsByGame, scoringModel, halfPoints, tripId, projections, cannotProject, mineSet, canEdit, viewer, delegateOfByGame, onPrefetch]
   );
 
   // Group games by board section (single source: sectionOf) — every game lands

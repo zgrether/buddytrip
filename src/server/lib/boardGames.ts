@@ -33,6 +33,9 @@ export interface BoardInputs {
   /** ASSIGNED matches (both sides paired) — "a match = assigned, everywhere". */
   matchCountByGame: Map<string, number>;
   /** Every match row, paired or not — the readiness bar is paired === total. */
+  /** Each PAIRED match's own value (`point_value`, null for the even share):
+   *  whether the cup counts in halves (`cupCountsInHalves`). */
+  pairedMatchValuesByGame: Map<string, (number | null)[]>;
   totalMatchRowsByGame: Map<string, number>;
   /** Seeded bracket entrants — a configuration act, so it feeds `isNew`. */
   entrantCountByGame: Map<string, number>;
@@ -96,7 +99,7 @@ export async function readBoardInputs(
 
   const [matchRowsRes, participantRowsRes, startedRowsRes, entrantRowsRes, delegateRowsRes, slateRowsRes] = await Promise.all([
     gameIds.length
-      ? supabase.from("game_matches").select("game_id, side_a, side_b").in("game_id", gameIds)
+      ? supabase.from("game_matches").select("game_id, side_a, side_b, point_value").in("game_id", gameIds)
       : Promise.resolve({ data: [] as { game_id: string; side_a: unknown; side_b: unknown }[], error: null }),
     gameIds.length
       // `user_id` is read for `viewerGameIds` and goes no further than this
@@ -151,11 +154,13 @@ export async function readBoardInputs(
   const matchCountByGame = new Map<string, number>();
   const totalMatchRowsByGame = new Map<string, number>();
   const matchRowsByGame = new Map<string, StoredMatchRow[]>();
-  for (const r of rowsOrThrow(matchRowsRes, `${owner} matches`) as ({ game_id: string } & StoredMatchRow)[]) {
+  const pairedMatchValuesByGame = new Map<string, (number | null)[]>();
+  for (const r of rowsOrThrow(matchRowsRes, `${owner} matches`) as ({ game_id: string; point_value?: number | null } & StoredMatchRow)[]) {
     totalMatchRowsByGame.set(r.game_id, (totalMatchRowsByGame.get(r.game_id) ?? 0) + 1);
     matchRowsByGame.set(r.game_id, [...(matchRowsByGame.get(r.game_id) ?? []), r]);
     if (!r.side_a?.id || !r.side_b?.id) continue;
     matchCountByGame.set(r.game_id, (matchCountByGame.get(r.game_id) ?? 0) + 1);
+    pairedMatchValuesByGame.set(r.game_id, [...(pairedMatchValuesByGame.get(r.game_id) ?? []), r.point_value ?? null]);
   }
 
   const pairedMembersByGame = new Map<string, string[]>();
@@ -180,6 +185,7 @@ export async function readBoardInputs(
     groupedParticipantCountByGame,
     matchCountByGame,
     totalMatchRowsByGame,
+    pairedMatchValuesByGame,
     entrantCountByGame,
     pairedMembersByGame,
     playerIdsByGame,

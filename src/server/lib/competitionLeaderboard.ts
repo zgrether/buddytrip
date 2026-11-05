@@ -12,6 +12,7 @@ import { isManualGameType, type ScoringModel } from "@/lib/gameTypes";
 import { MATCH_PLAY_TYPES, RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE } from "@/server/lib/gameReadiness";
 import { readBoardInputs, boardRow } from "@/server/lib/boardGames";
 import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
+import { cupCountsInHalves } from "@/lib/halfPoints";
 import { tripDisplayNames } from "./tripDisplayNames";
 import { needsAttention as deriveNeedsAttention, NOTHING_NEEDS_ATTENTION } from "@/lib/needsAttention";
 import { readSideGameWinners } from "./sideBoard";
@@ -1250,6 +1251,21 @@ export async function computeCompetitionLeaderboard(
     cannotProject,
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,
+    // Zach's half-points rule: ½ on this cup's totals, target and match cells
+    // only when every game pays 1 point per match (`cupCountsInHalves`).
+    halfPoints: cupCountsInHalves(
+      scoringModel,
+      allGames.map((g) => {
+        const dist = g.points_distribution as PointsDistribution | null;
+        return {
+          gameTypeId: (g.game_type_id as string | null) ?? null,
+          competitionFormat: (g.competition_format as string | null) ?? null,
+          pointsTotal: (g.points_total as number | null) ?? null,
+          legacyValue: isPerMatch(dist) ? dist.value : null,
+          pairedMatchValues: board.pairedMatchValuesByGame.get(g.id as string) ?? [],
+        };
+      })
+    ),
     unitTotals,
     // Hero "if today holds" tier: per-team projected total (banked + Σ live projections)
     // + whether any game is live (the tier-visibility gate). Server-summed (Path A).

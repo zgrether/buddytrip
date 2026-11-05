@@ -57,10 +57,10 @@ describe("only the matches that pay carry a figure", () => {
     expect(s.label).toBe("3rd: 3 · 4th: 1");
   });
 
-  it("halves render as ½, the app's existing notation", () => {
+  it("a half is a decimal: a bracket is not one of the ½ places (Zach's half-points rule)", () => {
     const r = resolveDraw(buildDraw(4));
     const s = matchStakes(at(r, 2), r, [3, 1.5])!;
-    expect(s.label).toBe("1st: 3 · 2nd: 1½");
+    expect(s.label).toBe("1st: 3 · 2nd: 1.5");
   });
 
   it("no placement split → nothing, rather than zeroes", () => {

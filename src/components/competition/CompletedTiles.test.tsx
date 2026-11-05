@@ -79,3 +79,28 @@ describe("completed tiles — No points, and the name that wraps", () => {
     expect(name(match)).toContain("truncate");
   });
 });
+
+describe("a Cup's match result cells count in halves only on a cup that does (Zach's half-points rule)", () => {
+  const cells = new Map([["a", cell(2.5)], ["b", cell(1.5)]]);
+  const row = (halfPoints?: boolean) =>
+    renderToStaticMarkup(
+      <CompletedRow
+        game={game({ gameTypeId: "gtt_match_play", name: "Day 1" })}
+        teams={TEAMS.slice(0, 2)}
+        cells={cells}
+        scoringModel="match_play"
+        halfPoints={halfPoints}
+        tripId="t1"
+        onPrefetch={() => {}}
+      />
+    );
+  it("with the flag: ½", () => {
+    expect(row(true)).toContain(">2½<");
+    expect(row(true)).toContain(">1½<");
+  });
+  it("CONTROL, without it: decimals", () => {
+    expect(row()).toContain(">2.5<");
+    expect(row()).toContain(">1.5<");
+    expect(row()).not.toContain("½");
+  });
+});

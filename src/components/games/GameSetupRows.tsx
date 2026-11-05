@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { PER_MATCH_WORD } from "@/lib/vocabulary";
+import { fmtPts, PER_MATCH_WORD } from "@/lib/vocabulary";
 import { Flag, Hash } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { GAME_TYPES } from "@/lib/gameTypes";
@@ -280,10 +280,10 @@ export function GameSetupRows({
                       fontWeight: 600,
                     }}
                   >
-                    {/* Never auto-rounded — a non-whole share is shown exactly (2 decimals),
+                    {/* Never auto-rounded — a non-whole share is shown exactly (to 2 decimals),
                         same teal treatment as any other resolved value (no amber/warning:
                         the math downstream is exact; see evenShare's doc). */}
-                    {Number.isInteger(derivedPerSlot) ? derivedPerSlot : derivedPerSlot.toFixed(2)}
+                    {fmtPts(derivedPerSlot)}
                   </span>
                 </>
               ) : (

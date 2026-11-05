@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { PER_MATCH_WORD, NONGOLF_FORMAT_WORD } from "@/lib/vocabulary";
+import { fmtPts, PER_MATCH_WORD, NONGOLF_FORMAT_WORD } from "@/lib/vocabulary";
 import { Hash, ListOrdered } from "lucide-react";
 import { FormatCards as SharedFormatCards } from "@/components/games/FormatCards";
 import { ChecklistRow } from "@/components/games/ChecklistRow";
@@ -286,7 +286,7 @@ function PointsSubtitle({
     <span data-testid="pickem-per-match">
       {PER_MATCH_WORD.label}:{" "}
       <span style={{ color: "var(--color-bt-accent)", fontWeight: 600 }}>
-        {perMatch.toFixed(2)}
+        {fmtPts(perMatch)}
       </span>
       {hasOverrides && " for the ones without their own value"}
       {worthNothing && (
