@@ -281,9 +281,9 @@ describe("winsNeeded", () => {
     expect(need({ unitIds: units, totals: { A: 3 }, unbanked: [] }).wins).toBeNull();
   });
   it("the other awards go lowest to the closest chaser", () => {
-    // A wins g: with B on the 1 and C on the 3, A is 6 clear of B and 3 clear of
-    // C, past the 2 left in h. Handing the 3 to B would leave A only 4 clear.
-    const r = need({ unitIds: units, totals: { A: 5, B: 3, C: 2 }, unbanked: [split("g", [5, 3, 1]), split("h", [2])] });
+    // A wins g. With B on the 1 and C on the 3, A is 6 clear of B and 7 of C, past
+    // the 5 left in h. Handing the 3 to B instead would leave A only 4 clear.
+    const r = need({ unitIds: units, totals: { A: 5, B: 3 }, unbanked: [split("g", [5, 3, 1]), split("h", [5])] });
     expect(r.sets).toContainEqual(["g"]);
   });
   it("names no next game: the answer does not depend on the order of the games", () => {
