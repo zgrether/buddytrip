@@ -40,6 +40,8 @@ import {
   COMPETING_WORD,
   HOW_SCORING_WORKS_TITLE,
   pointsInPlayLine,
+  CLINCH_STORY_WORD,
+  ordinalShort,
 } from "./vocabulary";
 
 /**
@@ -251,6 +253,16 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
     ]);
     expect(RACE_WORD.shared).toBe("Shared");
     expect([COMPETING_WORD.individuals, COMPETING_WORD.teams, COMPETING_WORD.teamCount(3)]).toEqual(["Individuals", "Teams", "3 teams"]);
+  });
+
+  it("the points hero's story (Zach, spec §3): these say cup by exception", () => {
+    const w = CLINCH_STORY_WORD;
+    expect([w.anyonesCup, w.tiedAtTop, w.clinchWatch]).toEqual(["Anyone's cup", "Tied at the top", "Clinch watch"]);
+    expect([w.gamesLeft(1), w.gamesLeft(6)]).toEqual(["1 game left", "6 games left"]);
+    expect([w.winsFromTheCup(1), w.winsFromTheCup(2), w.winsFromPlace(1, "2nd")]).toEqual(["One win from the cup", "Two wins from the cup", "One win from 2nd"]);
+    expect([w.upForGrabs("2nd"), w.raceFor("2nd"), w.placeShared("3rd")]).toEqual(["2nd is up for grabs", "Race for 2nd", "3rd shared"]);
+    expect([w.stillAlive(4, 4), w.stillAlive(3, 4)]).toEqual(["all 4 still alive", "3 still alive"]);
+    expect([ordinalShort(1), ordinalShort(2), ordinalShort(3), ordinalShort(4), ordinalShort(11)]).toEqual(["1st", "2nd", "3rd", "4th", "11th"]);
   });
 
   it("navigation, structure, and the stored margin", () => {

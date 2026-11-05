@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rowsOrThrow, maybeRowOrThrow } from "@/server/lib/rowOrThrow";
-import { rollUp, placementDetail, placementPoints, awardedForGame, settledPool, bankedOnlyWhenFinished, type LiveGame } from "@/lib/competitionPlacement";
+import { rollUp, placementDetail, placementPoints, awardedForGame, settledPool, bankedOnlyWhenFinished, gamePayout, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, effectiveDistribution, payingSchedule, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { isBracketGame, isPickemGame, isMatchesGame } from "@/lib/resultStrategy";
@@ -13,8 +13,8 @@ import { MATCH_PLAY_TYPES, RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE } from "@/server
 import { readBoardInputs, boardRow } from "@/server/lib/boardGames";
 import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
 import { cupCountsInHalves } from "@/lib/halfPoints";
-import { pointsClinch } from "@/lib/pointsClinch";
-import { clinchGames } from "./clinchGames";
+import { clinchWatch, pointsClinch } from "@/lib/pointsClinch";
+import { clinchGame, clinchGames } from "./clinchGames";
 import { tripDisplayNames } from "./tripDisplayNames";
 import { needsAttention as deriveNeedsAttention, NOTHING_NEEDS_ATTENTION } from "@/lib/needsAttention";
 import { readSideGameWinners } from "./sideBoard";
@@ -485,14 +485,14 @@ export async function computeCompetitionLeaderboard(
           // here on every poll: guessing the convention from column nullness,
           // and resolving a bracket entrant's team through
           // `bracket_entrants.team_id` as it stands NOW.
-          .select("game_id, entity_id, entity_type, position, raw_score, value_kind, credited_team_id")
+          .select("game_id, entity_id, entity_type, position, raw_score, value_kind, credited_team_id, computed_at")
           .in("game_id", gameIds)
           // PERSON rows only when people are the units (PR 7). In a teamed race a
           // person row is never a unit's, so it is not even read: that is what
           // keeps a teamed board byte-identical, and a player on a team from
           // being credited twice (as themselves AND through their team).
           .in("entity_type", teamless ? ["team", "entrant", "user"] : ["team", "entrant"])
-      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[], error: null }),
+      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null; computed_at: string | null }[], error: null }),
     readBoardInputs(supabase, allGames, "board's", (comp?.trip_id as string | null) ?? null, opts.viewerId ?? null),
     // The race's PLAYERS (teamless only): a person is a unit from the first game
     // they are IN, before they have a result — "no points yet" (ruling 22).
@@ -1210,10 +1210,26 @@ export async function computeCompetitionLeaderboard(
   const pointsCupClinch = (() => {
     if (scoringModel !== "points") return null;
     const unitOfUser = (userId: string) => (teamless ? (personUnits.has(userId) ? userId : null) : teamOfUser.get(userId) ?? null);
-    const view = pointsClinch({ unitIds, totals: unitTotals, unbanked: clinchGames(allGames, board, unitOfUser) });
+    const unbanked = clinchGames(allGames, board, unitOfUser);
+    const view = pointsClinch({ unitIds, totals: unitTotals, unbanked });
+    // The game banked most recently, for who it just put out: when its result
+    // was written, the only order of play the data holds.
+    const banked = allGames.filter((g) => g.status === "complete");
+    const finishedAt = (id: unknown) =>
+      (results ?? []).reduce((latest, r) => (r.game_id === id && String(r.computed_at ?? "") > latest ? String(r.computed_at) : latest), "");
+    const last = banked.reduce<(typeof banked)[number] | null>((a, g) => (a == null || finishedAt(g.id) > finishedAt(a.id) ? g : a), null);
+    const lastLive = last ? liveGames.find((g) => g.id === last.id) : null;
     return {
       clincherId: view.clincher,
       lockedUnitIds: unitIds.filter((id) => view.places.get(id)?.locked),
+      watch: clinchWatch({
+        unitIds,
+        totals: unitTotals,
+        unbanked,
+        bankedGames: banked.length,
+        projections,
+        lastBanked: last && lastLive ? { game: clinchGame(last, board, unitOfUser), paid: Object.fromEntries(gamePayout(lastLive)) } : null,
+      }),
     };
   })();
 

@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { Settings, Trophy } from "lucide-react";
 import { ProjectionPill } from "./GameRow";
 import { ClinchCelebration } from "./ClinchCelebration";
+import { PointsHeroTiers, type PointsHeroUnit } from "./PointsHeroTiers";
+import type { ClinchWatch } from "@/lib/pointsClinch";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { teamInk } from "@/lib/teamTextColor";
 import { useShrinkToFit } from "@/hooks/useShrinkToFit";
@@ -13,6 +15,7 @@ import { useShrinkToFit } from "@/hooks/useShrinkToFit";
  *  decoration rather than a label. */
 const MINI_NAME_SIZES = [14, 13, 12, 11];
 import type { TrophySlot } from "./CupTrophy";
+import { PERSON_COLOR } from "./StandingsRows";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { competitionWord, GAME_STATE_WORD, fmtPts, RACE_WORD } from "@/lib/vocabulary";
@@ -118,6 +121,7 @@ export function CompetitionHero({
   cupComplete = false,
   cupShared = false,
   halfPoints = false,
+  pointsHero,
   celebrateFirstView = false,
   canReplayCelebration = false,
   onCelebrated,
@@ -165,6 +169,8 @@ export function CompetitionHero({
   /** The cup counts in halves (`cupCountsInHalves`): totals, projected totals
    *  and the target write a half as ½. */
   halfPoints?: boolean;
+  /** A points cup's story and clinch watch. Absent on a head-to-head Cup. */
+  pointsHero?: { watch: ClinchWatch; units: readonly PointsHeroUnit[] };
   /** This device hasn't seen this cup's celebration yet → play the burst once.
    *  Only ever true alongside `cupComplete` and `variant === "expanded"`. */
   celebrateFirstView?: boolean;
@@ -190,6 +196,8 @@ export function CompetitionHero({
   // visibly nothing. Offering nothing is better than offering a lie.
   const reducedMotion = usePrefersReducedMotion();
   const showReplay = showScores && cupComplete && canReplayCelebration && !reducedMotion;
+
+  const pointsClincher = pointsHero?.units.find((u) => u.id === pointsHero.watch.clincherId) ?? null;
 
   if (variant === "collapsed") {
     return (
@@ -254,6 +262,16 @@ export function CompetitionHero({
           trophy={trophy}
         />
       )}
+      {/* A points cup: the same placement and no tilt, because no side won. */}
+      {pointsHero && (
+        <ClinchCelebration
+          cupComplete={cupComplete}
+          clinched={pointsClincher != null}
+          winnerColor={pointsClincher ? pointsClincher.color ?? PERSON_COLOR : null}
+          celebrate={false}
+          trophy={trophy}
+        />
+      )}
 
       {/* CONTENT — sharp, in front of the art. Horizontal padding matches the
           trip-header card (16px) rather than the mockup's standalone 24px, since
@@ -288,6 +306,8 @@ export function CompetitionHero({
             </button>
           )}
         </div>
+
+        {pointsHero && <PointsHeroTiers watch={pointsHero.watch} units={pointsHero.units} totals={teamTotals} final={cupComplete} />}
 
         {showScores && (
           <>

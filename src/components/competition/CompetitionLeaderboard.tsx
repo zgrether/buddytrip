@@ -24,6 +24,7 @@ import { SuggestedGames } from "./SuggestedGames";
 import { NeedsAttentionCard } from "./NeedsAttentionCard";
 import { HowScoringWorksCard } from "./HowScoringWorksCard";
 import { awardedSoFar } from "@/lib/howScoringWorks";
+import type { ClinchWatch } from "@/lib/pointsClinch";
 import type { SetupReason } from "@/lib/gameReadiness";
 import type { NeedsAttention } from "@/lib/needsAttention";
 import { isStartingPointId, remainingSuggestions } from "@/lib/startingPoints";
@@ -175,7 +176,7 @@ interface LeaderboardData {
   pointsToClinch: Record<string, number>;
   defendingTeamId: string | null;
   /** A points cup's place locks (`pointsClinch`), null on a head-to-head Cup. */
-  clinch?: { clincherId: string | null; lockedUnitIds: string[] } | null;
+  clinch?: { clincherId: string | null; lockedUnitIds: string[]; watch: ClinchWatch } | null;
   /** Every game pays 1 point per match (`cupCountsInHalves`): the hero and the
    *  match cells write a half as ½. Everywhere else a half is 0.5. */
   halfPoints?: boolean;
@@ -364,18 +365,21 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     return <NoTeamsState />;
   }
 
-  const clincher = teams.find((t) => (pointsToClinch[t.id] ?? 1) <= 0) ?? null;
+  const isMatchPlay = scoringModel === "match_play";
+  // Head to head only: `pointsToClinch` is the more-than-half rule, and a points
+  // cup clinches by `data.clinch` (spec §1).
+  const clincher = isMatchPlay ? teams.find((t) => (pointsToClinch[t.id] ?? 1) <= 0) ?? null : null;
 
   // Decided vs FINISHED — the distinction the celebration turns on. Clinch
   // itself is not re-derived: `isCupComplete` takes the existing `clincher`
   // above as its input and only adds "is anything still in play" on top.
   //
-  // Match-play only, matching the hero's own `showScores`. The trophy, the glow
-  // and the two-score treatment are all match-play constructs — a points cup has
-  // no hero centrepiece to celebrate on, so lighting one there would mean
-  // inventing the surface first.
-  const isMatchPlay = scoringModel === "match_play";
-  const cupComplete = isMatchPlay && isCupComplete(data.games, !!clincher);
+  // A points cup is final when nothing is left to play, whoever has clinched:
+  // with 1st clinched and unarmed games left, `isCupComplete` would fire while
+  // places are still open (spec §5).
+  const cupComplete = isMatchPlay
+    ? isCupComplete(data.games, !!clincher)
+    : data.games.length > 0 && gamesRemaining(data.games) === 0;
   // A Cup that ended level is shared (Zach, 2026-10-22): every game final,
   // nobody clinched, the two totals equal. The hero then reads "Final ·
   // Shared" where it would otherwise go on saying "First to X wins".
@@ -448,6 +452,14 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         cupComplete={cupComplete}
         cupShared={cupShared}
         halfPoints={data.halfPoints ?? false}
+        pointsHero={
+          data.clinch
+            ? {
+                watch: data.clinch.watch,
+                units: data.units.map((u) => ({ id: u.id, name: u.name, shortName: u.short_name, color: u.color })),
+              }
+            : undefined
+        }
         gamesRemaining={gamesLeft}
         // First view of THIS cup's THIS winner, on this device, BY SOMEONE WHO
         // WON. Gated on `cupComplete` so a clinched-but-unfinished cup never

@@ -45,6 +45,7 @@ const SPARKS = Array.from({ length: SPARK_COUNT }, (_, i) => {
 
 export function ClinchCelebration({
   cupComplete,
+  clinched = false,
   winnerColor,
   winnerSide = null,
   celebrate,
@@ -54,6 +55,9 @@ export function ClinchCelebration({
 }: {
   /** Decided AND finished (`isCupComplete`). False → the resting watermark. */
   cupComplete: boolean;
+  /** A points cup with 1st clinched and games still to play: the trophy tints and
+   *  brightens a step, with no wash and no burst. Match play never passes it. */
+  clinched?: boolean;
   /** The winning team's colour — tints the trophy and the wash. */
   winnerColor: string | null;
   /**
@@ -261,7 +265,7 @@ export function ClinchCelebration({
             the trophy is unmistakably present and the scoreline still wins the
             eye, which is the right order for a screen whose job is announcing a
             result. (Measured by eye at 375px; see the PR's device note.) */}
-        <Trophy opacity={lit ? 0.42 : 0.17} tint={lit ? winnerColor : null} />
+        <Trophy opacity={lit ? 0.42 : clinched ? 0.3 : 0.17} tint={lit || clinched ? winnerColor : null} />
 
         {/* The burst, anchored to the trophy's centre so the sparks read as
             coming off the cup rather than off the card.

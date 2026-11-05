@@ -52,6 +52,10 @@ describe("the board's clinch", () => {
     expect(first.clinch?.clincherId).toBe(a);
     expect(first.clinch?.lockedUnitIds).toContain(a);
     expect(first.clinch?.lockedUnitIds).not.toContain(b);
+    expect(first.clinch?.watch.bankedGames).toBe(1);
+    expect(first.clinch?.watch.gamesLeft).toBe(1);
+    expect(first.clinch?.watch.place).toBe(2);
+    expect(first.clinch?.watch.leaderIds).toEqual([b]);
 
     const added = await manualGame("Pool", [8, 1]);
     const second = await board();
@@ -59,6 +63,27 @@ describe("the board's clinch", () => {
     expect(second.clinch?.lockedUnitIds).toEqual([]);
 
     await ctx.admin.from("games").delete().in("id", [left, added]);
+  });
+
+  it("names who the last banked game put out, and forgets it at the next", async () => {
+    const cup = await ctx.createCupTrip({ title: "Out Trip", name: "Out Cup", scoringModel: "points", teams: ["One", "Two", "Three"] });
+    const [a, b, c] = cup.teamIds;
+    const paying = async (name: string, values: number[], order?: string[]) => {
+      const g = (await ctx.caller().games.create({ tripId: cup.tripId, gameTypeId: "gtt_generic_yard", name, competitionId: cup.competitionId })) as { id: string };
+      await ctx.admin.from("games").update({ points_total: values.reduce((x, y) => x + y, 0), points_distribution: { type: "placement", values } }).eq("id", g.id);
+      if (order) await ctx.caller().games.finish({ tripId: cup.tripId, gameId: g.id, placements: order.map((entityId, i) => ({ entityId, position: i + 1 })) });
+      return g.id;
+    };
+    const read = () => ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
+    await paying("Left", [20, 19]);
+    await paying("First", [10, 9], [a, b, c]);
+    expect((await read()).clinch?.watch.newlyOutIds).toEqual([]);
+    const second = await paying("Second", [12, 11], [a, b, c]);
+    // A 22, B 20, C 0, with 20 left: this game put C out of 1st.
+    expect((await read()).clinch?.watch.newlyOutIds).toEqual([c]);
+    expect(second).toBeTruthy();
+    await paying("Third", [1], [b, a, c]);
+    expect((await read()).clinch?.watch.newlyOutIds).toEqual([]);
   });
 
   it("nothing left: every place is locked", async () => {
