@@ -149,7 +149,7 @@ describe("teams router", () => {
     it("admits a team while a head-to-head cup has fewer than two — a seed that never landed can reach two", async () => {
       const { tripId, competitionId: cup } = await ctx.createCupTrip({ name: "H2H One", scoringModel: "match_play" });
       await ctx.createTeam(cup, "Blue");
-      const red = await ctx.caller().teams.create({ tripId, competitionId: cup, name: "Red", ...TEAM });
+      const red = await ctx.caller().teams.create({ tripId, competitionId: cup, name: "Red", ...TEAM, color: "#ef4444" });
       expect(red.name).toBe("Red");
       expect(await teamCount(cup)).toBe(2);
     });
@@ -158,7 +158,7 @@ describe("teams router", () => {
       const { tripId, competitionId: cup } = await ctx.createCupTrip({ name: "Points Any", scoringModel: "points" });
       await ctx.createTeam(cup, "Blue");
       await ctx.createTeam(cup, "Red");
-      const green = await ctx.caller().teams.create({ tripId, competitionId: cup, name: "Green", ...TEAM });
+      const green = await ctx.caller().teams.create({ tripId, competitionId: cup, name: "Green", ...TEAM, color: "#f97316" });
       expect(await teamCount(cup)).toBe(3);
       await expect(ctx.caller().teams.delete({ tripId, teamId: green.id })).resolves.toEqual({ success: true });
       expect(await teamCount(cup)).toBe(2);

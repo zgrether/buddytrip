@@ -15,7 +15,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { suggestShortName } from "@/lib/teamColors";
+import { suggestShortName, TEAM_COLORS } from "@/lib/teamColors";
 import { strictTestClient } from "./strictTestClient";
 import { createCallerFactory, type TRPCContext } from "../../server/trpc";
 import { appRouter } from "../../server/router";
@@ -127,6 +127,7 @@ export class TestContext {
   private _competitionIds: string[] = [];
   private _groupIds: string[] = [];
   private _teamIds: string[] = [];
+  private _teamCountByCompetition = new Map<string, number>();
   private _accountIds: string[] = [];
 
   private constructor(admin: SupabaseClient, primaryUser: TestUser) {
@@ -360,6 +361,12 @@ export class TestContext {
     opts: { shortName?: string; color?: string; colorDim?: string } = {}
   ): Promise<string> {
     const teamId = `test-team-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    // Each team its own palette color, in the order they are made: migration 223
+    // refuses two in one competition, and a fixture cannot be in a state the app
+    // forbids.
+    const made = this._teamCountByCompetition.get(competitionId) ?? 0;
+    this._teamCountByCompetition.set(competitionId, made + 1);
+    const swatch = TEAM_COLORS[made % TEAM_COLORS.length];
     await withSeedRetry(
       () =>
         this.admin.from("teams").insert({
@@ -369,8 +376,8 @@ export class TestContext {
           // The app's own suggestion: "Team A" / "Team B" become A / B rather than
           // both "TEA", which migration 219's short-name index refuses.
           short_name: opts.shortName ?? suggestShortName(name),
-          color: opts.color ?? "#3b82f6",
-          color_dim: opts.colorDim ?? "#0a1a2a",
+          color: opts.color ?? swatch.color,
+          color_dim: opts.colorDim ?? swatch.colorDim,
         }),
       "Failed to create team"
     );

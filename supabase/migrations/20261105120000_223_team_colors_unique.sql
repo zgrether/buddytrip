@@ -1,0 +1,29 @@
+-- 223 · A team's color is unique within its competition.
+--
+-- WHAT CHANGES: a unique index on teams (competition_id, lower(btrim(color))),
+-- so two teams in one competition can never share a color, the same rule
+-- migration 219 gave names and short names.
+--
+-- WHY: nothing enforced it. No constraint, no check in the teams router or in
+-- update_team_identity, and the team editor offered every swatch whoever held
+-- it. A team's color is how the board tells two teams apart: the standings bars,
+-- the finished-game tiles, the hero's two sides. Zach's ruling, 2026-11-05.
+--
+-- THE CONSEQUENCE, accepted in the same ruling: the palette has 8 colors
+-- (TEAM_COLORS), so a competition can have 8 teams. teams.create refuses a ninth
+-- by count, so this index is the second line behind it rather than the message.
+-- Swapping two teams' colors takes a third color in between, because each save
+-- writes one team.
+--
+-- SAFE TO ADD: production held 0 clashes across its 23 teams in 8 competitions,
+-- at most 4 teams in one, and no color outside the palette (read-only count,
+-- 2026-11-05, case and spaces ignored). The table is small, so a plain CREATE
+-- INDEX holds its lock for well under a millisecond (CLAUDE.md, Index Creation).
+--
+-- EVERY WRITER is covered by the index itself rather than by checks in each:
+-- teams.create (insert), teams.update (the update_team_identity RPC) and
+-- competitions.create's seeded teams, which draw distinct colors from
+-- SEED_TEAM_COLORS. The routers turn the unique_violation into a refusal that
+-- names the fix.
+CREATE UNIQUE INDEX IF NOT EXISTS teams_competition_color_unique
+  ON public.teams (competition_id, lower(btrim(color)));
