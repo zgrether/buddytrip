@@ -365,7 +365,9 @@ describe("clinchWatch", () => {
       expect(w.liveSwing).toBe(10);
     });
     it("a live game the leader is not leading never reads as clinching", () => {
-      const w = watch({ totals: { A: 6, B: 5 }, unbanked: left, bankedGames: 1, projections: { live: { A: 3, B: 7, C: 0, D: 0 } } });
+      // A would clinch if this held (23 to 17 with 2 left), but B is the one leading
+      // it, so "Leading live" would be false.
+      const w = watch({ totals: { A: 20, B: 10 }, unbanked: left, bankedGames: 1, projections: { live: { A: 3, B: 7, C: 0, D: 0 } } });
       expect(w.clinchesIfHolds).toBeNull();
     });
     it("a live game that would not be enough says nothing", () => {
@@ -382,14 +384,15 @@ describe("clinchWatch", () => {
   describe("who the last banked game put out", () => {
     const pool = split("pool", [4]);
     it("a unit the game put out of 1st is named", () => {
-      // Before Pool, A led C by 2 and D by 4 with 8 left, so neither was out.
+      // Before Pool, A led C by 6 with 8 left, so C was alive. Pool's 4 took the
+      // lead to 10, which would read as already out if Pool's points stayed in.
       const w = watch({
-        totals: { A: 12, B: 8, C: 6, D: 4 },
+        totals: { A: 14, B: 12, C: 4, D: 13 },
         unbanked: [split("left", [4])],
         bankedGames: 2,
         lastBanked: { game: pool, paid: { A: 4 } },
       });
-      expect(w.newlyOutIds).toEqual(["C", "D"]);
+      expect(w.newlyOutIds).toEqual(["C"]);
     });
     it("a unit already out is not named again", () => {
       const w = watch({
