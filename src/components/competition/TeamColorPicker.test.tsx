@@ -33,6 +33,7 @@ describe("the swatches", () => {
     expect(html).toContain('disabled=""');
     expect(html).toContain(">BLU<");
     expect(html).toContain('aria-label="Blue (taken by BLU)"');
+    expect(html).toContain("cursor:not-allowed");
   });
   it("a free color is neither", () => {
     const html = swatch(render(null), "green");
@@ -47,8 +48,8 @@ describe("the swatches", () => {
   });
   it("taken and free are painted apart, not only labelled", () => {
     const html = render(null);
-    expect(swatch(html, "blue")).toContain("opacity:0.6");
-    expect(swatch(html, "green")).toContain("opacity:1");
+    expect(swatch(html, "blue")).toContain(`color-mix(in srgb, ${blue} 45%, transparent)`);
+    expect(swatch(html, "green")).toContain(`background:${TEAM_COLORS[1].color}`);
   });
   it("a taken color never reads as selected, even if the index lands on it", () => {
     const html = swatch(render(null, 0), "blue");
