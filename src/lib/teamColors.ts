@@ -26,7 +26,7 @@ export const TEAM_COLORS: TeamColorSwatch[] = [
 export const MAX_TEAMS = TEAM_COLORS.length;
 
 /** Why there cannot be another team. Zach's words, 2026-11-05. */
-export const TEAM_CAP_LINE = `A cup can have ${MAX_TEAMS} teams, one per colour.`;
+export const TEAM_CAP_LINE = `A tournament can have ${MAX_TEAMS} teams, one per color.`;
 
 /** Lowercased color → the short name of the team holding it. */
 export type TakenTeamColors = ReadonlyMap<string, string>;

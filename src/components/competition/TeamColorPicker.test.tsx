@@ -81,6 +81,6 @@ describe("firstFreeColorIndex", () => {
 describe("the cap", () => {
   it("one team per color, in the approved words", () => {
     expect(TEAM_COLORS).toHaveLength(8);
-    expect(TEAM_CAP_LINE).toBe("A cup can have 8 teams, one per colour.");
+    expect(TEAM_CAP_LINE).toBe("A tournament can have 8 teams, one per color.");
   });
 });
