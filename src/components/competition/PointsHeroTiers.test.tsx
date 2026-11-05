@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PointsHeroTiers, type PointsHeroUnit } from "./PointsHeroTiers";
 import { CompetitionHero } from "./CompetitionHero";
 import { ClinchCelebration } from "./ClinchCelebration";
@@ -67,7 +69,9 @@ describe("the clinch watch", () => {
     expect(fill).toContain("background:#3b82f6");
   });
   it("the caption is the lead on the closest contender, in decimals", () => {
-    expect(render(watch())).toContain("+4.5 on Bogey Army");
+    const html = render(watch());
+    expect(html).toContain(">+4.5</b> on Bogey Army");
+    expect(html).toContain('aria-label="+4.5 on Bogey Army"');
   });
   it("the post sits at the end of the track, in gold", () => {
     const post = tag(render(watch()), "clinch-post");
@@ -85,8 +89,8 @@ describe("the clinch watch", () => {
     expect(tag(html, "clinch-contender-hs")).toContain("opacity:0.28");
     expect(tag(html, "clinch-contender-ba")).toContain("opacity:1");
   });
-  it("hidden when final", () => {
-    expect(tag(render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true), "clinch-watch")).toBe("");
+  it("hidden when final, whatever the watch says", () => {
+    expect(tag(render(watch(), true), "clinch-watch")).toBe("");
   });
   it("hidden with no game left to watch, as with one reopened for a correction", () => {
     expect(tag(render(watch({ gamesLeft: 0 })), "clinch-watch")).toBe("");
@@ -142,7 +146,7 @@ describe("people behave like teams", () => {
     expect(tag(html, "clinch-fill")).toContain("background:var(--color-bt-accent)");
     expect(tag(html, "points-hero-unit")).toContain("color:var(--color-bt-accent)");
     expect(html).not.toContain("clinch-contender-he\"><span role");
-    expect(html).toContain("+4.5 on Mo");
+    expect(html).toContain(">+4.5</b> on Mo");
   });
 });
 
@@ -199,5 +203,15 @@ describe("the hero", () => {
     const html = hero({ teams: two, teamTotals: { he: 3, ba: 2 }, scoringModel: "match_play" });
     expect(html).not.toContain("points-hero-story");
     expect(html).not.toContain("clinch-watch");
+  });
+});
+
+describe("the board's points gates (source)", () => {
+  const board = readFileSync(join(__dirname, "CompetitionLeaderboard.tsx"), "utf8");
+  it("the more-than-half clincher is head to head only: it decides nothing on a points cup", () => {
+    expect(board).toMatch(/const clincher = isMatchPlay \? teams\.find\(/);
+  });
+  it("a points cup is final when nothing is left, never by isCupComplete", () => {
+    expect(board).toMatch(/const cupComplete = isMatchPlay\s*\? isCupComplete\(data\.games, !!clincher\)\s*: data\.games\.length > 0 && gamesRemaining\(data\.games\) === 0;/);
   });
 });

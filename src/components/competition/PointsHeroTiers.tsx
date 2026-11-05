@@ -49,7 +49,8 @@ function ClinchWatchTier({ watch, units }: { watch: ClinchWatch; units: readonly
   const fill = soleLeader ? pct(watch.lead) : 0;
   const projected = soleLeader && watch.projectedLead != null ? pct(watch.projectedLead) : fill;
   const landing = watch.liveSwing > 0 ? pct(watch.swing - watch.liveSwing) : null;
-  const caption = soleLeader && chaser ? WORD.onChaser(fmtPts(watch.lead), chaser.name) : null;
+  const leadMark = WORD.leadMark(fmtPts(watch.lead));
+  const caption = soleLeader && chaser ? `${leadMark} ${WORD.onChaser(chaser.name)}` : null;
 
   return (
     <div className="mt-[18px] flex flex-col gap-[9px] pt-3.5" style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }} data-testid="clinch-watch">
@@ -94,7 +95,11 @@ function ClinchWatchTier({ watch, units }: { watch: ClinchWatch; units: readonly
 
       <div className="flex items-center justify-between gap-2">
         <span className="min-w-0" style={{ fontSize: 13, color: "var(--color-bt-text)" }} data-testid="clinch-caption">
-          {caption}
+          {soleLeader && chaser && (
+            <>
+              <b style={{ color: soleLeader.color ? teamInk(soleLeader.color) : PERSON_COLOR }}>{leadMark}</b> {WORD.onChaser(chaser.name)}
+            </>
+          )}
         </span>
         <span className="flex shrink-0 gap-1">
           {watch.field.map((f) => {

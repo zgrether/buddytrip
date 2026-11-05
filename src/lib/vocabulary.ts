@@ -368,7 +368,8 @@ export const CLINCH_STORY_WORD = {
   placeShared: (place: string) => `${place} shared`,
   joinLevel: (names: readonly string[]) => names.join(" & "),
   raceFor: (place: string) => `Race for ${place}`,
-  onChaser: (lead: string, name: string) => `+${lead} on ${name}`,
+  leadMark: (lead: string) => `+${lead}`,
+  onChaser: (name: string) => `on ${name}`,
 } as const;
 
 /** "pt" for exactly one point, "pts" otherwise. */
