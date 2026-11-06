@@ -13,6 +13,8 @@ import { duplicateShortNameMessage, duplicateTeamNameMessage } from "./teams";
  * person sees instead of the raw unique_violation.
  */
 
+/** Each team its own color: migration 223 holds them unique too. */
+let nextColor = 0;
 let ctx: TestContext;
 let tripId: string;
 let competitionId: string;
@@ -36,7 +38,7 @@ afterAll(async () => {
 }, 60_000);
 
 const create = (name: string, shortName: string) =>
-  ctx.caller().teams.create({ tripId, competitionId, name, shortName, color: "#22c55e", colorDim: "#0a2a14" });
+  ctx.caller().teams.create({ tripId, competitionId, name, shortName, color: `#22c5${String(10 + nextColor++)}`, colorDim: "#0a2a14" });
 
 describe("a team's name is unique within its competition (219)", () => {
   it("creating a team with a name already taken is refused, ignoring case and spaces", async () => {
@@ -87,7 +89,7 @@ describe("a team's short name is unique within its competition too (219)", () =>
   });
 
   it("blank short names may repeat", async () => {
-    const rows = ["Foxtrot", "Golf"].map((name) => ({ competition_id: competitionId, name, short_name: "  ", color: "#000000", color_dim: "#000000" }));
+    const rows = ["Foxtrot", "Golf"].map((name, i) => ({ competition_id: competitionId, name, short_name: "  ", color: `#00000${i + 1}`, color_dim: "#000000" }));
     for (const row of rows) {
       const { error } = await ctx.admin.from("teams").insert(row);
       expect(error).toBeNull();

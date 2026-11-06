@@ -35,7 +35,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { trpc } from "@/lib/trpc-client";
-import { TEAM_COLORS } from "@/lib/teamColors";
+import { firstFreeColorIndex, MAX_TEAMS, TEAM_CAP_LINE, TEAM_COLORS, takenTeamColors } from "@/lib/teamColors";
+import { TeamColorPicker } from "./TeamColorPicker";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Avatar } from "@/components/Avatar";
 import { NoTeamAvatar } from "@/components/NoTeamAvatar";
@@ -239,6 +240,7 @@ export function TeamsPanel({
   const totalMembers = members.length;
   const assignedCount = assignments.length;
   const teamsExist = teamsTyped.length > 0;
+  const atTeamCap = teamsTyped.length >= MAX_TEAMS;
 
   // Identity edit (name/short/color) inside the overlay = Owner or Organizer, OR
   // the captain of THAT team — gates the per-card pencil/header (PR b2; Organizer
@@ -311,7 +313,9 @@ export function TeamsPanel({
           <button
             type="button"
             onClick={() => setCreating(true)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
+            disabled={atTeamCap}
+            title={atTeamCap ? TEAM_CAP_LINE : undefined}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40"
             style={{
               background: "var(--color-bt-accent)",
               color: "var(--color-bt-base)",
@@ -346,6 +350,11 @@ export function TeamsPanel({
             data-testid="rosters-results-note"
           >
             Results are in. Adding, moving or removing a player shows what it changes first — finished games keep their points.
+          </p>
+        )}
+        {canManageRoster && !structureLocked && atTeamCap && (
+          <p className="text-[12.5px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid="teams-cap">
+            {TEAM_CAP_LINE}
           </p>
         )}
         {!teamsExist && (
@@ -430,7 +439,7 @@ export function TeamsPanel({
           competitionId={competitionId}
           team={editingTeam}
           existingTeamNames={teamsTyped.map((t) => t.name.toLowerCase())}
-          existingColors={teamsTyped.map((t) => t.color)}
+          teams={teamsTyped}
           // Inside the Rosters overlay the team CARD already owns roster mgmt, so
           // the per-card pencil opens identity-only. The consolidated roster
           // section lives on the STANDALONE TeamSheet (leaderboard short-name tap).
@@ -1214,7 +1223,7 @@ export function TeamSheet({
   competitionId,
   team,
   existingTeamNames,
-  existingColors = [],
+  teams,
   showRoster = true,
   onClose,
 }: {
@@ -1225,10 +1234,9 @@ export function TeamSheet({
    *  collisions when rolling a name from a theme. The current team's own
    *  name is excluded by the caller in edit mode. */
   existingTeamNames: string[];
-  /** Colors already taken by other teams — used in CREATE mode to default the
-   *  swatch to the first UNUSED palette color, so adding a 3rd/4th team doesn't
-   *  silently collide on Blue (the old index-0 default). N-team legibility. */
-  existingColors?: string[];
+  /** Every team in the competition: a color another one holds shows as taken, and
+   *  CREATE mode starts on the first free one. */
+  teams: readonly Team[];
   /** Render the consolidated roster section (edit mode only). Default true —
    *  the STANDALONE TeamSheet (leaderboard short-name tap) is the full
    *  team-management home. The in-overlay per-card pencil passes false: the
@@ -1264,18 +1272,14 @@ export function TeamSheet({
   const [name, setName] = useState(team?.name ?? "");
   const [shortName, setShortName] = useState(team?.short_name ?? "");
   const [shortNameDirty, setShortNameDirty] = useState(isEdit);
+  const takenColors = takenTeamColors(teams, team?.id ?? null);
   const [paletteIdx, setPaletteIdx] = useState(() => {
     if (team) {
       const idx = TEAM_COLORS.findIndex((c) => c.color === team.color);
       return idx >= 0 ? idx : 0;
     }
-    // CREATE: default to the first palette color not already used by another
-    // team, so each added team gets a distinct color (no Blue-on-Blue). If every
-    // palette color is taken (8+ teams), fall back to index 0 — the swatch picker
-    // still lets the owner choose.
-    const used = new Set(existingColors);
-    const firstFree = TEAM_COLORS.findIndex((c) => !used.has(c.color));
-    return firstFree >= 0 ? firstFree : 0;
+    // CREATE: start on the first palette color no other team holds.
+    return firstFreeColorIndex(takenColors);
   });
   const [suggesterOpen, setSuggesterOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1792,25 +1796,7 @@ export function TeamSheet({
               swatch, never a picker (spec: member = no color picker). */}
           {identityEditable ? (
             <Field label="Color">
-              <div className="flex flex-wrap gap-2">
-                {TEAM_COLORS.map((c, i) => (
-                  <button
-                    key={c.color}
-                    type="button"
-                    onClick={() => setPaletteIdx(i)}
-                    aria-label={`${c.label}${paletteIdx === i ? " (selected)" : ""}`}
-                    className="h-8 w-8 rounded-full transition-transform"
-                    style={{
-                      background: c.color,
-                      transform: paletteIdx === i ? "scale(1.15)" : "scale(1)",
-                      border:
-                        paletteIdx === i
-                          ? "2px solid var(--color-bt-text)"
-                          : "1px solid var(--color-bt-border)",
-                    }}
-                  />
-                ))}
-              </div>
+              <TeamColorPicker selectedIndex={paletteIdx} taken={takenColors} onSelect={setPaletteIdx} />
             </Field>
           ) : (
             team && (

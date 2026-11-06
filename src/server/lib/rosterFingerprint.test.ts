@@ -73,7 +73,7 @@ describe("roster fingerprint — what moves it", () => {
     const c = await cup();
     const before = await c.fp();
     const created = (await c.caller.teams.create({
-      tripId: c.tripId, competitionId: c.competitionId, name: "Green", shortName: "GRN", color: "#22c55e", colorDim: "#14532d",
+      tripId: c.tripId, competitionId: c.competitionId, name: "Orange", shortName: "ORG", color: "#f97316", colorDim: "#2a1200",
     })) as { id: string };
     const withGreen = await c.fp();
     expect(withGreen).not.toBe(before);

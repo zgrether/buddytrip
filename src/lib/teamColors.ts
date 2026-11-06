@@ -22,6 +22,31 @@ export const TEAM_COLORS: TeamColorSwatch[] = [
   { color: "#f97316", colorDim: "#2a1200", label: "Orange" },
 ];
 
+/** One team per color (migration 223): this is the most a competition can have. */
+export const MAX_TEAMS = TEAM_COLORS.length;
+
+/** Why there cannot be another team. Zach's words, 2026-11-05. */
+export const TEAM_CAP_LINE = `A tournament can have ${MAX_TEAMS} teams, one per color.`;
+
+/** Lowercased color → the short name of the team holding it. */
+export type TakenTeamColors = ReadonlyMap<string, string>;
+
+/** The colors other teams hold, by the rule the database index reads: case and
+ *  surrounding spaces ignored. `ownTeamId` is the team being edited, whose own
+ *  color is not taken from it. */
+export function takenTeamColors(
+  teams: readonly { id: string; color: string; short_name: string }[],
+  ownTeamId: string | null
+): TakenTeamColors {
+  return new Map(teams.filter((t) => t.id !== ownTeamId).map((t) => [t.color.trim().toLowerCase(), t.short_name]));
+}
+
+/** The first palette color nobody holds, so each added team starts distinct. With
+ *  none free the competition is at its cap, and the first swatch is as good as any. */
+export function firstFreeColorIndex(taken: TakenTeamColors): number {
+  return Math.max(0, TEAM_COLORS.findIndex((c) => !taken.has(c.color.toLowerCase())));
+}
+
 /**
  * Colors for auto-seeded default teams (Team A, Team B, …) at competition create.
  * Blue + Red lead — the classic high-contrast 2-team default, unchanged from before

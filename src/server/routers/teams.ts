@@ -21,17 +21,24 @@ export function duplicateTeamNameMessage(name: string): string {
 export function duplicateShortNameMessage(shortName: string): string {
   return `Another team already uses the short name ${shortName.trim()}. Pick a different one.`;
 }
+/** A color is unique the same way (migration 223). Named by its palette label. */
+export function duplicateColorMessage(color: string): string {
+  const swatch = TEAM_COLORS.find((c) => c.color.toLowerCase() === color.trim().toLowerCase());
+  return `Another team already uses ${swatch?.label ?? "that color"}. Pick a different one.`;
+}
 function violated(error: unknown, index: string): boolean {
   const e = error as { code?: string; message?: string } | null | undefined;
   return e?.code === "23505" && (e.message ?? "").includes(index);
 }
 const isDuplicateTeamName = (error: unknown) => violated(error, "teams_competition_name_unique");
 const isDuplicateShortName = (error: unknown) => violated(error, "teams_competition_short_name_unique");
+const isDuplicateColor = (error: unknown) => violated(error, "teams_competition_color_unique");
 import { canPlayInTeamlessRace } from "@/lib/gameTypes";
 import { isPlacement } from "@/lib/pointsDistribution";
 import { validatePlacement } from "@/lib/gameConfig";
 import { teamPlaceCapacity } from "@/lib/placeCapacity";
 import { TEAM_NAME_MAX, TEAM_SHORT_MAX } from "@/lib/teamNameLimits";
+import { MAX_TEAMS, TEAM_CAP_LINE, TEAM_COLORS } from "@/lib/teamColors";
 
 /**
  * teams — competition-scoped teams.
@@ -181,6 +188,11 @@ export const teamsRouter = router({
       if (h2hTeams !== null && h2hTeams >= 2) {
         throw new TRPCError({ code: "BAD_REQUEST", message: HEAD_TO_HEAD_NO_THIRD_TEAM });
       }
+      // One team per color (migration 223): with the palette gone there is no
+      // color left to give a ninth team.
+      if ((await teamCount(ctx.supabase, input.competitionId)) >= MAX_TEAMS) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: TEAM_CAP_LINE });
+      }
       // PR 7, ruling 23: a race's FIRST team switches it from individuals to teams
       // (a race plays as teams iff it has them, ruling B), and that is locked at
       // the first result — converting would make every participant a teamless
@@ -208,6 +220,9 @@ export const teamsRouter = router({
       }
       if (isDuplicateShortName(insertErr)) {
         throw new TRPCError({ code: "CONFLICT", message: duplicateShortNameMessage(input.shortName) });
+      }
+      if (isDuplicateColor(insertErr)) {
+        throw new TRPCError({ code: "CONFLICT", message: duplicateColorMessage(input.color) });
       }
       if (insertErr || !inserted) {
         throw new TRPCError({
@@ -272,6 +287,9 @@ export const teamsRouter = router({
       }
       if (isDuplicateShortName(error) && input.shortName) {
         throw new TRPCError({ code: "CONFLICT", message: duplicateShortNameMessage(input.shortName) });
+      }
+      if (isDuplicateColor(error) && input.color) {
+        throw new TRPCError({ code: "CONFLICT", message: duplicateColorMessage(input.color) });
       }
       if (error) {
         throw new TRPCError({

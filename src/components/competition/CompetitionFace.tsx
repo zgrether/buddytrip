@@ -481,6 +481,7 @@ export function CompetitionFace({
           existingTeamNames={(teamsList as Team[])
             .filter((t) => t.id !== editingTeam.id)
             .map((t) => t.name.toLowerCase())}
+          teams={teamsList as Team[]}
           onClose={() => setEditingTeam(null)}
         />
       )}

@@ -61,6 +61,12 @@ Tier 1 outranks Tier 2. Within each, **structural before mechanical** (fix the r
   plan, and it is deliberately unranked.
 - ~~**WS4 — design reconciliation**~~ — **COMPLETE** (closed 2026-07-25, Zach). Any future
   design-vs-shipped pass gets its own ticket rather than riding this standing item.
+- **Limits surfaced at setup.** Every hard limit is visible at the first choice it constrains,
+  never discovered on Save. Team cap (8, one per color): shown at competition setup once
+  Tournament is picked; the team count/add control stops at 8. Two-team cups are fixed at 2 and
+  never see it. Player limits (`max_players_per_side`, any future per-competition cap): shown
+  before player picking starts. One limits source read by both the helper text and the server
+  refusal, so they can't drift. Design pass first (which surfaces, what copy), build after.
 
 ### THE BIG REFACTOR — R1 (format architecture; the 2027-definer)
 
