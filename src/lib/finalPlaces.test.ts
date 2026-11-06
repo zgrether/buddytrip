@@ -96,6 +96,9 @@ describe("namesWholeTies", () => {
     expect(namesWholeTies(ids, totals, ["a", "b"])).toBe(false);
     expect(namesWholeTies(ids, totals, ["b", "c", "d", "a"])).toBe(false);
   });
+  it("is false of part of a tie padded out to its length by a stranger", () => {
+    expect(namesWholeTies(ids, totals, ["b", "c", "a"])).toBe(false);
+  });
   it("is false of a unit named twice", () => {
     expect(namesWholeTies(ids, totals, ["b", "c", "d", "b"])).toBe(false);
   });

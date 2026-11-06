@@ -108,9 +108,7 @@ export function namesWholeTies(
   order: readonly string[]
 ): boolean {
   const named = scoreGroups(unitIds, totals).filter((g) => g.ids.length > 1 && g.ids.some((id) => order.includes(id)));
-  return (
-    new Set(order).size === order.length &&
-    named.every((g) => namesAll(g.ids, order)) &&
-    named.reduce((n, g) => n + g.ids.length, 0) === order.length
-  );
+  // Every touched tie whole, and nothing else named: a repeat or a stranger makes the
+  // order longer than the ties it names.
+  return named.every((g) => namesAll(g.ids, order)) && named.reduce((n, g) => n + g.ids.length, 0) === order.length;
 }

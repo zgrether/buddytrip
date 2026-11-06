@@ -584,12 +584,22 @@ describe("ties at Final (spec §5)", () => {
     expect(await sends(cup)).toBe(1);
   });
 
-  it("CONTROL: a tie below 1st broken at Final runs no clinch check at all", async () => {
-    const cup = await tiedCup("Broken 2nd");
-    await finish(cup);
+  it("CONTROL: a tie below a shared 1st broken at Final runs no clinch check at all", async () => {
+    const cup = await twoTies("Broken 3rd");
     const before = await checks(cup);
+    await setOrder(cup, [cup.d, cup.c]);
+    expect(await checks(cup)).toBe(before);
+  });
+
+  it("a tie below 1st never announces an old winner: a cup finished before pushes existed stays quiet", async () => {
+    const cup = await tiedCup("Old cup");
+    await finish(cup);
+    await ctx.admin.from("competitions").update({ clinch_notified_team_id: null }).eq("id", cup.competitionId);
+    const before = await checks(cup);
+
     await setOrder(cup, [cup.c, cup.b]);
     expect(await checks(cup)).toBe(before);
+    expect((await claim(cup.competitionId)).clinch_notified_team_id).toBeNull();
   });
 
   it("a game added to a reviewed cup clears the review: the next Final's ties are a new question", async () => {
