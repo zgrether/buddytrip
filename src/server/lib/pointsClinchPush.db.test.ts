@@ -196,6 +196,13 @@ describe("people behave exactly like teams", () => {
     expect(sent?.recipients).toBeGreaterThan(0);
   });
 
+  it("a person's clinch counts as announced on the board, as a team's does", async () => {
+    const race = await teamlessRace("Solo announced");
+    expect((await computeCompetitionLeaderboard(ctx.admin, race.competitionId)).clinch?.announced).toBe(false);
+    await notify(race);
+    expect((await computeCompetitionLeaderboard(ctx.admin, race.competitionId)).clinch?.announced).toBe(true);
+  });
+
   it("a person's un-clinch releases, and a second finalize is suppressed the same way", async () => {
     const race = await teamlessRace("Solo reclinch");
     await notify(race);

@@ -232,9 +232,13 @@ describe("the hero", () => {
     expect(html).toContain('data-testid="clinch-glow"');
   });
   it("a board waiting to be finished keeps the trophy at rest, even with the math clinched", () => {
-    const html = hero({ pointsHero: pointsCup({ watch: watch({ clincherId: "he" }), awaitingFinish: true }) });
-    expect(html).not.toContain('data-testid="clinch-glow"');
-    expect(html).not.toContain('data-trophy-clinched="true"');
+    const resting = hero({ pointsHero: pointsCup({ watch: watch({ clincherId: null }) }) });
+    const waiting = hero({ pointsHero: pointsCup({ watch: watch({ clincherId: "he" }), awaitingFinish: true }) });
+    const announced = hero({ pointsHero: pointsCup({ watch: watch({ clincherId: "he" }), awaitingFinish: true, announced: true }) });
+    const trophyOpacity = (html: string) => html.match(/<g opacity="([0-9.]+)"/)?.[1];
+    expect(trophyOpacity(resting)).toBe("0.17");
+    expect(trophyOpacity(waiting)).toBe("0.17");
+    expect(trophyOpacity(announced), "the control: an announced clinch does tint").toBe("0.3");
   });
   it("CONTROL: a head-to-head Cup never gets either tier", () => {
     const two = lbTeams.slice(0, 2);
