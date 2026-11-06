@@ -1,7 +1,7 @@
-# Points Cups: Clinch Watch & Place Locks (build spec, v2.2)
+# Points Cups: Clinch Watch & Place Locks (build spec, v2.3)
 
 *Scope: Workflow Wireframes canvas, row 6 only (boards F0–F4). Companion to `COMPETITION_ENGINE.md`.*
-*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy). Model: Opus. One branch, per-task commits.*
+*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build. Model: Opus. One branch, per-task commits.*
 
 **Mockups:** `docs/mockups/points-clinch/` (`index.html` with all five boards live, plus a PNG per board). They are the visual target. **The spec governs behaviour:** where they disagree, the spec wins, and you report it. The trophy there is a static port; use `CupTrophy` and the tokens.
 
@@ -115,14 +115,27 @@ Mirrors the match-play hero tier for tier. The pinned bar and the game-page head
 
 ## 5 · Final and ties
 
-- **Final (points cups)** = `gamesRemaining === 0` (no unbanked game, none open for correction). It does not use `isCupComplete`: with 1st clinched and unarmed games left, `isCupComplete` would fire while places are still open. An abandoned game is deleted (the app has no "dropped" state). Final shows the Final row(s) of the table, the existing one-time spark burst on first view, and "Set off the fireworks" for the winning unit(s).
-- **Ties share the place by default, 1st included.**
-- **Breaking a tie:** a `NeedsAttentionCard` item for Owner and Organizers, "Tied for 3rd · shared". It opens a `Sheet`:
+**The empty board (Zach, 2026-11-06).** A crew may add games as it plays, so the moment the board empties is ambiguous: it's either the real end, or just the end of what's been added so far. Only the owner knows.
+
+- **The finish that empties the board** (`gamesRemaining` hits 0) sends nothing and doesn't go Final.
+- **Owner and Organizers** get a `NeedsAttentionCard` item: **"Every game on the board is done. Finish the cup?"**, with **[Finish the cup]** and **[Add another game]** (the add-game flow; the cup stays open).
+- **While it waits:** the hero reads **"Lead by 4" · "Every game on the board is done"** (or "Tied at the top"). A clinch that was already announced stays "Clinched the cup". No place shows locked: with an empty board the math would call everything locked, and that's exactly the claim we're waiting on.
+- **A clinch while games remain on the board** pushes as in §4.
+- **Finish the cup** writes `competitions.status = 'completed'` (existing column, no new one). It goes Final, sends the push once (a clinch already announced isn't sent again), and fires the existing burst, then scrolls the hero into view so the one-time burst isn't spent off screen. The burst and "Set off the fireworks" go to whoever holds 1st, both units at a shared 1st.
+- **Adding a game to a finished cup reopens it.** The next emptying asks again.
+- **Migration 225** marks the already-finished points cups (BBMI 2024, BBMI 2025, and the teamless test cup) completed, so they stay Final and never ask. Apply it before #1696 merges, from the branch (`main` doesn't have 224 yet).
+
+**Ties**
+- **Ties share the place by default, 1st included.** Finishing with a shared 1st sends no push (there's no single clincher).
+- **Breaking a tie:** a `NeedsAttentionCard` item for Owner and Organizers, **"Tied for 3rd · shared"**, opens a `Sheet`:
   - Title: **Break the tie for 3rd?**
   - Body: **Played a tiebreaker? Drag to set the order. Left alone, they share 3rd.**
   - A `ReorderableList` of the tied units, then **Save order** / **Keep it shared**.
   - Nothing waits on it.
-- **Migration** (same file as §4): `competitions.tiebreak_order text[] null`, unit ids in the order the owner set, read only to order exact ties at final. Add both new user-id references (`clinch_notified_user_id` and `tiebreak_order` entries) to `merge_guest_to_real_user`. Zach runs the migration.
+- **Both answers are a decision and both are saved.** `tiebreak_order` null = not yet reviewed (the item shows). Non-null = reviewed (the item goes away). It lists the ids of the groups the owner ordered; a tied group whose ids are absent stays shared, and `[]` means every tie was kept shared. With several tied groups, one sheet covers them all.
+- **Reopenable:** at Final, ⚙ (cup settings) has **"Tiebreaks"** whenever ties exist, opening the same sheet.
+- **A tie for 1st broken at Final** makes that unit the winner and sends the push once, through the normal claim.
+- **Migration** (224, applied): `competitions.tiebreak_order text[] null` and `clinch_notified_user_id text null`, both in `merge_guest_to_real_user`.
 
 ---
 
@@ -132,7 +145,7 @@ Mirrors the match-play hero tier for tier. The pinned bar and the game-page head
 - Use `pointsToClinch` / `winNumber` for anything in a points cup.
 - Let a projection lock a place, clinch, or send a push.
 - Name a "next game" or assume play order.
-- Store clinch or lock state beyond the push claim and `tiebreak_order`.
+- Store clinch or lock state beyond the push claim, `tiebreak_order`, and `status = 'completed'` from Finish the cup.
 - Add a podium, new trophy art, a tilt, or animation at clinch time.
 - Add copy beyond the strings above, or route these strings through `competitionWord` (ruling 5: "cup" exception).
 - Special-case teamless races.
