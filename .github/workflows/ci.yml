@@ -230,7 +230,10 @@ jobs:
   # wall clock, so gating only `test` would leave a docs PR paying nearly the full
   # bill anyway.
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: that moved to 26.04 on 2026-11-06, which Playwright
+    # 1.58.2 cannot install chromium on ("does not support chromium on
+    # ubuntu26.04-x64"). Unpin once a Playwright version supports it.
+    runs-on: ubuntu-24.04
     # Everything `test` does plus a Playwright install, a production build and the
     # three merge-blocking specs: 4m17s observed green. The extra headroom over
     # `test` is for the build, the most variable step here (1m26s observed).
