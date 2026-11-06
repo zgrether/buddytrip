@@ -381,6 +381,7 @@ export const CLINCH_STORY_WORD = {
   breakTieBody: (place: string) => `Played a tiebreaker? Drag to set the order. Left alone, they share ${place}.`,
   saveOrder: "Save order",
   keepShared: "Keep it shared",
+  tiebreaks: "Tiebreaks",
 } as const;
 
 /** "pt" for exactly one point, "pts" otherwise. */

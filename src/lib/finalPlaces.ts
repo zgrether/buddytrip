@@ -5,6 +5,10 @@
  * A tie shares its place, 1st included. `tiebreak_order` orders a tie only when it
  * names EVERY unit in it: a correction can change who is level, and an order saved
  * for a tie that no longer exists says nothing about the one that does.
+ *
+ * The column is also the record of the decision. Null: nobody has reviewed the ties
+ * yet. Not null: reviewed, listing the ties the owner ordered; a tie it does not
+ * name stays shared, so `[]` means every tie was kept shared.
  */
 
 export interface FinalPlace {
@@ -16,6 +20,14 @@ export interface FinalPlace {
 export interface SharedPlace {
   place: number;
   unitIds: string[];
+}
+
+export interface FinalTie {
+  place: number;
+  /** In the order they stand, which is the owner's if `ordered`. */
+  unitIds: string[];
+  /** The owner set this tie's order, so it is not a shared place any more. */
+  ordered: boolean;
 }
 
 const level = (a: number, b: number) => Math.abs(a - b) < 1e-9;
@@ -32,6 +44,8 @@ function scoreGroups(unitIds: readonly string[], totals: Readonly<Record<string,
   return groups;
 }
 
+const namesAll = (ids: readonly string[], order: readonly string[]) => ids.every((id) => order.includes(id));
+
 export function finalPlaces(
   unitIds: readonly string[],
   totals: Readonly<Record<string, number>>,
@@ -40,7 +54,7 @@ export function finalPlaces(
   const order = tiebreakOrder ?? [];
   const places = new Map<string, FinalPlace>();
   for (const { start, ids } of scoreGroups(unitIds, totals)) {
-    const broken = ids.length > 1 && ids.every((id) => order.includes(id));
+    const broken = ids.length > 1 && namesAll(ids, order);
     if (broken) {
       [...ids].sort((a, b) => order.indexOf(a) - order.indexOf(b)).forEach((id, i) => places.set(id, { place: start + i, shared: false }));
     } else {
@@ -72,11 +86,31 @@ export function winnersOf(
   return [...finalPlaces(unitIds, totals, tiebreakOrder)].filter(([, p]) => p.place === 1).map(([id]) => id);
 }
 
-/** True when these units are exactly one tie on the board, order or no order. */
-export function isExactTie(
+/** Every tie on the board, broken or not, best first: what the tiebreak sheet shows. */
+export function finalTies(
   unitIds: readonly string[],
-  tiedIds: readonly string[],
-  totals: Readonly<Record<string, number>>
+  totals: Readonly<Record<string, number>>,
+  tiebreakOrder: readonly string[] | null | undefined
+): FinalTie[] {
+  const order = tiebreakOrder ?? [];
+  return scoreGroups(unitIds, totals)
+    .filter((g) => g.ids.length > 1)
+    .map(({ start, ids }) => {
+      const ordered = namesAll(ids, order);
+      return { place: start, ordered, unitIds: ordered ? [...ids].sort((a, b) => order.indexOf(a) - order.indexOf(b)) : ids };
+    });
+}
+
+/** True when an order names whole ties only, each unit once. `[]` names none, which is valid. */
+export function namesWholeTies(
+  unitIds: readonly string[],
+  totals: Readonly<Record<string, number>>,
+  order: readonly string[]
 ): boolean {
-  return scoreGroups(unitIds, totals).some((g) => g.ids.length > 1 && g.ids.length === tiedIds.length && tiedIds.every((id) => g.ids.includes(id)));
+  const named = scoreGroups(unitIds, totals).filter((g) => g.ids.length > 1 && g.ids.some((id) => order.includes(id)));
+  return (
+    new Set(order).size === order.length &&
+    named.every((g) => namesAll(g.ids, order)) &&
+    named.reduce((n, g) => n + g.ids.length, 0) === order.length
+  );
 }

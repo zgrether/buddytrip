@@ -8,9 +8,10 @@ import { afterResponse } from "../lib/afterResponse";
 import { viewerTeamForTrip } from "../lib/viewerTeam";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "../lib/myDelegateGameIds";
 import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
-import { competitionNoun, EITHER_COMPETITION } from "@/lib/vocabulary";
-import { isExactTie } from "@/lib/finalPlaces";
+import { CLINCH_STORY_WORD, competitionNoun, EITHER_COMPETITION } from "@/lib/vocabulary";
+import { namesWholeTies, winnersOf } from "@/lib/finalPlaces";
 import { maybeRowOrThrow } from "../lib/rowOrThrow";
+import { reopenFinishedCup } from "../lib/reopenCup";
 import { STARTING_POINT_IDS, isStartingPointId, startingPointFits, suggestedGames } from "@/lib/startingPoints";
 
 const SCOREBOARD_STYLES = [
@@ -583,6 +584,7 @@ export const competitionsRouter = router({
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireCompetitionRole("owner"))
     .mutation(async ({ ctx, input }) => {
+      await reopenFinishedCup(ctx.supabase, input.competitionId);
       const { error } = await ctx.supabase.rpc("reset_competition_scoring", {
         p_trip_id: input.tripId,
         p_competition_id: input.competitionId,
@@ -638,25 +640,37 @@ export const competitionsRouter = router({
       return { success: true };
     }),
 
-  // setTiebreakOrder — breaks one tie at Final (spec §5). The column holds every
-  // tie's order, so this replaces only these units' entries.
+  // setTiebreakOrder — the decision on a finished cup's ties (spec §5). One sheet
+  // covers them all, so this replaces the column: the ties it names are ordered, a
+  // tie it leaves out stays shared, and `[]` keeps every tie shared.
   setTiebreakOrder: authedProcedure
-    .input(z.object({ tripId: z.string(), competitionId: z.string(), order: z.array(z.string()).min(2).max(64) }))
+    .input(z.object({ tripId: z.string(), competitionId: z.string(), order: z.array(z.string()).max(64) }))
     .use(requireCompetitionRole("organizer"))
     .mutation(async ({ ctx, input }) => {
       const board = await computeCompetitionLeaderboard(ctx.supabase, input.competitionId, { viewerId: ctx.user!.id });
       const scored = board.units.filter((u) => u.hasResult).map((u) => u.id);
-      if (!board.clinch?.final || !isExactTie(scored, input.order, board.unitTotals)) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "That tie has changed. Open it again from the board." });
+      if (!board.clinch?.ties.length) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nothing is tied any more." });
       }
-      const kept = (board.clinch.tiebreakOrder ?? []).filter((id) => !input.order.includes(id));
+      if (!namesWholeTies(scored, board.unitTotals, input.order)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `That tie has changed. Open ${CLINCH_STORY_WORD.tiebreaks} again.` });
+      }
       const { error } = await ctx.supabase
         .from("competitions")
-        .update({ tiebreak_order: [...kept, ...input.order] })
+        .update({ tiebreak_order: input.order })
         .eq("id", input.competitionId)
         .eq("trip_id", input.tripId);
       if (error) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't save the order: ${error.message}` });
+      }
+      // A tie for 1st broken here is the cup's first winner, so it announces, once.
+      // `announced` is the "once": the claim takes a different unit as a new clincher,
+      // so reordering a tie already broken would otherwise tell the crew twice.
+      const broke1st = winnersOf(scored, board.unitTotals, null).length > 1 && winnersOf(scored, board.unitTotals, input.order).length === 1;
+      if (broke1st && !board.clinch.announced) {
+        await afterResponse(() =>
+          notifyCupClinchedIfDecided({ tripId: input.tripId, competitionId: input.competitionId, actorUserId: ctx.user!.id })
+        );
       }
       return { success: true };
     }),
@@ -670,6 +684,7 @@ export const competitionsRouter = router({
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireCompetitionRole("owner"))
     .mutation(async ({ ctx, input }) => {
+      await reopenFinishedCup(ctx.supabase, input.competitionId);
       const { error } = await ctx.supabase.rpc("reset_competition_to_skeleton", {
         p_trip_id: input.tripId,
         p_competition_id: input.competitionId,

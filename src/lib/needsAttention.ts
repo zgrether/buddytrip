@@ -46,12 +46,14 @@ export interface NeedsAttention {
   /** A points cup whose board is empty and not yet finished (spec §5). Unlike the
    *  three above it is true of a teamless race too. */
   finishCup: boolean;
-  /** A finished points cup's places still shared, each with who shares it. */
+  /** A finished points cup's ties, until someone has reviewed them. */
   ties: SharedTie[];
 }
 
 export interface SharedTie {
   place: number;
+  /** The owner set this tie's order, so its units stand in that order. */
+  ordered: boolean;
   units: { id: string; name: string; shortName: string | null; color: string | null }[];
 }
 

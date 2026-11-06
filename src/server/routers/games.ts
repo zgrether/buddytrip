@@ -35,6 +35,7 @@ import {
   gameFinishedPushFailureLine,
 } from "../lib/gameFinishNotify";
 import { afterResponse } from "../lib/afterResponse";
+import { reopenFinishedCup } from "../lib/reopenCup";
 import { computeConfigHash } from "@/lib/configHash";
 import { bracketPlaceCapacity, peoplePlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
 import { BRACKET_SIDES, type BracketDrawMatch } from "@/lib/bracket";
@@ -674,12 +675,7 @@ export const gamesRouter = router({
       // A finished cup with a new game on it is not finished: when that game ends,
       // the board asks again (spec §5). Part of the create, not a step after it, or
       // the cup would go Final on its own and nobody would have chosen that.
-      if (reopensCup) {
-        const { error: reopenErr } = await ctx.supabase.from("competitions").update({ status: "upcoming" }).eq("id", input.competitionId as string);
-        if (reopenErr) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Failed to reopen the cup: ${reopenErr.message}` });
-        }
-      }
+      if (reopensCup) await reopenFinishedCup(ctx.supabase, input.competitionId as string);
 
       // SCRAMBLE: the teams ARE the groupings, so the game arrives with them.
       await seedScrambleTeamGroups(ctx.supabase, id, input.gameTypeId, input.competitionId ?? null);

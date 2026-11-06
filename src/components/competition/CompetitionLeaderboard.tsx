@@ -187,6 +187,7 @@ interface LeaderboardData {
     announced: boolean;
     tiebreakOrder: string[] | null;
     winnerIds: string[];
+    ties: SharedTie[];
   } | null;
   /** Every game pays 1 point per match (`cupCountsInHalves`): the hero and the
    *  match cells write a half as ½. Everywhere else a half is 0.5. */
@@ -362,7 +363,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     finishedHere.current = false;
     document.querySelector('[data-testid="competition-hero"]')?.scrollIntoView({ block: "center" });
   }, [isFinal]);
-  const [breakingTie, setBreakingTie] = useState<SharedTie | null>(null);
+  const [breakingTies, setBreakingTies] = useState(false);
   // The viewer's own team — "did the person looking at this actually win?".
   // Shares `competitions.myTeamColor`'s cache entry with the app-bar avatar, so
   // this is a cache read, not a second request.
@@ -577,11 +578,11 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           onAddGame={onAddGame}
           finishing={finishCup.isPending}
           finishError={finishCup.error?.message ?? null}
-          onBreakTie={setBreakingTie}
+          onBreakTie={() => setBreakingTies(true)}
         />
       )}
-      {breakingTie && (
-        <BreakTieSheet tie={breakingTie} tripId={tripId} competitionId={competitionId} onClose={() => setBreakingTie(null)} />
+      {breakingTies && data.clinch && data.clinch.ties.length > 0 && (
+        <BreakTieSheet ties={data.clinch.ties} tripId={tripId} competitionId={competitionId} onClose={() => setBreakingTies(false)} />
       )}
 
       {/* Bones copy: one line, only while the board is empty and editable. Not

@@ -18,7 +18,7 @@ import { clinchGame, clinchGames } from "./clinchGames";
 import { tripDisplayNames } from "./tripDisplayNames";
 import { needsAttention as deriveNeedsAttention, NOTHING_NEEDS_ATTENTION } from "@/lib/needsAttention";
 import { gamesRemaining } from "@/lib/cupCompletion";
-import { sharedPlaces, winnersOf } from "@/lib/finalPlaces";
+import { finalTies, winnersOf } from "@/lib/finalPlaces";
 import { readSideGameWinners } from "./sideBoard";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
@@ -1224,6 +1224,7 @@ export async function computeCompetitionLeaderboard(
     const final = emptied && finished;
     const tiebreakOrder = (comp?.tiebreak_order as string[] | null) ?? null;
     const scoredIds = unitIds.filter((id) => unitsWithResult.has(id));
+    const winnerIds = final ? winnersOf(scoredIds, unitTotals, tiebreakOrder) : [];
     // The game banked most recently, for who it just put out: when its result
     // was written, the only order of play the data holds.
     const banked = allGames.filter((g) => g.status === "complete");
@@ -1232,7 +1233,9 @@ export async function computeCompetitionLeaderboard(
     const last = banked.reduce<(typeof banked)[number] | null>((a, g) => (a == null || finishedAt(g.id) > finishedAt(a.id) ? g : a), null);
     const lastLive = last ? liveGames.find((g) => g.id === last.id) : null;
     return {
-      clincherId: view.clincher,
+      // At Final the places are the owner's to settle, so a tie for 1st broken there
+      // names the clincher the math cannot: level scores have none.
+      clincherId: final ? (winnerIds.length === 1 ? winnerIds[0] : null) : view.clincher,
       lockedUnitIds: awaitingFinish ? [] : unitIds.filter((id) => view.places.get(id)?.locked),
       final,
       awaitingFinish,
@@ -1240,8 +1243,8 @@ export async function computeCompetitionLeaderboard(
       announced: comp?.clinch_notified_team_id != null || comp?.clinch_notified_user_id != null,
       tiebreakOrder,
       /** Who holds 1st at Final: one unit, or everyone sharing it. */
-      winnerIds: final ? winnersOf(scoredIds, unitTotals, tiebreakOrder) : [],
-      shared: final ? sharedPlaces(scoredIds, unitTotals, tiebreakOrder) : [],
+      winnerIds,
+      finalTies: final ? finalTies(scoredIds, unitTotals, tiebreakOrder) : [],
       watch: clinchWatch({
         unitIds,
         totals: unitTotals,
@@ -1260,11 +1263,14 @@ export async function computeCompetitionLeaderboard(
       : { id, name: personNames.get(id) ?? "Someone", shortName: null, color: null };
   };
 
+  const ties = (pointsCupClinch?.finalTies ?? []).map((t) => ({ place: t.place, ordered: t.ordered, units: t.unitIds.map(unitCard) }));
+
   return {
     needsAttention: {
       ...attention,
       finishCup: pointsCupClinch?.awaitingFinish ?? false,
-      ties: (pointsCupClinch?.shared ?? []).map((s) => ({ place: s.place, units: s.unitIds.map(unitCard) })),
+      // Not null means someone has decided, whichever way: the item goes away.
+      ties: pointsCupClinch?.tiebreakOrder == null ? ties : [],
     },
     teams: teams ?? [],
     /**
@@ -1314,7 +1320,7 @@ export async function computeCompetitionLeaderboard(
     winNumber: roll.winNumber,
     // A points cup's place locks (spec §1), from banked points only. Never
     // `pointsToClinch`, which is the head-to-head more-than-half rule.
-    clinch: pointsCupClinch,
+    clinch: pointsCupClinch && { ...pointsCupClinch, ties },
     // Zach's half-points rule: ½ on this cup's totals, target and match cells
     // only when every game pays 1 point per match (`cupCountsInHalves`).
     halfPoints: cupCountsInHalves(

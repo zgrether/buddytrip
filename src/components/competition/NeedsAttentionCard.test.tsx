@@ -28,7 +28,7 @@ describe("a points cup's two items (spec §5)", () => {
   const finish: NeedsAttention = { ...NOTHING_NEEDS_ATTENTION, finishCup: true };
   const tie: NeedsAttention = {
     ...NOTHING_NEEDS_ATTENTION,
-    ties: [{ place: 3, units: [{ id: "a", name: "Alpha", shortName: "ALP", color: "#3b82f6" }, { id: "p", name: "Mo", shortName: null, color: null }] }],
+    ties: [{ place: 3, ordered: false, units: [{ id: "a", name: "Alpha", shortName: "ALP", color: "#3b82f6" }, { id: "p", name: "Mo", shortName: null, color: null }] }],
   };
 
   it("the board asks once, with its two answers", () => {

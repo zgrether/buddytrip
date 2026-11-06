@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { TeamBadge } from "@/components/TeamBadge";
 import { NoTeamAvatar } from "@/components/NoTeamAvatar";
-import { needsAttentionCount, unevenTeamsWhy, type NeedsAttention, type SharedTie } from "@/lib/needsAttention";
+import { needsAttentionCount, unevenTeamsWhy, type NeedsAttention } from "@/lib/needsAttention";
 import { EYEBROW, EYEBROW_SEPARATOR, TYPE_SCALE } from "@/lib/typeScale";
 import {
   CLINCH_STORY_WORD as WORD,
@@ -51,7 +51,7 @@ export function NeedsAttentionCard({
   /** The finish is saving, so its button holds. */
   finishing?: boolean;
   finishError?: string | null;
-  onBreakTie?: (tie: SharedTie) => void;
+  onBreakTie?: () => void;
 }) {
   const count = needsAttentionCount(attention);
   if (count === 0) return null;
@@ -103,7 +103,7 @@ export function NeedsAttentionCard({
       )}
 
       {ties.map((tie) => (
-        <Item key={tie.place} onClick={() => onBreakTie?.(tie)} testId={`needs-attention-tie-${tie.place}`} title={WORD.tiedShared(ordinalShort(tie.place))}>
+        <Item key={tie.place} onClick={() => onBreakTie?.()} testId={`needs-attention-tie-${tie.place}`} title={WORD.tiedShared(ordinalShort(tie.place))}>
           <span className="flex" aria-hidden="true">
             {tie.units.slice(0, 3).map((u, i) => (
               <span key={u.id} style={{ marginLeft: i === 0 ? 0 : -8, display: "inline-flex" }}>
