@@ -286,19 +286,14 @@ describe("clinch check — every path announces itself", () => {
 });
 
 /**
- * Ruling 4 (PR 4): head to head owns CUP clinch. A points race computes
- * `pointsToClinch` all the same — the placement arithmetic does not know what
- * kind of cup it is in — so this case builds a points cup that the arithmetic
- * calls DECIDED (the winner holds every point there is) and asserts the push
- * never claims it. With the type check removed, the same call logs `claimed`
- * and writes the claim; that is the mutant this case exists to kill.
- *
- * Its own outcome, `not_head_to_head`, rather than `no_clincher`: "skipped
- * because of the cup's type" and "ran and found nobody decided" are different
- * facts, and the row is where the next audit reads them.
+ * Ruling 4 (PR 4) kept a points race out of the clinch push, because the only
+ * clinch it could compute was the head-to-head more-than-half rule. Lifted by
+ * docs/CLINCH_AND_PODIUM.md §4: a points cup now clinches from its place locks, so
+ * a decided one reaches the claim like any other. `pointsClinchPush.db.test.ts`
+ * holds the rest; this pins the outcome log the old gate wrote to.
  */
-describe("clinch check — a points race never fires a cup clinch", () => {
-  it("a DECIDED points cup: logs entry then not_head_to_head, claims nothing, records the row", async () => {
+describe("clinch check — a points race fires a cup clinch", () => {
+  it("a DECIDED points cup: claims the clincher, with no not_head_to_head in the log", async () => {
     const { tripId: pointsTrip, competitionId: pointsComp } = await ctx.createCupTrip({
       title: "Clinch outcome logging (points)",
       name: "Points Race",
@@ -316,10 +311,8 @@ describe("clinch check — a points race never fires a cup clinch", () => {
       admin: ctx.admin,
     });
 
-    expect(outcomes()).toEqual(["entry", "not_head_to_head"]);
-    expect(await claimHeld(pointsComp)).toBeNull();
-    expect((await logRows(pointsComp)).map((r) => ({ trigger: r.trigger, outcome: r.outcome }))).toEqual([
-      { trigger: "cup_clinched", outcome: "not_head_to_head" },
-    ]);
+    expect(outcomes()).toContain("claimed");
+    expect(outcomes()).not.toContain("not_head_to_head");
+    expect(await claimHeld(pointsComp)).toBe(lead);
   }, 60_000);
 });
