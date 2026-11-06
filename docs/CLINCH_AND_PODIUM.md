@@ -1,7 +1,7 @@
-# Points Cups: Clinch Watch & Place Locks (build spec, v2.1)
+# Points Cups: Clinch Watch & Place Locks (build spec, v2.2)
 
 *Scope: Workflow Wireframes canvas, row 6 only (boards F0–F4). Companion to `COMPETITION_ENGINE.md`.*
-*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 his §2 look. Model: Opus. One branch, per-task commits.*
+*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy). Model: Opus. One branch, per-task commits.*
 
 **Mockups:** `docs/mockups/points-clinch/` (`index.html` with all five boards live, plus a PNG per board). They are the visual target. **The spec governs behaviour:** where they disagree, the spec wins, and you report it. The trophy there is a static port; use `CupTrophy` and the tokens.
 
@@ -20,36 +20,41 @@
 
 ## 1 · The math: new pure module (e.g. `lib/pointsClinch.ts`)
 
-**Per-unit bound per unbanked game g.** Every unit's floor is 0: a team with no finisher gets no result row, so a last-place award is not a floor. Never early beats one game sooner.
+**Per-unit bound per unbanked game g:** `hi_g(T)`, the most T can earn. The least is always 0 (Zach, v2.2): a team whose players don't finish gets no result row, so any floor above 0 could lock early.
 
-| Format | `hi_g(T)`: most T can earn |
+| Format | `hi_g(T)` |
 |---|---|
 | Placement (stroke, Stableford, scramble, skins, manual) | top award |
 | Pick'em; game with no split | `points_total` |
-| Match play, Matches | Σ points of the matches T is in, plus points not yet in a paired match. Before the game starts: `points_total` |
-| Bracket | Σ top-k awards, k = T's entrant count. Before the draw is played: `points_total` |
+| Match play, Matches | before the game starts: the whole total (pairings can change). After: Σ points of T's matches + unpaired points |
+| Bracket | before it starts: the whole total. After: Σ top-k awards, k = T's entrant count |
 
 ```
-swing(B)        = Σ over unbanked g of hi_g(B)                // most B can still gain
-safe(A over B)  = pts(A) − pts(B) > swing(B)                  // strict: a possible tie is not safe
+swing(A, B)     = Σ over unbanked g of hi_g(B)                 // most B can gain on A
+safe(A over B)  = pts(A) − pts(B) > swing(A, B)               // strict: a possible tie is not safe
 placeLocked(T)  = every unit above T is safe over T  AND  T is safe over every unit below T
 clincher        = the 1st-place unit, if placeLocked(it)
 out(T, p)       = at least p units are safe over T             // T can no longer finish p-th or better
 ```
 
-- **Never early.** A lock can show late, never early. Prove each format row in tests.
+- **Never early**, proven by playing every outcome of the games left through the real award functions. Accepted late-never-early cases: brackets where teammates can't meet, matches between teammates.
 - Banked points only (`bankedOnlyWhenFinished`). A game reopened for a correction stays banked (existing ruling: corrections don't un-clinch or re-announce).
 - **Derived, never stored.** Adding a game raises the swing, so a lock reverts by itself.
 
-**winsNeeded(L, p):** 1, 2, or null (null = 3 or more). Check single games, then pairs: does L finishing 1st in g (or g and h), with the other awards going lowest to the closest chaser, make L safe over every unit it must stay ahead of? That's O(n²) and bounded for any cup size. Order-free: never names a "next game".
+**winsNeeded(L):** 1, 2, or null (null = 3 or more), **for 1st only**. Check single games, then pairs: does L winning g (or g and h) guarantee L is safe over every chaser in every finish? A win counts only what it is certain to give:
+- **Every chaser** takes the best award left in that game, since any of them could come second.
+- **Match games:** L is credited only its own matches; a chaser keeps the matches it plays elsewhere, plus any unpaired points. A match game that hasn't started can't be a qualifying win (no pairing to win).
+- **Brackets:** a win is 1st place alone, however many entrants L has.
+
+O(n²), bounded for any cup size, order-free (never names a "next game"). It has the same played-out proof as the locks: every game `winsNeeded` names clinches in every finish where the leader wins it.
 
 **Tests:**
 - strict clinch; a possible tie is not a clinch;
-- a 4-3-2-1 split swings the full top award: last place is not a floor;
+- a 4-3-2-1 split swings the full 4; a team that doesn't finish gets no row and can't fool a lock;
 - 3rd locks before 1st;
 - `out` on F2 (no chaser is out of 2nd);
 - adding a game un-clinches;
-- `winsNeeded` 1 / 2 / null, "any of N" vs "only Skins or Pick'em";
+- `winsNeeded` 1 / 2 / null, "any of N" vs "only Skins or Pick'em", the [5,4,1] case (a win that only clinches if the chaser comes last is not a win), match and bracket wins;
 - a live projection never locks;
 - bracket and match-play bounds;
 - teamless units;
@@ -58,7 +63,8 @@ out(T, p)       = at least p units are safe over T             // T can no longe
 
 ## 2 · Standings (`StandingsRows`)
 
-- **Full names.** The bar goes on its own line under the name, indented to the name's left edge.
+- **Full names.** The bar goes on its own line under the name, indented to the name's left edge. Long names wrap (34 max, so 2 lines at most).
+- **Shared 1st:** every tied leader row uses the big leader number.
 - **Projection unchanged:** banked solid, live hatched, solid at finalize. "If today holds" legend only while something projects.
 - **Locked place:** the rank number on a filled `--color-bt-text` square (18px, radius 5). Open places: today's dim number. **Shared:** "T3" on both rows.
 - Points use `fmtPts`, so decimals ("2.5"), per the 2026-10-22 rule.
@@ -77,18 +83,22 @@ Mirrors the match-play hero tier for tier. The pinned bar and the game-page head
 | No game banked | — | Anyone's cup | 8 games left |
 | Tied at the top | — | Tied at the top | HECB & BA · 6 games left |
 | Leading, `winsNeeded` null | leader | Lead by 2.5 | 6 games left · all 4 still alive |
-| `winsNeeded` = 2 | leader | Two wins from the cup | Win any 2 of the 4 left · 3 still alive (only when every pair qualifies; otherwise 4 games left · 3 still alive) |
-| `winsNeeded` = 1 | leader | One win from the cup | Win any of the 3 left · … / A win in Skins or Pick'em clinches it · … |
-| A projecting live game would clinch | leader | One win from the cup | Leading Stableford · clinches if it holds |
-| 1st clinched | — | 2nd is up for grabs | Hot Eagles Cold Beers clinched the cup |
+| `winsNeeded` = 2 | leader | Two wins from the cup | Win any 2 of the 4 left · 3 still alive, **only if every pair qualifies**; otherwise 4 games left · 3 still alive |
+| `winsNeeded` = 1, several games | leader | One win from the cup | Win any of the 3 left · … / A win in Skins or Pick'em clinches it · … |
+| `winsNeeded` = 1, one game left | leader | One win from the cup | A win in Skins clinches it |
+| A projecting live game would clinch at today's numbers | leader | (whatever the ladder says; never forced to "One win") | Leading Stableford · clinches if it holds |
+| 1st clinched, a place still open | — | 2nd is up for grabs | Hot Eagles Cold Beers clinched the cup |
+| Every place locked, games still open | clincher | Clinched the cup | Every place is set · 1 game left (count dropped if only a correction is open: "Every place is set") |
 | Final | winner | score (74, team colour) | Final · X wins (+ " · 3rd shared") |
+| Final, shared 1st | "Hot Eagles Cold Beers & Bogey Army" in plain text colour | score | Final · Shared 1st |
 
-After 1st locks, the ladder repeats for the highest open place ("One win from 2nd"). When a unit drops out of contention for 1st (`out(T, 1)`), the sub-line says "Hack Squad is out" until the next banked game.
+- The team-specific ladder is **1st only**. An open place below 1st always reads "{place} is up for grabs" / "{clincher} clinched the cup". There is no "One win from 2nd".
+- When a unit drops out of contention for 1st (`out(T, 1)`), its name replaces the alive count until the next banked game: "6 games left · Hack Squad is out".
 
 - **Lower tier (clinch watch),** in match play's "PROJECTED" slot, with the same divider and centred tracked label:
-  - **Label:** `CLINCH WATCH · 3 games left` / `RACE FOR 2ND · 1 game left`. Games left = unbanked, non-dropped games.
-  - **Track** (12px): one segment per game left, flex-sized by the closest contender's `hi_g`, 3px gaps. Gold post (4×24) at the end.
-  - **Fill:** the lead over the closest contender ÷ `swing(chaser)`, in the leader's colour with a soft glow. Reaching the post = locked.
+  - **Label:** `CLINCH WATCH · 3 games left`; below 1st, `CLINCH WATCH · 2ND · 2 games left`. One label for every place ("race" is retired vocabulary; the guard stays untouched). Games left = unbanked games.
+  - **Track** (12px): one segment per game left, flex-sized by `hi_g(closest contender)`, 3px gaps. Gold post (4×24) at the end.
+  - **Fill:** the lead over the closest contender ÷ `swing(leader, chaser)`, in the leader's colour with a soft glow. Reaching the post = locked.
   - **Projection:** only for formats that project (manual games never do). The hatched extension shows the lead if today holds. A **dashed gold post** marks where the line lands once the live games bank.
   - **Caption:** `+4.5 on Bogey Army`. Right side: a `TeamBadge` (20px) per contender; an `out` unit is faded to 28%.
   - Hidden when final.
@@ -105,7 +115,7 @@ After 1st locks, the ladder repeats for the highest open place ("One win from 2n
 
 ## 5 · Final and ties
 
-- **Final (points cups)** = `gamesRemaining === 0` (no unbanked game, none open for correction). It does not use `isCupComplete`: with 1st clinched and unarmed games left, `isCupComplete` would fire while places are still open. An abandoned game is deleted. Final shows the last row of the ladder, the existing one-time spark burst on first view, and "Set off the fireworks" for the winning unit(s).
+- **Final (points cups)** = `gamesRemaining === 0` (no unbanked game, none open for correction). It does not use `isCupComplete`: with 1st clinched and unarmed games left, `isCupComplete` would fire while places are still open. An abandoned game is deleted (the app has no "dropped" state). Final shows the Final row(s) of the table, the existing one-time spark burst on first view, and "Set off the fireworks" for the winning unit(s).
 - **Ties share the place by default, 1st included.**
 - **Breaking a tie:** a `NeedsAttentionCard` item for Owner and Organizers, "Tied for 3rd · shared". It opens a `Sheet`:
   - Title: **Break the tie for 3rd?**
@@ -124,7 +134,7 @@ After 1st locks, the ladder repeats for the highest open place ("One win from 2n
 - Name a "next game" or assume play order.
 - Store clinch or lock state beyond the push claim and `tiebreak_order`.
 - Add a podium, new trophy art, a tilt, or animation at clinch time.
-- Add copy beyond the strings above. These strings say "cup": don't route them through `competitionWord`.
+- Add copy beyond the strings above, or route these strings through `competitionWord` (ruling 5: "cup" exception).
 - Special-case teamless races.
 - Skip, guard or loosen tests to get CI green.
 - Run migrations against production.
