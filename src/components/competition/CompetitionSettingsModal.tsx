@@ -12,10 +12,11 @@ import {
   Eraser,
   Trash2,
   ChevronRight,
+  ListOrdered,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
 import { cancelBootstrapSeed } from "@/lib/bootstrapSeed";
-import { COMPETITION_NAME_EXAMPLE, COMPETITION_WORD, competitionNoun, competitionWord, type CompetitionWord, COMPETITION_SHAPE_WORD } from "@/lib/vocabulary";
+import { CLINCH_STORY_WORD, COMPETITION_NAME_EXAMPLE, COMPETITION_WORD, competitionNoun, competitionWord, type CompetitionWord, COMPETITION_SHAPE_WORD } from "@/lib/vocabulary";
 import { useModalBackButton } from "@/hooks/useModalBackButton";
 import { ScrollLock } from "@/hooks/useScrollLock";
 
@@ -79,6 +80,8 @@ interface Props {
   /** Open the team Rosters surface (add/rename/delete teams + assign players). Provided
    *  for points cups (§2 — team management's home is settings now); omitted otherwise. */
   onOpenRosters?: () => void;
+  /** Open the tiebreak sheet. Provided at Final whenever a points cup has ties (spec §5). */
+  onOpenTiebreaks?: () => void;
 }
 
 const MODEL_DISPLAY: Record<
@@ -97,6 +100,7 @@ export function CompetitionSettingsModal({
   onClose,
   onDeleted,
   onOpenRosters,
+  onOpenTiebreaks,
 }: Props) {
   const utils = trpc.useUtils();
   useModalBackButton(onClose);
@@ -388,6 +392,14 @@ export function CompetitionSettingsModal({
                         title="Teams &amp; rosters"
                         subtitle="Add, rename, or remove teams and set who plays"
                         onClick={onOpenRosters}
+                      />
+                    )}
+                    {onOpenTiebreaks && (
+                      <Row
+                        testId="comp-settings-tiebreaks-row"
+                        icon={<ListOrdered size={17} />}
+                        title={CLINCH_STORY_WORD.tiebreaks}
+                        onClick={onOpenTiebreaks}
                       />
                     )}
                   </Section>
@@ -796,7 +808,7 @@ function Row({
 }: {
   icon: ReactNode;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   onClick: () => void;
   /** Colors the icon-square + title. Omit for the neutral accent style. */
   tone?: "warning" | "danger";

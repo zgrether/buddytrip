@@ -35,6 +35,7 @@ import {
   gameFinishedPushFailureLine,
 } from "../lib/gameFinishNotify";
 import { afterResponse } from "../lib/afterResponse";
+import { reopenFinishedCup } from "../lib/reopenCup";
 import { computeConfigHash } from "@/lib/configHash";
 import { bracketPlaceCapacity, peoplePlaceCapacity, teamPlaceCapacity } from "@/lib/placeCapacity";
 import { BRACKET_SIDES, type BracketDrawMatch } from "@/lib/bracket";
@@ -521,6 +522,7 @@ export const gamesRouter = router({
     .use(requireTripRole("Organizer"))
     .mutation(async ({ ctx, input }) => {
       const id = crypto.randomUUID();
+      let reopensCup = false;
       // A new game lands at the BOTTOM of the board — globally, so one created
       // while others are already Live still sits below them in every section.
       //
@@ -543,13 +545,14 @@ export const gamesRouter = router({
       if (input.competitionId) {
         const { data: comp, error: compErr } = await ctx.supabase
           .from("competitions")
-          .select("scoring_model")
+          .select("scoring_model, status")
           .eq("id", input.competitionId)
           .eq("trip_id", ctx.tripId)
           .maybeSingle();
         if (compErr) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't load the ${EITHER_COMPETITION}: ${compErr.message}` });
         }
+        reopensCup = comp?.status === "completed";
         const refusal = comp
           ? formatRefusalForScoringModel(input.gameTypeId, comp.scoring_model as ScoringModel | null)
           : null;
@@ -668,6 +671,11 @@ export const gamesRouter = router({
           message: `Failed to create game: ${insertErr.message}`,
         });
       }
+
+      // A finished cup with a new game on it is not finished: when that game ends,
+      // the board asks again (spec §5). Part of the create, not a step after it, or
+      // the cup would go Final on its own and nobody would have chosen that.
+      if (reopensCup) await reopenFinishedCup(ctx.supabase, input.competitionId as string);
 
       // SCRAMBLE: the teams ARE the groupings, so the game arrives with them.
       await seedScrambleTeamGroups(ctx.supabase, id, input.gameTypeId, input.competitionId ?? null);

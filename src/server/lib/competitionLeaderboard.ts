@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { rowsOrThrow, maybeRowOrThrow } from "@/server/lib/rowOrThrow";
-import { rollUp, placementDetail, placementPoints, awardedForGame, settledPool, bankedOnlyWhenFinished, type LiveGame } from "@/lib/competitionPlacement";
+import { rollUp, placementDetail, placementPoints, awardedForGame, settledPool, bankedOnlyWhenFinished, gamePayout, type LiveGame } from "@/lib/competitionPlacement";
 import { isPerMatch, isPlacement, effectiveDistribution, payingSchedule, type PointsDistribution } from "@/lib/pointsDistribution";
 import { teamPointsFromEntrants } from "@/lib/bracketPlacements";
 import { isBracketGame, isPickemGame, isMatchesGame } from "@/lib/resultStrategy";
@@ -13,8 +13,12 @@ import { MATCH_PLAY_TYPES, RACK_TYPE, SCRAMBLE_TYPE, SKINS_TYPE } from "@/server
 import { readBoardInputs, boardRow } from "@/server/lib/boardGames";
 import { pointsDivideByMatchRows } from "@/lib/pointsDistribution";
 import { cupCountsInHalves } from "@/lib/halfPoints";
+import { clinchWatch, pointsClinch } from "@/lib/pointsClinch";
+import { clinchGame, clinchGames } from "./clinchGames";
 import { tripDisplayNames } from "./tripDisplayNames";
 import { needsAttention as deriveNeedsAttention, NOTHING_NEEDS_ATTENTION } from "@/lib/needsAttention";
+import { gamesRemaining } from "@/lib/cupCompletion";
+import { finalTies, winnersOf } from "@/lib/finalPlaces";
 import { readSideGameWinners } from "./sideBoard";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
@@ -372,7 +376,7 @@ export async function computeCompetitionLeaderboard(
       .order("created_at", { ascending: true }),
     supabase
       .from("competitions")
-      .select("defending_team_id, scoring_model, trip_id")
+      .select("defending_team_id, scoring_model, trip_id, status, tiebreak_order, clinch_notified_team_id, clinch_notified_user_id")
       .eq("id", competitionId)
       .maybeSingle(),
     // Games of this competition — all feed the roll-up.
@@ -451,8 +455,10 @@ export async function computeCompetitionLeaderboard(
   const allGames = rowsOrThrow(gameRowsRes, "games");
   const sizeByTeam = new Map<string, number>();
   const teamedUserIds = new Set<string>();
+  const teamOfUser = new Map<string, string>();
   for (const a of rowsOrThrow(assignmentsRes, "rosters")) {
     teamedUserIds.add(a.user_id as string);
+    teamOfUser.set(a.user_id as string, a.team_id as string);
     const tid = a.team_id as string;
     sizeByTeam.set(tid, (sizeByTeam.get(tid) ?? 0) + 1);
   }
@@ -481,14 +487,14 @@ export async function computeCompetitionLeaderboard(
           // here on every poll: guessing the convention from column nullness,
           // and resolving a bracket entrant's team through
           // `bracket_entrants.team_id` as it stands NOW.
-          .select("game_id, entity_id, entity_type, position, raw_score, value_kind, credited_team_id")
+          .select("game_id, entity_id, entity_type, position, raw_score, value_kind, credited_team_id, computed_at")
           .in("game_id", gameIds)
           // PERSON rows only when people are the units (PR 7). In a teamed race a
           // person row is never a unit's, so it is not even read: that is what
           // keeps a teamed board byte-identical, and a player on a team from
           // being credited twice (as themselves AND through their team).
           .in("entity_type", teamless ? ["team", "entrant", "user"] : ["team", "entrant"])
-      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null }[], error: null }),
+      : Promise.resolve({ data: [] as { game_id: string; entity_id: string; entity_type: string; position: number | null; raw_score: number | null; value_kind: string | null; credited_team_id: string | null; computed_at: string | null }[], error: null }),
     readBoardInputs(supabase, allGames, "board's", (comp?.trip_id as string | null) ?? null, opts.viewerId ?? null),
     // The race's PLAYERS (teamless only): a person is a unit from the first game
     // they are IN, before they have a result — "no points yet" (ruling 22).
@@ -1203,8 +1209,69 @@ export async function computeCompetitionLeaderboard(
     });
   }
 
+  const pointsCupClinch = (() => {
+    if (scoringModel !== "points") return null;
+    const unitOfUser = (userId: string) => (teamless ? (personUnits.has(userId) ? userId : null) : teamOfUser.get(userId) ?? null);
+    const unbanked = clinchGames(allGames, board, unitOfUser);
+    const view = pointsClinch({ unitIds, totals: unitTotals, unbanked });
+    // An empty board is not a decision: a cup built one game at a time empties
+    // after every game, and nothing is left to move only until someone adds the
+    // next one. So it waits for a person (spec §5), and until they answer no place
+    // is locked, whatever the math says of a board with nothing on it.
+    const emptied = allGames.length > 0 && gamesRemaining(allGames.map((g) => ({ status: g.status as string, correctionsOpen: g.corrections_open === true }))) === 0;
+    const finished = comp?.status === "completed";
+    const awaitingFinish = emptied && !finished;
+    const final = emptied && finished;
+    const tiebreakOrder = (comp?.tiebreak_order as string[] | null) ?? null;
+    const scoredIds = unitIds.filter((id) => unitsWithResult.has(id));
+    const winnerIds = final ? winnersOf(scoredIds, unitTotals, tiebreakOrder) : [];
+    // The game banked most recently, for who it just put out: when its result
+    // was written, the only order of play the data holds.
+    const banked = allGames.filter((g) => g.status === "complete");
+    const finishedAt = (id: unknown) =>
+      (results ?? []).reduce((latest, r) => (r.game_id === id && String(r.computed_at ?? "") > latest ? String(r.computed_at) : latest), "");
+    const last = banked.reduce<(typeof banked)[number] | null>((a, g) => (a == null || finishedAt(g.id) > finishedAt(a.id) ? g : a), null);
+    const lastLive = last ? liveGames.find((g) => g.id === last.id) : null;
+    return {
+      // At Final the places are the owner's to settle, so a tie for 1st broken there
+      // names the clincher the math cannot: level scores have none.
+      clincherId: final ? (winnerIds.length === 1 ? winnerIds[0] : null) : view.clincher,
+      lockedUnitIds: awaitingFinish ? [] : unitIds.filter((id) => view.places.get(id)?.locked),
+      final,
+      awaitingFinish,
+      /** A clinch has already gone out, so the hero may go on saying so. */
+      announced: comp?.clinch_notified_team_id != null || comp?.clinch_notified_user_id != null,
+      tiebreakOrder,
+      /** Who holds 1st at Final: one unit, or everyone sharing it. */
+      winnerIds,
+      finalTies: final ? finalTies(scoredIds, unitTotals, tiebreakOrder) : [],
+      watch: clinchWatch({
+        unitIds,
+        totals: unitTotals,
+        unbanked,
+        bankedGames: banked.length,
+        projections,
+        lastBanked: last && lastLive ? { game: clinchGame(last, board, unitOfUser), paid: Object.fromEntries(gamePayout(lastLive)) } : null,
+      }),
+    };
+  })();
+
+  const unitCard = (id: string) => {
+    const team = (teams ?? []).find((t) => t.id === id);
+    return team
+      ? { id, name: team.name as string, shortName: (team.short_name as string | null) ?? null, color: (team.color as string | null) ?? null }
+      : { id, name: personNames.get(id) ?? "Someone", shortName: null, color: null };
+  };
+
+  const ties = (pointsCupClinch?.finalTies ?? []).map((t) => ({ place: t.place, ordered: t.ordered, units: t.unitIds.map(unitCard) }));
+
   return {
-    needsAttention: attention,
+    needsAttention: {
+      ...attention,
+      finishCup: pointsCupClinch?.awaitingFinish ?? false,
+      // Not null means someone has decided, whichever way: the item goes away.
+      ties: pointsCupClinch?.tiebreakOrder == null ? ties : [],
+    },
     teams: teams ?? [],
     /**
      * The competitors, in board order: the cup's teams, or (teamless race) its
@@ -1251,6 +1318,9 @@ export async function computeCompetitionLeaderboard(
     cannotProject,
     pointsAvailable: roll.pointsAvailable,
     winNumber: roll.winNumber,
+    // A points cup's place locks (spec §1), from banked points only. Never
+    // `pointsToClinch`, which is the head-to-head more-than-half rule.
+    clinch: pointsCupClinch && { ...pointsCupClinch, ties },
     // Zach's half-points rule: ½ on this cup's totals, target and match cells
     // only when every game pays 1 point per match (`cupCountsInHalves`).
     halfPoints: cupCountsInHalves(

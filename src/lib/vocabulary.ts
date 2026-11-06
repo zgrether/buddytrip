@@ -331,6 +331,59 @@ export function fmtPts(n: number, opts?: { halves?: boolean }): string {
   return String(Math.round(n * 100) / 100);
 }
 
+/** A place two units share: "T3" on both rows of a points cup's standings. */
+export function sharedPlaceWord(rank: number): string {
+  return `T${rank}`;
+}
+
+/** 1st, 2nd, 3rd, 4th. */
+export function ordinalShort(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+/**
+ * The points hero's story and clinch watch (docs/CLINCH_AND_PODIUM.md §3).
+ * These say "cup" on a points competition by Zach's exception for this feature
+ * (2026-11-05): they are deliberately NOT routed through `competitionWord`.
+ */
+export const CLINCH_STORY_WORD = {
+  separator: " · ",
+  anyonesCup: "Anyone's cup",
+  tiedAtTop: "Tied at the top",
+  clinchWatch: "Clinch watch",
+  clinchedHeadline: "Clinched the cup",
+  everyPlaceSet: "Every place is set",
+  sharedFirst: "Shared 1st",
+  leadBy: (lead: string) => `Lead by ${lead}`,
+  gamesLeft: (n: number) => `${n} ${n === 1 ? "game" : "games"} left`,
+  winsFromTheCup: (wins: 1 | 2) => `${wins === 1 ? "One win" : "Two wins"} from the cup`,
+  upForGrabs: (place: string) => `${place} is up for grabs`,
+  stillAlive: (alive: number, field: number) => (alive === field ? `all ${alive} still alive` : `${alive} still alive`),
+  winAnyOf: (n: number) => `Win any of the ${n} left`,
+  winAnyTwoOf: (n: number) => `Win any 2 of the ${n} left`,
+  aWinIn: (games: readonly string[]) => `A win in ${games.join(" or ")} clinches it`,
+  leadingGame: (game: string) => `Leading ${game} · clinches if it holds`,
+  clinchedTheCup: (name: string) => `${name} clinched the cup`,
+  isOut: (names: string, count: number) => `${names} ${count === 1 ? "is" : "are"} out`,
+  placeShared: (place: string) => `${place} shared`,
+  joinLevel: (names: readonly string[]) => names.join(" & "),
+  clinchWatchFor: (place: string) => `Clinch watch · ${place}`,
+  leadMark: (lead: string) => `+${lead}`,
+  onChaser: (name: string) => `on ${name}`,
+  everyGameDone: "Every game on the board is done",
+  finishQuestion: "Every game on the board is done. Finish the cup?",
+  finishCup: "Finish the cup",
+  addAnotherGame: "Add another game",
+  tiedShared: (place: string) => `Tied for ${place} · shared`,
+  breakTieTitle: (place: string) => `Break the tie for ${place}?`,
+  breakTieBody: (place: string) => `Played a tiebreaker? Drag to set the order. Left alone, they share ${place}.`,
+  saveOrder: "Save order",
+  keepShared: "Keep it shared",
+  tiebreaks: "Tiebreaks",
+} as const;
+
 /** "pt" for exactly one point, "pts" otherwise. */
 export function ptsWord(n: number): string {
   return n === 1 ? "pt" : "pts";

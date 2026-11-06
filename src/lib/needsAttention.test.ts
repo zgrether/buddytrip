@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { needsAttention, needsAttentionCount, unevenTeamsWhy, type NeedsAttentionInput } from "./needsAttention";
+import { NOTHING_NEEDS_ATTENTION, needsAttention, needsAttentionCount, unevenTeamsWhy, type NeedsAttentionInput } from "./needsAttention";
 import { notOnATeamLine, unevenTeamsLine, wontCountLine } from "./vocabulary";
 
 /**
@@ -33,7 +33,7 @@ describe("not on a team: people PLAYING on no team (ruling 4)", () => {
     expect(n.offTeam).toBeNull();
   });
   it("a teamless tournament has nothing to list at all", () => {
-    expect(needsAttention(base({ teams: [], games: [game("G", ["mo"])] }))).toEqual({ offTeam: null, emptyTeams: [], uneven: null });
+    expect(needsAttention(base({ teams: [], games: [game("G", ["mo"])] }))).toEqual(NOTHING_NEEDS_ATTENTION);
   });
 });
 
