@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { Trophy, CloudOff, RefreshCw, Plus, ArrowUpDown } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -345,9 +345,23 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     competitionId,
     celebrationKey,
   );
+  const finishedHere = useRef(false);
   const finishCup = trpc.competitions.finish.useMutation({
-    onSuccess: () => invalidateGameBoards(utils, { tripId, competitionId }),
+    onSuccess: () => {
+      finishedHere.current = true;
+      invalidateGameBoards(utils, { tripId, competitionId });
+    },
   });
+  // The card sits below the standings, so whoever finishes is scrolled past the
+  // hero: the burst would play off screen and spend this device's one showing.
+  // After Final renders, not at the tap: the hero grows when it does, and scroll
+  // anchoring pushes it away again.
+  const isFinal = data?.clinch?.final === true;
+  useEffect(() => {
+    if (!isFinal || !finishedHere.current) return;
+    finishedHere.current = false;
+    document.querySelector('[data-testid="competition-hero"]')?.scrollIntoView({ block: "center" });
+  }, [isFinal]);
   const [breakingTie, setBreakingTie] = useState<SharedTie | null>(null);
   // The viewer's own team — "did the person looking at this actually win?".
   // Shares `competitions.myTeamColor`'s cache entry with the app-bar avatar, so

@@ -256,6 +256,12 @@ describe("the board's points gates (source)", () => {
   it("a points cup is final when someone finished it, never by isCupComplete or an empty board", () => {
     expect(board).toMatch(/const cupComplete = isMatchPlay \? isCupComplete\(data\.games, !!clincher\) : data\.clinch\?\.final === true;/);
   });
+  it("Finish brings the hero into view once Final has rendered, or the burst plays off screen", () => {
+    const effect = board.indexOf("if (!isFinal || !finishedHere.current) return;");
+    const scroll = board.indexOf("scrollIntoView({ block: \"center\" })", effect);
+    expect(effect).toBeGreaterThan(-1);
+    expect(scroll - effect).toBeLessThan(160);
+  });
   it("the burst is for whoever holds 1st, read from the winners rather than a clincher", () => {
     expect(board).toMatch(/data\.clinch\.winnerIds\.includes\(myUnitId\)/);
   });
