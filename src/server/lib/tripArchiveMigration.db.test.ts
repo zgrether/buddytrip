@@ -472,6 +472,7 @@ describe("every column that names a person is classified", () => {
     "chat_reads.user_id": "a read receipt, never shown as a name",
     "news_reads.user_id": "a read receipt, never shown as a name",
     "push_send_log.actor_user_id": "delivery bookkeeping",
+    "competitions.clinch_notified_user_id": "delivery bookkeeping",
     "push_subscriptions.user_id": "the person's own devices, not the trip's",
     "circle_members.user_id": "not scoped to a trip",
     "circles.created_by": "not scoped to a trip",
