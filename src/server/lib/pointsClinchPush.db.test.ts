@@ -129,6 +129,20 @@ describe("a points cup's clinch comes from the place locks", () => {
     expect((await claim(cup.competitionId)).clinch_notified_team_id).toBe(a);
   });
 
+  it("reconcile asks §1 too: a clincher the more-than-half rule would not call decided keeps its claim", async () => {
+    const cup = await pointsCup("Reconcile rule", ["A", "B", "C"]);
+    const [a, b, c] = cup.teamIds;
+    await game(cup, "Left", [2]);
+    await game(cup, "First", [6, 3, 2], [a, b, c]);
+    expect((await claim(cup.competitionId)).clinch_notified_team_id).toBe(a);
+
+    const board = await computeCompetitionLeaderboard(ctx.admin, cup.competitionId);
+    expect((board.pointsToClinch as Record<string, number>)[a]).toBeGreaterThan(0);
+
+    await reconcileClinchClaim(cup.competitionId, ctx.admin);
+    expect((await claim(cup.competitionId)).clinch_notified_team_id).toBe(a);
+  });
+
   it("a live game's lead claims nothing: it is an unbanked game", async () => {
     const cup = await pointsCup("Live lead", ["A", "B"]);
     const [a, b] = cup.teamIds;
