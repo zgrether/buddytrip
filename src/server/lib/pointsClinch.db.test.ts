@@ -86,9 +86,23 @@ describe("the board's clinch", () => {
     expect((await read()).clinch?.watch.newlyOutIds).toEqual([]);
   });
 
-  it("nothing left: every place is locked", async () => {
-    const final = await board();
-    expect(new Set(final.clinch?.lockedUnitIds)).toEqual(new Set(teams));
+  // Its own cup: this file runs shuffled, and on a cup with no games yet every
+  // place reads locked, so a shared one let this pass whenever it ran first.
+  it("nothing left: no place is locked until a person finishes the cup, then every place is", async () => {
+    const cup = await ctx.createCupTrip({ title: "Empty Trip", name: "Empty Cup", scoringModel: "points", teams: ["One", "Two", "Three"] });
+    const g = (await ctx.caller().games.create({ tripId: cup.tripId, gameTypeId: "gtt_generic_yard", name: "Only", competitionId: cup.competitionId })) as { id: string };
+    await ctx.admin.from("games").update({ points_total: 15, points_distribution: { type: "placement", values: [10, 4, 1] } }).eq("id", g.id);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId: g.id, placements: cup.teamIds.map((entityId, i) => ({ entityId, position: i + 1 })) });
+    const read = () => ctx.caller().competitions.leaderboard({ tripId: cup.tripId, competitionId: cup.competitionId });
+
+    const waiting = await read();
+    expect(waiting.clinch?.awaitingFinish).toBe(true);
+    expect(waiting.clinch?.lockedUnitIds).toEqual([]);
+
+    await ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId });
+    const final = await read();
+    expect(final.clinch?.final).toBe(true);
+    expect(new Set(final.clinch?.lockedUnitIds)).toEqual(new Set(cup.teamIds));
   });
 
   it("a head-to-head Cup has no clinch here: it keeps its own rule", async () => {
