@@ -181,6 +181,16 @@ describe("the trophy's three states", () => {
   });
 });
 
+const pointsCup = (over: Partial<NonNullable<React.ComponentProps<typeof CompetitionHero>["pointsHero"]>> = {}) => ({
+  watch: watch(),
+  units: teams,
+  awaitingFinish: false,
+  announced: false,
+  tiebreakOrder: null,
+  winnerIds: [],
+  ...over,
+});
+
 describe("the hero", () => {
   const lbTeams = teams.map((t) => ({ id: t.id, name: t.name, short_name: t.shortName, color: t.color })) as LBTeam[];
   const hero = (over: Partial<React.ComponentProps<typeof CompetitionHero>>) =>
@@ -200,9 +210,31 @@ describe("the hero", () => {
       />
     );
   it("a points cup draws the story and the trophy", () => {
-    const html = hero({ pointsHero: { watch: watch(), units: teams } });
+    const html = hero({ pointsHero: pointsCup() });
     expect(html).toContain('data-testid="points-hero-story"');
     expect(html).toContain('data-testid="hero-trophy"');
+  });
+  it("Final offers the winners their fireworks, and nobody else", () => {
+    const final = { pointsHero: pointsCup({ winnerIds: ["he"] }), cupComplete: true };
+    expect(hero({ ...final, canReplayCelebration: true })).toContain('data-testid="clinch-replay-btn"');
+    expect(hero({ ...final, canReplayCelebration: false })).not.toContain("clinch-replay-btn");
+  });
+  it("no fireworks before Final, whoever is looking", () => {
+    expect(hero({ pointsHero: pointsCup({ winnerIds: [] }), canReplayCelebration: true })).not.toContain("clinch-replay-btn");
+  });
+  it("the burst reaches a points cup's trophy: a first view at Final sparks", () => {
+    const final = { pointsHero: pointsCup({ winnerIds: ["he"] }), cupComplete: true };
+    expect(hero({ ...final, celebrateFirstView: true })).toContain('data-testid="clinch-sparks"');
+    expect(hero({ ...final, celebrateFirstView: false })).not.toContain("clinch-sparks");
+  });
+  it("a shared 1st lights the trophy with no one colour", () => {
+    const html = hero({ pointsHero: pointsCup({ winnerIds: ["he", "ba"] }), cupComplete: true });
+    expect(html).toContain('data-testid="clinch-glow"');
+  });
+  it("a board waiting to be finished keeps the trophy at rest, even with the math clinched", () => {
+    const html = hero({ pointsHero: pointsCup({ watch: watch({ clincherId: "he" }), awaitingFinish: true }) });
+    expect(html).not.toContain('data-testid="clinch-glow"');
+    expect(html).not.toContain('data-trophy-clinched="true"');
   });
   it("CONTROL: a head-to-head Cup never gets either tier", () => {
     const two = lbTeams.slice(0, 2);
@@ -217,7 +249,10 @@ describe("the board's points gates (source)", () => {
   it("the more-than-half clincher is head to head only: it decides nothing on a points cup", () => {
     expect(board).toMatch(/const clincher = isMatchPlay \? teams\.find\(/);
   });
-  it("a points cup is final when nothing is left, never by isCupComplete", () => {
-    expect(board).toMatch(/const cupComplete = isMatchPlay\s*\? isCupComplete\(data\.games, !!clincher\)\s*: data\.games\.length > 0 && gamesRemaining\(data\.games\) === 0;/);
+  it("a points cup is final when someone finished it, never by isCupComplete or an empty board", () => {
+    expect(board).toMatch(/const cupComplete = isMatchPlay \? isCupComplete\(data\.games, !!clincher\) : data\.clinch\?\.final === true;/);
+  });
+  it("the burst is for whoever holds 1st, read from the winners rather than a clincher", () => {
+    expect(board).toMatch(/data\.clinch\.winnerIds\.includes\(myUnitId\)/);
   });
 });

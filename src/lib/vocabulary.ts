@@ -372,6 +372,15 @@ export const CLINCH_STORY_WORD = {
   clinchWatchFor: (place: string) => `Clinch watch · ${place}`,
   leadMark: (lead: string) => `+${lead}`,
   onChaser: (name: string) => `on ${name}`,
+  everyGameDone: "Every game on the board is done",
+  finishQuestion: "Every game on the board is done. Finish the cup?",
+  finishCup: "Finish the cup",
+  addAnotherGame: "Add another game",
+  tiedShared: (place: string) => `Tied for ${place} · shared`,
+  breakTieTitle: (place: string) => `Break the tie for ${place}?`,
+  breakTieBody: (place: string) => `Played a tiebreaker? Drag to set the order. Left alone, they share ${place}.`,
+  saveOrder: "Save order",
+  keepShared: "Keep it shared",
 } as const;
 
 /** "pt" for exactly one point, "pts" otherwise. */

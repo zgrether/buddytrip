@@ -43,9 +43,19 @@ export interface NeedsAttention {
   /** Each team's roster size, in team order, and the scoring types of the
    *  unfinished games where a difference counts. */
   uneven: { teams: { id: string; name: string; color: string; size: number }[]; scorings: ScoringType[] } | null;
+  /** A points cup whose board is empty and not yet finished (spec §5). Unlike the
+   *  three above it is true of a teamless race too. */
+  finishCup: boolean;
+  /** A finished points cup's places still shared, each with who shares it. */
+  ties: SharedTie[];
 }
 
-export const NOTHING_NEEDS_ATTENTION: NeedsAttention = { offTeam: null, emptyTeams: [], uneven: null };
+export interface SharedTie {
+  place: number;
+  units: { id: string; name: string; shortName: string | null; color: string | null }[];
+}
+
+export const NOTHING_NEEDS_ATTENTION: NeedsAttention = { offTeam: null, emptyTeams: [], uneven: null, finishCup: false, ties: [] };
 
 export function needsAttention(input: NeedsAttentionInput): NeedsAttention {
   if (input.teams.length === 0) return NOTHING_NEEDS_ATTENTION;
@@ -80,12 +90,14 @@ export function needsAttention(input: NeedsAttentionInput): NeedsAttention {
     offTeam: offIds.length > 0 ? { names: offIds.map(input.nameOf), games: offGames } : null,
     emptyTeams,
     uneven,
+    finishCup: false,
+    ties: [],
   };
 }
 
 /** How many rows the card shows; zero hides it. */
 export function needsAttentionCount(n: NeedsAttention): number {
-  return (n.offTeam ? 1 : 0) + n.emptyTeams.length + (n.uneven ? 1 : 0);
+  return (n.finishCup ? 1 : 0) + n.ties.length + (n.offTeam ? 1 : 0) + n.emptyTeams.length + (n.uneven ? 1 : 0);
 }
 
 /**

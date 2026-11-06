@@ -1,14 +1,17 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
+import { Avatar } from "@/components/Avatar";
 import { TeamBadge } from "@/components/TeamBadge";
 import { NoTeamAvatar } from "@/components/NoTeamAvatar";
-import { needsAttentionCount, unevenTeamsWhy, type NeedsAttention } from "@/lib/needsAttention";
+import { needsAttentionCount, unevenTeamsWhy, type NeedsAttention, type SharedTie } from "@/lib/needsAttention";
 import { EYEBROW, EYEBROW_SEPARATOR, TYPE_SCALE } from "@/lib/typeScale";
 import {
+  CLINCH_STORY_WORD as WORD,
   emptyTeamLine,
   NEEDS_ATTENTION_TITLE,
   notOnATeamLine,
+  ordinalShort,
   unevenTeamsLine,
   wontCountLine,
 } from "@/lib/vocabulary";
@@ -24,20 +27,35 @@ import {
  * blocks something, and that is on the game rows. Each item is one row that
  * opens where it is fixed: Rosters for people and sizes, and an empty team's
  * own Edit Team sheet (Zach's look on #1691).
+ *
+ * A points cup adds two (docs/CLINCH_AND_PODIUM.md §5). Finish the cup is the one
+ * item that asks for a decision, so it carries its two answers rather than opening
+ * anywhere. A shared place at Final opens its tiebreak sheet.
  */
 export function NeedsAttentionCard({
   attention,
   onOpenRosters,
   onEditTeam,
+  onFinishCup,
+  onAddGame,
+  finishing = false,
+  finishError,
+  onBreakTie,
 }: {
   attention: NeedsAttention;
   onOpenRosters: () => void;
   /** Opens a team's Edit Team sheet; without it an empty team opens Rosters. */
   onEditTeam?: (teamId: string) => void;
+  onFinishCup?: () => void;
+  onAddGame?: () => void;
+  /** The finish is saving, so its button holds. */
+  finishing?: boolean;
+  finishError?: string | null;
+  onBreakTie?: (tie: SharedTie) => void;
 }) {
   const count = needsAttentionCount(attention);
   if (count === 0) return null;
-  const { offTeam, emptyTeams, uneven } = attention;
+  const { offTeam, emptyTeams, uneven, finishCup, ties } = attention;
 
   return (
     <section
@@ -51,6 +69,50 @@ export function NeedsAttentionCard({
         {EYEBROW_SEPARATOR}
         {count}
       </h2>
+
+      {finishCup && (
+        <div className="px-4 py-3" style={{ borderTop: "1px solid var(--color-bt-subtle-border)" }} data-testid="needs-attention-finish">
+          <p style={{ fontSize: TYPE_SCALE.emphasis, fontWeight: 500, color: "var(--color-bt-text)" }}>{WORD.finishQuestion}</p>
+          {finishError && (
+            <p className="mt-1" style={{ fontSize: TYPE_SCALE.captionPlus, color: "var(--color-bt-danger)" }} data-testid="needs-attention-finish-error">
+              {finishError}
+            </p>
+          )}
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={finishing}
+              onClick={onFinishCup}
+              className="min-h-[44px] flex-1 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
+              style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
+              data-testid="finish-cup"
+            >
+              {WORD.finishCup}
+            </button>
+            <button
+              type="button"
+              onClick={onAddGame}
+              className="min-h-[44px] flex-1 rounded-lg px-4 py-2 text-sm font-semibold"
+              style={{ background: "var(--color-bt-card-raised)", color: "var(--color-bt-text)" }}
+              data-testid="finish-add-game"
+            >
+              {WORD.addAnotherGame}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {ties.map((tie) => (
+        <Item key={tie.place} onClick={() => onBreakTie?.(tie)} testId={`needs-attention-tie-${tie.place}`} title={WORD.tiedShared(ordinalShort(tie.place))}>
+          <span className="flex" aria-hidden="true">
+            {tie.units.slice(0, 3).map((u, i) => (
+              <span key={u.id} style={{ marginLeft: i === 0 ? 0 : -8, display: "inline-flex" }}>
+                {u.color ? <TeamBadge teamId={u.id} name={u.name} shortName={u.shortName} color={u.color} size={24} /> : <Avatar name={u.name} sizePx={24} />}
+              </span>
+            ))}
+          </span>
+        </Item>
+      ))}
 
       {offTeam && (
         <Item onClick={onOpenRosters} testId="needs-attention-off-team" title={notOnATeamLine(offTeam.names)} detail={wontCountLine(offTeam.games)}>

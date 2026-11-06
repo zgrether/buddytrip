@@ -1,3 +1,5 @@
+import { finalPlaces } from "./finalPlaces";
+
 /**
  * THE STANDINGS ROWS of a points tournament (PR 9c-2) — teams, or in a
  * tournament of individuals its people — as one pure model, so ranking, the
@@ -59,6 +61,8 @@ export function standingsRows(p: {
   projections: Record<string, Record<string, number>>;
   /** The units whose place is locked. */
   lockedUnitIds?: readonly string[];
+  /** The order an owner set for exact ties. Passed only at Final. */
+  tiebreakOrder?: readonly string[] | null;
   /** The viewer's unit: their team, or in a teamless race themselves. */
   viewerUnitId: string | null | undefined;
 }): StandingsRow[] {
@@ -71,23 +75,17 @@ export function standingsRows(p: {
     projected: projectedOf(u.id),
   }));
 
-  const scored = base
-    .filter((r) => r.u.hasResult)
-    .sort((a, b) => b.banked - a.banked || a.u.label.localeCompare(b.u.label));
+  const hasResult = base.filter((r) => r.u.hasResult);
+  const placeOf = finalPlaces(hasResult.map((r) => r.u.id), Object.fromEntries(hasResult.map((r) => [r.u.id, r.banked])), p.tiebreakOrder);
+  const scored = hasResult.sort(
+    (a, b) => placeOf.get(a.u.id)!.place - placeOf.get(b.u.id)!.place || a.u.label.localeCompare(b.u.label)
+  );
   const waiting = base
     .filter((r) => !r.u.hasResult)
     .sort((a, b) => b.projected - a.projected || a.u.label.localeCompare(b.u.label));
 
-  const rankOf = new Map<string, number>();
-  scored.forEach((r, i) => {
-    const prev = scored[i - 1];
-    rankOf.set(r.u.id, prev && prev.banked === r.banked ? rankOf.get(prev.u.id)! : i + 1);
-  });
-
   const scale = Math.max(0, ...base.map((r) => r.banked + r.projected));
   const pct = (n: number) => (scale > 0 ? (n / scale) * 100 : 0);
-
-  const ranks = [...rankOf.values()];
 
   return [...scored, ...waiting].map((r) => ({
     id: r.u.id,
@@ -97,8 +95,8 @@ export function standingsRows(p: {
     banked: r.banked,
     projected: r.projected,
     hasResult: r.u.hasResult,
-    rank: rankOf.get(r.u.id) ?? null,
-    shared: ranks.filter((rank) => rank === rankOf.get(r.u.id)).length > 1,
+    rank: placeOf.get(r.u.id)?.place ?? null,
+    shared: placeOf.get(r.u.id)?.shared ?? false,
     locked: r.u.hasResult && (p.lockedUnitIds ?? []).includes(r.u.id),
     isViewer: p.viewerUnitId != null && r.u.id === p.viewerUnitId,
     bankedPct: pct(r.banked),

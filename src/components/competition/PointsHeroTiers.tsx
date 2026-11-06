@@ -4,7 +4,7 @@ import { Avatar } from "@/components/Avatar";
 import { TeamBadge } from "@/components/TeamBadge";
 import { teamInk } from "@/lib/teamTextColor";
 import type { ClinchWatch } from "@/lib/pointsClinch";
-import { pointsHeroStory } from "@/lib/pointsHeroStory";
+import { pointsHeroStory, type HeroCupState } from "@/lib/pointsHeroStory";
 import { CLINCH_STORY_WORD as WORD, fmtPts, ordinalShort } from "@/lib/vocabulary";
 import { hatch, PERSON_COLOR } from "./StandingsRows";
 
@@ -23,6 +23,7 @@ export interface PointsHeroUnit {
   shortName: string | null;
   /** A team's color. A person has none, and takes `PERSON_COLOR`. */
   color: string | null;
+  hasResult?: boolean;
 }
 
 const GOLD = "var(--color-bt-warning)";
@@ -117,13 +118,15 @@ export function PointsHeroTiers({
   units,
   totals,
   final,
+  cup,
 }: {
   watch: ClinchWatch;
   units: readonly PointsHeroUnit[];
   totals: Readonly<Record<string, number>>;
   final: boolean;
+  cup?: HeroCupState;
 }) {
-  const story = pointsHeroStory(watch, units, totals, final);
+  const story = pointsHeroStory(watch, units, totals, final, cup);
   const subjects = units.filter((u) => story.unitIds.includes(u.id));
   // One unit reads in its own ink. A shared 1st has no one color to read in.
   const sole = subjects.length === 1 ? subjects[0] : null;

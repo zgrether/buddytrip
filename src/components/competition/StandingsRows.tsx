@@ -68,6 +68,7 @@ export function StandingsRows({
   unitTotals,
   projections,
   lockedUnitIds,
+  tiebreakOrder,
   viewerUnitId,
   kind,
 }: {
@@ -76,10 +77,12 @@ export function StandingsRows({
   projections: Record<string, Record<string, number>>;
   /** The units whose place is locked (`pointsClinch`). */
   lockedUnitIds?: readonly string[];
+  /** The order an owner set for exact ties. Passed only at Final. */
+  tiebreakOrder?: readonly string[] | null;
   viewerUnitId: string | null | undefined;
   kind: "teams" | "players";
 }) {
-  const rows = standingsRows({ units, unitTotals, projections, lockedUnitIds, viewerUnitId });
+  const rows = standingsRows({ units, unitTotals, projections, lockedUnitIds, tiebreakOrder, viewerUnitId });
   const anyProjected = rows.some((r) => r.projected > 0);
   const noun = kind === "teams" ? (units.length === 1 ? "team" : "teams") : units.length === 1 ? "player" : "players";
 

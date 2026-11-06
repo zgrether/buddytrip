@@ -303,6 +303,8 @@ describe("clinch check — a points race fires a cup clinch", () => {
     const lead = await ctx.createTeam(pointsComp, "Lead", { shortName: "LED" });
     const trail = await ctx.createTeam(pointsComp, "Trail", { shortName: "TRL", color: "#ef4444", colorDim: "#2a0a0a" });
     await seedFinalizedGame({ tripId: pointsTrip, compId: pointsComp }, "only game", lead, trail, 2);
+    // Its one game is done, so the push waits for someone to finish the cup (§5).
+    await ctx.admin.from("competitions").update({ status: "completed" }).eq("id", pointsComp);
 
     await notifyCupClinchedIfDecided({
       tripId: pointsTrip,

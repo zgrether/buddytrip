@@ -22,11 +22,13 @@ import { StickyCollapseHero } from "./CompetitionHero";
 import { ReorderableSection } from "./ReorderableGames";
 import { SuggestedGames } from "./SuggestedGames";
 import { NeedsAttentionCard } from "./NeedsAttentionCard";
+import { BreakTieSheet } from "./BreakTieSheet";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 import { HowScoringWorksCard } from "./HowScoringWorksCard";
 import { awardedSoFar } from "@/lib/howScoringWorks";
 import type { ClinchWatch } from "@/lib/pointsClinch";
 import type { SetupReason } from "@/lib/gameReadiness";
-import type { NeedsAttention } from "@/lib/needsAttention";
+import type { NeedsAttention, SharedTie } from "@/lib/needsAttention";
 import { isStartingPointId, remainingSuggestions } from "@/lib/startingPoints";
 import { listStateOf } from "@/lib/listState";
 
@@ -176,7 +178,16 @@ interface LeaderboardData {
   pointsToClinch: Record<string, number>;
   defendingTeamId: string | null;
   /** A points cup's place locks (`pointsClinch`), null on a head-to-head Cup. */
-  clinch?: { clincherId: string | null; lockedUnitIds: string[]; watch: ClinchWatch } | null;
+  clinch?: {
+    clincherId: string | null;
+    lockedUnitIds: string[];
+    watch: ClinchWatch;
+    final: boolean;
+    awaitingFinish: boolean;
+    announced: boolean;
+    tiebreakOrder: string[] | null;
+    winnerIds: string[];
+  } | null;
   /** Every game pays 1 point per match (`cupCountsInHalves`): the hero and the
    *  match cells write a half as ½. Everywhere else a half is 0.5. */
   halfPoints?: boolean;
@@ -328,10 +339,16 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // id, only for the storage key.
   const clincherTeamId =
     data?.teams.find((t) => (data.pointsToClinch[t.id] ?? 1) <= 0)?.id ?? null;
+  // A points cup's moment is Final, and a shared 1st is one moment for both.
+  const celebrationKey = data?.clinch ? data.clinch.winnerIds.join("+") || null : clincherTeamId;
   const { isFirstView: isFirstClinchView, markSeen: markClinchSeen } = useFirstClinchView(
     competitionId,
-    clincherTeamId,
+    celebrationKey,
   );
+  const finishCup = trpc.competitions.finish.useMutation({
+    onSuccess: () => invalidateGameBoards(utils, { tripId, competitionId }),
+  });
+  const [breakingTie, setBreakingTie] = useState<SharedTie | null>(null);
   // The viewer's own team — "did the person looking at this actually win?".
   // Shares `competitions.myTeamColor`'s cache entry with the app-bar avatar, so
   // this is a cache read, not a second request.
@@ -374,12 +391,11 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // itself is not re-derived: `isCupComplete` takes the existing `clincher`
   // above as its input and only adds "is anything still in play" on top.
   //
-  // A points cup is final when nothing is left to play, whoever has clinched:
-  // with 1st clinched and unarmed games left, `isCupComplete` would fire while
-  // places are still open (spec §5).
-  const cupComplete = isMatchPlay
-    ? isCupComplete(data.games, !!clincher)
-    : data.games.length > 0 && gamesRemaining(data.games) === 0;
+  // A points cup is final when someone has finished it with nothing left to play,
+  // whoever has clinched: with 1st clinched and unarmed games left, `isCupComplete`
+  // would fire while places are still open, and an empty board alone is not a
+  // decision (spec §5).
+  const cupComplete = isMatchPlay ? isCupComplete(data.games, !!clincher) : data.clinch?.final === true;
   // A Cup that ended level is shared (Zach, 2026-10-22): every game final,
   // nobody clinched, the two totals equal. The hero then reads "Final ·
   // Shared" where it would otherwise go on saying "First to X wins".
@@ -407,7 +423,10 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
    * A viewer on no team at all (an organiser who isn't playing) gets the still
    * state — the result, without the confetti that isn't theirs.
    */
-  const viewerWon = cupComplete && clincher != null && myTeamId === clincher.id;
+  const myUnitId = data.teamless ? me?.id : myTeamId;
+  const viewerWon = data.clinch
+    ? cupComplete && myUnitId != null && data.clinch.winnerIds.includes(myUnitId)
+    : cupComplete && clincher != null && myTeamId === clincher.id;
 
   return (
     <div className="space-y-3" data-testid="competition-leaderboard">
@@ -456,7 +475,11 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           data.clinch
             ? {
                 watch: data.clinch.watch,
-                units: data.units.map((u) => ({ id: u.id, name: u.name, shortName: u.short_name, color: u.color })),
+                units: data.units.map((u) => ({ id: u.id, name: u.name, shortName: u.short_name, color: u.color, hasResult: u.hasResult })),
+                awaitingFinish: data.clinch.awaitingFinish,
+                announced: data.clinch.announced,
+                tiebreakOrder: data.clinch.tiebreakOrder,
+                winnerIds: data.clinch.winnerIds,
               }
             : undefined
         }
@@ -523,7 +546,8 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           unitTotals={unitTotals}
           projections={data.projections}
           lockedUnitIds={data.clinch?.lockedUnitIds}
-          viewerUnitId={data.teamless ? me?.id : myTeamId}
+          tiebreakOrder={data.clinch?.final ? data.clinch.tiebreakOrder : null}
+          viewerUnitId={myUnitId}
         />
       )}
 
@@ -531,7 +555,19 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           Owners and Organizers only, gone when empty. A game's own problems
           are on its row below. */}
       {canEdit && onOpenRosters && data.needsAttention && (
-        <NeedsAttentionCard attention={data.needsAttention} onOpenRosters={onOpenRosters} onEditTeam={onEditTeam} />
+        <NeedsAttentionCard
+          attention={data.needsAttention}
+          onOpenRosters={onOpenRosters}
+          onEditTeam={onEditTeam}
+          onFinishCup={() => finishCup.mutate({ tripId, competitionId })}
+          onAddGame={onAddGame}
+          finishing={finishCup.isPending}
+          finishError={finishCup.error?.message ?? null}
+          onBreakTie={setBreakingTie}
+        />
+      )}
+      {breakingTie && (
+        <BreakTieSheet tie={breakingTie} tripId={tripId} competitionId={competitionId} onClose={() => setBreakingTie(null)} />
       )}
 
       {/* Bones copy: one line, only while the board is empty and editable. Not

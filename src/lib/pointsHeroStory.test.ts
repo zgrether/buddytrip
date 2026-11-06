@@ -143,3 +143,52 @@ describe("the edges the table leaves open", () => {
     expect(s.sub).toBe("Pat & Mo · 6 games left");
   });
 });
+
+describe("a board waiting to be finished (spec §5)", () => {
+  const done = watch({ gamesLeft: 0, place: null, clincherId: "a", leaderIds: ["a"], bankedGames: 2 });
+  const us = [
+    { id: "a", name: "Alpha", shortName: "ALP" },
+    { id: "b", name: "Bravo", shortName: "BRV" },
+  ];
+
+  it("claims the banked lead and no more, though the math reads clinched", () => {
+    const s = pointsHeroStory(done, us, { a: 9, b: 4.5 }, false, { awaitingFinish: true });
+    expect(s).toEqual({ unitIds: ["a"], headline: "Lead by 4.5", sub: "Every game on the board is done", isScore: false });
+  });
+  it("a clinch already announced stays said", () => {
+    const s = pointsHeroStory(done, us, { a: 9, b: 4.5 }, false, { awaitingFinish: true, announced: true });
+    expect(s).toEqual({ unitIds: ["a"], headline: "Clinched the cup", sub: "Every game on the board is done", isScore: false });
+  });
+  it("level at the top names nobody", () => {
+    const s = pointsHeroStory(watch({ gamesLeft: 0, place: null, clincherId: null, leaderIds: ["a", "b"], bankedGames: 2 }), us, { a: 5, b: 5 }, false, { awaitingFinish: true });
+    expect(s).toEqual({ unitIds: [], headline: "Tied at the top", sub: "Every game on the board is done", isScore: false });
+  });
+  it("CONTROL: without the wait the same watch reads clinched", () => {
+    expect(pointsHeroStory(done, us, { a: 9, b: 4.5 }, false).headline).toBe("Clinched the cup");
+  });
+});
+
+describe("Final with a tie broken (spec §5)", () => {
+  const over = watch({ gamesLeft: 0, place: null, clincherId: null, leaderIds: ["a", "b"], bankedGames: 2 });
+  const us = [
+    { id: "a", name: "Alpha", shortName: "ALP" },
+    { id: "b", name: "Bravo", shortName: "BRV" },
+    { id: "c", name: "Coyotes", shortName: "COY" },
+    { id: "d", name: "Dingos", shortName: "DIN" },
+  ];
+  const totals = { a: 9, b: 9, c: 3, d: 3 };
+
+  it("an order breaking 1st makes one winner, with the score", () => {
+    const s = pointsHeroStory(over, us, totals, true, { tiebreakOrder: ["b", "a"] });
+    expect(s.unitIds).toEqual(["b"]);
+    expect(s.headline).toBe("9");
+    expect(s.sub).toBe("Final · Bravo wins · 3rd shared");
+  });
+  it("an order breaking a lower place drops it from the line", () => {
+    expect(pointsHeroStory(over, us, totals, true, { tiebreakOrder: ["d", "c"] }).sub).toBe("Final · Shared 1st");
+  });
+  it("a unit with no result holds no place, so two of them are not a shared place", () => {
+    const quiet = [us[0], us[1], { ...us[2], hasResult: false }, { ...us[3], hasResult: false }];
+    expect(pointsHeroStory(watch({ gamesLeft: 0, place: null, clincherId: "a", bankedGames: 1 }), quiet, { a: 9, b: 3, c: 0, d: 0 }, true).sub).toBe("Final · Alpha wins");
+  });
+});

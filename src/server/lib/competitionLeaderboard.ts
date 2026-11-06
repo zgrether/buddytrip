@@ -17,6 +17,8 @@ import { clinchWatch, pointsClinch } from "@/lib/pointsClinch";
 import { clinchGame, clinchGames } from "./clinchGames";
 import { tripDisplayNames } from "./tripDisplayNames";
 import { needsAttention as deriveNeedsAttention, NOTHING_NEEDS_ATTENTION } from "@/lib/needsAttention";
+import { gamesRemaining } from "@/lib/cupCompletion";
+import { sharedPlaces, winnersOf } from "@/lib/finalPlaces";
 import { readSideGameWinners } from "./sideBoard";
 import { computeLiveProjections, type LiveProjectionInput } from "@/server/lib/liveProjection";
 
@@ -374,7 +376,7 @@ export async function computeCompetitionLeaderboard(
       .order("created_at", { ascending: true }),
     supabase
       .from("competitions")
-      .select("defending_team_id, scoring_model, trip_id")
+      .select("defending_team_id, scoring_model, trip_id, status, tiebreak_order, clinch_notified_team_id, clinch_notified_user_id")
       .eq("id", competitionId)
       .maybeSingle(),
     // Games of this competition — all feed the roll-up.
@@ -1212,6 +1214,16 @@ export async function computeCompetitionLeaderboard(
     const unitOfUser = (userId: string) => (teamless ? (personUnits.has(userId) ? userId : null) : teamOfUser.get(userId) ?? null);
     const unbanked = clinchGames(allGames, board, unitOfUser);
     const view = pointsClinch({ unitIds, totals: unitTotals, unbanked });
+    // An empty board is not a decision: a cup built one game at a time empties
+    // after every game, and nothing is left to move only until someone adds the
+    // next one. So it waits for a person (spec §5), and until they answer no place
+    // is locked, whatever the math says of a board with nothing on it.
+    const emptied = allGames.length > 0 && gamesRemaining(allGames.map((g) => ({ status: g.status as string, correctionsOpen: g.corrections_open === true }))) === 0;
+    const finished = comp?.status === "completed";
+    const awaitingFinish = emptied && !finished;
+    const final = emptied && finished;
+    const tiebreakOrder = (comp?.tiebreak_order as string[] | null) ?? null;
+    const scoredIds = unitIds.filter((id) => unitsWithResult.has(id));
     // The game banked most recently, for who it just put out: when its result
     // was written, the only order of play the data holds.
     const banked = allGames.filter((g) => g.status === "complete");
@@ -1221,7 +1233,15 @@ export async function computeCompetitionLeaderboard(
     const lastLive = last ? liveGames.find((g) => g.id === last.id) : null;
     return {
       clincherId: view.clincher,
-      lockedUnitIds: unitIds.filter((id) => view.places.get(id)?.locked),
+      lockedUnitIds: awaitingFinish ? [] : unitIds.filter((id) => view.places.get(id)?.locked),
+      final,
+      awaitingFinish,
+      /** A clinch has already gone out, so the hero may go on saying so. */
+      announced: comp?.clinch_notified_team_id != null || comp?.clinch_notified_user_id != null,
+      tiebreakOrder,
+      /** Who holds 1st at Final: one unit, or everyone sharing it. */
+      winnerIds: final ? winnersOf(scoredIds, unitTotals, tiebreakOrder) : [],
+      shared: final ? sharedPlaces(scoredIds, unitTotals, tiebreakOrder) : [],
       watch: clinchWatch({
         unitIds,
         totals: unitTotals,
@@ -1233,8 +1253,19 @@ export async function computeCompetitionLeaderboard(
     };
   })();
 
+  const unitCard = (id: string) => {
+    const team = (teams ?? []).find((t) => t.id === id);
+    return team
+      ? { id, name: team.name as string, shortName: (team.short_name as string | null) ?? null, color: (team.color as string | null) ?? null }
+      : { id, name: personNames.get(id) ?? "Someone", shortName: null, color: null };
+  };
+
   return {
-    needsAttention: attention,
+    needsAttention: {
+      ...attention,
+      finishCup: pointsCupClinch?.awaitingFinish ?? false,
+      ties: (pointsCupClinch?.shared ?? []).map((s) => ({ place: s.place, units: s.unitIds.map(unitCard) })),
+    },
     teams: teams ?? [],
     /**
      * The competitors, in board order: the cup's teams, or (teamless race) its

@@ -1210,7 +1210,7 @@ async function recordClinchOutcome(
   // `already_claimed`, so a REFUSED write recorded itself as correct
   // suppression. Recording them under that label would have re-created the lie
   // in the durable table, which is the one place it would outlive the logs.
-  outcome: "no_clincher" | "already_claimed" | "claim_error" | "claim_no_row" | "threw",
+  outcome: "no_clincher" | "held_for_finish" | "already_claimed" | "claim_error" | "claim_no_row" | "threw",
   error?: string
 ): Promise<void> {
   await recordPushAttempt(
@@ -1300,6 +1300,19 @@ export async function notifyCupClinchedIfDecided(
       // later would be suppressed as "already announced" and go unreported.
       // Releasing sends NOTHING; it only restores eligibility.
       if (held) await releaseClinchClaim(admin, input.competitionId, held.id, held.kind);
+      return;
+    }
+
+    // OUTCOME: held_for_finish. A finish that empties a points cup's board decides
+    // nothing yet: someone may add another game (spec §5). Finishing the cup runs
+    // this check again, and that is when it sends. Nothing is claimed, so nothing
+    // needs giving back.
+    if (board.clinch?.awaitingFinish) {
+      console.info("[push] clinch check: held_for_finish", {
+        competitionId: input.competitionId,
+        clincherTeamId: clincher.id,
+      });
+      await recordClinchOutcome(admin, input, "held_for_finish");
       return;
     }
 

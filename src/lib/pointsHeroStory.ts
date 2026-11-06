@@ -1,3 +1,4 @@
+import { finalPlaces, sharedPlaces } from "./finalPlaces";
 import type { ClinchWatch } from "./pointsClinch";
 import { CLINCH_STORY_WORD as WORD, fmtPts, GAME_STATE_WORD, joinAnd, ordinalShort, RACE_WORD } from "./vocabulary";
 
@@ -16,6 +17,17 @@ export interface StoryUnit {
   name: string;
   /** A team's short name. A person has none, and reads by name. */
   shortName: string | null;
+  /** False for a unit with no finished result: it holds no place. */
+  hasResult?: boolean;
+}
+
+/** Where the cup stands beyond the math (spec §5). */
+export interface HeroCupState {
+  /** The board is empty and nobody has finished the cup. */
+  awaitingFinish?: boolean;
+  /** A clinch went out while games remained, so it can still be said. */
+  announced?: boolean;
+  tiebreakOrder?: readonly string[] | null;
 }
 
 export interface HeroStory {
@@ -27,18 +39,12 @@ export interface HeroStory {
   isScore: boolean;
 }
 
-/** Places two or more units finished level on, below 1st: "3rd shared". */
-function sharedPlaces(units: readonly StoryUnit[], totals: Readonly<Record<string, number>>): number[] {
-  const scores = units.map((u) => totals[u.id] ?? 0);
-  const places = scores.map((s) => scores.filter((x) => x > s).length + 1);
-  return [...new Set(places.filter((p, i) => p > 1 && places.indexOf(p) !== places.lastIndexOf(p) && places[i] === p))].sort((a, b) => a - b);
-}
-
 export function pointsHeroStory(
   w: ClinchWatch,
   units: readonly StoryUnit[],
   totals: Readonly<Record<string, number>>,
-  final: boolean
+  final: boolean,
+  cup: HeroCupState = {}
 ): HeroStory {
   const nameOf = (id: string) => units.find((u) => u.id === id)?.name ?? "";
   const shortOf = (id: string) => {
@@ -54,18 +60,31 @@ export function pointsHeroStory(
   const gamesLeft = WORD.gamesLeft(w.gamesLeft);
 
   if (final) {
-    const top = Math.max(...units.map((u) => totals[u.id] ?? 0));
-    const tail = sharedPlaces(units, totals).map((p) => WORD.placeShared(ordinalShort(p)));
-    if (w.clincherId) {
-      const sub = [GAME_STATE_WORD.final, RACE_WORD.wins(nameOf(w.clincherId)), ...tail].join(WORD.separator);
-      return { unitIds: [w.clincherId], headline: fmtPts(top), sub, isScore: true };
-    }
+    const placed = units.filter((u) => u.hasResult !== false).map((u) => u.id);
+    const places = finalPlaces(placed, totals, cup.tiebreakOrder);
+    const winners = placed.filter((id) => places.get(id)?.place === 1);
+    const top = Math.max(...winners.map((id) => totals[id] ?? 0));
+    const tail = sharedPlaces(placed, totals, cup.tiebreakOrder)
+      .filter((s) => s.place > 1)
+      .map((s) => WORD.placeShared(ordinalShort(s.place)));
+    const result = winners.length === 1 ? RACE_WORD.wins(nameOf(winners[0])) : WORD.sharedFirst;
     return {
-      unitIds: units.filter((u) => (totals[u.id] ?? 0) === top).map((u) => u.id),
+      unitIds: winners,
       headline: fmtPts(top),
-      sub: [GAME_STATE_WORD.final, WORD.sharedFirst, ...tail].join(WORD.separator),
+      sub: [GAME_STATE_WORD.final, result, ...tail].join(WORD.separator),
       isScore: true,
     };
+  }
+
+  // Nothing left on the board and nobody has said it is over. The math calls every
+  // place locked here, which is only true until someone adds a game, so the hero
+  // claims no more than the banked lead. A clinch already announced stays said.
+  if (cup.awaitingFinish) {
+    if (cup.announced && w.clincherId) return story(w.clincherId, WORD.clinchedHeadline, WORD.everyGameDone);
+    const [first, second] = units.map((u) => totals[u.id] ?? 0).sort((a, b) => b - a);
+    const leaders = units.filter((u) => (totals[u.id] ?? 0) === first);
+    if (leaders.length > 1) return story(null, WORD.tiedAtTop, WORD.everyGameDone);
+    return story(leaders[0].id, WORD.leadBy(fmtPts(first - (second ?? 0))), WORD.everyGameDone);
   }
 
   if (w.bankedGames === 0) return story(null, WORD.anyonesCup, gamesLeft);

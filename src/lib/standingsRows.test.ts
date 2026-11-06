@@ -113,3 +113,17 @@ describe("standingsRows: locked and shared places", () => {
     expect(of("d", rows({ lockedUnitIds: ["d"] })).locked).toBe(false);
   });
 });
+
+describe("a tiebreak order at Final (spec §5)", () => {
+  const unit = (id: string) => ({ id, label: id, color: null, hasResult: true });
+  const rows = (tiebreakOrder?: string[] | null) =>
+    standingsRows({ units: ["a", "b", "c"].map(unit), unitTotals: { a: 9, b: 4, c: 4 }, projections: {}, viewerUnitId: null, tiebreakOrder });
+  const read = (r: ReturnType<typeof rows>) => r.map((x) => `${x.id}:${x.rank}${x.shared ? "=" : ""}`);
+
+  it("breaks the tie: the order decides rank and row, and neither reads shared", () => {
+    expect(read(rows(["c", "b"]))).toEqual(["a:1", "c:2", "b:3"]);
+  });
+  it("CONTROL: with no order they share, in name order", () => {
+    expect(read(rows(null))).toEqual(["a:1", "b:2=", "c:2="]);
+  });
+});
