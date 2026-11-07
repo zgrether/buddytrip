@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { Avatar } from "@/components/Avatar";
 import { TeamBadge } from "@/components/TeamBadge";
 import { teamInk } from "@/lib/teamTextColor";
@@ -130,14 +131,23 @@ export function PointsHeroTiers({
   const subjects = units.filter((u) => story.unitIds.includes(u.id));
   // One unit reads in its own ink. A shared 1st has no one color to read in.
   const sole = subjects.length === 1 ? subjects[0] : null;
-  const subjectColor = sole ? (sole.color ? teamInk(sole.color) : PERSON_COLOR) : "var(--color-bt-text)";
+  const inkOf = (u: PointsHeroUnit) => (u.color ? teamInk(u.color) : PERSON_COLOR);
+  const subjectColor = sole ? inkOf(sole) : "var(--color-bt-text)";
 
   return (
     <>
       <div className="mt-5 flex flex-col items-center text-center" data-testid="points-hero-story">
+        {/* A shared 1st names each unit in its own ink, joined in plain text (v2.8). */}
         {subjects.length > 0 && (
-          <span style={{ fontSize: 17, fontWeight: 600, color: subjectColor }} data-testid="points-hero-unit">
-            {WORD.joinLevel(subjects.map((u) => u.name))}
+          <span style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }} data-testid="points-hero-unit">
+            {subjects.map((u, i) => (
+              <Fragment key={u.id}>
+                {i > 0 && WORD.levelJoiner}
+                <span style={{ color: inkOf(u) }} data-testid={`points-hero-unit-name-${u.id}`}>
+                  {u.name}
+                </span>
+              </Fragment>
+            ))}
           </span>
         )}
         <span
@@ -152,7 +162,16 @@ export function PointsHeroTiers({
         >
           {story.headline}
         </span>
-        <span className="mt-2" style={{ fontSize: 13, color: "var(--color-bt-text-dim)" }} data-testid="points-hero-sub">
+        <span
+          className="mt-2"
+          style={
+            story.isTie
+              ? { fontSize: 20, fontWeight: 800, color: "var(--color-bt-text)" }
+              : { fontSize: 13, color: "var(--color-bt-text-dim)" }
+          }
+          data-testid="points-hero-sub"
+          data-tie={story.isTie ? "true" : undefined}
+        >
           {story.sub}
         </span>
       </div>

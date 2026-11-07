@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { TeamBadge } from "@/components/TeamBadge";
 import { NoTeamAvatar } from "@/components/NoTeamAvatar";
@@ -28,9 +28,10 @@ import {
  * opens where it is fixed: Rosters for people and sizes, and an empty team's
  * own Edit Team sheet (Zach's look on #1691).
  *
- * A points cup adds two (docs/CLINCH_AND_PODIUM.md §5). The empty board is the one
- * item that asks for a decision, so it carries its two answers rather than opening
- * anywhere. A shared place at Final opens its tiebreak sheet.
+ * A points cup adds two (docs/CLINCH_AND_PODIUM.md §5). The empty board's ask opens
+ * itself as a sheet (v2.8); this is where it waits once that sheet is closed
+ * undecided, so it carries its two answers rather than opening anywhere. A tie
+ * still shared at Final is an optional follow-up and opens the tie sheet.
  */
 export function NeedsAttentionCard({
   attention,
@@ -83,10 +84,12 @@ export function NeedsAttentionCard({
               type="button"
               disabled={finishing}
               onClick={onFinishCup}
-              className="min-h-[44px] flex-1 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
+              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-40"
               style={{ background: "var(--color-bt-accent)", color: "var(--color-bt-on-accent)" }}
               data-testid="finish-cup"
+              aria-busy={finishing || undefined}
             >
+              {finishing && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
               {WORD.finishCup}
             </button>
             <button

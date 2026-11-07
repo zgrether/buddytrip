@@ -37,6 +37,8 @@ export interface HeroStory {
   sub: string;
   /** The headline is the winner's score: the Final row's big number. */
   isScore: boolean;
+  /** A shared 1st at Final: the line under the score is the tie itself (v2.8). */
+  isTie?: boolean;
 }
 
 export function pointsHeroStory(
@@ -64,14 +66,15 @@ export function pointsHeroStory(
     const places = finalPlaces(placed, totals, cup.tiebreakOrder);
     const winners = placed.filter((id) => places.get(id)?.place === 1);
     const top = Math.max(...winners.map((id) => totals[id] ?? 0));
+    // A shared 1st is its own moment: "It's a tie!" takes the whole Final line.
+    if (winners.length > 1) return { unitIds: winners, headline: fmtPts(top), sub: WORD.itsATie, isScore: true, isTie: true };
     const tail = sharedPlaces(placed, totals, cup.tiebreakOrder)
       .filter((s) => s.place > 1)
       .map((s) => WORD.placeShared(ordinalShort(s.place)));
-    const result = winners.length === 1 ? RACE_WORD.wins(nameOf(winners[0])) : WORD.sharedFirst;
     return {
       unitIds: winners,
       headline: fmtPts(top),
-      sub: [GAME_STATE_WORD.final, result, ...tail].join(WORD.separator),
+      sub: [GAME_STATE_WORD.final, RACE_WORD.wins(nameOf(winners[0])), ...tail].join(WORD.separator),
       isScore: true,
     };
   }

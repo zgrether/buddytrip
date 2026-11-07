@@ -123,11 +123,15 @@ describe("the edges the table leaves open", () => {
     const w = watch({ clincherId: null, place: null, leaderIds: [], gamesLeft: 0 });
     const s = story(w, { he: 20, ba: 20, om: 9, hs: 1 }, true);
     expect(s.unitIds).toEqual(["he", "ba"]);
-    expect([s.headline, s.sub]).toEqual(["20", "Final · Shared 1st"]);
+    expect([s.headline, s.sub, s.isTie]).toEqual(["20", "It's a tie!", true]);
   });
-  it("a shared 1st with a shared place below it says both", () => {
+  it("a shared 1st is the whole line: a shared place below it is not added", () => {
     const w = watch({ clincherId: null, place: null, leaderIds: [], gamesLeft: 0 });
-    expect(story(w, { he: 20, ba: 20, om: 9, hs: 9 }, true).sub).toBe("Final · Shared 1st · 3rd shared");
+    expect(story(w, { he: 20, ba: 20, om: 9, hs: 9 }, true).sub).toBe("It's a tie!");
+  });
+  it("one winner is never a tie", () => {
+    const w = watch({ clincherId: "he", place: null, leaderIds: [], gamesLeft: 0 });
+    expect(story(w, { he: 21, ba: 20, om: 9, hs: 9 }, true).isTie).toBeFalsy();
   });
   it("every place locked with a game still open", () => {
     const w = watch({ clincherId: "he", place: null, leaderIds: [], gamesLeft: 1 });
@@ -185,7 +189,7 @@ describe("Final with a tie broken (spec §5)", () => {
     expect(s.sub).toBe("Final · Bravo wins · 3rd shared");
   });
   it("an order breaking a lower place drops it from the line", () => {
-    expect(pointsHeroStory(over, us, totals, true, { tiebreakOrder: ["d", "c"] }).sub).toBe("Final · Shared 1st");
+    expect(pointsHeroStory(over, us, totals, true, { tiebreakOrder: ["d", "c"] }).sub).toBe("It's a tie!");
   });
   it("a unit with no result holds no place, so two of them are not a shared place", () => {
     const quiet = [us[0], us[1], { ...us[2], hasResult: false }, { ...us[3], hasResult: false }];

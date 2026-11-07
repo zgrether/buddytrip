@@ -1244,7 +1244,9 @@ export async function computeCompetitionLeaderboard(
       tiebreakOrder,
       /** Who holds 1st at Final: one unit, or everyone sharing it. */
       winnerIds,
-      finalTies: final ? finalTies(scoredIds, unitTotals, tiebreakOrder) : [],
+      // Ties are decided before the cup is declared (v2.8), so they show while it
+      // waits as well as at Final.
+      finalTies: final || awaitingFinish ? finalTies(scoredIds, unitTotals, tiebreakOrder) : [],
       watch: clinchWatch({
         unitIds,
         totals: unitTotals,
@@ -1269,8 +1271,9 @@ export async function computeCompetitionLeaderboard(
     needsAttention: {
       ...attention,
       finishCup: pointsCupClinch?.awaitingFinish ?? false,
-      // Not null means someone has decided, whichever way: the item goes away.
-      ties: pointsCupClinch?.tiebreakOrder == null ? ties : [],
+      // After Final a tie still shared is an optional follow-up, for a tiebreaker
+      // played later (v2.8). Before Final ties are part of the reveal, not an item.
+      ties: pointsCupClinch?.final ? ties.filter((t) => !t.ordered) : [],
     },
     teams: teams ?? [],
     /**

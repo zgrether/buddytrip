@@ -257,7 +257,11 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
 
   it("the points hero's story (Zach, spec §3): these say cup by exception", () => {
     const w = CLINCH_STORY_WORD;
-    expect([w.anyonesCup, w.tiedAtTop, w.clinchWatch, w.clinchedHeadline, w.everyPlaceSet, w.sharedFirst]).toEqual(["Anyone's cup", "Tied at the top", "Clinch watch", "Clinched the cup", "Every place is set", "Shared 1st"]);
+    expect([w.anyonesCup, w.tiedAtTop, w.clinchWatch, w.clinchedHeadline, w.everyPlaceSet, w.itsATie]).toEqual(["Anyone's cup", "Tied at the top", "Clinch watch", "Clinched the cup", "Every place is set", "It's a tie!"]);
+    expect([w.tiedFor("1st"), w.ties, w.tieBody, w.useThisOrder, w.keepItATie]).toEqual(["Tied for 1st", "Ties", "Played a tiebreaker? Drag to set the order.", "Use this order", "Keep it a tie"]);
+    // The shared-1st push (v2.8): "It's a tie! {A} and {B} share {cup name}".
+    expect([CLINCH_WORD.tiePushTitle, CLINCH_WORD.tiePushBody(["Centurions", "Spartans"], "Turkey Cup")]).toEqual(["It's a tie!", "Centurions and Spartans share Turkey Cup"]);
+    expect(CLINCH_WORD.tiePushBody(["A", "B", "C"], "Turkey Cup")).toBe("A, B and C share Turkey Cup");
     expect([w.gamesLeft(1), w.gamesLeft(6)]).toEqual(["1 game left", "6 games left"]);
     expect([w.winsFromTheCup(1), w.winsFromTheCup(2)]).toEqual(["One win from the cup", "Two wins from the cup"]);
     expect([w.upForGrabs("2nd"), w.clinchWatchFor("2nd"), w.placeShared("3rd")]).toEqual(["2nd is up for grabs", "Clinch watch · 2nd", "3rd shared"]);

@@ -370,6 +370,11 @@ const COPY = {
     body: summary || "Results are in.",
   }),
   /** The highest-value push in the app — ~1-3 per trip. */
+  /** A shared 1st at Final (v2.8): nobody clinched, so the tie is the news. */
+  sharedFirst: (names: readonly string[], competitionName: string) => ({
+    title: CLINCH_WORD.tiePushTitle,
+    body: CLINCH_WORD.tiePushBody(names, competitionName),
+  }),
   clinched: (teamName: string, competitionName: string | null, summary: string, noun: string) => ({
     title: CLINCH_WORD.pushTitle(teamName),
     body: [competitionName, summary].filter(Boolean).join(" · ") || `The ${noun} is decided.`,
@@ -1325,13 +1330,7 @@ export async function notifyCupClinchedIfDecided(
       await admin.from("competitions").select("name, scoring_model").eq("id", input.competitionId).maybeSingle(),
       "cup"
     );
-    // A teamless race has no roster: its units are the crew it is telling.
-    const audience = board.teamless
-      ? board.units.map((u) => u.id)
-      : rowsOrThrow(
-          await admin.from("team_assignments").select("user_id").eq("competition_id", input.competitionId),
-          "cup roster"
-        ).map((r: { user_id: string }) => r.user_id);
+    const audience = await cupAudience(admin, board, input.competitionId);
 
     const claim = await claimClinchNotification(admin, input.competitionId, clincher.id, clincher.kind);
 
@@ -1481,5 +1480,61 @@ export async function notifyCupClinchedIfDecided(
         err instanceof Error ? err.message : String(err)
       );
     }
+  }
+}
+
+/** Who hears about a cup's result. A teamless race has no roster: its units are
+ *  the crew it is telling. A failed read throws before anything is sent. */
+async function cupAudience(
+  admin: SupabaseClient,
+  board: { teamless?: boolean; units: { id: string }[] },
+  competitionId: string
+): Promise<string[]> {
+  if (board.teamless) return board.units.map((u) => u.id);
+  return rowsOrThrow(
+    await admin.from("team_assignments").select("user_id").eq("competition_id", competitionId),
+    "cup roster"
+  ).map((r: { user_id: string }) => r.user_id);
+}
+
+/**
+ * A shared 1st at Final: "It's a tie! {A} and {B} share {cup}" (spec §5, v2.8).
+ *
+ * The clinch claim holds one unit, so it cannot say "once" for two. The caller's
+ * conditional status flip does: `competitions.finish` calls this only from the
+ * request whose update moved the cup to `completed`. Best-effort like every push
+ * after a commit (#1424): the client is built inside the try, and nothing here
+ * can report the finish as failed.
+ */
+export async function notifyCupSharedFirst(input: NotifyCupClinchedInput): Promise<void> {
+  try {
+    const admin = input.admin ?? createAdminClient();
+    const board = await computeCompetitionLeaderboard(admin, input.competitionId);
+    const winnerIds = board.clinch?.final ? board.clinch.winnerIds : [];
+    if (winnerIds.length < 2) {
+      console.info("[push] shared first: not shared", { competitionId: input.competitionId, winners: winnerIds.length });
+      return;
+    }
+    const comp = maybeRowOrThrow(
+      await admin.from("competitions").select("name").eq("id", input.competitionId).maybeSingle(),
+      "cup"
+    );
+    const audience = await cupAudience(admin, board, input.competitionId);
+    const names = winnerIds.map((id) => board.units.find((u) => u.id === id)?.name ?? "Someone");
+    await sendPushToUsers(
+      audience,
+      "game_results",
+      {
+        ...COPY.sharedFirst(names, (comp?.name as string | null) ?? ""),
+        url: cupUrl(input.tripId),
+        tag: `bt-clinch-${input.competitionId}`,
+      },
+      {
+        excludeUserId: input.actorUserId,
+        context: { trigger: "cup_shared", tripId: input.tripId, competitionId: input.competitionId, actorUserId: input.actorUserId },
+      }
+    );
+  } catch (err) {
+    console.error("[push] shared first: threw", { competitionId: input.competitionId, err });
   }
 }

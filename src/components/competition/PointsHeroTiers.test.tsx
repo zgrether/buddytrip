@@ -6,6 +6,7 @@ import { PointsHeroTiers, type PointsHeroUnit } from "./PointsHeroTiers";
 import { CompetitionHero } from "./CompetitionHero";
 import { ClinchCelebration } from "./ClinchCelebration";
 import type { ClinchWatch } from "@/lib/pointsClinch";
+import { teamInk } from "@/lib/teamTextColor";
 import type { LBTeam } from "./CompetitionLeaderboard";
 
 /**
@@ -123,15 +124,29 @@ describe("the story tier", () => {
   it("the unit name in its ink, then the headline, then the dim line", () => {
     const html = render(watch());
     expect(tag(html, "points-hero-unit")).toContain("font-size:17px");
+    expect(tag(html, "points-hero-unit-name-he")).toContain(`color:${teamInk("#3b82f6")}`);
     expect(tag(html, "points-hero-headline")).toContain("font-size:30px");
     expect(tag(html, "points-hero-sub")).toContain("font-size:13px");
     expect(html).toContain(">Lead by 4.5<");
   });
-  it("a shared 1st: both names, and no one team's color", () => {
+  it("a shared 1st: each name in its own ink, joined in plain text, and the score in plain text", () => {
     const html = render(watch({ place: null, gamesLeft: 0, leaderIds: [] }), true, teams, { he: 20, ba: 20, hs: 9 });
-    expect(html).toContain(">Hot Eagles Cold Beers &amp; Bogey Army<");
-    expect(html).toContain("Final · Shared 1st");
+    expect(html).toContain(">Hot Eagles Cold Beers</span> &amp; <span");
     expect(tag(html, "points-hero-unit")).toContain("color:var(--color-bt-text)");
+    expect(tag(html, "points-hero-unit-name-he")).toContain(`color:${teamInk("#3b82f6")}`);
+    expect(tag(html, "points-hero-unit-name-ba")).toContain(`color:${teamInk("#22c55e")}`);
+    expect(tag(html, "points-hero-headline")).toContain("color:var(--color-bt-text)");
+  });
+  it("a shared 1st's line is It's a tie! at 20/800, full strength, in place of the Final line", () => {
+    const html = render(watch({ place: null, gamesLeft: 0, leaderIds: [] }), true, teams, { he: 20, ba: 20, hs: 9 });
+    const sub = tag(html, "points-hero-sub");
+    expect(sub).toContain("font-size:20px;font-weight:800;color:var(--color-bt-text)");
+    expect(html).toContain(">It&#x27;s a tie!<");
+    expect(html).not.toContain("Final ·");
+  });
+  it("one winner's line stays dim at 13", () => {
+    const html = render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true);
+    expect(tag(html, "points-hero-sub")).toContain("font-size:13px;color:var(--color-bt-text-dim)");
   });
   it("final: the winner's score at 74", () => {
     const html = render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true);
@@ -150,7 +165,7 @@ describe("people behave like teams", () => {
   it("fill and name use PERSON_COLOR, and contenders are Avatars", () => {
     const html = render(watch(), false, people);
     expect(tag(html, "clinch-fill")).toContain("background:var(--color-bt-accent)");
-    expect(tag(html, "points-hero-unit")).toContain("color:var(--color-bt-accent)");
+    expect(tag(html, "points-hero-unit-name-he")).toContain("color:var(--color-bt-accent)");
     expect(html).not.toContain("clinch-contender-he\"><span role");
     expect(html).toContain(">+4.5</b> on Mo");
   });

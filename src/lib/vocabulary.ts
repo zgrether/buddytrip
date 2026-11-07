@@ -355,7 +355,8 @@ export const CLINCH_STORY_WORD = {
   clinchWatch: "Clinch watch",
   clinchedHeadline: "Clinched the cup",
   everyPlaceSet: "Every place is set",
-  sharedFirst: "Shared 1st",
+  /** The tied Final's line, in place of "Final · …" (v2.8). */
+  itsATie: "It's a tie!",
   leadBy: (lead: string) => `Lead by ${lead}`,
   gamesLeft: (n: number) => `${n} ${n === 1 ? "game" : "games"} left`,
   winsFromTheCup: (wins: 1 | 2) => `${wins === 1 ? "One win" : "Two wins"} from the cup`,
@@ -368,6 +369,7 @@ export const CLINCH_STORY_WORD = {
   clinchedTheCup: (name: string) => `${name} clinched the cup`,
   isOut: (names: string, count: number) => `${names} ${count === 1 ? "is" : "are"} out`,
   placeShared: (place: string) => `${place} shared`,
+  levelJoiner: " & ",
   joinLevel: (names: readonly string[]) => names.join(" & "),
   clinchWatchFor: (place: string) => `Clinch watch · ${place}`,
   leadMark: (lead: string) => `+${lead}`,
@@ -377,10 +379,13 @@ export const CLINCH_STORY_WORD = {
   finishCup: "To the winner's circle",
   addAnotherGame: "Add another game",
   tiedShared: (place: string) => `Tied for ${place} · shared`,
-  breakTieTitle: (place: string) => `Break the tie for ${place}?`,
-  breakTieBody: (place: string) => `Played a tiebreaker? Drag to set the order. Left alone, they share ${place}.`,
-  saveOrder: "Save order",
-  keepShared: "Keep it shared",
+  /** The tie sheet (v2.8): one tie is "Tied for 1st", several are "Ties". */
+  tiedFor: (place: string) => `Tied for ${place}`,
+  ties: "Ties",
+  tieBody: "Played a tiebreaker? Drag to set the order.",
+  useThisOrder: "Use this order",
+  keepItATie: "Keep it a tie",
+  /** The cup settings row that reopens the tie sheet at Final. */
   tiebreaks: "Tiebreaks",
 } as const;
 
@@ -412,6 +417,9 @@ export const CLINCH_WORD = {
   pill: "Clinched",
   /** The push to the whole trip: "Blue clinched". */
   pushTitle: (teamName: string) => `${teamName} clinched`,
+  /** A shared 1st at Final (v2.8): "It's a tie!" / "Centurions and Spartans share Turkey Cup". */
+  tiePushTitle: "It's a tie!",
+  tiePushBody: (names: readonly string[], cupName: string) => `${joinAnd(names)} share ${cupName}`,
   /** Pick'em's team roll-up: "Blue has clinched — 4 still to play." */
   rollUp: (teamName: string, remaining: number) => `${teamName} has clinched — ${remaining} still to play.`,
 } as const;

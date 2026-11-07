@@ -8,7 +8,8 @@ import type { AppRouter } from "@/server/router";
 import type { OwnStanding } from "@/lib/ownStanding";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY, SIDE_BOARD_QUERY } from "@/lib/queryConfig";
-import { useVisibleEnabled } from "@/lib/surfaceVisibility";
+import { useSurfaceVisible, useVisibleEnabled } from "@/lib/surfaceVisibility";
+import { useShownOnScreen } from "@/hooks/useShownOnScreen";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useFirstClinchView } from "@/hooks/useFirstClinchView";
 import { useMyTeamId } from "@/hooks/useMyTeamColor";
@@ -23,6 +24,7 @@ import { ReorderableSection } from "./ReorderableGames";
 import { SuggestedGames } from "./SuggestedGames";
 import { NeedsAttentionCard } from "./NeedsAttentionCard";
 import { BreakTieSheet } from "./BreakTieSheet";
+import { FinishCupSheet, type FinishStep } from "./FinishCupSheet";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 import { HowScoringWorksCard } from "./HowScoringWorksCard";
 import { awardedSoFar } from "@/lib/howScoringWorks";
@@ -347,22 +349,52 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     celebrationKey,
   );
   const finishedHere = useRef(false);
+  // The device that crowned plays the burst once, whoever it was for (v2.8). Set
+  // where the finish succeeds; it plays once the board reads Final.
+  const [crownedHere, setCrownedHere] = useState(false);
+  const crowned = () => {
+    finishedHere.current = true;
+    setCrownedHere(true);
+  };
   const finishCup = trpc.competitions.finish.useMutation({
     onSuccess: () => {
-      finishedHere.current = true;
+      crowned();
       invalidateGameBoards(utils, { tripId, competitionId });
     },
   });
-  // The card sits below the standings, so whoever finishes is scrolled past the
-  // hero: the burst would play off screen and spend this device's one showing.
-  // After Final renders, not at the tap: the hero grows when it does, and scroll
-  // anchoring pushes it away again.
+  // Whoever finishes may be scrolled past the hero: the burst would play off
+  // screen and spend this device's one showing. After Final renders, not at the
+  // tap: the hero grows when it does, and scroll anchoring pushes it away again.
   const isFinal = data?.clinch?.final === true;
   useEffect(() => {
     if (!isFinal || !finishedHere.current) return;
     finishedHere.current = false;
     document.querySelector('[data-testid="competition-hero"]')?.scrollIntoView({ block: "center" });
   }, [isFinal]);
+
+  // ── Decision points open themselves (spec §5, v2.8) ───────────────────────
+  // The empty board's ask opens as a sheet for whoever may decide, once per visit:
+  // this component stays mounted while the Cup tab is hidden, so the ref outlives
+  // tab switches and re-renders, and a new visit is a new mount. It waits until
+  // the board is actually on screen and not under a game panel, because the sheet
+  // portals to the body and would otherwise open over another tab.
+  //
+  // Derived, not set from an effect: the ask is open while it is undecided, on
+  // screen, and not yet closed this visit. Closing it (✕, Add another game) is
+  // what spends the visit; deciding ends it by emptying `awaitingDecision`.
+  const [boardRef, boardShown] = useShownOnScreen();
+  const boardUncovered = useSurfaceVisible();
+  const [closedThisVisit, setClosedThisVisit] = useState(false);
+  // The card's own button opens the sheet at a step, whatever the visit holds.
+  const [openedAt, setOpenedAt] = useState<FinishStep | null>(null);
+  const awaitingDecision = canEdit && data?.needsAttention?.finishCup === true;
+  const finishStep: FinishStep | null = !awaitingDecision
+    ? null
+    : openedAt ?? (!closedThisVisit && boardShown && boardUncovered ? "ask" : null);
+  const closeFinish = () => {
+    setOpenedAt(null);
+    setClosedThisVisit(true);
+  };
   const [breakingTies, setBreakingTies] = useState(false);
   // The viewer's own team — "did the person looking at this actually win?".
   // Shares `competitions.myTeamColor`'s cache entry with the app-bar avatar, so
@@ -444,7 +476,7 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     : cupComplete && clincher != null && myTeamId === clincher.id;
 
   return (
-    <div className="space-y-3" data-testid="competition-leaderboard">
+    <div ref={boardRef} className="space-y-3" data-testid="competition-leaderboard">
       {/* ── The clinch ribbon is GONE from above the header ─────────────────
           A `ClinchedBanner` rendered here whenever a match-play cup had
           clinched but not finished, as "the RESTRAINED state, and only that".
@@ -504,8 +536,11 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         // burns the one showing — the flag must still be unspent when the cup
         // actually ends. A non-winner never fires and so never marks it seen,
         // which costs nothing: they have no burst to spend.
-        celebrateFirstView={viewerWon && isFirstClinchView}
-        onCelebrated={markClinchSeen}
+        celebrateFirstView={(viewerWon && isFirstClinchView) || (cupComplete && crownedHere)}
+        onCelebrated={() => {
+          markClinchSeen();
+          setCrownedHere(false);
+        }}
         // The re-fire button — winners only, for the same reason the burst is.
         canReplayCelebration={viewerWon}
         scoringModel={scoringModel}
@@ -574,11 +609,25 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           attention={data.needsAttention}
           onOpenRosters={onOpenRosters}
           onEditTeam={onEditTeam}
-          onFinishCup={() => finishCup.mutate({ tripId, competitionId })}
+          // With a tie on the board the ask moves to the tie step before declaring.
+          onFinishCup={() => ((data.clinch?.ties.length ?? 0) > 0 ? setOpenedAt("ties") : finishCup.mutate({ tripId, competitionId }))}
           onAddGame={onAddGame}
           finishing={finishCup.isPending}
           finishError={finishCup.error?.message ?? null}
           onBreakTie={() => setBreakingTies(true)}
+        />
+      )}
+      {finishStep && data.clinch && (
+        <FinishCupSheet
+          key={finishStep}
+          cupName={cupName}
+          ties={data.clinch.ties}
+          tripId={tripId}
+          competitionId={competitionId}
+          startAt={finishStep}
+          onClose={closeFinish}
+          onAddGame={onAddGame}
+          onFinished={crowned}
         />
       )}
       {breakingTies && data.clinch && data.clinch.ties.length > 0 && (

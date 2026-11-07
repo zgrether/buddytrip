@@ -279,7 +279,8 @@ export function CompetitionFace({
     { tripId, competitionId: competition?.id ?? "" },
     { ...LEADERBOARD_QUERY, enabled: (settingsOpen || tiebreaksOpen) && scoringModel === "points" && !!competition }
   );
-  const ties = (boardForTies.data?.clinch?.ties ?? []) as SharedTie[];
+  // At Final only: before it the ties belong to the finish's own tie step (v2.8).
+  const ties = (boardForTies.data?.clinch?.final ? boardForTies.data.clinch.ties : []) as SharedTie[];
   return (
     /**
      * ONE COLUMN, at every width. This comment used to say "DESKTOP

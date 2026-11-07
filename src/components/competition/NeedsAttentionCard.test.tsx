@@ -49,10 +49,13 @@ describe("a points cup's two items (spec §5)", () => {
     expect(html).toMatch(/data-testid="finish-cup"|disabled=""/);
     expect(html).toContain('disabled=""');
     expect(html).toContain("A game is still open. Finish it first.");
+    // The app's loading state (v2.8): the spinner leads and the text stays.
+    expect(html).toMatch(/data-testid="finish-cup" aria-busy="true"><svg[^>]*animate-spin[\s\S]*?To the winner&#x27;s circle</);
   });
 
-  it("CONTROL: an idle finish is not held", () => {
+  it("CONTROL: an idle finish is not held, and has no spinner", () => {
     expect(render(finish)).not.toContain('disabled=""');
+    expect(render(finish)).not.toContain("animate-spin");
   });
 
   it("a shared place reads as the spec says and is one row", () => {

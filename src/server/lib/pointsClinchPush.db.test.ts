@@ -37,6 +37,12 @@ async function claim(competitionId: string) {
   return data as { clinch_notified_team_id: string | null; clinch_notified_user_id: string | null };
 }
 
+/** The shared-1st push's own rows: `sendPushToUsers` records every attempt it makes. */
+async function sharedPushes(competitionId: string) {
+  const { data } = await ctx.admin.from("push_send_log").select("id").eq("competition_id", competitionId).eq("trigger", "cup_shared");
+  return (data ?? []).length;
+}
+
 async function outcomes(competitionId: string) {
   const { data } = await ctx.admin.from("push_send_log").select("outcome, trigger, recipients").eq("competition_id", competitionId).eq("trigger", "cup_clinched").order("created_at");
   return (data ?? []) as { outcome: string; recipients: number }[];
@@ -336,19 +342,33 @@ describe("an empty board waits for a person (spec §5)", () => {
     expect(shut.clinch?.awaitingFinish).toBe(false);
   });
 
-  it("a shared 1st finishes with nobody to announce: both hold 1st and nothing is sent", async () => {
+  it("a shared 1st kept at the reveal announces the tie once, outside the claim (v2.8)", async () => {
     const cup = await pointsCup("Level", ["A", "B"]);
     const [a, b] = cup.teamIds;
     const one = await game(cup, "One", [5, 5]);
     await ctx.caller().games.finish({ tripId: cup.tripId, gameId: one, placements: [{ entityId: a, position: 1 }, { entityId: b, position: 1 }] });
     expect((await board(cup)).clinch?.awaitingFinish).toBe(true);
 
-    await finish(cup);
+    await ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId, order: [] });
     const b0 = await board(cup);
     expect(b0.clinch?.final).toBe(true);
     expect([...(b0.clinch?.winnerIds ?? [])].sort()).toEqual([a, b].sort());
+    expect(await sharedPushes(cup.competitionId)).toBe(1);
     expect(await sends(cup)).toBe(0);
     expect((await claim(cup.competitionId)).clinch_notified_team_id).toBeNull();
+
+    // A second tap, or a second organizer: the status already flipped, so nothing more.
+    await ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId, order: [] });
+    expect(await sharedPushes(cup.competitionId)).toBe(1);
+  });
+
+  it("CONTROL: one winner sends no tie push, so that count is about the tie", async () => {
+    const cup = await pointsCup("Not level", ["A", "B"]);
+    const [a, b] = cup.teamIds;
+    await game(cup, "One", [6, 4], [a, b]);
+    await finish(cup);
+    expect(await sharedPushes(cup.competitionId)).toBe(0);
+    expect((await claim(cup.competitionId)).clinch_notified_team_id).toBe(a);
   });
 
   it("a teamless race asks too: the card's team items say nothing about it, this one does", async () => {
@@ -409,8 +429,9 @@ describe("an empty board waits for a person (spec §5)", () => {
 
 describe("ties at Final (spec §5)", () => {
   const board = (cup: { competitionId: string }) => computeCompetitionLeaderboard(ctx.admin, cup.competitionId);
-  const finish = (cup: { tripId: string; competitionId: string }) =>
-    ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId });
+  /** To the winner's circle. A tied board needs its order (v2.8); `[]` is Keep it a tie. */
+  const finish = (cup: { tripId: string; competitionId: string }, order?: string[]) =>
+    ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId, order });
   const sends = async (cup: { competitionId: string }) =>
     (await outcomes(cup.competitionId)).filter((o) => !["no_clincher", "already_claimed", "held_for_finish"].includes(o.outcome)).length;
   const checks = async (cup: { competitionId: string }) => (await outcomes(cup.competitionId)).length;
@@ -421,7 +442,7 @@ describe("ties at Final (spec §5)", () => {
     const [a, b, c] = cup.teamIds;
     const g = await game(cup, "One", [6, 6, 2]);
     await ctx.caller().games.finish({ tripId: cup.tripId, gameId: g, placements: [{ entityId: a, position: 1 }, { entityId: b, position: 1 }, { entityId: c, position: 3 }] });
-    await finish(cup);
+    await finish(cup, []);
     return { ...cup, a, b, c };
   }
 
@@ -431,7 +452,7 @@ describe("ties at Final (spec §5)", () => {
     const [a, b, c, d] = cup.teamIds;
     const g = await game(cup, "One", [6, 6, 2, 2]);
     await ctx.caller().games.finish({ tripId: cup.tripId, gameId: g, placements: [{ entityId: a, position: 1 }, { entityId: b, position: 1 }, { entityId: c, position: 3 }, { entityId: d, position: 3 }] });
-    await finish(cup);
+    await finish(cup, []);
     return { ...cup, a, b, c, d };
   }
 
@@ -446,10 +467,12 @@ describe("ties at Final (spec §5)", () => {
   const setOrder = (cup: { tripId: string; competitionId: string }, order: string[]) =>
     ctx.caller().competitions.setTiebreakOrder({ tripId: cup.tripId, competitionId: cup.competitionId, order });
 
-  it("a tie shows on the card only once the cup is Final", async () => {
+  it("before Final a tie is part of the reveal, not an item; kept at Final it is an optional one", async () => {
     const cup = await tiedCup("Tie waits");
-    expect((await board(cup)).needsAttention.ties).toEqual([]);
-    await ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId });
+    const b0 = await board(cup);
+    expect(b0.clinch?.ties.map((t) => t.place)).toEqual([2]);
+    expect(b0.needsAttention.ties).toEqual([]);
+    await finish(cup, []);
     const ties = (await board(cup)).needsAttention.ties;
     expect(ties.map((t) => t.place)).toEqual([2]);
     expect(ties[0].units.map((u) => u.id).sort()).toEqual([cup.b, cup.c].sort());
@@ -458,33 +481,33 @@ describe("ties at Final (spec §5)", () => {
 
   it("saving an order breaks the tie and clears the item", async () => {
     const cup = await tiedCup("Tie broken");
-    await ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId });
+    await finish(cup, []);
     await setOrder(cup, [cup.c, cup.b]);
     const b0 = await board(cup);
     expect(b0.clinch?.tiebreakOrder).toEqual([cup.c, cup.b]);
     expect(b0.needsAttention.ties).toEqual([]);
   });
 
-  it("Keep it shared is saved: the column is [], the item goes, and the tie still shares its place", async () => {
+  it("Keep it a tie is saved as [], and a kept tie stays an optional item at Final (v2.8)", async () => {
     const cup = await tiedCup("Kept shared");
-    await finish(cup);
-    expect((await board(cup)).needsAttention.ties).toHaveLength(1);
+    await finish(cup, [cup.c, cup.b]);
+    expect((await board(cup)).needsAttention.ties).toEqual([]);
 
     await setOrder(cup, []);
     const b0 = await board(cup);
     expect(b0.clinch?.tiebreakOrder).toEqual([]);
-    expect(b0.needsAttention.ties).toEqual([]);
+    expect(b0.needsAttention.ties.map((t) => t.place)).toEqual([2]);
     expect(b0.clinch?.ties.map((t) => [t.place, t.ordered])).toEqual([[2, false]]);
   });
 
-  it("two ties, one sheet: an order naming one leaves the other shared, and the item goes for both", async () => {
+  it("two ties, one sheet: an order naming one leaves the other shared, and only the shared one stays an item", async () => {
     const cup = await twoTies("Two ties");
     expect((await board(cup)).needsAttention.ties.map((t) => t.place)).toEqual([1, 3]);
 
     await setOrder(cup, [cup.d, cup.c]);
     const b0 = await board(cup);
     expect(b0.clinch?.tiebreakOrder).toEqual([cup.d, cup.c]);
-    expect(b0.needsAttention.ties).toEqual([]);
+    expect(b0.needsAttention.ties.map((t) => t.place)).toEqual([1]);
     expect(b0.clinch?.ties.map((t) => [t.place, t.ordered])).toEqual([[1, false], [3, true]]);
     expect([...(b0.clinch?.winnerIds ?? [])].sort()).toEqual([cup.a, cup.b].sort());
   });
@@ -500,7 +523,7 @@ describe("ties at Final (spec §5)", () => {
 
   it("the gear menu's ties outlive the item: reviewed, they are still there to reopen, in the saved order", async () => {
     const cup = await tiedCup("Reopen");
-    await finish(cup);
+    await finish(cup, []);
     await setOrder(cup, [cup.c, cup.b]);
     const b0 = await board(cup);
     expect(b0.needsAttention.ties).toEqual([]);
@@ -517,20 +540,20 @@ describe("ties at Final (spec §5)", () => {
   it("refuses part of a tie, and writes nothing", async () => {
     const cup = await twoTies("Part of a tie");
     await expect(setOrder(cup, [cup.b, cup.a, cup.c])).rejects.toThrow("That tie has changed. Open Tiebreaks again.");
-    expect((await board(cup)).clinch?.tiebreakOrder).toBeNull();
+    expect((await board(cup)).clinch?.tiebreakOrder).toEqual([]);
   });
 
   it("refuses a unit in no tie, and writes nothing", async () => {
     const cup = await tiedCup("Not a tie");
-    await finish(cup);
+    await finish(cup, []);
     await expect(setOrder(cup, [cup.a, cup.b])).rejects.toThrow("That tie has changed. Open Tiebreaks again.");
-    expect((await board(cup)).clinch?.tiebreakOrder).toBeNull();
+    expect((await board(cup)).clinch?.tiebreakOrder).toEqual([]);
   });
 
-  it("refuses before Final, even a Keep it shared: there is nothing to decide yet", async () => {
+  it("refuses before Final, even a Keep it a tie: before Final the order goes with the finish", async () => {
     const cup = await tiedCup("Not final");
-    await expect(setOrder(cup, [cup.b, cup.c])).rejects.toThrow("Nothing is tied anymore.");
-    await expect(setOrder(cup, [])).rejects.toThrow("Nothing is tied anymore.");
+    await expect(setOrder(cup, [cup.b, cup.c])).rejects.toThrow("The cup is open again.");
+    await expect(setOrder(cup, [])).rejects.toThrow("The cup is open again.");
     expect((await board(cup)).clinch?.tiebreakOrder).toBeNull();
   });
 
@@ -576,7 +599,7 @@ describe("ties at Final (spec §5)", () => {
       await ctx.admin.from("game_participants").insert({ id: genId("gp"), game_id: g.id, user_id: userId, scoring_enabled: true });
       await ctx.admin.from("game_results").insert({ id: genId("gr"), game_id: g.id, entity_id: userId, entity_type: "user", value_kind: "rank", position: 1, raw_score: 70 });
     }
-    await finish(cup);
+    await finish(cup, []);
     expect((await claim(cup.competitionId)).clinch_notified_user_id).toBeNull();
 
     await setOrder(cup, [member, ctx.user.id]);
@@ -593,7 +616,7 @@ describe("ties at Final (spec §5)", () => {
 
   it("a tie below 1st never announces an old winner: a cup finished before pushes existed stays quiet", async () => {
     const cup = await tiedCup("Old cup");
-    await finish(cup);
+    await finish(cup, []);
     await ctx.admin.from("competitions").update({ clinch_notified_team_id: null }).eq("id", cup.competitionId);
     const before = await checks(cup);
 
@@ -602,21 +625,22 @@ describe("ties at Final (spec §5)", () => {
     expect((await claim(cup.competitionId)).clinch_notified_team_id).toBeNull();
   });
 
-  it("a game added to a reviewed cup clears the review: the next Final's ties are a new question", async () => {
+  it("a game added to a reviewed cup clears the review: the next reveal asks about its ties again", async () => {
     const cup = await tiedCup("Reviewed, reopened");
-    await finish(cup);
-    await setOrder(cup, []);
+    await finish(cup, [cup.c, cup.b]);
 
     await game(cup, "Two", [1], [cup.a]);
     const { data } = await ctx.admin.from("competitions").select("status, tiebreak_order").eq("id", cup.competitionId).single();
     expect(data).toEqual({ status: "upcoming", tiebreak_order: null });
-    await finish(cup);
-    expect((await board(cup)).needsAttention.ties.map((t) => t.place)).toEqual([2]);
+    const b0 = await board(cup);
+    expect(b0.clinch?.awaitingFinish).toBe(true);
+    expect(b0.clinch?.ties.map((t) => [t.place, t.ordered])).toEqual([[2, false]]);
+    await expect(finish(cup)).rejects.toThrow("That tie has changed. Try again.");
   });
 
   it("resetting a finished cup's scoring reopens it, so playing it again asks again", async () => {
     const cup = await tiedCup("Reset");
-    await finish(cup);
+    await finish(cup, []);
     await setOrder(cup, [cup.c, cup.b]);
 
     await ctx.caller().competitions.resetScoring({ tripId: cup.tripId, competitionId: cup.competitionId });
@@ -626,7 +650,7 @@ describe("ties at Final (spec §5)", () => {
 
   it("resetting to skeleton reopens it the same way", async () => {
     const cup = await tiedCup("Skeleton");
-    await finish(cup);
+    await finish(cup, []);
     await setOrder(cup, []);
 
     await ctx.caller().competitions.resetToSkeleton({ tripId: cup.tripId, competitionId: cup.competitionId });
@@ -644,10 +668,97 @@ describe("ties at Final (spec §5)", () => {
 
   it("Owners and Organizers only", async () => {
     const cup = await tiedCup("Member tie");
-    await ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId });
+    await finish(cup, []);
     await ctx.addTripMember(cup.tripId, "member", "Member");
     await expect(ctx.callerAs("member").competitions.setTiebreakOrder({ tripId: cup.tripId, competitionId: cup.competitionId, order: [cup.b, cup.c] })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect((await board(cup)).clinch?.tiebreakOrder).toBeNull();
+    expect((await board(cup)).clinch?.tiebreakOrder).toEqual([]);
+  });
+});
+
+describe("ties are decided before declaring (v2.8)", () => {
+  const board = (cup: { competitionId: string }) => computeCompetitionLeaderboard(ctx.admin, cup.competitionId);
+  const finish = (cup: { tripId: string; competitionId: string }, order?: string[]) =>
+    ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId, order });
+  const sends = async (cup: { competitionId: string }) =>
+    (await outcomes(cup.competitionId)).filter((o) => !["no_clincher", "already_claimed", "held_for_finish"].includes(o.outcome)).length;
+  const status = async (cup: { competitionId: string }) =>
+    (await ctx.admin.from("competitions").select("status, tiebreak_order").eq("id", cup.competitionId).single()).data;
+
+  /** A and B level for 1st on 6, C on 2: unfinished. */
+  async function level1st(name: string) {
+    const cup = await pointsCup(name, ["A", "B", "C"]);
+    const [a, b, c] = cup.teamIds;
+    const g = await game(cup, "One", [6, 6, 2]);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId: g, placements: [{ entityId: a, position: 1 }, { entityId: b, position: 1 }, { entityId: c, position: 3 }] });
+    return { ...cup, a, b, c };
+  }
+
+  it("a tied board cannot be declared without its order: refused, and the cup stays open", async () => {
+    const cup = await level1st("No order");
+    await expect(finish(cup)).rejects.toThrow("That tie has changed. Try again.");
+    expect(await status(cup)).toEqual({ status: "upcoming", tiebreak_order: null });
+    expect(await sharedPushes(cup.competitionId)).toBe(0);
+  });
+
+  it("an order that is not the whole tie is refused the same way, and writes nothing", async () => {
+    const cup = await level1st("Part order");
+    await expect(finish(cup, [cup.a])).rejects.toThrow("That tie has changed. Try again.");
+    await expect(finish(cup, [cup.a, cup.c])).rejects.toThrow("That tie has changed. Try again.");
+    expect(await status(cup)).toEqual({ status: "upcoming", tiebreak_order: null });
+  });
+
+  it("Use this order: the order and the finish land in one write, and a broken 1st announces through the claim", async () => {
+    const cup = await level1st("Use order");
+    await finish(cup, [cup.b, cup.a]);
+    expect(await status(cup)).toEqual({ status: "completed", tiebreak_order: [cup.b, cup.a] });
+    const b0 = await board(cup);
+    expect(b0.clinch?.final).toBe(true);
+    expect(b0.clinch?.winnerIds).toEqual([cup.b]);
+    expect((await claim(cup.competitionId)).clinch_notified_team_id).toBe(cup.b);
+    expect(await sends(cup)).toBe(1);
+    expect(await sharedPushes(cup.competitionId)).toBe(0);
+  });
+
+  it("Keep it a tie: saved as [], Final with both in 1st, the tie announced and nobody claimed", async () => {
+    const cup = await level1st("Keep tie");
+    await finish(cup, []);
+    expect(await status(cup)).toEqual({ status: "completed", tiebreak_order: [] });
+    expect([...((await board(cup)).clinch?.winnerIds ?? [])].sort()).toEqual([cup.a, cup.b].sort());
+    expect(await sharedPushes(cup.competitionId)).toBe(1);
+    expect((await claim(cup.competitionId)).clinch_notified_team_id).toBeNull();
+  });
+
+  it("an order sent where nothing is tied is refused", async () => {
+    const cup = await pointsCup("Nothing tied", ["A", "B"]);
+    const [a, b] = cup.teamIds;
+    await game(cup, "One", [6, 4], [a, b]);
+    await expect(finish(cup, [a, b])).rejects.toThrow("Nothing is tied anymore.");
+    expect((await status(cup))?.status).toBe("upcoming");
+  });
+
+  it("CONTROL: nothing tied, no order: straight to Final, and the column stays unreviewed", async () => {
+    const cup = await pointsCup("Straight", ["A", "B"]);
+    const [a, b] = cup.teamIds;
+    await game(cup, "One", [6, 4], [a, b]);
+    await finish(cup);
+    expect(await status(cup)).toEqual({ status: "completed", tiebreak_order: null });
+  });
+
+  it("a teamless shared 1st announces the tie as a team's does", async () => {
+    const cup = await pointsCup("Teamless level", undefined);
+    const member = ctx.getUser("member").id;
+    await ctx.addTripMember(cup.tripId, "member", "Member");
+    const g = (await ctx.caller().games.create({ tripId: cup.tripId, gameTypeId: "gtt_stroke_play", name: "Round", competitionId: cup.competitionId })) as { id: string };
+    await ctx.admin.from("games").update({ status: "complete", points_total: 10, points_distribution: { type: "placement", values: [5, 5] } }).eq("id", g.id);
+    await ctx.admin.from("game_participants").delete().eq("game_id", g.id);
+    for (const userId of [ctx.user.id, member]) {
+      await ctx.admin.from("game_participants").insert({ id: genId("gp"), game_id: g.id, user_id: userId, scoring_enabled: true });
+      await ctx.admin.from("game_results").insert({ id: genId("gr"), game_id: g.id, entity_id: userId, entity_type: "user", value_kind: "rank", position: 1, raw_score: 70 });
+    }
+    await expect(finish(cup)).rejects.toThrow("That tie has changed. Try again.");
+    await finish(cup, []);
+    expect(await sharedPushes(cup.competitionId)).toBe(1);
+    expect((await claim(cup.competitionId)).clinch_notified_user_id).toBeNull();
   });
 });
 
