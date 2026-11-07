@@ -1,7 +1,7 @@
-# Points Cups: Clinch Watch & Place Locks (build spec, v2.5)
+# Points Cups: Clinch Watch & Place Locks (build spec, v2.6)
 
 *Scope: Workflow Wireframes canvas, row 6 only (boards F0–F4). Companion to `COMPETITION_ENGINE.md`.*
-*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy. Model: Opus. One branch, per-task commits.*
+*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy; v2.6 drops the correction-clears-review rule. Model: Opus. One branch, per-task commits.*
 
 **Mockups:** `docs/mockups/points-clinch/` (`index.html` with all five boards live, plus a PNG per board). They are the visual target. **The spec governs behaviour:** where they disagree, the spec wins, and you report it. The trophy there is a static port; use `CupTrophy` and the tokens.
 
@@ -134,7 +134,7 @@ Mirrors the match-play hero tier for tier. The pinned bar and the game-page head
   - Nothing waits on it.
 - **Both answers are a decision and both are saved.** `tiebreak_order` null = not yet reviewed (the item shows). Non-null = reviewed (the item goes away). It lists the ids of the groups the owner ordered; a tied group whose ids are absent stays shared, and `[]` means every tie was kept shared. With several tied groups, one sheet covers them all.
 - **Reopenable:** at Final, ⚙ (cup settings) has **"Tiebreaks"** whenever ties exist, opening the same sheet with the saved order.
-- **The review is cleared** (`tiebreak_order` → null, so the item comes back) whenever the standings it was made on stop standing: adding a game, either reset path (which also reopens the cup), and a correction to a finished cup **that changes the tie groups**.
+- **The review is cleared** (`tiebreak_order` → null, so the item comes back) when the cup reopens: adding a game, or either reset path. A correction to a finished cup does **not** clear it (v2.6). A new tie it creates is shared by default and shows as T-ranks, an old order only ever applies to an exact tie so it can't misorder the new one, and the tie stays reachable from ⚙ Tiebreaks.
 - **Several ties:** the sheet is titled **"Tiebreaks"**, and each tie is a section with the single-tie title and body. Save order: with one tie, it saves what's on screen; with several, only the ties that moved plus any already saved, and it's disabled until something moves.
 - **Refusals:** "Nothing is tied anymore." / "That tie has changed. Open Tiebreaks again."
 - **A broken 1st sends the push only if nothing was announced yet.** Changing it afterwards sends nothing (accepted: the crew is together when tiebreaks are set). Breaking a tie below 1st never runs the clinch check.
