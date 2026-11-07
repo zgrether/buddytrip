@@ -39,8 +39,7 @@ export function hatch(color: string): string {
 
 export const PERSON_COLOR = "var(--color-bt-accent)";
 
-/** The rank column, the gap after it, and the team badge with its gap: what the
- *  bar's line indents by to sit under the name. */
+/** The rank column and the gap after it, and the team badge with its gap. */
 const RANK_SLOT = 26;
 const RANK_GAP = 12;
 const BADGE_SIZE = 18;
@@ -141,42 +140,47 @@ export function StandingsRows({
               data-testid={`standings-row-${r.id}`}
               data-viewer={r.isViewer ? "true" : undefined}
             >
-              <div className="px-2 py-1.5">
-                <div className="flex w-full items-center" style={{ gap: RANK_GAP }}>
-                  <RankChip id={r.id} rank={r.rank} shared={r.shared} locked={r.locked} />
-                  <span className="flex min-w-0 flex-1 items-center" style={{ gap: BADGE_GAP }}>
-                    {/* A team is a square (TeamBadge); a person in a teamless race carries no mark. */}
-                    {r.color && <TeamBadge teamId={r.id} name={r.label} shortName={r.shortName ?? r.label} color={r.color} size={BADGE_SIZE} />}
-                    <span className={`min-w-0 text-sm ${r.color ? "font-semibold" : "font-normal"}`} style={{ color: "var(--color-bt-text)" }}>
-                      {r.label}
+              {/* Three columns (spec §2, v2.11): the rank, centred on the whole row;
+                  then badge, name and bar sharing one left edge; the score on the
+                  name line, with the bar running under it to the right edge. */}
+              <div className="flex items-center px-2 py-1.5" style={{ gap: RANK_GAP }} data-testid={`standings-line-${r.id}`}>
+                <RankChip id={r.id} rank={r.rank} shared={r.shared} locked={r.locked} />
+                <div className="min-w-0 flex-1" data-testid={`standings-col-${r.id}`}>
+                  <div className="flex w-full items-center" style={{ gap: RANK_GAP }}>
+                    <span className="flex min-w-0 flex-1 items-center" style={{ gap: BADGE_GAP }}>
+                      {/* A team is a square (TeamBadge); a person in a teamless race carries no mark. */}
+                      {r.color && <TeamBadge teamId={r.id} name={r.label} shortName={r.shortName ?? r.label} color={r.color} size={BADGE_SIZE} />}
+                      <span className={`min-w-0 text-sm ${r.color ? "font-semibold" : "font-normal"}`} style={{ color: "var(--color-bt-text)" }}>
+                        {r.label}
+                      </span>
                     </span>
-                  </span>
-                  <span
-                    className="shrink-0 text-right font-bold tabular-nums"
-                    style={{
-                      fontSize: isLeader ? 19 : 15,
-                      color: isLeader && r.color ? teamInk(r.color) : "var(--color-bt-text)",
-                    }}
-                    data-testid={`standings-points-${r.id}`}
-                  >
-                    {r.hasResult ? fmtPts(r.banked) : ""}
-                  </span>
-                </div>
-                <div className="mt-1" style={{ paddingLeft: RANK_SLOT + RANK_GAP + (r.color ? BADGE_SIZE + BADGE_GAP : 0) }}>
-                  {!r.hasResult && r.projected === 0 ? (
-                    <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid={`standings-waiting-${r.id}`}>
-                      No points yet
-                    </span>
-                  ) : (
                     <span
-                      className="flex h-2.5 min-w-0 overflow-hidden rounded-full"
-                      style={{ background: "var(--color-bt-card-raised)" }}
-                      data-testid={`standings-bar-${r.id}`}
+                      className="shrink-0 text-right font-bold tabular-nums"
+                      style={{
+                        fontSize: isLeader ? 19 : 15,
+                        color: isLeader && r.color ? teamInk(r.color) : "var(--color-bt-text)",
+                      }}
+                      data-testid={`standings-points-${r.id}`}
                     >
-                      <span className="h-full" style={{ width: `${r.bankedPct}%`, background: color }} data-testid={`standings-banked-${r.id}`} />
-                      <span className="h-full" style={{ width: `${r.projectedPct}%`, background: hatch(color) }} data-testid={`standings-projected-${r.id}`} />
+                      {r.hasResult ? fmtPts(r.banked) : ""}
                     </span>
-                  )}
+                  </div>
+                  <div className="mt-1">
+                    {!r.hasResult && r.projected === 0 ? (
+                      <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid={`standings-waiting-${r.id}`}>
+                        No points yet
+                      </span>
+                    ) : (
+                      <span
+                        className="flex h-2.5 min-w-0 overflow-hidden rounded-full"
+                        style={{ background: "var(--color-bt-card-raised)" }}
+                        data-testid={`standings-bar-${r.id}`}
+                      >
+                        <span className="h-full" style={{ width: `${r.bankedPct}%`, background: color }} data-testid={`standings-banked-${r.id}`} />
+                        <span className="h-full" style={{ width: `${r.projectedPct}%`, background: hatch(color) }} data-testid={`standings-projected-${r.id}`} />
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

@@ -170,12 +170,40 @@ describe("the full name (spec §2)", () => {
     expect(html).not.toContain("truncate");
     expect(html).toContain(">H<"); // the badge reads the short name's initial, not the full name's
   });
-  it("the bar sits under the name: indented past the rank and the badge", () => {
-    expect(render({ units: named, unitTotals: { blue: 6 }, projections: {} })).toContain("padding-left:64px");
+});
+
+describe("the row's three columns (spec §2, v2.11)", () => {
+  const named = [{ id: "blue", label: "Eagles Cold Beers", shortName: "HE", color: "#3b82f6", hasResult: true }];
+  /** The markup between an element's opening tag and the end of the row. */
+  const from = (html: string, testId: string) => html.slice(html.lastIndexOf("<", html.indexOf(`data-testid="${testId}"`)));
+  const col = (html: string, id: string) => {
+    const s = from(html, `standings-col-${id}`);
+    return s.slice(0, s.indexOf(`data-testid="standings-row-`) === -1 ? s.length : s.indexOf(`data-testid="standings-row-`));
+  };
+
+  it("the rank is its own column, centred on the whole row, outside the name-and-bar column", () => {
+    const html = render({ units: named, unitTotals: { blue: 6 }, projections: {} });
+    const line = tag(html, "standings-line-blue");
+    expect(line).toContain("items-center");
+    const rank = html.indexOf('data-testid="standings-rank-blue"');
+    expect(rank).toBeGreaterThan(html.indexOf('data-testid="standings-line-blue"'));
+    expect(rank).toBeLessThan(html.indexOf('data-testid="standings-col-blue"'));
+    expect(col(html, "blue")).not.toContain("standings-rank-blue");
   });
-  it("a person has no badge, so the bar indents only past the rank", () => {
+  it("badge, name, score and bar share the second column, so the bar starts at the badge's edge", () => {
+    const c = col(render({ units: named, unitTotals: { blue: 6 }, projections: {} }), "blue");
+    expect(c).toContain(">H<"); // the badge
+    expect(c).toContain(">Eagles Cold Beers<");
+    expect(c).toContain('data-testid="standings-points-blue"');
+    expect(c).toContain('data-testid="standings-bar-blue"');
+    expect(c).not.toContain("padding-left");
+  });
+  it("a person has no badge, so the bar starts at the name's edge, in the same column", () => {
     const html = render({ kind: "players", units: [{ id: "ann", label: "Ann", color: null, hasResult: true }], unitTotals: { ann: 3 }, projections: {} });
-    expect(html).toContain("padding-left:38px");
+    const c = col(html, "ann");
+    expect(c).toContain(">Ann<");
+    expect(c).toContain('data-testid="standings-bar-ann"');
+    expect(c).not.toContain("padding-left");
   });
 });
 
