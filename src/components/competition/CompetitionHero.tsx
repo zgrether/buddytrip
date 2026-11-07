@@ -7,7 +7,7 @@ import { ClinchCelebration } from "./ClinchCelebration";
 import { PointsHeroTiers, type PointsHeroUnit } from "./PointsHeroTiers";
 import type { ClinchWatch } from "@/lib/pointsClinch";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { teamInk } from "@/lib/teamTextColor";
+import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW } from "@/lib/teamTextColor";
 import { useShrinkToFit } from "@/hooks/useShrinkToFit";
 
 /** The collapsed bar's ladder. Starts at its designed 14 (the expanded hero's
@@ -46,6 +46,9 @@ export function isRace(scoringModel: ScoringModel, teamCount: number): boolean {
 }
 
 const NEUTRAL_CARD = "var(--color-bt-hero-neutral)";
+
+/** A finished cup's losing score, as a share of the winner's size (#1700). */
+const LOSER_SCORE_SCALE = 0.72;
 
 /**
  * teamGlow — the hero background: a faint two-color TEAM glow (team A from
@@ -350,8 +353,8 @@ export function CompetitionHero({
                 new height against 12px of reclaimed slack, so the panel grows
                 ~8px rather than ~20px. */}
             <div className="mt-3 flex items-center justify-between gap-3">
-              <TeamName team={a} onEditTeam={onEditTeam} align="left" />
-              <TeamName team={b} onEditTeam={onEditTeam} align="right" />
+              <TeamName team={a} onEditTeam={onEditTeam} align="left" overArt={cupComplete} />
+              <TeamName team={b} onEditTeam={onEditTeam} align="right" overArt={cupComplete} />
             </div>
 
             {/* Scores — the two big team-colored numbers flanking the trophy.
@@ -369,30 +372,33 @@ export function CompetitionHero({
                 // these steps keep the pair inside 375px minus the card's padding.
                 const longest = Math.max(aStr.length, bStr.length);
                 const size = longest >= 5 ? 46 : longest === 4 ? 58 : longest === 3 ? 66 : 74;
-                // On a FINISHED cup the loser's number steps back to 62% — the
-                // winner reads first, but 39½–28 stays a scoreline. It is dimmed,
-                // never removed or greyed to the muted token: keeping the team's
-                // own colour is what makes this read as emphasis on the winner
-                // rather than an error state on the loser. Only on `cupComplete`
-                // — dimming a team while games remain would be editorialising
-                // about a result that isn't in yet.
-                const loserOpacity = 0.62;
-                const aDim = cupComplete && clincher != null && clincher.id !== a.id;
-                const bDim = cupComplete && clincher != null && clincher.id !== b.id;
+                // On a FINISHED cup the loser's number steps DOWN in size and
+                // weight, so the winner reads first and 39½–28 stays a scoreline.
+                // It used to fade to 62% opacity, which halved its contrast over
+                // the lit trophy (2.36 : 1 in light, #1700); a step keeps every
+                // glyph at full ink. Still the team's own colour, never the muted
+                // token, so it reads as emphasis on the winner rather than an
+                // error state on the loser. Only on `cupComplete`: stepping a team
+                // down while games remain would editorialise about a result that
+                // isn't in yet. A shared Final has no loser and stays a pair.
+                const loserSize = Math.round(size * LOSER_SCORE_SCALE);
+                const scoreStyle = (team: LBTeam, lost: boolean): React.CSSProperties => ({
+                  fontSize: lost ? loserSize : size,
+                  fontWeight: lost ? 600 : 700,
+                  lineHeight: 1,
+                  letterSpacing: "-0.02em",
+                  // Over the lit trophy the team colour moves away from the bowl and
+                  // carries a halo: #1696's over-art treatment, measured in #1700.
+                  ...(cupComplete ? { color: teamInkOverArt(team.color), textShadow: TEXT_OVER_ART_SHADOW } : { color: teamInk(team.color) }),
+                });
+                const aLost = cupComplete && clincher != null && clincher.id !== a.id;
+                const bLost = cupComplete && clincher != null && clincher.id !== b.id;
                 return (
                   <>
-                    <span
-                      style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: teamInk(a.color), opacity: aDim ? loserOpacity : 1 }}
-                      className="tabular-nums"
-                      data-testid={aDim ? "hero-score-dimmed" : undefined}
-                    >
+                    <span style={scoreStyle(a, aLost)} className="tabular-nums" data-testid="hero-score-a" data-lost={aLost ? "true" : undefined}>
                       {aStr}
                     </span>
-                    <span
-                      style={{ fontSize: size, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: teamInk(b.color), opacity: bDim ? loserOpacity : 1 }}
-                      className="tabular-nums"
-                      data-testid={bDim ? "hero-score-dimmed" : undefined}
-                    >
+                    <span style={scoreStyle(b, bLost)} className="tabular-nums" data-testid="hero-score-b" data-lost={bLost ? "true" : undefined}>
                       {bStr}
                     </span>
                   </>
@@ -1053,10 +1059,13 @@ function TeamName({
   team,
   onEditTeam,
   align,
+  overArt = false,
 }: {
   team: LBTeam;
   onEditTeam?: (teamId: string) => void;
   align: "left" | "right";
+  /** At Final the name sits over the lit trophy: the over-art ink and halo (#1700). */
+  overArt?: boolean;
 }) {
   const nameRef = useRef<HTMLSpanElement>(null);
   const nameSize = useShrinkToFit(nameRef, team.name);
@@ -1174,7 +1183,13 @@ function TeamName({
         <span
           ref={nameRef}
           className="line-clamp-2 w-full break-normal"
-          style={{ fontSize: nameSize, fontWeight: 600, lineHeight: 1.2, color: teamInk(team.color) }}
+          style={{
+            fontSize: nameSize,
+            fontWeight: 600,
+            lineHeight: 1.2,
+            ...(overArt ? { color: teamInkOverArt(team.color), textShadow: TEXT_OVER_ART_SHADOW } : { color: teamInk(team.color) }),
+          }}
+          data-testid={`hero-team-name-${align === "left" ? "a" : "b"}`}
         >
           {team.name}
         </span>
