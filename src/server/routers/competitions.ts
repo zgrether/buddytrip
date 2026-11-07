@@ -12,6 +12,7 @@ import { CLINCH_STORY_WORD, competitionNoun, EITHER_COMPETITION } from "@/lib/vo
 import { namesWholeTies, winnersOf } from "@/lib/finalPlaces";
 import { maybeRowOrThrow } from "../lib/rowOrThrow";
 import { reopenFinishedCup } from "../lib/reopenCup";
+import { flipCupToCompleted } from "../lib/finishCup";
 import { STARTING_POINT_IDS, isStartingPointId, startingPointFits, suggestedGames } from "@/lib/startingPoints";
 
 /** Before Final there is no Tiebreaks row to send anyone to: the sheet that asked
@@ -643,19 +644,10 @@ export const competitionsRouter = router({
       if (!tied && input.order?.length) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Nothing is tied anymore." });
       }
-      // Conditional on the cup not being finished already, so two organizers racing
-      // get one flip, and only the request that made it announces.
-      const { data: flipped, error } = await ctx.supabase
-        .from("competitions")
-        .update(tied ? { status: "completed", tiebreak_order: input.order } : { status: "completed" })
-        .eq("id", input.competitionId)
-        .eq("trip_id", input.tripId)
-        .neq("status", "completed")
-        .select("id");
-      if (error) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't finish the cup: ${error.message}` });
-      }
-      if (!flipped?.length) return { success: true };
+      // One conditional UPDATE, so two organizers racing get one flip, and only the
+      // request that made it announces.
+      const flipped = await flipCupToCompleted(ctx.supabase, input, tied ? input.order : undefined);
+      if (!flipped) return { success: true };
       const winners = winnersOf(scored, board.unitTotals, tied ? input.order ?? null : null);
       const notify = { tripId: input.tripId, competitionId: input.competitionId, actorUserId: ctx.user!.id };
       // One winner goes through the clinch claim. A shared 1st has no single unit for

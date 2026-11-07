@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TestContext, genId } from "../../__tests__/helpers/test-setup";
-import { claimClinchNotification, formatClinchMargin, notifyCupClinchedIfDecided, reconcileClinchClaim, releaseClinchClaim } from "./gameFinishNotify";
+import { claimClinchNotification, formatClinchMargin, notifyCupClinchedIfDecided, notifyCupSharedFirst, reconcileClinchClaim, releaseClinchClaim } from "./gameFinishNotify";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { fmtPts } from "@/lib/vocabulary";
 
@@ -359,6 +359,37 @@ describe("an empty board waits for a person (spec §5)", () => {
 
     // A second tap, or a second organizer: the status already flipped, so nothing more.
     await ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId, order: [] });
+    expect(await sharedPushes(cup.competitionId)).toBe(1);
+  });
+
+  it("two finishes at once: one flip, one tie push", async () => {
+    const cup = await pointsCup("Level race", ["A", "B"]);
+    const [a, b] = cup.teamIds;
+    const one = await game(cup, "One", [5, 5]);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId: one, placements: [{ entityId: a, position: 1 }, { entityId: b, position: 1 }] });
+
+    const tap = () => ctx.caller().competitions.finish({ tripId: cup.tripId, competitionId: cup.competitionId, order: [] });
+    await Promise.all([tap(), tap()]);
+    expect((await board(cup)).clinch?.final).toBe(true);
+    expect(await sharedPushes(cup.competitionId)).toBe(1);
+  });
+
+  it("the tie push itself refuses a cup with one winner, whoever calls it", async () => {
+    const cup = await pointsCup("One winner direct", ["A", "B"]);
+    const [a, b] = cup.teamIds;
+    await game(cup, "One", [6, 4], [a, b]);
+    await finish(cup);
+    await notifyCupSharedFirst({ tripId: cup.tripId, competitionId: cup.competitionId, actorUserId: ctx.user.id, admin: ctx.admin });
+    expect(await sharedPushes(cup.competitionId)).toBe(0);
+  });
+
+  it("CONTROL: called directly on a shared 1st, it sends, so that refusal is about the winner count", async () => {
+    const cup = await pointsCup("Shared direct", ["A", "B"]);
+    const [a, b] = cup.teamIds;
+    const one = await game(cup, "One", [5, 5]);
+    await ctx.caller().games.finish({ tripId: cup.tripId, gameId: one, placements: [{ entityId: a, position: 1 }, { entityId: b, position: 1 }] });
+    await ctx.admin.from("competitions").update({ status: "completed", tiebreak_order: [] }).eq("id", cup.competitionId);
+    await notifyCupSharedFirst({ tripId: cup.tripId, competitionId: cup.competitionId, actorUserId: ctx.user.id, admin: ctx.admin });
     expect(await sharedPushes(cup.competitionId)).toBe(1);
   });
 
