@@ -1,7 +1,7 @@
-# Points Cups: Clinch Watch & Place Locks (build spec, v2.6)
+# Points Cups: Clinch Watch & Place Locks (build spec, v2.8)
 
 *Scope: Workflow Wireframes canvas, row 6 only (boards F0–F4). Companion to `COMPETITION_ENGINE.md`.*
-*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy; v2.6 drops the correction-clears-review rule. Model: Opus. One branch, per-task commits.*
+*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy; v2.6 drops the correction-clears-review rule; v2.7 moves ties into the reveal and celebrates a tie; v2.8 makes decision points open themselves. Model: Opus. One branch, per-task commits.*
 
 **Mockups:** `docs/mockups/points-clinch/` (`index.html` with all five boards live, plus a PNG per board). They are the visual target. **The spec governs behaviour:** where they disagree, the spec wins, and you report it. The trophy there is a static port; use `CupTrophy` and the tokens.
 
@@ -90,7 +90,7 @@ Mirrors the match-play hero tier for tier. The pinned bar and the game-page head
 | 1st clinched, a place still open | — | 2nd is up for grabs | Hot Eagles Cold Beers clinched the cup |
 | Every place locked, games still open | clincher | Clinched the cup | Every place is set · 1 game left (count dropped if only a correction is open: "Every place is set") |
 | Final | winner | score (74, team colour) | Final · X wins (+ " · 3rd shared") |
-| Final, shared 1st | "Hot Eagles Cold Beers & Bogey Army" in plain text colour | score | Final · Shared 1st |
+| Final, shared 1st | "Centurions & Spartans", each name in its own team colour, "&" in text colour | score (74, plain text colour) | **It's a tie!** (20/800, full-strength text colour, replaces the Final line) |
 
 - The team-specific ladder is **1st only**. An open place below 1st always reads "{place} is up for grabs" / "{clincher} clinched the cup". There is no "One win from 2nd".
 - When a unit drops out of contention for 1st (`out(T, 1)`), its name replaces the alive count until the next banked game: "6 games left · Hack Squad is out".
@@ -118,24 +118,30 @@ Mirrors the match-play hero tier for tier. The pinned bar and the game-page head
 **The empty board (Zach, 2026-11-06).** A crew may add games as it plays, so the moment the board empties is ambiguous: it's either the real end, or just the end of what's been added so far. Only the owner knows.
 
 - **The finish that empties the board** (`gamesRemaining` hits 0) sends nothing and doesn't go Final.
-- **Owner and Organizers** get a `NeedsAttentionCard` item: **"All games are in. Head to the winner's circle?"**, with **[To the winner's circle]** and **[Add another game]** (the add-game flow; the cup stays open). Same wording for one winner or a shared 1st.
+- **Decision points open themselves (Zach, v2.8).** For Owner and Organizers, a `Sheet` **opens automatically** when they arrive at the cup page: **"All games are in. Head to the winner's circle?"**, with **[To the winner's circle]** and **[Add another game]** (the add-game flow; the cup stays open). Same wording for one winner or a shared 1st.
+  - It opens **once per visit** to the cup page (not on re-renders or tab switches within the visit), and keeps doing so on each visit until they decide.
+  - **✕ without deciding:** the same ask sits **expanded** in `NeedsAttentionCard` (question + both buttons) for the rest of the visit. "Needs attention" is the fallback, never the primary surface for a decision.
+  - Members never get the sheet; their hero reads "All games are in".
 - **While it waits:** the hero reads **"Lead by 4" · "All games are in"** (or "Tied at the top"). A clinch that was already announced stays "Clinched the cup". No place shows locked: with an empty board the math would call everything locked, and that's exactly the claim we're waiting on.
 - **A clinch while games remain on the board** pushes as in §4.
-- **To the winner's circle** writes `competitions.status = 'completed'` (existing column, no new one). It goes Final, sends the push once (a clinch already announced isn't sent again), and fires the existing burst, then scrolls the hero into view so the one-time burst isn't spent off screen. The burst and "Set off the fireworks" go to whoever holds 1st, both units at a shared 1st.
+- **To the winner's circle, with ties: decide before declaring.** If any tie exists, the **same sheet moves to a tie step** before Final:
+  - Title: **"Tied for 1st"** / **"Tied for 3rd"**; **"Ties"** when there are several (each tie is then a section).
+  - Body: **"Played a tiebreaker? Drag to set the order."**
+  - Buttons: **Use this order** / **Keep it a tie**. Both save `tiebreak_order` and continue to Final. ✕ cancels without crowning (it falls back to the expanded "Needs attention" ask).
+  - No ties: straight to Final.
+- **The button shows the app's pending state** while the save is in flight.
+- **To the winner's circle** writes `competitions.status = 'completed'` (existing column, no new one). It goes Final, sends the push once (a clinch already announced isn't sent again), then scrolls the hero into view. **The burst plays once on the device that crowned** (whatever team the owner is on), and on each winner's first view; "Set off the fireworks" stays winners-only. A shared 1st uses gold sparks.
 - **Adding a game to a finished cup reopens it.** The next emptying asks again.
 - **Migration 225** marks the already-finished points cups (BBMI 2024, BBMI 2025, and the teamless test cup) completed, so they stay Final and never ask. Apply it before #1696 merges, from the branch (`main` doesn't have 224 yet).
 
 **Ties**
-- **Ties share the place by default, 1st included.** Finishing with a shared 1st sends no push (there's no single clincher).
-- **Breaking a tie:** a `NeedsAttentionCard` item for Owner and Organizers, **"Tied for 3rd · shared"**, opens a `Sheet`:
-  - Title: **Break the tie for 3rd?**
-  - Body: **Played a tiebreaker? Drag to set the order. Left alone, they share 3rd.**
-  - A `ReorderableList` of the tied units, then **Save order** / **Keep it shared**.
-  - Nothing waits on it.
-- **Both answers are a decision and both are saved.** `tiebreak_order` null = not yet reviewed (the item shows). Non-null = reviewed (the item goes away). It lists the ids of the groups the owner ordered; a tied group whose ids are absent stays shared, and `[]` means every tie was kept shared. With several tied groups, one sheet covers them all.
+- **Ties share the place by default, 1st included.** A shared 1st at Final **sends a push**: "It's a tie! {A} and {B} share {cup name}". Guarded by the status flip to `completed`, because the clinch claim holds one unit.
+- **After Final, a kept tie** shows in `NeedsAttentionCard` as an optional follow-up, **"Tied for 1st · shared"** (opens the tie sheet, for a tiebreaker played later). It's no longer a decision point, so it doesn't open itself. Clears once an order is saved.
+- **STYLE_GUIDE (same PR):** add the rule. A decision point opens as a modal for whoever has to decide, and stays primary until they decide. `NeedsAttentionCard` holds what was dismissed without deciding, and optional follow-ups.
+- **Both answers are a decision and both are saved.** `tiebreak_order` null = not yet reviewed. Non-null = reviewed. It lists the ids of the groups the owner ordered; a tied group whose ids are absent stays shared, and `[]` means every tie was kept shared. With several tied groups, one sheet covers them all.
 - **Reopenable:** at Final, ⚙ (cup settings) has **"Tiebreaks"** whenever ties exist, opening the same sheet with the saved order.
-- **The review is cleared** (`tiebreak_order` → null, so the item comes back) when the cup reopens: adding a game, or either reset path. A correction to a finished cup does **not** clear it (v2.6). A new tie it creates is shared by default and shows as T-ranks, an old order only ever applies to an exact tie so it can't misorder the new one, and the tie stays reachable from ⚙ Tiebreaks.
-- **Several ties:** the sheet is titled **"Tiebreaks"**, and each tie is a section with the single-tie title and body. Save order: with one tie, it saves what's on screen; with several, only the ties that moved plus any already saved, and it's disabled until something moves.
+- **The review is cleared** (`tiebreak_order` → null, so the next reveal asks again) when the cup reopens: adding a game, or either reset path. A correction to a finished cup does **not** clear it (v2.6). A new tie it creates is shared by default and shows as T-ranks, an old order only ever applies to an exact tie so it can't misorder the new one, and the tie stays reachable from ⚙ Tiebreaks.
+- **Several ties:** the sheet is titled **"Ties"**, and each tie is a section. Save order: with one tie, it saves what's on screen; with several, only the ties that moved plus any already saved, and it's disabled until something moves.
 - **Refusals:** "Nothing is tied anymore." / "That tie has changed. Open Tiebreaks again."
 - **A broken 1st sends the push only if nothing was announced yet.** Changing it afterwards sends nothing (accepted: the crew is together when tiebreaks are set). Breaking a tie below 1st never runs the clinch check.
 - **A tie for 1st broken at Final** makes that unit the winner and sends the push once, through the normal claim.

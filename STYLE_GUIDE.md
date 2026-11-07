@@ -527,6 +527,16 @@ Desktop drawer:    var(--color-bt-overlay-drawer)
 
 Drawer scrims are intentionally lighter so the underlying page reads as still-present context (you can see the row you tapped), not blacked-out behind a modal.
 
+### Decision points open themselves
+
+A decision only one role can make (Zach, 2026-11-07, `docs/CLINCH_AND_PODIUM.md` §5) opens as a modal (`Sheet`) for whoever has to decide, and stays the primary surface until they decide:
+
+- **It opens on arrival, once per visit.** Not on a re-render or a tab switch inside the visit, and again on the next visit until it is decided.
+- **Only for whoever decides.** Everyone else sees the state it leaves, never the ask.
+- **✕ decides nothing.** The same ask waits, expanded with its answers, in `NeedsAttentionCard` for the rest of the visit.
+
+`NeedsAttentionCard` is the fallback, never the first surface for a decision. It holds what was dismissed without deciding, and optional follow-ups that nothing waits on (a tie kept at Final, for a tiebreaker played later). The first instance is the points cup's "All games are in. Head to the winner's circle?".
+
 ---
 
 ## Section 5: Button System
