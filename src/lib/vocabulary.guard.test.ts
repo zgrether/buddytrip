@@ -40,6 +40,8 @@ import {
   COMPETING_WORD,
   HOW_SCORING_WORKS_TITLE,
   pointsInPlayLine,
+  CLINCH_STORY_WORD,
+  ordinalShort,
 } from "./vocabulary";
 
 /**
@@ -251,6 +253,20 @@ describe("the vocabulary's values — exactly the words the screens spelled befo
     ]);
     expect(RACE_WORD.shared).toBe("Shared");
     expect([COMPETING_WORD.individuals, COMPETING_WORD.teams, COMPETING_WORD.teamCount(3)]).toEqual(["Individuals", "Teams", "3 teams"]);
+  });
+
+  it("the points hero's story (Zach, spec §3): these say cup by exception", () => {
+    const w = CLINCH_STORY_WORD;
+    expect([w.anyonesCup, w.tiedAtTop, w.clinchWatch, w.clinchedHeadline, w.everyPlaceSet, w.itsATie]).toEqual(["Anyone's cup", "Tied at the top", "Clinch watch", "Clinched the cup", "Every place is set", "It's a tie!"]);
+    expect([w.tiedFor("1st"), w.ties, w.tieBody, w.useThisOrder, w.keepItATie]).toEqual(["Tied for 1st", "Ties", "Played a tiebreaker? Drag to set the order.", "Use this order", "Keep it a tie"]);
+    // The shared-1st push (v2.8): "It's a tie! {A} and {B} share {cup name}".
+    expect([CLINCH_WORD.tiePushTitle, CLINCH_WORD.tiePushBody(["Centurions", "Spartans"], "Turkey Cup")]).toEqual(["It's a tie!", "Centurions and Spartans share Turkey Cup"]);
+    expect(CLINCH_WORD.tiePushBody(["A", "B", "C"], "Turkey Cup")).toBe("A, B and C share Turkey Cup");
+    expect([w.gamesLeft(1), w.gamesLeft(6)]).toEqual(["1 game left", "6 games left"]);
+    expect([w.winsFromTheCup(1), w.winsFromTheCup(2)]).toEqual(["One win from the cup", "Two wins from the cup"]);
+    expect([w.upForGrabs("2nd"), w.clinchWatchFor("2nd"), w.placeShared("3rd")]).toEqual(["2nd is up for grabs", "Clinch watch · 2nd", "3rd shared"]);
+    expect([w.stillAlive(4, 4), w.stillAlive(3, 4)]).toEqual(["all 4 still alive", "3 still alive"]);
+    expect([ordinalShort(1), ordinalShort(2), ordinalShort(3), ordinalShort(4), ordinalShort(11)]).toEqual(["1st", "2nd", "3rd", "4th", "11th"]);
   });
 
   it("navigation, structure, and the stored margin", () => {

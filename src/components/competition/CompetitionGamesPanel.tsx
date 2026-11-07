@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc-client";
-import { competitionNoun, SIDE_GAME_WORD, DELEGATE_WORD, fmtPts, NONGOLF_FORMAT_WORD } from "@/lib/vocabulary";
+import { competitionNoun, SIDE_GAME_WORD, DELEGATE_WORD, fmtPts, NONGOLF_FORMAT_WORD, ordinalShort } from "@/lib/vocabulary";
 import { ScrollLock } from "@/hooks/useScrollLock";
 import { Stepper } from "@/components/games/Stepper";
 import type { PointsDistribution } from "@/lib/pointsDistribution";
@@ -973,9 +973,5 @@ export function Field({ label, required, children }: { label: string; required?:
   );
 }
 
-export function ordinalShort(n: number): string {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-  return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
+export { ordinalShort };
 

@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { trpc } from "@/lib/trpc-client";
-import { STRUCTURE_QUERY } from "@/lib/queryConfig";
+import { LEADERBOARD_QUERY, STRUCTURE_QUERY } from "@/lib/queryConfig";
 import { SurfaceVisibility } from "@/lib/surfaceVisibility";
 import { GameActionRow } from "@/components/shell/GameActionRow";
 import { CompetitionLeaderboard } from "./CompetitionLeaderboard";
 import { SideGamesBoard } from "./SideGamesBoard";
 import { CompetitionSetupPanel } from "./CompetitionSetupPanel";
 import { CompetitionSettingsModal } from "./CompetitionSettingsModal";
+import { BreakTieSheet } from "./BreakTieSheet";
+import { settingsTies } from "@/lib/cupDecision";
+import type { SharedTie } from "@/lib/needsAttention";
 import { RostersOverlay } from "./RostersOverlay";
 import { RosterChangeGateProvider } from "./RosterChangeGate";
 import { openGamePanel } from "./GameRow";
@@ -104,6 +107,7 @@ export function CompetitionFace({
   // "Add a game" opens a modal over the board.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const openSettings = () => setSettingsOpen(true);
+  const [tiebreaksOpen, setTiebreaksOpen] = useState(false);
   const [addingGame, setAddingGame] = useState(false);
   const pathname = usePathname();
   // Leaderboard team-name tap → a STANDALONE identity editor (owner / captain-of-
@@ -270,6 +274,14 @@ export function CompetitionFace({
   // (the standalone CompetitionHeader strip was retired with the old full-page
   // settings sub-surface); the hero's gear opens the settings modal.
   const scoringModel = competition?.scoring_model ?? "match_play";
+  // The ties for the gear menu: the board's own query and policy, so one cache entry
+  // answers both, and only asked while settings or the sheet is open.
+  const boardForTies = trpc.competitions.leaderboard.useQuery(
+    { tripId, competitionId: competition?.id ?? "" },
+    { ...LEADERBOARD_QUERY, enabled: (settingsOpen || tiebreaksOpen) && scoringModel === "points" && !!competition }
+  );
+  // At Final only: before it the ties belong to the finish's own tie step (v2.8).
+  const ties = settingsTies(boardForTies.data?.clinch) as SharedTie[];
   return (
     /**
      * ONE COLUMN, at every width. This comment used to say "DESKTOP
@@ -709,7 +721,11 @@ export function CompetitionFace({
           // Points cups manage teams from settings now (§2). Opening Rosters closes settings
           // so the two overlays don't stack. Match-play keeps team-name-tap editing (no row).
           onOpenRosters={scoringModel === "points" ? () => { setSettingsOpen(false); setRostersOpen(true); } : undefined}
+          onOpenTiebreaks={ties.length > 0 ? () => { setSettingsOpen(false); setTiebreaksOpen(true); } : undefined}
         />
+      )}
+      {tiebreaksOpen && competition && ties.length > 0 && (
+        <BreakTieSheet ties={ties} tripId={tripId} competitionId={competition.id} onClose={() => setTiebreaksOpen(false)} />
       )}
     </div>
     </RosterChangeGateProvider>

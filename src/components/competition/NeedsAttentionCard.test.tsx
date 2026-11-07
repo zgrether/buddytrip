@@ -19,8 +19,52 @@ const full: NeedsAttention = {
   offTeam: { names: ["Mo", "Oz"], games: ["Day 2 Stroke"] },
   emptyTeams: [],
   uneven: { teams: [{ id: "a", name: "Alpha", color: "#3b82f6", size: 6 }, { id: "b", name: "Bravo", color: "#ef4444", size: 5 }], scorings: ["traditional"] },
+  finishCup: false,
+  ties: [],
 };
 const render = (a: NeedsAttention) => renderToStaticMarkup(<NeedsAttentionCard attention={a} onOpenRosters={() => {}} />);
+
+describe("a points cup's two items (spec §5)", () => {
+  const finish: NeedsAttention = { ...NOTHING_NEEDS_ATTENTION, finishCup: true };
+  const tie: NeedsAttention = {
+    ...NOTHING_NEEDS_ATTENTION,
+    ties: [{ place: 3, ordered: false, units: [{ id: "a", name: "Alpha", shortName: "ALP", color: "#3b82f6" }, { id: "p", name: "Mo", shortName: null, color: null }] }],
+  };
+
+  it("the board asks once, with its two answers", () => {
+    const html = render(finish);
+    expect(html).toContain("Needs attention · 1");
+    expect(html).toContain("All games are in. Head to the winner&#x27;s circle?");
+    expect(html).toMatch(/data-testid="finish-cup"[^>]*>To the winner&#x27;s circle</);
+    expect(html).toContain('data-testid="finish-add-game"');
+  });
+
+  it("the two answers are real buttons, not the row that opens somewhere", () => {
+    expect(render(finish)).not.toContain('data-testid="needs-attention-finish"><span');
+    expect(render(finish).match(/<button/g)).toHaveLength(2);
+  });
+
+  it("holds the finish while it saves, and says why it failed", () => {
+    const html = renderToStaticMarkup(<NeedsAttentionCard attention={finish} onOpenRosters={() => {}} finishing finishError="A game is still open. Finish it first." />);
+    expect(html).toMatch(/data-testid="finish-cup"|disabled=""/);
+    expect(html).toContain('disabled=""');
+    expect(html).toContain("A game is still open. Finish it first.");
+    // The app's loading state (v2.8): the spinner leads and the text stays.
+    expect(html).toMatch(/data-testid="finish-cup" aria-busy="true"><svg[^>]*animate-spin[\s\S]*?To the winner&#x27;s circle</);
+  });
+
+  it("CONTROL: an idle finish is not held, and has no spinner", () => {
+    expect(render(finish)).not.toContain('disabled=""');
+    expect(render(finish)).not.toContain("animate-spin");
+  });
+
+  it("a shared place reads as the spec says and is one row", () => {
+    const html = render(tie);
+    expect(html).toContain("Tied for 3rd · shared");
+    expect(html).toContain('data-testid="needs-attention-tie-3"');
+    expect(html).toContain("Needs attention · 1");
+  });
+});
 
 describe("the card", () => {
   it("is gone when there is nothing to do", () => {
@@ -77,7 +121,7 @@ describe("Zach's look on #1691", () => {
 
   it("an empty team opens that team's Edit Team sheet", () => {
     expect(card).toMatch(/onClick=\{onEditTeam \? \(\) => onEditTeam\(t\.id\) : onOpenRosters\}/);
-    expect(board).toMatch(/<NeedsAttentionCard attention=\{data\.needsAttention\} onOpenRosters=\{onOpenRosters\} onEditTeam=\{onEditTeam\} \/>/);
+    expect(board).toMatch(/<NeedsAttentionCard\s+attention=\{data\.needsAttention\}\s+onOpenRosters=\{onOpenRosters\}\s+onEditTeam=\{onEditTeam\}/);
   });
 
   it("Rosters draws the same avatar in all three Not on a team lists (desktop, phone, the team sheet's picker)", () => {

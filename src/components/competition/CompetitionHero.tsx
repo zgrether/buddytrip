@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { Settings, Trophy } from "lucide-react";
 import { ProjectionPill } from "./GameRow";
 import { ClinchCelebration } from "./ClinchCelebration";
+import { PointsHeroTiers, type PointsHeroUnit } from "./PointsHeroTiers";
+import type { ClinchWatch } from "@/lib/pointsClinch";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { teamInk } from "@/lib/teamTextColor";
 import { useShrinkToFit } from "@/hooks/useShrinkToFit";
@@ -13,6 +15,7 @@ import { useShrinkToFit } from "@/hooks/useShrinkToFit";
  *  decoration rather than a label. */
 const MINI_NAME_SIZES = [14, 13, 12, 11];
 import type { TrophySlot } from "./CupTrophy";
+import { PERSON_COLOR } from "./StandingsRows";
 import type { LBTeam } from "./CompetitionLeaderboard";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { competitionWord, GAME_STATE_WORD, fmtPts, RACE_WORD } from "@/lib/vocabulary";
@@ -118,6 +121,7 @@ export function CompetitionHero({
   cupComplete = false,
   cupShared = false,
   halfPoints = false,
+  pointsHero,
   celebrateFirstView = false,
   canReplayCelebration = false,
   onCelebrated,
@@ -165,6 +169,15 @@ export function CompetitionHero({
   /** The cup counts in halves (`cupCountsInHalves`): totals, projected totals
    *  and the target write a half as ½. */
   halfPoints?: boolean;
+  /** A points cup's story and clinch watch. Absent on a head-to-head Cup. */
+  pointsHero?: {
+    watch: ClinchWatch;
+    units: readonly PointsHeroUnit[];
+    awaitingFinish: boolean;
+    announced: boolean;
+    tiebreakOrder: readonly string[] | null;
+    winnerIds: readonly string[];
+  };
   /** This device hasn't seen this cup's celebration yet → play the burst once.
    *  Only ever true alongside `cupComplete` and `variant === "expanded"`. */
   celebrateFirstView?: boolean;
@@ -189,7 +202,18 @@ export function CompetitionHero({
   // suppresses the burst there, so the control would be tappable and do
   // visibly nothing. Offering nothing is better than offering a lie.
   const reducedMotion = usePrefersReducedMotion();
-  const showReplay = showScores && cupComplete && canReplayCelebration && !reducedMotion;
+  const showReplay = (showScores || !!pointsHero) && cupComplete && canReplayCelebration && !reducedMotion;
+
+  // At Final the trophy is the winner's, and a shared 1st has no one colour. On a
+  // board waiting to be finished it tints only for a clinch already announced.
+  const pointsUnit = (id: string | null | undefined) => pointsHero?.units.find((u) => u.id === id) ?? null;
+  const pointsWinner = cupComplete && pointsHero?.winnerIds.length === 1 ? pointsUnit(pointsHero.winnerIds[0]) : null;
+  const pointsClincher = cupComplete
+    ? pointsWinner
+    : pointsHero?.awaitingFinish && !pointsHero.announced
+    ? null
+    : pointsUnit(pointsHero?.watch.clincherId);
+  const replayColor = clincher?.color ?? pointsWinner?.color ?? null;
 
   if (variant === "collapsed") {
     return (
@@ -254,6 +278,18 @@ export function CompetitionHero({
           trophy={trophy}
         />
       )}
+      {/* A points cup: the same placement and no tilt, because no side won. */}
+      {pointsHero && (
+        <ClinchCelebration
+          cupComplete={cupComplete}
+          clinched={pointsClincher != null}
+          winnerColor={pointsClincher ? pointsClincher.color ?? PERSON_COLOR : null}
+          celebrate={celebrateFirstView}
+          replayNonce={replayNonce}
+          onCelebrated={onCelebrated}
+          trophy={trophy}
+        />
+      )}
 
       {/* CONTENT — sharp, in front of the art. Horizontal padding matches the
           trip-header card (16px) rather than the mockup's standalone 24px, since
@@ -288,6 +324,19 @@ export function CompetitionHero({
             </button>
           )}
         </div>
+
+        {pointsHero && (
+          <>
+            <PointsHeroTiers
+              watch={pointsHero.watch}
+              units={pointsHero.units}
+              totals={teamTotals}
+              final={cupComplete}
+              cup={{ awaitingFinish: pointsHero.awaitingFinish, announced: pointsHero.announced, tiebreakOrder: pointsHero.tiebreakOrder }}
+            />
+            {showReplay && <ReplayButton color={replayColor} onPress={() => setReplayNonce((n) => n + 1)} />}
+          </>
+        )}
 
         {showScores && (
           <>
@@ -398,23 +447,7 @@ export function CompetitionHero({
                 filled CTA. The screen's job is announcing the result; this is a
                 small toy underneath it, and a loud button would compete with
                 the scoreline it sits below. */}
-            {showReplay && (
-              <div className="mt-2.5 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => setReplayNonce((n) => n + 1)}
-                  data-testid="clinch-replay-btn"
-                  className="rounded-full px-3 py-1.5 text-[12px] font-semibold transition-[background-color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
-                  style={{
-                    color: clincher ? teamInk(clincher.color) : "var(--color-bt-text)",
-                    background: "var(--color-bt-hover)",
-                    border: `1px solid ${clincher ? `color-mix(in srgb, ${clincher.color} 40%, transparent)` : "var(--color-bt-border)"}`,
-                  }}
-                >
-                  Set off the fireworks
-                </button>
-              </div>
-            )}
+            {showReplay && <ReplayButton color={replayColor} onPress={() => setReplayNonce((n) => n + 1)} />}
 
             {/* PROJECTED "if today holds" tier (Path A) — banked + Σ live-game
                 projections per team, with a ▲ delta pill. TIER GATE: only when ≥1
@@ -441,6 +474,26 @@ export function CompetitionHero({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function ReplayButton({ color, onPress }: { color: string | null; onPress: () => void }) {
+  return (
+    <div className="mt-2.5 flex justify-center">
+      <button
+        type="button"
+        onClick={onPress}
+        data-testid="clinch-replay-btn"
+        className="rounded-full px-3 py-1.5 text-[12px] font-semibold transition-[background-color,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-bt-accent)]"
+        style={{
+          color: color ? teamInk(color) : "var(--color-bt-text)",
+          background: "var(--color-bt-hover)",
+          border: `1px solid ${color ? `color-mix(in srgb, ${color} 40%, transparent)` : "var(--color-bt-border)"}`,
+        }}
+      >
+        Set off the fireworks
+      </button>
     </div>
   );
 }

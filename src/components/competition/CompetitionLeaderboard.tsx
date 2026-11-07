@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GAME_STATE_WORD } from "@/lib/vocabulary";
 import { Trophy, CloudOff, RefreshCw, Plus, ArrowUpDown } from "lucide-react";
 import type { inferRouterOutputs } from "@trpc/server";
@@ -8,7 +8,8 @@ import type { AppRouter } from "@/server/router";
 import type { OwnStanding } from "@/lib/ownStanding";
 import { trpc } from "@/lib/trpc-client";
 import { STRUCTURE_QUERY, LEADERBOARD_QUERY, SIDE_BOARD_QUERY } from "@/lib/queryConfig";
-import { useVisibleEnabled } from "@/lib/surfaceVisibility";
+import { useSurfaceVisible, useVisibleEnabled } from "@/lib/surfaceVisibility";
+import { useShownOnScreen } from "@/hooks/useShownOnScreen";
 import { useRealtimeScoreEvents } from "@/hooks/useRealtimeScoreEvents";
 import { useFirstClinchView } from "@/hooks/useFirstClinchView";
 import { useMyTeamId } from "@/hooks/useMyTeamColor";
@@ -22,10 +23,15 @@ import { StickyCollapseHero } from "./CompetitionHero";
 import { ReorderableSection } from "./ReorderableGames";
 import { SuggestedGames } from "./SuggestedGames";
 import { NeedsAttentionCard } from "./NeedsAttentionCard";
+import { BreakTieSheet } from "./BreakTieSheet";
+import { FinishCupSheet } from "./FinishCupSheet";
+import { finishSheetStep, type FinishStep } from "@/lib/cupDecision";
+import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 import { HowScoringWorksCard } from "./HowScoringWorksCard";
 import { awardedSoFar } from "@/lib/howScoringWorks";
+import type { ClinchWatch } from "@/lib/pointsClinch";
 import type { SetupReason } from "@/lib/gameReadiness";
-import type { NeedsAttention } from "@/lib/needsAttention";
+import type { NeedsAttention, SharedTie } from "@/lib/needsAttention";
 import { isStartingPointId, remainingSuggestions } from "@/lib/startingPoints";
 import { listStateOf } from "@/lib/listState";
 
@@ -174,6 +180,18 @@ interface LeaderboardData {
   winNumber: number;
   pointsToClinch: Record<string, number>;
   defendingTeamId: string | null;
+  /** A points cup's place locks (`pointsClinch`), null on a head-to-head Cup. */
+  clinch?: {
+    clincherId: string | null;
+    lockedUnitIds: string[];
+    watch: ClinchWatch;
+    final: boolean;
+    awaitingFinish: boolean;
+    announced: boolean;
+    tiebreakOrder: string[] | null;
+    winnerIds: string[];
+    ties: SharedTie[];
+  } | null;
   /** Every game pays 1 point per match (`cupCountsInHalves`): the hero and the
    *  match cells write a half as ½. Everywhere else a half is 0.5. */
   halfPoints?: boolean;
@@ -325,10 +343,65 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   // id, only for the storage key.
   const clincherTeamId =
     data?.teams.find((t) => (data.pointsToClinch[t.id] ?? 1) <= 0)?.id ?? null;
+  // A points cup's moment is Final, and a shared 1st is one moment for both.
+  const celebrationKey = data?.clinch ? data.clinch.winnerIds.join("+") || null : clincherTeamId;
   const { isFirstView: isFirstClinchView, markSeen: markClinchSeen } = useFirstClinchView(
     competitionId,
-    clincherTeamId,
+    celebrationKey,
   );
+  const finishedHere = useRef(false);
+  // The device that crowned plays the burst once, whoever it was for (v2.8). Set
+  // where the finish succeeds; it plays once the board reads Final.
+  const [crownedHere, setCrownedHere] = useState(false);
+  const crowned = () => {
+    finishedHere.current = true;
+    setCrownedHere(true);
+  };
+  const finishCup = trpc.competitions.finish.useMutation({
+    onSuccess: () => {
+      crowned();
+      invalidateGameBoards(utils, { tripId, competitionId });
+    },
+  });
+  // Whoever finishes may be scrolled past the hero: the burst would play off
+  // screen and spend this device's one showing. After Final renders, not at the
+  // tap: the hero grows when it does, and scroll anchoring pushes it away again.
+  const isFinal = data?.clinch?.final === true;
+  useEffect(() => {
+    if (!isFinal || !finishedHere.current) return;
+    finishedHere.current = false;
+    document.querySelector('[data-testid="competition-hero"]')?.scrollIntoView({ block: "center" });
+  }, [isFinal]);
+
+  // ── Decision points open themselves (spec §5, v2.8) ───────────────────────
+  // The empty board's ask opens as a sheet for whoever may decide, once per visit:
+  // this component stays mounted while the Cup tab is hidden, so the ref outlives
+  // tab switches and re-renders, and a new visit is a new mount. It waits until
+  // the board is actually on screen and not under a game panel, because the sheet
+  // portals to the body and would otherwise open over another tab.
+  //
+  // Derived, not set from an effect: the ask is open while it is undecided, on
+  // screen, and not yet closed this visit. Closing it (✕, Add another game) is
+  // what spends the visit; deciding ends it, since the board stops waiting.
+  // `finishSheetStep` holds the gate, a Member included (src/lib/cupDecision.ts).
+  const [boardRef, boardShown] = useShownOnScreen();
+  const boardUncovered = useSurfaceVisible();
+  const [closedThisVisit, setClosedThisVisit] = useState(false);
+  // The card's own button opens the sheet at a step, whatever the visit holds.
+  const [openedAt, setOpenedAt] = useState<FinishStep | null>(null);
+  const finishStep = finishSheetStep({
+    canEdit,
+    awaitingFinish: data?.needsAttention?.finishCup === true,
+    openedAt,
+    closedThisVisit,
+    boardShown,
+    boardUncovered,
+  });
+  const closeFinish = () => {
+    setOpenedAt(null);
+    setClosedThisVisit(true);
+  };
+  const [breakingTies, setBreakingTies] = useState(false);
   // The viewer's own team — "did the person looking at this actually win?".
   // Shares `competitions.myTeamColor`'s cache entry with the app-bar avatar, so
   // this is a cache read, not a second request.
@@ -362,18 +435,20 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
     return <NoTeamsState />;
   }
 
-  const clincher = teams.find((t) => (pointsToClinch[t.id] ?? 1) <= 0) ?? null;
+  const isMatchPlay = scoringModel === "match_play";
+  // Head to head only: `pointsToClinch` is the more-than-half rule, and a points
+  // cup clinches by `data.clinch` (spec §1).
+  const clincher = isMatchPlay ? teams.find((t) => (pointsToClinch[t.id] ?? 1) <= 0) ?? null : null;
 
   // Decided vs FINISHED — the distinction the celebration turns on. Clinch
   // itself is not re-derived: `isCupComplete` takes the existing `clincher`
   // above as its input and only adds "is anything still in play" on top.
   //
-  // Match-play only, matching the hero's own `showScores`. The trophy, the glow
-  // and the two-score treatment are all match-play constructs — a points cup has
-  // no hero centrepiece to celebrate on, so lighting one there would mean
-  // inventing the surface first.
-  const isMatchPlay = scoringModel === "match_play";
-  const cupComplete = isMatchPlay && isCupComplete(data.games, !!clincher);
+  // A points cup is final when someone has finished it with nothing left to play,
+  // whoever has clinched: with 1st clinched and unarmed games left, `isCupComplete`
+  // would fire while places are still open, and an empty board alone is not a
+  // decision (spec §5).
+  const cupComplete = isMatchPlay ? isCupComplete(data.games, !!clincher) : data.clinch?.final === true;
   // A Cup that ended level is shared (Zach, 2026-10-22): every game final,
   // nobody clinched, the two totals equal. The hero then reads "Final ·
   // Shared" where it would otherwise go on saying "First to X wins".
@@ -401,10 +476,13 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
    * A viewer on no team at all (an organiser who isn't playing) gets the still
    * state — the result, without the confetti that isn't theirs.
    */
-  const viewerWon = cupComplete && clincher != null && myTeamId === clincher.id;
+  const myUnitId = data.teamless ? me?.id : myTeamId;
+  const viewerWon = data.clinch
+    ? cupComplete && myUnitId != null && data.clinch.winnerIds.includes(myUnitId)
+    : cupComplete && clincher != null && myTeamId === clincher.id;
 
   return (
-    <div className="space-y-3" data-testid="competition-leaderboard">
+    <div ref={boardRef} className="space-y-3" data-testid="competition-leaderboard">
       {/* ── The clinch ribbon is GONE from above the header ─────────────────
           A `ClinchedBanner` rendered here whenever a match-play cup had
           clinched but not finished, as "the RESTRAINED state, and only that".
@@ -446,14 +524,29 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
         cupComplete={cupComplete}
         cupShared={cupShared}
         halfPoints={data.halfPoints ?? false}
+        pointsHero={
+          data.clinch
+            ? {
+                watch: data.clinch.watch,
+                units: data.units.map((u) => ({ id: u.id, name: u.name, shortName: u.short_name, color: u.color, hasResult: u.hasResult })),
+                awaitingFinish: data.clinch.awaitingFinish,
+                announced: data.clinch.announced,
+                tiebreakOrder: data.clinch.tiebreakOrder,
+                winnerIds: data.clinch.winnerIds,
+              }
+            : undefined
+        }
         gamesRemaining={gamesLeft}
         // First view of THIS cup's THIS winner, on this device, BY SOMEONE WHO
         // WON. Gated on `cupComplete` so a clinched-but-unfinished cup never
         // burns the one showing — the flag must still be unspent when the cup
         // actually ends. A non-winner never fires and so never marks it seen,
         // which costs nothing: they have no burst to spend.
-        celebrateFirstView={viewerWon && isFirstClinchView}
-        onCelebrated={markClinchSeen}
+        celebrateFirstView={(viewerWon && isFirstClinchView) || (cupComplete && crownedHere)}
+        onCelebrated={() => {
+          markClinchSeen();
+          setCrownedHere(false);
+        }}
         // The re-fire button — winners only, for the same reason the burst is.
         canReplayCelebration={viewerWon}
         scoringModel={scoringModel}
@@ -499,15 +592,18 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           kind={data.teamless ? "players" : "teams"}
           units={data.units.map((u) => ({
             id: u.id,
-            // A team's SHORT name: a standings row is a label slot (STYLE_GUIDE
-            // "Team names — subject slots vs label slots").
-            label: u.kind === "team" ? u.short_name ?? u.name : u.name,
+            // The FULL name: a standings row is a subject slot (STYLE_GUIDE "Team
+            // names — subject slots vs label slots"). The badge keeps the short one.
+            label: u.name,
+            shortName: u.short_name,
             color: u.color,
             hasResult: u.hasResult,
           }))}
           unitTotals={unitTotals}
           projections={data.projections}
-          viewerUnitId={data.teamless ? me?.id : myTeamId}
+          lockedUnitIds={data.clinch?.lockedUnitIds}
+          tiebreakOrder={data.clinch?.final ? data.clinch.tiebreakOrder : null}
+          viewerUnitId={myUnitId}
         />
       )}
 
@@ -515,7 +611,33 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
           Owners and Organizers only, gone when empty. A game's own problems
           are on its row below. */}
       {canEdit && onOpenRosters && data.needsAttention && (
-        <NeedsAttentionCard attention={data.needsAttention} onOpenRosters={onOpenRosters} onEditTeam={onEditTeam} />
+        <NeedsAttentionCard
+          attention={data.needsAttention}
+          onOpenRosters={onOpenRosters}
+          onEditTeam={onEditTeam}
+          // With a tie on the board the ask moves to the tie step before declaring.
+          onFinishCup={() => ((data.clinch?.ties.length ?? 0) > 0 ? setOpenedAt("ties") : finishCup.mutate({ tripId, competitionId }))}
+          onAddGame={onAddGame}
+          finishing={finishCup.isPending}
+          finishError={finishCup.error?.message ?? null}
+          onBreakTie={() => setBreakingTies(true)}
+        />
+      )}
+      {finishStep && data.clinch && (
+        <FinishCupSheet
+          key={finishStep}
+          cupName={cupName}
+          ties={data.clinch.ties}
+          tripId={tripId}
+          competitionId={competitionId}
+          startAt={finishStep}
+          onClose={closeFinish}
+          onAddGame={onAddGame}
+          onFinished={crowned}
+        />
+      )}
+      {breakingTies && data.clinch && data.clinch.ties.length > 0 && (
+        <BreakTieSheet ties={data.clinch.ties} tripId={tripId} competitionId={competitionId} onClose={() => setBreakingTies(false)} />
       )}
 
       {/* Bones copy: one line, only while the board is empty and editable. Not

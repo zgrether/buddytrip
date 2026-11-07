@@ -84,3 +84,46 @@ describe("resultTiles — fixed team order, never re-sorted", () => {
     expect(resultTiles(["blue", "red"], undefined)).toBeNull();
   });
 });
+
+describe("standingsRows: locked and shared places", () => {
+  const rows = (over: Partial<Parameters<typeof standingsRows>[0]> = {}) =>
+    standingsRows({
+      units: [unit("a"), unit("b"), unit("c"), unit("d", false)],
+      unitTotals: { a: 10, b: 6, c: 6 },
+      projections: {},
+      viewerUnitId: null,
+      ...over,
+    });
+  const of = (id: string, r = rows()) => r.find((x) => x.id === id)!;
+
+  it("a place is shared only where two ranked units are level", () => {
+    expect(of("a").shared).toBe(false);
+    expect(of("b").shared).toBe(true);
+    expect(of("c").shared).toBe(true);
+  });
+  it("a unit with no points yet shares nothing, whoever else has none", () => {
+    expect(of("d").shared).toBe(false);
+  });
+  it("locked comes from the units handed in, and defaults to open", () => {
+    expect(of("a").locked).toBe(false);
+    expect(of("a", rows({ lockedUnitIds: ["a"] })).locked).toBe(true);
+    expect(of("b", rows({ lockedUnitIds: ["a"] })).locked).toBe(false);
+  });
+  it("a unit with no result has no place to lock", () => {
+    expect(of("d", rows({ lockedUnitIds: ["d"] })).locked).toBe(false);
+  });
+});
+
+describe("a tiebreak order at Final (spec §5)", () => {
+  const unit = (id: string) => ({ id, label: id, color: null, hasResult: true });
+  const rows = (tiebreakOrder?: string[] | null) =>
+    standingsRows({ units: ["a", "b", "c"].map(unit), unitTotals: { a: 9, b: 4, c: 4 }, projections: {}, viewerUnitId: null, tiebreakOrder });
+  const read = (r: ReturnType<typeof rows>) => r.map((x) => `${x.id}:${x.rank}${x.shared ? "=" : ""}`);
+
+  it("breaks the tie: the order decides rank and row, and neither reads shared", () => {
+    expect(read(rows(["c", "b"]))).toEqual(["a:1", "c:2", "b:3"]);
+  });
+  it("CONTROL: with no order they share, in name order", () => {
+    expect(read(rows(null))).toEqual(["a:1", "b:2=", "c:2="]);
+  });
+});

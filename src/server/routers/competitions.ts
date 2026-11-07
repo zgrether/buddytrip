@@ -3,13 +3,21 @@ import { TRPCError } from "@trpc/server";
 import { router, authedProcedure } from "../trpc";
 import { requireTripMember, requireTripRole, requireCompetitionRole } from "../middleware";
 import { computeCompetitionLeaderboard } from "../lib/competitionLeaderboard";
-import { reconcileClinchClaim } from "../lib/gameFinishNotify";
+import { notifyCupClinchedIfDecided, notifyCupSharedFirst, reconcileClinchClaim } from "../lib/gameFinishNotify";
+import { afterResponse } from "../lib/afterResponse";
 import { viewerTeamForTrip } from "../lib/viewerTeam";
 import { myDelegateGameIds as computeMyDelegateGameIds } from "../lib/myDelegateGameIds";
 import { SEED_TEAM_COLORS, MAX_SEED_TEAMS, seedTeamName } from "@/lib/teamColors";
-import { competitionNoun, EITHER_COMPETITION } from "@/lib/vocabulary";
+import { CLINCH_STORY_WORD, competitionNoun, EITHER_COMPETITION } from "@/lib/vocabulary";
+import { namesWholeTies, winnersOf } from "@/lib/finalPlaces";
 import { maybeRowOrThrow } from "../lib/rowOrThrow";
+import { reopenFinishedCup } from "../lib/reopenCup";
+import { flipCupToCompleted } from "../lib/finishCup";
 import { STARTING_POINT_IDS, isStartingPointId, startingPointFits, suggestedGames } from "@/lib/startingPoints";
+
+/** Before Final there is no Tiebreaks row to send anyone to: the sheet that asked
+ *  reads the board again, so the action is to choose again on what it now shows. */
+const TIE_CHANGED_AT_FINISH = "That tie has changed. Try again.";
 
 const SCOREBOARD_STYLES = [
   "grid",
@@ -449,10 +457,10 @@ export const competitionsRouter = router({
   //
   // The `status` (go-live) write path was REMOVED with the GO LIVE control
   // (option A): a competition is visible the moment it exists, so there is no
-  // setup↔active toggle to drive. The `competitions.status` column is retained
-  // (no live reader/writer of the distinction remains; a future `completed`
-  // state may reuse it) but is intentionally NOT writable here — do not re-add a
-  // competition-level reveal/go-live mutation.
+  // setup↔active toggle to drive. `competitions.status` now holds one fact, that
+  // a points cup was finished (`finish` below, migration 225), and is
+  // intentionally NOT writable here — do not re-add a competition-level
+  // reveal/go-live mutation.
   // -----------------------------------------------------------------------
   update: authedProcedure
     .input(
@@ -581,6 +589,7 @@ export const competitionsRouter = router({
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireCompetitionRole("owner"))
     .mutation(async ({ ctx, input }) => {
+      await reopenFinishedCup(ctx.supabase, input.competitionId);
       const { error } = await ctx.supabase.rpc("reset_competition_scoring", {
         p_trip_id: input.tripId,
         p_competition_id: input.competitionId,
@@ -599,6 +608,94 @@ export const competitionsRouter = router({
       return { success: true };
     }),
 
+  // finish — an Owner or Organizer ends a points cup whose board is empty (spec
+  // §5). An empty board cannot say this for itself: a cup built one game at a time
+  // empties after every game. Adding a game reopens it (`games.create`).
+  //
+  // The clinch check runs after the response, as it does after a finalize: it
+  // sends what the emptied board held back, once, and a clinch already announced
+  // while games remained stays announced. A shared 1st has no clincher and sends
+  // nothing.
+  // finish — To the winner's circle (spec §5). Ties are decided before the cup is
+  // declared (v2.8): with any tie on the board the order comes with the finish and
+  // is written in the same update, so nothing reads Final with its ties unanswered.
+  finish: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string(), order: z.array(z.string()).max(64).optional() }))
+    .use(requireCompetitionRole("organizer"))
+    .mutation(async ({ ctx, input }) => {
+      const board = await computeCompetitionLeaderboard(ctx.supabase, input.competitionId, { viewerId: ctx.user!.id });
+      if (board.clinch?.final) return { success: true }; // a second tap, or a second organizer
+      if (!board.clinch) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A Cup finishes on its own when its last game does." });
+      }
+      if (board.games.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "There's nothing to finish yet. Add a game first." });
+      }
+      if (!board.clinch.awaitingFinish) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A game is still open. Finish it first." });
+      }
+      const scored = board.units.filter((u) => u.hasResult).map((u) => u.id);
+      const tied = board.clinch.ties.length > 0;
+      // A tie the sheet never showed, or one that changed under it, is refused: the
+      // sheet reads the board again and shows the ties as they now stand.
+      if (tied && (input.order === undefined || !namesWholeTies(scored, board.unitTotals, input.order))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: TIE_CHANGED_AT_FINISH });
+      }
+      if (!tied && input.order?.length) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nothing is tied anymore." });
+      }
+      // One conditional UPDATE, so two organizers racing get one flip, and only the
+      // request that made it announces.
+      const flipped = await flipCupToCompleted(ctx.supabase, input, tied ? input.order : undefined);
+      if (!flipped) return { success: true };
+      const winners = winnersOf(scored, board.unitTotals, tied ? input.order ?? null : null);
+      const notify = { tripId: input.tripId, competitionId: input.competitionId, actorUserId: ctx.user!.id };
+      // One winner goes through the clinch claim. A shared 1st has no single unit for
+      // the claim to hold, so the status flip above is its "once" (v2.8).
+      await afterResponse(() => (winners.length > 1 ? notifyCupSharedFirst(notify) : notifyCupClinchedIfDecided(notify)));
+      return { success: true };
+    }),
+
+  // setTiebreakOrder — the decision on a finished cup's ties (spec §5). One sheet
+  // covers them all, so this replaces the column: the ties it names are ordered, a
+  // tie it leaves out stays shared, and `[]` keeps every tie shared.
+  setTiebreakOrder: authedProcedure
+    .input(z.object({ tripId: z.string(), competitionId: z.string(), order: z.array(z.string()).max(64) }))
+    .use(requireCompetitionRole("organizer"))
+    .mutation(async ({ ctx, input }) => {
+      const board = await computeCompetitionLeaderboard(ctx.supabase, input.competitionId, { viewerId: ctx.user!.id });
+      const scored = board.units.filter((u) => u.hasResult).map((u) => u.id);
+      // Before Final the order goes with the finish (v2.8). Reached only by a sheet
+      // left open while someone reopened the cup, which is what the line says.
+      if (board.clinch && !board.clinch.final) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "The cup is open again." });
+      }
+      if (!board.clinch?.ties.length) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nothing is tied anymore." });
+      }
+      if (!namesWholeTies(scored, board.unitTotals, input.order)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `That tie has changed. Open ${CLINCH_STORY_WORD.tiebreaks} again.` });
+      }
+      const { error } = await ctx.supabase
+        .from("competitions")
+        .update({ tiebreak_order: input.order })
+        .eq("id", input.competitionId)
+        .eq("trip_id", input.tripId);
+      if (error) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Couldn't save the order: ${error.message}` });
+      }
+      // A tie for 1st broken here is the cup's first winner, so it announces, once.
+      // `announced` is the "once": the claim takes a different unit as a new clincher,
+      // so reordering a tie already broken would otherwise tell the crew twice.
+      const broke1st = winnersOf(scored, board.unitTotals, null).length > 1 && winnersOf(scored, board.unitTotals, input.order).length === 1;
+      if (broke1st && !board.clinch.announced) {
+        await afterResponse(() =>
+          notifyCupClinchedIfDecided({ tripId: input.tripId, competitionId: input.competitionId, actorUserId: ctx.user!.id })
+        );
+      }
+      return { success: true };
+    }),
+
   // resetToSkeleton — owner-only. SUPERSET of resetScoring: the SQL primitive
   // CALLS reset_competition_scoring first, then additionally clears config back
   // to unconfigured shells (keeps teams + game shells + point values). Used for
@@ -608,6 +705,7 @@ export const competitionsRouter = router({
     .input(z.object({ tripId: z.string(), competitionId: z.string() }))
     .use(requireCompetitionRole("owner"))
     .mutation(async ({ ctx, input }) => {
+      await reopenFinishedCup(ctx.supabase, input.competitionId);
       const { error } = await ctx.supabase.rpc("reset_competition_to_skeleton", {
         p_trip_id: input.tripId,
         p_competition_id: input.competitionId,

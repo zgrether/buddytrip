@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { competitionNoun, GAME_STATE_WORD, CLINCH_WORD } from "@/lib/vocabulary";
+import { competitionNoun, GAME_STATE_WORD, CLINCH_WORD, fmtPts } from "@/lib/vocabulary";
 import type { ScoringModel } from "@/lib/gameTypes";
 import { gameHref, gamePanelHref, gamesPageHref, opensAsPanel } from "@/lib/gameRoutes";
 import { readSideGameWinners } from "./sideBoard";
@@ -353,10 +353,10 @@ export function formatWinnersSummary(entries: SummaryEntry[]): string {
   return names.length === 1 ? `Won by ${names[0]}` : `Match winners: ${names.join(" · ")}`;
 }
 
-export function formatClinchMargin(totals: number[]): string {
+export function formatClinchMargin(totals: number[], format: (n: number) => string = formatPoints): string {
   const top = [...totals].sort((a, b) => b - a).slice(0, 2);
   if (top.length < 2) return "";
-  return `${formatPoints(top[0])} – ${formatPoints(top[1])}`;
+  return `${format(top[0])} – ${format(top[1])}`;
 }
 
 const COPY = {
@@ -370,6 +370,11 @@ const COPY = {
     body: summary || "Results are in.",
   }),
   /** The highest-value push in the app — ~1-3 per trip. */
+  /** A shared 1st at Final (v2.8): nobody clinched, so the tie is the news. */
+  sharedFirst: (names: readonly string[], competitionName: string) => ({
+    title: CLINCH_WORD.tiePushTitle,
+    body: CLINCH_WORD.tiePushBody(names, competitionName),
+  }),
   clinched: (teamName: string, competitionName: string | null, summary: string, noun: string) => ({
     title: CLINCH_WORD.pushTitle(teamName),
     body: [competitionName, summary].filter(Boolean).join(" · ") || `The ${noun} is decided.`,
@@ -915,10 +920,24 @@ export type ClinchClaimResult =
    *  split it was indistinguishable from `already_claimed`. */
   | { outcome: "claim_no_row"; heldNow: string | null };
 
+/** What a clinch names: a team, or in a teamless race a person. */
+export type ClinchUnitKind = "team" | "person";
+
+/** The unit a competition's claim names, from whichever column holds it. */
+function heldClaimOf(row: { clinch_notified_team_id?: unknown; clinch_notified_user_id?: unknown } | null | undefined) {
+  const team = (row?.clinch_notified_team_id as string | null) ?? null;
+  const person = (row?.clinch_notified_user_id as string | null) ?? null;
+  if (team) return { id: team, kind: "team" as const };
+  return person ? { id: person, kind: "person" as const } : null;
+}
+
+const CLAIM_COLUMNS = "clinch_notified_team_id, clinch_notified_user_id";
+
 export async function claimClinchNotification(
   admin: SupabaseClient,
   competitionId: string,
-  teamId: string
+  unitId: string,
+  kind: ClinchUnitKind = "team"
 ): Promise<ClinchClaimResult> {
   // Migration 107. The CAS is ONE SQL statement whose WHERE sees the PRE-image.
   //
@@ -933,10 +952,10 @@ export async function claimClinchNotification(
   //
   // A compare-and-swap is falsified BY THE WRITE IT GUARDS, so no arrangement
   // of select and filter expresses one. Do NOT move this back into a filter.
-  const { data, error } = await admin.rpc("claim_clinch_notification", {
-    p_competition_id: competitionId,
-    p_team_id: teamId,
-  });
+  const { data, error } =
+    kind === "person"
+      ? await admin.rpc("claim_clinch_notification_user", { p_competition_id: competitionId, p_user_id: unitId })
+      : await admin.rpc("claim_clinch_notification", { p_competition_id: competitionId, p_team_id: unitId });
 
   if (error) {
     return {
@@ -958,12 +977,12 @@ export async function claimClinchNotification(
   // by construction.
   const { data: now } = await admin
     .from("competitions")
-    .select("clinch_notified_team_id")
+    .select(CLAIM_COLUMNS)
     .eq("id", competitionId)
     .maybeSingle();
-  const heldNow = (now?.clinch_notified_team_id as string | null) ?? null;
+  const heldNow = heldClaimOf(now)?.id ?? null;
 
-  return heldNow === teamId
+  return heldNow === unitId
     ? { outcome: "already_claimed", heldBy: heldNow }
     : { outcome: "claim_no_row", heldNow };
 }
@@ -1012,12 +1031,13 @@ export async function claimClinchNotification(
 export async function releaseClinchClaim(
   admin: SupabaseClient,
   competitionId: string,
-  expectedTeamId: string
+  expectedUnitId: string,
+  kind: ClinchUnitKind = "team"
 ): Promise<boolean> {
-  const { data, error } = await admin.rpc("release_clinch_claim", {
-    p_competition_id: competitionId,
-    p_expected_team_id: expectedTeamId,
-  });
+  const { data, error } =
+    kind === "person"
+      ? await admin.rpc("release_clinch_claim_user", { p_competition_id: competitionId, p_expected_user_id: expectedUnitId })
+      : await admin.rpc("release_clinch_claim", { p_competition_id: competitionId, p_expected_team_id: expectedUnitId });
   return !error && data === true;
 }
 
@@ -1029,6 +1049,24 @@ export async function releaseClinchClaim(
  */
 function isDecided(toClinch: Record<string, number>, teamId: string): boolean {
   return (toClinch[teamId] ?? 1) <= 0;
+}
+
+type ClinchBoard = Awaited<ReturnType<typeof computeCompetitionLeaderboard>>;
+
+/**
+ * Who has clinched, by each kind of cup's own rule. A points cup reads the place
+ * locks (`pointsClinch`) and never `pointsToClinch`, the head-to-head rule; head
+ * to head reads `pointsToClinch` as it always has. The finalize path and the
+ * reconcile path both come through here, so they cannot disagree.
+ */
+function clincherOf(board: ClinchBoard): { id: string; name: string | null; kind: ClinchUnitKind } | null {
+  if (board.scoringModel === "points") {
+    const unit = board.units.find((u) => u.id === board.clinch?.clincherId);
+    return unit ? { id: unit.id, name: unit.name, kind: unit.kind === "person" ? "person" : "team" } : null;
+  }
+  const toClinch = (board.pointsToClinch ?? {}) as Record<string, number>;
+  const team = (board.teams ?? []).find((t: { id: string }) => isDecided(toClinch, t.id)) as { id: string; name: string | null } | undefined;
+  return team ? { id: team.id, name: team.name, kind: "team" } : null;
 }
 
 /**
@@ -1104,17 +1142,22 @@ export async function reconcileClinchClaim(
       computeCompetitionLeaderboard(client, competitionId),
       client
         .from("competitions")
-        .select("clinch_notified_team_id")
+        .select(CLAIM_COLUMNS)
         .eq("id", competitionId)
         .maybeSingle(),
     ]);
-    const held = (claimRow.data?.clinch_notified_team_id as string | null) ?? null;
+    const held = heldClaimOf(claimRow.data);
     if (!held) return; // nothing held — nothing to reconcile
 
-    const toClinch = (board.pointsToClinch ?? {}) as Record<string, number>;
-    if (isDecided(toClinch, held)) return; // the held team is still the clincher — leave it
+    // The held unit is still the clincher — leave it. Head to head asks of the held
+    // team alone, since a defending team and a leader can both read as decided.
+    const stillDecided =
+      board.scoringModel === "points"
+        ? board.clinch?.clincherId === held.id
+        : isDecided((board.pointsToClinch ?? {}) as Record<string, number>, held.id);
+    if (stillDecided) return;
 
-    await releaseClinchClaim(client, competitionId, held);
+    await releaseClinchClaim(client, competitionId, held.id, held.kind);
   } catch (err) {
     console.error("[reconcileClinchClaim] failed", { competitionId, err });
   }
@@ -1131,11 +1174,12 @@ export interface NotifyCupClinchedInput {
  * Send the clinch push if — and only if — the cup is now decided AND we have not
  * already announced that team.
  *
- * Clinch is DERIVED, never stored: `computeCompetitionLeaderboard` returns
- * `pointsToClinch`, and `<= 0` means clinched. That predicate is duplicated
- * nowhere — it is the same `(pointsToClinch[t.id] ?? 1) <= 0` the board pill and
- * `GamePageHeader` already use, so the notification and the UI cannot disagree
- * about whether the cup is decided.
+ * Clinch is DERIVED, never stored. On a head-to-head Cup
+ * `computeCompetitionLeaderboard` returns `pointsToClinch`, and `<= 0` means
+ * clinched: the same `(pointsToClinch[t.id] ?? 1) <= 0` the board pill and
+ * `GamePageHeader` use. On a points cup it returns `clinch`, from `pointsClinch`,
+ * the same value the hero draws. Either way the notification and the board cannot
+ * disagree. Only 1st sends: places 2+ lock in silence (spec §4).
  *
  * Exactly-once comes from the CONDITIONAL claim (migration 099): the UPDATE only
  * matches when `clinch_notified_team_id IS DISTINCT FROM` the clincher, so two
@@ -1171,7 +1215,7 @@ async function recordClinchOutcome(
   // `already_claimed`, so a REFUSED write recorded itself as correct
   // suppression. Recording them under that label would have re-created the lie
   // in the durable table, which is the one place it would outlive the logs.
-  outcome: "not_head_to_head" | "no_clincher" | "already_claimed" | "claim_error" | "claim_no_row" | "threw",
+  outcome: "no_clincher" | "held_for_finish" | "already_claimed" | "claim_error" | "claim_no_row" | "threw",
   error?: string
 ): Promise<void> {
   await recordPushAttempt(
@@ -1230,42 +1274,16 @@ export async function notifyCupClinchedIfDecided(
       computeCompetitionLeaderboard(admin, input.competitionId),
       admin
         .from("competitions")
-        .select("clinch_notified_team_id")
+        .select(CLAIM_COLUMNS)
         .eq("id", input.competitionId)
         .maybeSingle(),
     ]);
-    const heldClaim = (claimRow.data?.clinch_notified_team_id as string | null) ?? null;
-
-    // Ruling 4 (PR 4): head to head owns CUP clinch. No other competition type
-    // fires one. A points race computes `pointsToClinch` all the same — the
-    // placement arithmetic does not know what kind of cup it is in — so without
-    // this the push would go out the day a points leader's margin passed the
-    // points left to play, announcing a "clinch" nobody set out to race for.
-    // Production had run this check 25 times on points cups (BBMI 2024, 2025),
-    // all `no_clincher`, so nothing has misfired yet; this closes it by type
-    // rather than by the numbers happening to fall short.
-    //
-    // Recorded as its OWN outcome, not folded into `no_clincher`: "skipped
-    // because the cup is not head to head" and "ran and found nobody decided"
-    // are different facts, and the durable row is where the next audit reads
-    // them. The type comes from the board's own resolution, so the two cannot
-    // disagree about what kind of cup this is.
-    if (board.scoringModel !== "match_play") {
-      console.info("[push] clinch check: not_head_to_head", {
-        competitionId: input.competitionId,
-        scoringModel: board.scoringModel,
-      });
-      await recordClinchOutcome(admin, input, "not_head_to_head");
-      return;
-    }
+    const held = heldClaimOf(claimRow.data);
+    const heldClaim = held?.id ?? null;
 
     const teams = (board.teams ?? []) as { id: string; name: string | null }[];
     const toClinch = (board.pointsToClinch ?? {}) as Record<string, number>;
-    // Pure substitution for the inline `(board.pointsToClinch?.[t.id] ?? 1) <= 0`
-    // this replaced — same expression, now shared with `reconcileClinchClaim` via
-    // `isDecided` so the two paths can't drift on what "decided" means. Behaviour
-    // unchanged; #839's tests pin this path's outcomes, not the literal line.
-    const clincher = teams.find((t) => isDecided(toClinch, t.id)) ?? null;
+    const clincher = clincherOf(board);
     if (!clincher) {
       // OUTCOME: no_clincher. The exit under investigation — the board says the
       // cup is decided and this says it isn't. The numbers go in the line so the
@@ -1286,7 +1304,20 @@ export async function notifyCupClinchedIfDecided(
       // that is no longer decided, give it back — otherwise that team re-clinching
       // later would be suppressed as "already announced" and go unreported.
       // Releasing sends NOTHING; it only restores eligibility.
-      if (heldClaim) await releaseClinchClaim(admin, input.competitionId, heldClaim);
+      if (held) await releaseClinchClaim(admin, input.competitionId, held.id, held.kind);
+      return;
+    }
+
+    // OUTCOME: held_for_finish. A finish that empties a points cup's board decides
+    // nothing yet: someone may add another game (spec §5). Finishing the cup runs
+    // this check again, and that is when it sends. Nothing is claimed, so nothing
+    // needs giving back.
+    if (board.clinch?.awaitingFinish) {
+      console.info("[push] clinch check: held_for_finish", {
+        competitionId: input.competitionId,
+        clincherTeamId: clincher.id,
+      });
+      await recordClinchOutcome(admin, input, "held_for_finish");
       return;
     }
 
@@ -1299,13 +1330,9 @@ export async function notifyCupClinchedIfDecided(
       await admin.from("competitions").select("name, scoring_model").eq("id", input.competitionId).maybeSingle(),
       "cup"
     );
-    const assignments = rowsOrThrow(
-      await admin.from("team_assignments").select("user_id").eq("competition_id", input.competitionId),
-      "cup roster"
-    );
-    const audience = assignments.map((r: { user_id: string }) => r.user_id);
+    const audience = await cupAudience(admin, board, input.competitionId);
 
-    const claim = await claimClinchNotification(admin, input.competitionId, clincher.id);
+    const claim = await claimClinchNotification(admin, input.competitionId, clincher.id, clincher.kind);
 
     if (claim.outcome === "already_claimed") {
       // CORRECT suppression — one push per clinch, not one per finalize. Logged
@@ -1378,7 +1405,12 @@ export async function notifyCupClinchedIfDecided(
     // only: the clincher is already named in the title, and the line exists to
     // say by how much.
     const totals = (board.unitTotals ?? {}) as Record<string, number>;
-    const standingsLine = formatClinchMargin(teams.map((t) => totals[t.id] ?? 0));
+    // A points cup's numbers are decimals (the 2026-10-22 rule). A head-to-head
+    // Cup's push stays as it was until #1695 decides it.
+    const standingsLine = formatClinchMargin(
+      board.units.map((u) => totals[u.id] ?? 0),
+      board.scoringModel === "points" ? fmtPts : formatPoints
+    );
 
     const sent = await sendPushToUsers(
       audience,
@@ -1414,7 +1446,7 @@ export async function notifyCupClinchedIfDecided(
         clincherTeamId: clincher.id,
         error: sent.error,
       });
-      await releaseClinchClaim(admin, input.competitionId, clincher.id);
+      await releaseClinchClaim(admin, input.competitionId, clincher.id, clincher.kind);
     }
   } catch (err) {
     // OUTCOME: threw. Same `[push] clinch check:` prefix as the other three so
@@ -1448,5 +1480,61 @@ export async function notifyCupClinchedIfDecided(
         err instanceof Error ? err.message : String(err)
       );
     }
+  }
+}
+
+/** Who hears about a cup's result. A teamless race has no roster: its units are
+ *  the crew it is telling. A failed read throws before anything is sent. */
+async function cupAudience(
+  admin: SupabaseClient,
+  board: { teamless?: boolean; units: { id: string }[] },
+  competitionId: string
+): Promise<string[]> {
+  if (board.teamless) return board.units.map((u) => u.id);
+  return rowsOrThrow(
+    await admin.from("team_assignments").select("user_id").eq("competition_id", competitionId),
+    "cup roster"
+  ).map((r: { user_id: string }) => r.user_id);
+}
+
+/**
+ * A shared 1st at Final: "It's a tie! {A} and {B} share {cup}" (spec §5, v2.8).
+ *
+ * The clinch claim holds one unit, so it cannot say "once" for two. The caller's
+ * conditional status flip does: `competitions.finish` calls this only from the
+ * request whose update moved the cup to `completed`. Best-effort like every push
+ * after a commit (#1424): the client is built inside the try, and nothing here
+ * can report the finish as failed.
+ */
+export async function notifyCupSharedFirst(input: NotifyCupClinchedInput): Promise<void> {
+  try {
+    const admin = input.admin ?? createAdminClient();
+    const board = await computeCompetitionLeaderboard(admin, input.competitionId);
+    const winnerIds = board.clinch?.final ? board.clinch.winnerIds : [];
+    if (winnerIds.length < 2) {
+      console.info("[push] shared first: not shared", { competitionId: input.competitionId, winners: winnerIds.length });
+      return;
+    }
+    const comp = maybeRowOrThrow(
+      await admin.from("competitions").select("name").eq("id", input.competitionId).maybeSingle(),
+      "cup"
+    );
+    const audience = await cupAudience(admin, board, input.competitionId);
+    const names = winnerIds.map((id) => board.units.find((u) => u.id === id)?.name ?? "Someone");
+    await sendPushToUsers(
+      audience,
+      "game_results",
+      {
+        ...COPY.sharedFirst(names, (comp?.name as string | null) ?? ""),
+        url: cupUrl(input.tripId),
+        tag: `bt-clinch-${input.competitionId}`,
+      },
+      {
+        excludeUserId: input.actorUserId,
+        context: { trigger: "cup_shared", tripId: input.tripId, competitionId: input.competitionId, actorUserId: input.actorUserId },
+      }
+    );
+  } catch (err) {
+    console.error("[push] shared first: threw", { competitionId: input.competitionId, err });
   }
 }

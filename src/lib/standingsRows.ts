@@ -1,3 +1,5 @@
+import { finalPlaces } from "./finalPlaces";
+
 /**
  * THE STANDINGS ROWS of a points tournament (PR 9c-2) — teams, or in a
  * tournament of individuals its people — as one pure model, so ranking, the
@@ -22,8 +24,10 @@
 
 export interface StandingsUnit {
   id: string;
-  /** What the row reads: a team's SHORT name (a label slot), a person's name. */
+  /** What the row reads: a team's or a person's full name (a subject slot). */
   label: string;
+  /** What a team's badge reads. Absent for a person, who has no badge. */
+  shortName?: string | null;
   /** A team's colour; null for a person. */
   color: string | null;
   hasResult: boolean;
@@ -32,6 +36,7 @@ export interface StandingsUnit {
 export interface StandingsRow {
   id: string;
   label: string;
+  shortName: string | null;
   color: string | null;
   banked: number;
   /** Σ of this unit's live-game projections; 0 when nothing is live for it. */
@@ -39,6 +44,10 @@ export interface StandingsRow {
   hasResult: boolean;
   /** Competition ranking (1, 2, 2, 4) on BANKED; null = no points yet. */
   rank: number | null;
+  /** Level with another ranked unit: "T3" on both rows. */
+  shared: boolean;
+  /** Nothing left can move this unit's place (`pointsClinch`). */
+  locked: boolean;
   isViewer: boolean;
   /** The two bar segments as % of the shared scale. */
   bankedPct: number;
@@ -50,6 +59,10 @@ export function standingsRows(p: {
   unitTotals: Record<string, number>;
   /** gameId → unitId → projected points, live games only. */
   projections: Record<string, Record<string, number>>;
+  /** The units whose place is locked. */
+  lockedUnitIds?: readonly string[];
+  /** The order an owner set for exact ties. Passed only at Final. */
+  tiebreakOrder?: readonly string[] | null;
   /** The viewer's unit: their team, or in a teamless race themselves. */
   viewerUnitId: string | null | undefined;
 }): StandingsRow[] {
@@ -62,18 +75,14 @@ export function standingsRows(p: {
     projected: projectedOf(u.id),
   }));
 
-  const scored = base
-    .filter((r) => r.u.hasResult)
-    .sort((a, b) => b.banked - a.banked || a.u.label.localeCompare(b.u.label));
+  const hasResult = base.filter((r) => r.u.hasResult);
+  const placeOf = finalPlaces(hasResult.map((r) => r.u.id), Object.fromEntries(hasResult.map((r) => [r.u.id, r.banked])), p.tiebreakOrder);
+  const scored = hasResult.sort(
+    (a, b) => placeOf.get(a.u.id)!.place - placeOf.get(b.u.id)!.place || a.u.label.localeCompare(b.u.label)
+  );
   const waiting = base
     .filter((r) => !r.u.hasResult)
     .sort((a, b) => b.projected - a.projected || a.u.label.localeCompare(b.u.label));
-
-  const rankOf = new Map<string, number>();
-  scored.forEach((r, i) => {
-    const prev = scored[i - 1];
-    rankOf.set(r.u.id, prev && prev.banked === r.banked ? rankOf.get(prev.u.id)! : i + 1);
-  });
 
   const scale = Math.max(0, ...base.map((r) => r.banked + r.projected));
   const pct = (n: number) => (scale > 0 ? (n / scale) * 100 : 0);
@@ -81,11 +90,14 @@ export function standingsRows(p: {
   return [...scored, ...waiting].map((r) => ({
     id: r.u.id,
     label: r.u.label,
+    shortName: r.u.shortName ?? null,
     color: r.u.color,
     banked: r.banked,
     projected: r.projected,
     hasResult: r.u.hasResult,
-    rank: rankOf.get(r.u.id) ?? null,
+    rank: placeOf.get(r.u.id)?.place ?? null,
+    shared: placeOf.get(r.u.id)?.shared ?? false,
+    locked: r.u.hasResult && (p.lockedUnitIds ?? []).includes(r.u.id),
     isViewer: p.viewerUnitId != null && r.u.id === p.viewerUnitId,
     bankedPct: pct(r.banked),
     projectedPct: pct(r.projected),

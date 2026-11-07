@@ -527,6 +527,16 @@ Desktop drawer:    var(--color-bt-overlay-drawer)
 
 Drawer scrims are intentionally lighter so the underlying page reads as still-present context (you can see the row you tapped), not blacked-out behind a modal.
 
+### Decision points open themselves
+
+A decision only one role can make (Zach, 2026-11-07, `docs/CLINCH_AND_PODIUM.md` §5) opens as a modal (`Sheet`) for whoever has to decide, and stays the primary surface until they decide:
+
+- **It opens on arrival, once per visit.** Not on a re-render or a tab switch inside the visit, and again on the next visit until it is decided.
+- **Only for whoever decides.** Everyone else sees the state it leaves, never the ask.
+- **✕ decides nothing.** The same ask waits, expanded with its answers, in `NeedsAttentionCard` for the rest of the visit.
+
+`NeedsAttentionCard` is the fallback, never the first surface for a decision. It holds what was dismissed without deciding, and optional follow-ups that nothing waits on (a tie kept at Final, for a tiebreaker played later). The first instance is the points cup's "All games are in. Head to the winner's circle?".
+
 ---
 
 ## Section 5: Button System
@@ -749,18 +759,22 @@ Every team has two names: `teams.name` (the full one, capped at 34 in the app �
 a LABEL attached to something else.**
 
 - **Subject** — the team *is* the content. The cup header, the Edit Team modal,
-  the team chat room header, a sentence about the team ("Huge PNS Energy has
-  clinched"), a delete confirmation, an `aria-label`.
+  the team chat room header, a points cup's standings row, a sentence about the
+  team ("Huge PNS Energy has clinched"), a delete confirmation, an `aria-label`.
 - **Label** — the name identifies something else: it sits beside a `vs`, a score,
   a chip, or an avatar; it heads a column; or it keys a row that is really about
   a game, a placement, or a person.
 
 **The tiebreak, for the case that looks like both.** When a team's name appears
 *in a set alongside its peers*, it is a label — because the reader is comparing
-rows, not reading one. A standings row is scanned vertically against nine others,
-so the name is the key to a row rather than its content. This is what decides the
-cup standings row, the placement row, and the pick'em side cards, all of which are
-defensibly "about" a team.
+rows, not reading one. This is what decides the placement row and the pick'em
+side cards, both defensibly "about" a team.
+
+**The standings row is the exception (Zach, 2026-11-05).** It sat on the label side
+of that tiebreak until the clinch watch made it the row the crew reads a cup's story
+from, so it is a subject slot now: the full name on its own line, the bar beneath,
+and the short name stays on the badge. Giving the name the row's whole width is what
+made that affordable, the same layout answer as the cup header below.
 
 **Decided per slot, at build time.** Never measure the rendered text and choose,
 and never auto-shrink the font to fit. Both make a slot's appearance depend on how

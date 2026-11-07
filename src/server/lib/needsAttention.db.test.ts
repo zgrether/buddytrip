@@ -65,6 +65,6 @@ describe("the leaderboard's Needs attention", () => {
     await ctx.assignTeam(competitionId, teamIds[0], [owner]);
     await ctx.assignTeam(competitionId, teamIds[1], [member]);
     await ctx.caller().games.create({ tripId, competitionId, gameTypeId: "gtt_stroke_play", name: "Stroke", pointsTotal: 10 });
-    expect(await attention(tripId, competitionId)).toEqual({ offTeam: null, emptyTeams: [], uneven: null });
+    expect(await attention(tripId, competitionId)).toEqual({ offTeam: null, emptyTeams: [], uneven: null, finishCup: false, ties: [] });
   });
 });
