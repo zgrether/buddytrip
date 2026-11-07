@@ -353,8 +353,12 @@ export function CompetitionHero({
                 new height against 12px of reclaimed slack, so the panel grows
                 ~8px rather than ~20px. */}
             <div className="mt-3 flex items-center justify-between gap-3">
-              <TeamName team={a} onEditTeam={onEditTeam} align="left" overArt={cupComplete} />
-              <TeamName team={b} onEditTeam={onEditTeam} align="right" overArt={cupComplete} />
+              {/* The names always sit across the trophy (team A over its handle and
+                  bowl edge), so they always take the over-art ink and halo (#1703):
+                  no glow value lets a name clear 4.5 there. The numerals are large
+                  text (3 : 1), so they keep the over-art treatment for Final only. */}
+              <TeamName team={a} onEditTeam={onEditTeam} align="left" overArt />
+              <TeamName team={b} onEditTeam={onEditTeam} align="right" overArt />
             </div>
 
             {/* Scores — the two big team-colored numbers flanking the trophy.
@@ -1064,7 +1068,7 @@ function TeamName({
   team: LBTeam;
   onEditTeam?: (teamId: string) => void;
   align: "left" | "right";
-  /** At Final the name sits over the lit trophy: the over-art ink and halo (#1700). */
+  /** The name sits over the trophy: the over-art ink and halo (#1700, #1703). */
   overArt?: boolean;
 }) {
   const nameRef = useRef<HTMLSpanElement>(null);
@@ -1190,6 +1194,7 @@ function TeamName({
             ...(overArt ? { color: teamInkOverArt(team.color), textShadow: TEXT_OVER_ART_SHADOW } : { color: teamInk(team.color) }),
           }}
           data-testid={`hero-team-name-${align === "left" ? "a" : "b"}`}
+          data-team-color={team.color}
         >
           {team.name}
         </span>

@@ -70,23 +70,36 @@ describe("at Final, over the lit trophy", () => {
   });
 });
 
-describe("CONTROL: before Final the trophy is not lit", () => {
-  it("clinched with games left: the card ink, no halo, and both scores a matched pair", () => {
+describe("the team names sit across the trophy at every stage (#1703)", () => {
+  it("before Final too, both names take the over-art ink and halo", () => {
+    const html = hero({ clincher: null, cupComplete: false, gamesRemaining: 3 });
+    expect(tag(html, "hero-team-name-a")).toContain(overArt("#4ade80"));
+    expect(tag(html, "hero-team-name-b")).toContain(overArt("#3b82f6"));
+  });
+  it("on a shared Final, the names too", () => {
+    const html = hero({ clincher: null, cupComplete: false, cupShared: true, teamTotals: { a: 30, b: 30 } });
+    expect(tag(html, "hero-team-name-a")).toContain(overArt("#4ade80"));
+    expect(tag(html, "hero-team-name-b")).toContain(overArt("#3b82f6"));
+  });
+});
+
+describe("CONTROL: before Final the numerals are large text, so no halo", () => {
+  it("clinched with games left: the scores keep the card ink, unhaloed, and a matched pair", () => {
     const html = hero({ clincher: teams[1], cupComplete: false, gamesRemaining: 2 });
     for (const [id, color] of [["a", "#4ade80"], ["b", "#3b82f6"]] as const) {
-      expect(tag(html, `hero-team-name-${id}`)).toContain(`color:${teamInk(color)}`);
       expect(tag(html, `hero-score-${id}`)).toContain(`color:${teamInk(color)}`);
+      expect(tag(html, `hero-score-${id}`)).not.toContain("text-shadow");
       expect(tag(html, `hero-score-${id}`)).toContain("font-size:58px;font-weight:700");
     }
-    expect(html).not.toContain("text-shadow");
     expect(html).not.toContain("data-lost");
   });
 
-  it("a shared Final has no loser: no step, no halo, the scores stay a pair", () => {
+  it("a shared Final has no loser: no step, and the scores unhaloed", () => {
     const html = hero({ clincher: null, cupComplete: false, cupShared: true, teamTotals: { a: 30, b: 30 } });
     expect(tag(html, "hero-score-a")).toContain("font-weight:700");
     expect(tag(html, "hero-score-b")).toContain("font-weight:700");
+    expect(tag(html, "hero-score-a")).not.toContain("text-shadow");
+    expect(tag(html, "hero-score-b")).not.toContain("text-shadow");
     expect(html).not.toContain("data-lost");
-    expect(html).not.toContain("text-shadow");
   });
 });
