@@ -67,6 +67,7 @@ import { PlayerChip } from "@/components/games/PlayerChip";
 import type { Participant } from "@/components/games/types";
 import { removeMatchRow } from "@/lib/matchDraft";
 import { PLAYER_COLORS } from "@/lib/strokePlayConfig";
+import { teamInk } from "@/lib/teamTextColor";
 import type { DraftMatchConfig } from "@/lib/configDraft";
 
 /** The one unified match-play draft row — shared with the settings draft. */
@@ -364,7 +365,7 @@ export function MatchSetup({
   const headerTeam = (slot: "a" | "b") => {
     const t = teamForSlot(slot);
     return t
-      ? { label: t.short_name, color: t.color }
+      ? { label: t.short_name, color: teamInk(t.color) } // text, so the text ink (#1703)
       : { label: slot === "a" ? "Side A" : "Side B", color: "var(--color-bt-text-dim)" };
   };
   const a = headerTeam("a");
@@ -386,9 +387,9 @@ export function MatchSetup({
       >
         <span />
         <span />
-        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: a.color }}>{a.label}</span>
+        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: a.color }} data-testid="match-setup-side-a">{a.label}</span>
         <span className="text-center" style={{ fontSize: 11, fontWeight: 700, color: "var(--color-bt-text-dim)" }}>vs</span>
-        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: b.color }}>{b.label}</span>
+        <span className="truncate text-center" style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.03em", color: b.color }} data-testid="match-setup-side-b">{b.label}</span>
         <span />
       </div>
 
