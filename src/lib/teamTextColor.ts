@@ -87,3 +87,18 @@ export function teamTextColor(bgColor: string | null | undefined): string {
 export function teamInk(color: string): string {
   return `color-mix(in srgb, ${color} var(--color-bt-team-ink), black)`;
 }
+
+/**
+ * teamInkOverArt — a team colour as text over the lit trophy, where `teamInk`
+ * fails: the bowl is mid-tone behind the points hero's Final names, and blue
+ * measured 1.17 : 1 against it in dark. Lifted toward white in dark and darker
+ * in light (`--color-bt-team-ink-over-art`), and always paired with
+ * `TEXT_OVER_ART_SHADOW`, which is what actually gives the glyphs a backdrop:
+ * even white text reaches only about 3 : 1 on that bowl unaided.
+ */
+export function teamInkOverArt(color: string): string {
+  return `color-mix(in srgb, ${color} var(--color-bt-team-ink-over-art), var(--color-bt-team-ink-over-art-toward))`;
+}
+
+/** The halo for text over the lit trophy, in the card's own tone per theme. */
+export const TEXT_OVER_ART_SHADOW = "var(--shadow-text-over-art)";

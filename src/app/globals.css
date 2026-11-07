@@ -112,6 +112,13 @@
    * lands at 4.53). Dark is 100% — color-mix returns the colour untouched, so
    * there is no dark delta at all. */
   --color-bt-team-ink: 67%;
+  /* A team colour as TEXT OVER THE LIT TROPHY (the points hero's Final names).
+   * The bowl is mid-tone where the names sit, so no ink alone clears it: the
+   * ink moves away from the bowl (darker here, lighter in dark) and a halo in
+   * the card's own tone gives each glyph a backdrop. `teamInkOverArt`. */
+  --color-bt-team-ink-over-art: 45%;
+  --color-bt-team-ink-over-art-toward: black;
+  --shadow-text-over-art: 0 0 8px rgba(255, 255, 255, 0.95), 0 0 3px rgba(255, 255, 255, 0.95), 0 0 1px rgba(255, 255, 255, 1);
 
   --color-bt-hero-neutral: linear-gradient(158deg, #ffffff 0%, #f4f7fa 100%);
 
@@ -327,6 +334,9 @@
    * inherited by dark, so changing the light value silently changes dark too.
    * An absent override is not an absent change. */
   --color-bt-team-ink: 100%;
+  --color-bt-team-ink-over-art: 40%;
+  --color-bt-team-ink-over-art-toward: white;
+  --shadow-text-over-art: 0 0 8px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 1);
   --color-bt-hero-neutral: linear-gradient(158deg, #222e44 0%, #1a2231 100%);
   /* Golf score colours — the pastels and tints these have always had. */
   --color-bt-zebra: rgba(255, 255, 255, 0.025);

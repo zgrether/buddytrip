@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import { Avatar } from "@/components/Avatar";
 import { TeamBadge } from "@/components/TeamBadge";
-import { teamInk } from "@/lib/teamTextColor";
+import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW } from "@/lib/teamTextColor";
 import type { ClinchWatch } from "@/lib/pointsClinch";
 import { pointsHeroStory, type HeroCupState } from "@/lib/pointsHeroStory";
 import { CLINCH_STORY_WORD as WORD, fmtPts, ordinalShort } from "@/lib/vocabulary";
@@ -133,6 +133,9 @@ export function PointsHeroTiers({
   const sole = subjects.length === 1 ? subjects[0] : null;
   const inkOf = (u: PointsHeroUnit) => (u.color ? teamInk(u.color) : PERSON_COLOR);
   const subjectColor = sole ? inkOf(sole) : "var(--color-bt-text)";
+  // At Final the names sit on the lit bowl, where the card ink cannot hold.
+  const nameStyle = (u: PointsHeroUnit) =>
+    final ? { color: teamInkOverArt(u.color ?? PERSON_COLOR), textShadow: TEXT_OVER_ART_SHADOW } : { color: inkOf(u) };
 
   return (
     <>
@@ -143,7 +146,7 @@ export function PointsHeroTiers({
             {subjects.map((u, i) => (
               <Fragment key={u.id}>
                 {i > 0 && WORD.levelJoiner}
-                <span style={{ color: inkOf(u) }} data-testid={`points-hero-unit-name-${u.id}`}>
+                <span style={nameStyle(u)} data-testid={`points-hero-unit-name-${u.id}`}>
                   {u.name}
                 </span>
               </Fragment>

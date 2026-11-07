@@ -6,7 +6,7 @@ import { PointsHeroTiers, type PointsHeroUnit } from "./PointsHeroTiers";
 import { CompetitionHero } from "./CompetitionHero";
 import { ClinchCelebration } from "./ClinchCelebration";
 import type { ClinchWatch } from "@/lib/pointsClinch";
-import { teamInk } from "@/lib/teamTextColor";
+import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW } from "@/lib/teamTextColor";
 import type { LBTeam } from "./CompetitionLeaderboard";
 
 /**
@@ -133,9 +133,22 @@ describe("the story tier", () => {
     const html = render(watch({ place: null, gamesLeft: 0, leaderIds: [] }), true, teams, { he: 20, ba: 20, hs: 9 });
     expect(html).toContain(">Hot Eagles Cold Beers</span> &amp; <span");
     expect(tag(html, "points-hero-unit")).toContain("color:var(--color-bt-text)");
-    expect(tag(html, "points-hero-unit-name-he")).toContain(`color:${teamInk("#3b82f6")}`);
-    expect(tag(html, "points-hero-unit-name-ba")).toContain(`color:${teamInk("#22c55e")}`);
+    expect(tag(html, "points-hero-unit-name-he")).toContain(`color:${teamInkOverArt("#3b82f6")}`);
+    expect(tag(html, "points-hero-unit-name-ba")).toContain(`color:${teamInkOverArt("#22c55e")}`);
     expect(tag(html, "points-hero-headline")).toContain("color:var(--color-bt-text)");
+  });
+  it("at Final the names sit on the lit bowl: the over-art ink and its halo, for a tie and for one winner", () => {
+    const tied = render(watch({ place: null, gamesLeft: 0, leaderIds: [] }), true, teams, { he: 20, ba: 20, hs: 9 });
+    for (const [id, color] of [["he", "#3b82f6"], ["ba", "#22c55e"]] as const) {
+      expect(tag(tied, `points-hero-unit-name-${id}`)).toContain(`color:${teamInkOverArt(color)};text-shadow:${TEXT_OVER_ART_SHADOW}`);
+    }
+    const sole = render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true);
+    expect(tag(sole, "points-hero-unit-name-he")).toContain(`text-shadow:${TEXT_OVER_ART_SHADOW}`);
+  });
+  it("CONTROL: before Final the trophy is faint, so the name keeps the card's ink and no halo", () => {
+    const tag0 = tag(render(watch()), "points-hero-unit-name-he");
+    expect(tag0).toContain(`color:${teamInk("#3b82f6")}`);
+    expect(tag0).not.toContain("text-shadow");
   });
   it("a shared 1st's line is It's a tie! at 20/800, full strength, in place of the Final line", () => {
     const html = render(watch({ place: null, gamesLeft: 0, leaderIds: [] }), true, teams, { he: 20, ba: 20, hs: 9 });
