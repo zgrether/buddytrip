@@ -1,7 +1,7 @@
-# Points Cups: Clinch Watch & Place Locks (build spec, v2.8)
+# Points Cups: Clinch Watch & Place Locks (build spec, v2.9)
 
 *Scope: Workflow Wireframes canvas, row 6 only (boards F0–F4). Companion to `COMPETITION_ENGINE.md`.*
-*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy; v2.6 drops the correction-clears-review rule; v2.7 moves ties into the reveal and celebrates a tie; v2.8 makes decision points open themselves. Model: Opus. One branch, per-task commits.*
+*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy; v2.6 drops the correction-clears-review rule; v2.7 moves ties into the reveal and celebrates a tie; v2.8 makes decision points open themselves; v2.9 records the text-over-art treatment. Model: Opus. One branch, per-task commits.*
 
 **Mockups:** `docs/mockups/points-clinch/` (`index.html` with all five boards live, plus a PNG per board). They are the visual target. **The spec governs behaviour:** where they disagree, the spec wins, and you report it. The trophy there is a static port; use `CupTrophy` and the tokens.
 
@@ -102,6 +102,7 @@ Mirrors the match-play hero tier for tier. The pinned bar and the game-page head
   - **Projection:** only for formats that project (manual games never do). The hatched extension shows the lead if today holds. A **dashed gold post** marks where the line lands once the live games bank.
   - **Caption:** `+4.5 on Bogey Army`. Right side: a `TeamBadge` (20px) per contender; an `out` unit is faded to 28%.
   - Hidden when final.
+- **Text over the lit trophy (v2.9, measured at 390px in both themes):** a team-coloured name or score over the bowl gets the *over-art* treatment, tokens set per theme in `globals.css`. **Ink:** the team colour moved away from the bowl (40% toward white in dark, 45% toward black in light). **Halo:** a text glow in the card's own tone. It applies to the winner's name line and the single winner's 74px score. The tied score stays plain text colour. Before Final the trophy is faint, so nothing changes there.
 - **No burst at a clinch.** The push is the announcement.
 - **People:** fill and post use `PERSON_COLOR` (accent); badges use `Avatar`.
 
