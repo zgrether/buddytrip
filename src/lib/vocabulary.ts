@@ -369,6 +369,8 @@ export const CLINCH_STORY_WORD = {
   clinchedTheCup: (name: string) => `${name} clinched the cup`,
   isOut: (names: string, count: number) => `${names} ${count === 1 ? "is" : "are"} out`,
   placeShared: (place: string) => `${place} shared`,
+  /** A locked place's ribbon or square, read aloud (v2.10): "2nd place, locked". */
+  placeLocked: (place: string) => `${place} place, locked`,
   levelJoiner: " & ",
   joinLevel: (names: readonly string[]) => names.join(" & "),
   clinchWatchFor: (place: string) => `Clinch watch · ${place}`,

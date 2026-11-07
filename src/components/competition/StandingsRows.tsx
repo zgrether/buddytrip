@@ -1,9 +1,10 @@
 "use client";
 
 import { standingsRows, type StandingsUnit } from "@/lib/standingsRows";
-import { fmtPts, sharedPlaceWord } from "@/lib/vocabulary";
+import { CLINCH_STORY_WORD, fmtPts, ordinalShort, sharedPlaceWord } from "@/lib/vocabulary";
 import { teamInk } from "@/lib/teamTextColor";
 import { TeamBadge } from "@/components/TeamBadge";
+import { PlaceRibbon } from "./PlaceRibbon";
 
 /**
  * A POINTS TOURNAMENT'S STANDINGS (PR 9c-2) — its teams, or in a tournament of
@@ -24,8 +25,10 @@ import { TeamBadge } from "@/components/TeamBadge";
  *  - No game-by-game expansion: the completed tiles are that view (9c-2 look).
  *  - The FULL name, on its own line with the bar beneath: a standings row is a
  *    subject slot (Zach, 2026-11-05; STYLE_GUIDE reverses the old label ruling).
- *  - A LOCKED place (`pointsClinch`) puts the rank on a filled square; an open
- *    one keeps the plain dim number. A shared place reads "T3" on both rows.
+ *  - A LOCKED place earns its ribbon (spec §2, v2.10): a gold, silver or bronze
+ *    rosette for 1st to 3rd, the number in an outlined square below that. An
+ *    open place keeps the plain dim number, and an open tie reads "T3". A locked
+ *    tie needs no "T": both rows carry the same ribbon or square.
  */
 
 /** The hatch — the unit's colour, striped over a faded copy of itself. The first
@@ -38,27 +41,44 @@ export const PERSON_COLOR = "var(--color-bt-accent)";
 
 /** The rank column, the gap after it, and the team badge with its gap: what the
  *  bar's line indents by to sit under the name. */
-const RANK_SLOT = 18;
+const RANK_SLOT = 26;
 const RANK_GAP = 12;
 const BADGE_SIZE = 18;
 const BADGE_GAP = 8;
 
 function RankChip({ id, rank, shared, locked }: { id: string; rank: number | null; shared: boolean; locked: boolean }) {
-  const text = rank == null ? "–" : shared ? sharedPlaceWord(rank) : rank;
+  const testId = `standings-rank-${id}`;
+  const slot = { width: RANK_SLOT } as const;
+  if (locked && rank != null && rank <= 3) {
+    return (
+      <span className="flex shrink-0 items-center justify-center" style={slot}>
+        <PlaceRibbon place={rank as 1 | 2 | 3} testId={testId} />
+      </span>
+    );
+  }
+  if (locked && rank != null) {
+    return (
+      <span className="flex shrink-0 items-center justify-center" style={slot}>
+        <span
+          role="img"
+          aria-label={CLINCH_STORY_WORD.placeLocked(ordinalShort(rank))}
+          className="flex items-center justify-center text-[12px] font-semibold tabular-nums"
+          style={{ width: 20, height: 20, borderRadius: 5, border: "1.5px solid var(--color-bt-text-dim)", color: "var(--color-bt-text-dim)" }}
+          data-testid={testId}
+          data-locked="true"
+        >
+          {rank}
+        </span>
+      </span>
+    );
+  }
   return (
     <span
       className="flex shrink-0 items-center justify-center text-[12px] font-semibold tabular-nums"
-      style={{
-        width: RANK_SLOT,
-        height: RANK_SLOT,
-        borderRadius: 5,
-        background: locked ? "var(--color-bt-text)" : undefined,
-        color: locked ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-      }}
-      data-testid={`standings-rank-${id}`}
-      data-locked={locked ? "true" : undefined}
+      style={{ ...slot, color: "var(--color-bt-text-dim)" }}
+      data-testid={testId}
     >
-      {text}
+      {rank == null ? "–" : shared ? sharedPlaceWord(rank) : rank}
     </span>
   );
 }

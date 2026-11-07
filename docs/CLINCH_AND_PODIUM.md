@@ -1,7 +1,7 @@
-# Points Cups: Clinch Watch & Place Locks (build spec, v2.9)
+# Points Cups: Clinch Watch & Place Locks (build spec, v2.10)
 
 *Scope: Workflow Wireframes canvas, row 6 only (boards F0–F4). Companion to `COMPETITION_ENGINE.md`.*
-*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy; v2.6 drops the correction-clears-review rule; v2.7 moves ties into the reveal and celebrates a tie; v2.8 makes decision points open themselves; v2.9 records the text-over-art treatment. Model: Opus. One branch, per-task commits.*
+*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy; v2.6 drops the correction-clears-review rule; v2.7 moves ties into the reveal and celebrates a tie; v2.8 makes decision points open themselves; v2.9 records the text-over-art treatment; v2.10 replaces the locked-place chip with place ribbons. Model: Opus. One branch, per-task commits.*
 
 **Mockups:** `docs/mockups/points-clinch/` (`index.html` with all five boards live, plus a PNG per board). They are the visual target. **The spec governs behaviour:** where they disagree, the spec wins, and you report it. The trophy there is a static port; use `CupTrophy` and the tokens.
 
@@ -66,7 +66,11 @@ O(n²), bounded for any cup size, order-free (never names a "next game"). It has
 - **Full names.** The bar goes on its own line under the name, indented to the name's left edge. Long names wrap (34 max, so 2 lines at most).
 - **Shared 1st:** every tied leader row uses the big leader number.
 - **Projection unchanged:** banked solid, live hatched, solid at finalize. "If today holds" legend only while something projects.
-- **Locked place:** the rank number on a filled `--color-bt-text` square (18px, radius 5). Open places: today's dim number. **Shared:** "T3" on both rows.
+- **Locked place (v2.10, place ribbons):** a locked place earns its ribbon.
+  - **1st–3rd:** a prize rosette in gold / silver / bronze metal (scalloped disc, two tails, rank number engraved in the darker metal), about 24×32 in a 26px rank slot. Metal colours, never team colours, so they can't clash. One small shared `PlaceRibbon` component (SVG), with an aria-label like "2nd place, locked".
+  - **4th and below, locked:** the rank number in a quiet outlined square (1.5px `--color-bt-text-dim` border, no fill).
+  - **Open place:** today's plain dim number.
+  - **Shared place:** both rows get the same ribbon (two gold rosettes for a shared 1st); no "T1" text needed when the place is locked. An open tie keeps "T1" as plain dim text.
 - Points use `fmtPts`, so decimals ("2.5"), per the 2026-10-22 rule.
 
 **STOP** when this first renders. Zach looks on device.

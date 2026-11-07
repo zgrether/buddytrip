@@ -93,18 +93,64 @@ describe("the rank chip (spec §2)", () => {
     return { tag: html.slice(open, close + 1), text: html.slice(close + 1, html.indexOf("<", close)) };
   };
 
-  it("a locked place sits on a filled square; an open one is the plain dim number", () => {
-    const html = render({ lockedUnitIds: ["blue"] });
-    expect(chip(html, "blue").tag).toContain("background:var(--color-bt-text)");
-    expect(chip(html, "blue").tag).toContain("color:var(--color-bt-base)");
-    expect(chip(html, "blue").tag).toContain("border-radius:5px");
-    expect(chip(html, "red").tag).not.toContain("background:");
-    expect(chip(html, "red").tag).toContain("color:var(--color-bt-text-dim)");
+  /** Four placed teams, for 1st to 4th. */
+  const four = [
+    { id: "a", label: "A", color: "#3b82f6", hasResult: true },
+    { id: "b", label: "B", color: "#ef4444", hasResult: true },
+    { id: "c", label: "C", color: "#22c55e", hasResult: true },
+    { id: "d", label: "D", color: "#a855f7", hasResult: true },
+  ];
+  const placed = (over: Partial<Parameters<typeof StandingsRows>[0]> = {}) =>
+    render({ units: four, unitTotals: { a: 9, b: 7, c: 5, d: 3 }, projections: {}, viewerUnitId: null, ...over });
+
+  it("a locked 1st, 2nd and 3rd each wear their own metal's ribbon, named for a screen reader", () => {
+    const html = placed({ lockedUnitIds: ["a", "b", "c"] });
+    for (const [id, medal, place] of [["a", "gold", "1st"], ["b", "silver", "2nd"], ["c", "bronze", "3rd"]] as const) {
+      const t = chip(html, id).tag;
+      expect(t.startsWith("<svg")).toBe(true);
+      expect(t).toContain(`data-medal="${medal}"`);
+      expect(t).toContain(`aria-label="${place} place, locked"`);
+    }
+    expect(html).toContain("var(--color-bt-medal-silver-deep)");
   });
-  it("a shared place reads T and the rank on both rows", () => {
-    const html = render({ unitTotals: { blue: 6, red: 6 }, lockedUnitIds: ["blue", "red"] });
-    expect(chip(html, "blue").text).toBe("T1");
-    expect(chip(html, "red").text).toBe("T1");
+  it("the ribbon engraves the rank in the darker metal, never a team colour", () => {
+    const html = placed({ lockedUnitIds: ["b"] });
+    const svg = html.slice(html.indexOf('data-testid="standings-rank-b"'), html.indexOf("</svg>", html.indexOf('data-testid="standings-rank-b"')));
+    expect(svg).toMatch(/<text[^>]*fill="var\(--color-bt-medal-silver-deep\)"[^>]*>2<\/text>/);
+    expect(svg).not.toContain("#ef4444");
+  });
+  it("a locked 4th is the number in an outlined square with no fill", () => {
+    const html = placed({ lockedUnitIds: ["d"] });
+    const t = chip(html, "d");
+    expect(t.tag).toContain("border:1.5px solid var(--color-bt-text-dim)");
+    expect(t.tag).not.toContain("background");
+    expect(t.tag).toContain('aria-label="4th place, locked"');
+    expect(t.text).toBe("4");
+  });
+  it("CONTROL: an open place is the plain dim number: no ribbon, no outline", () => {
+    const html = placed({ lockedUnitIds: [] });
+    for (const id of ["a", "d"]) {
+      expect(chip(html, id).tag.startsWith("<span")).toBe(true);
+      expect(chip(html, id).tag).not.toContain("border");
+      expect(chip(html, id).tag).toContain("color:var(--color-bt-text-dim)");
+    }
+    expect(html).not.toContain("<svg");
+  });
+  it("a locked shared 1st: both rows wear the same gold ribbon and no T", () => {
+    const html = placed({ unitTotals: { a: 9, b: 9, c: 5, d: 3 }, lockedUnitIds: ["a", "b"] });
+    expect(chip(html, "a").tag).toContain('data-medal="gold"');
+    expect(chip(html, "b").tag).toContain('data-medal="gold"');
+    expect(html).not.toContain(">T1<");
+  });
+  it("an open tie keeps T1 as plain dim text", () => {
+    const html = placed({ unitTotals: { a: 9, b: 9, c: 5, d: 3 }, lockedUnitIds: [] });
+    expect(chip(html, "a").text).toBe("T1");
+    expect(chip(html, "b").text).toBe("T1");
+  });
+  it("two ribbons on one board do not share a gradient id", () => {
+    const ids = [...placed({ lockedUnitIds: ["a", "b", "c"] }).matchAll(/<linearGradient id="([^"]+)"/g)].map((m) => m[1]);
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
   });
   it("no points yet keeps the dash, never a chip", () => {
     const html = render({ lockedUnitIds: ["green"], projections: { live: { green: 2 } } });
@@ -125,11 +171,11 @@ describe("the full name (spec §2)", () => {
     expect(html).toContain(">H<"); // the badge reads the short name's initial, not the full name's
   });
   it("the bar sits under the name: indented past the rank and the badge", () => {
-    expect(render({ units: named, unitTotals: { blue: 6 }, projections: {} })).toContain("padding-left:56px");
+    expect(render({ units: named, unitTotals: { blue: 6 }, projections: {} })).toContain("padding-left:64px");
   });
   it("a person has no badge, so the bar indents only past the rank", () => {
     const html = render({ kind: "players", units: [{ id: "ann", label: "Ann", color: null, hasResult: true }], unitTotals: { ann: 3 }, projections: {} });
-    expect(html).toContain("padding-left:30px");
+    expect(html).toContain("padding-left:38px");
   });
 });
 
