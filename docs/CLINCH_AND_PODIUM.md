@@ -1,7 +1,7 @@
-# Points Cups: Clinch Watch & Place Locks (build spec, v2.10)
+# Points Cups: Clinch Watch & Place Locks (build spec, v2.11)
 
 *Scope: Workflow Wireframes canvas, row 6 only (boards F0–F4). Companion to `COMPETITION_ENGINE.md`.*
-*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy; v2.6 drops the correction-clears-review rule; v2.7 moves ties into the reveal and celebrates a tie; v2.8 makes decision points open themselves; v2.9 records the text-over-art treatment; v2.10 replaces the locked-place chip with place ribbons. Model: Opus. One branch, per-task commits.*
+*Designed 2026-11-03 → 05. v2 folds in the Phase 0 report and Zach's rulings (2026-11-05); v2.1 folds in the §1–§2 build report; v2.2 folds in the §3 build rulings (lo = 0, winsNeeded, label, ladder, copy); v2.3 folds in the empty-board ruling and the §5 build; v2.4 folds in the tiebreak build report; v2.5 changes the empty-board copy; v2.6 drops the correction-clears-review rule; v2.7 moves ties into the reveal and celebrates a tie; v2.8 makes decision points open themselves; v2.9 records the text-over-art treatment; v2.10 replaces the locked-place chip with place ribbons; v2.11 re-aligns the standings row. Model: Opus. One branch, per-task commits.*
 
 **Mockups:** `docs/mockups/points-clinch/` (`index.html` with all five boards live, plus a PNG per board). They are the visual target. **The spec governs behaviour:** where they disagree, the spec wins, and you report it. The trophy there is a static port; use `CupTrophy` and the tokens.
 
@@ -63,7 +63,8 @@ O(n²), bounded for any cup size, order-free (never names a "next game"). It has
 
 ## 2 · Standings (`StandingsRows`)
 
-- **Full names.** The bar goes on its own line under the name, indented to the name's left edge. Long names wrap (34 max, so 2 lines at most).
+- **Full names.** Long names wrap (34 max, so 2 lines at most).
+- **Row layout (v2.11): three columns.** (1) The rank slot (26px) is **vertically centred on the whole row**: name line plus bar. (2) An identity block: badge + name on the first line, and the bar on the second line **starting at the badge's left edge**, so badge, name and bar share one left edge. (3) The score, right-aligned and **pinned to the first name line** (a wrapped two-line name doesn't pull it down), with the bar running to the right edge under it. A person (no badge): the bar starts at the name.
 - **Shared 1st:** every tied leader row uses the big leader number.
 - **Projection unchanged:** banked solid, live hatched, solid at finalize. "If today holds" legend only while something projects.
 - **Locked place (v2.10, place ribbons):** a locked place earns its ribbon.

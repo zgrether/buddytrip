@@ -198,6 +198,17 @@ describe("the row's three columns (spec §2, v2.11)", () => {
     expect(c).toContain('data-testid="standings-bar-blue"');
     expect(c).not.toContain("padding-left");
   });
+  it("the score is pinned to the first name line: top-aligned, in a box exactly one name line high", () => {
+    const long = [{ id: "blue", label: "WOMBATS WITH MULLIGANS & MOMENTUM!", shortName: "WM", color: "#3b82f6", hasResult: true }];
+    const html = render({ units: long, unitTotals: { blue: 6 }, projections: {} });
+    const line = tag(html, "standings-name-line-blue");
+    expect(line).toContain("items-start");
+    expect(line).not.toContain("items-center");
+    // The name's line and the score's box are the same height, so a wrapped name
+    // adds lines below the score rather than centring it between them.
+    expect(html).toMatch(/line-height:20px">WOMBATS WITH MULLIGANS &amp; MOMENTUM!</);
+    expect(tag(html, "standings-points-blue")).toContain("line-height:20px");
+  });
   it("a person has no badge, so the bar starts at the name's edge, in the same column", () => {
     const html = render({ kind: "players", units: [{ id: "ann", label: "Ann", color: null, hasResult: true }], unitTotals: { ann: 3 }, projections: {} });
     const c = col(html, "ann");

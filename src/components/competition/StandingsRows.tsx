@@ -44,6 +44,8 @@ const RANK_SLOT = 26;
 const RANK_GAP = 12;
 const BADGE_SIZE = 18;
 const BADGE_GAP = 8;
+/** One name line's height: the score's box matches it, so the score sits on line one. */
+const NAME_LINE = 20;
 
 function RankChip({ id, rank, shared, locked }: { id: string; rank: number | null; shared: boolean; locked: boolean }) {
   const testId = `standings-rank-${id}`;
@@ -146,11 +148,14 @@ export function StandingsRows({
               <div className="flex items-center px-2 py-1.5" style={{ gap: RANK_GAP }} data-testid={`standings-line-${r.id}`}>
                 <RankChip id={r.id} rank={r.rank} shared={r.shared} locked={r.locked} />
                 <div className="min-w-0 flex-1" data-testid={`standings-col-${r.id}`}>
-                  <div className="flex w-full items-center" style={{ gap: RANK_GAP }}>
+                  {/* Top-aligned, with the score's box one name line high: a name that
+                      wraps to two lines leaves the score on line one, so the scores
+                      keep one steady column down the list (v2.11). */}
+                  <div className="flex w-full items-start" style={{ gap: RANK_GAP }} data-testid={`standings-name-line-${r.id}`}>
                     <span className="flex min-w-0 flex-1 items-center" style={{ gap: BADGE_GAP }}>
                       {/* A team is a square (TeamBadge); a person in a teamless race carries no mark. */}
                       {r.color && <TeamBadge teamId={r.id} name={r.label} shortName={r.shortName ?? r.label} color={r.color} size={BADGE_SIZE} />}
-                      <span className={`min-w-0 text-sm ${r.color ? "font-semibold" : "font-normal"}`} style={{ color: "var(--color-bt-text)" }}>
+                      <span className={`min-w-0 text-sm ${r.color ? "font-semibold" : "font-normal"}`} style={{ color: "var(--color-bt-text)", lineHeight: `${NAME_LINE}px` }}>
                         {r.label}
                       </span>
                     </span>
@@ -158,6 +163,7 @@ export function StandingsRows({
                       className="shrink-0 text-right font-bold tabular-nums"
                       style={{
                         fontSize: isLeader ? 19 : 15,
+                        lineHeight: `${NAME_LINE}px`,
                         color: isLeader && r.color ? teamInk(r.color) : "var(--color-bt-text)",
                       }}
                       data-testid={`standings-points-${r.id}`}
