@@ -184,6 +184,20 @@
      when no nav is present. Mode-independent — structural, not a color. */
   --bt-bottomnav-height: 0px;
 
+  /* Place ribbon metals (docs/CLINCH_AND_PODIUM.md §2, v2.10) — mode-independent:
+     a medal is the same metal on any card, and never a team colour, so it cannot
+     clash with one. light = the face's highlight, mid = the face and tails,
+     deep = the engraved rank and the rim. */
+  --color-bt-medal-gold-light: #f7dc8a;
+  --color-bt-medal-gold-mid: #d9a62e;
+  --color-bt-medal-gold-deep: #7a5410;
+  --color-bt-medal-silver-light: #f1f4f8;
+  --color-bt-medal-silver-mid: #b4bcc8;
+  --color-bt-medal-silver-deep: #4f5866;
+  --color-bt-medal-bronze-light: #f2bf92;
+  --color-bt-medal-bronze-mid: #c27a3c;
+  --color-bt-medal-bronze-deep: #643512;
+
   /* Vote answer colors — semantic, mode-independent (same in light & dark) */
   --color-bt-vote-yes: #00d4aa;
   --color-bt-vote-yes-text: #0d1f1a;

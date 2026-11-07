@@ -1,9 +1,10 @@
 "use client";
 
 import { standingsRows, type StandingsUnit } from "@/lib/standingsRows";
-import { fmtPts, sharedPlaceWord } from "@/lib/vocabulary";
+import { CLINCH_STORY_WORD, fmtPts, ordinalShort, sharedPlaceWord } from "@/lib/vocabulary";
 import { teamInk } from "@/lib/teamTextColor";
 import { TeamBadge } from "@/components/TeamBadge";
+import { PlaceRibbon } from "./PlaceRibbon";
 
 /**
  * A POINTS TOURNAMENT'S STANDINGS (PR 9c-2) — its teams, or in a tournament of
@@ -24,8 +25,10 @@ import { TeamBadge } from "@/components/TeamBadge";
  *  - No game-by-game expansion: the completed tiles are that view (9c-2 look).
  *  - The FULL name, on its own line with the bar beneath: a standings row is a
  *    subject slot (Zach, 2026-11-05; STYLE_GUIDE reverses the old label ruling).
- *  - A LOCKED place (`pointsClinch`) puts the rank on a filled square; an open
- *    one keeps the plain dim number. A shared place reads "T3" on both rows.
+ *  - A LOCKED place earns its ribbon (spec §2, v2.10): a gold, silver or bronze
+ *    rosette for 1st to 3rd, the number in an outlined square below that. An
+ *    open place keeps the plain dim number, and an open tie reads "T3". A locked
+ *    tie needs no "T": both rows carry the same ribbon or square.
  */
 
 /** The hatch — the unit's colour, striped over a faded copy of itself. The first
@@ -36,29 +39,47 @@ export function hatch(color: string): string {
 
 export const PERSON_COLOR = "var(--color-bt-accent)";
 
-/** The rank column, the gap after it, and the team badge with its gap: what the
- *  bar's line indents by to sit under the name. */
-const RANK_SLOT = 18;
+/** The rank column and the gap after it, and the team badge with its gap. */
+const RANK_SLOT = 26;
 const RANK_GAP = 12;
 const BADGE_SIZE = 18;
 const BADGE_GAP = 8;
+/** One name line's height: the score's box matches it, so the score sits on line one. */
+const NAME_LINE = 20;
 
 function RankChip({ id, rank, shared, locked }: { id: string; rank: number | null; shared: boolean; locked: boolean }) {
-  const text = rank == null ? "–" : shared ? sharedPlaceWord(rank) : rank;
+  const testId = `standings-rank-${id}`;
+  const slot = { width: RANK_SLOT } as const;
+  if (locked && rank != null && rank <= 3) {
+    return (
+      <span className="flex shrink-0 items-center justify-center" style={slot}>
+        <PlaceRibbon place={rank as 1 | 2 | 3} testId={testId} />
+      </span>
+    );
+  }
+  if (locked && rank != null) {
+    return (
+      <span className="flex shrink-0 items-center justify-center" style={slot}>
+        <span
+          role="img"
+          aria-label={CLINCH_STORY_WORD.placeLocked(ordinalShort(rank))}
+          className="flex items-center justify-center text-[12px] font-semibold tabular-nums"
+          style={{ width: 20, height: 20, borderRadius: 5, border: "1.5px solid var(--color-bt-text-dim)", color: "var(--color-bt-text-dim)" }}
+          data-testid={testId}
+          data-locked="true"
+        >
+          {rank}
+        </span>
+      </span>
+    );
+  }
   return (
     <span
       className="flex shrink-0 items-center justify-center text-[12px] font-semibold tabular-nums"
-      style={{
-        width: RANK_SLOT,
-        height: RANK_SLOT,
-        borderRadius: 5,
-        background: locked ? "var(--color-bt-text)" : undefined,
-        color: locked ? "var(--color-bt-base)" : "var(--color-bt-text-dim)",
-      }}
-      data-testid={`standings-rank-${id}`}
-      data-locked={locked ? "true" : undefined}
+      style={{ ...slot, color: "var(--color-bt-text-dim)" }}
+      data-testid={testId}
     >
-      {text}
+      {rank == null ? "–" : shared ? sharedPlaceWord(rank) : rank}
     </span>
   );
 }
@@ -121,42 +142,57 @@ export function StandingsRows({
               data-testid={`standings-row-${r.id}`}
               data-viewer={r.isViewer ? "true" : undefined}
             >
-              <div className="px-2 py-1.5">
-                <div className="flex w-full items-center" style={{ gap: RANK_GAP }}>
-                  <RankChip id={r.id} rank={r.rank} shared={r.shared} locked={r.locked} />
-                  <span className="flex min-w-0 flex-1 items-center" style={{ gap: BADGE_GAP }}>
-                    {/* A team is a square (TeamBadge); a person in a teamless race carries no mark. */}
-                    {r.color && <TeamBadge teamId={r.id} name={r.label} shortName={r.shortName ?? r.label} color={r.color} size={BADGE_SIZE} />}
-                    <span className={`min-w-0 text-sm ${r.color ? "font-semibold" : "font-normal"}`} style={{ color: "var(--color-bt-text)" }}>
-                      {r.label}
+              {/* Three columns (spec §2, v2.11): the rank, centred on the whole row;
+                  then badge, name and bar sharing one left edge; the score on the
+                  name line, with the bar running under it to the right edge. */}
+              <div className="flex items-center px-2 py-1.5" style={{ gap: RANK_GAP }} data-testid={`standings-line-${r.id}`}>
+                <RankChip id={r.id} rank={r.rank} shared={r.shared} locked={r.locked} />
+                <div className="min-w-0 flex-1" data-testid={`standings-col-${r.id}`}>
+                  {/* Top-aligned, with the score's box one name line high: a name that
+                      wraps to two lines leaves the score on line one, so the scores
+                      keep one steady column down the list (v2.11). */}
+                  <div className="flex w-full items-start" style={{ gap: RANK_GAP }} data-testid={`standings-name-line-${r.id}`}>
+                    <span className="flex min-w-0 flex-1 items-start" style={{ gap: BADGE_GAP }}>
+                      {/* A team is a square (TeamBadge); a person in a teamless race carries no mark.
+                          Its box is one name line high, like the score, so a wrapped name
+                          leaves the badge on line one. */}
+                      {r.color && (
+                        <span className="flex shrink-0 items-center" style={{ height: NAME_LINE }} data-testid={`standings-badge-${r.id}`}>
+                          <TeamBadge teamId={r.id} name={r.label} shortName={r.shortName ?? r.label} color={r.color} size={BADGE_SIZE} />
+                        </span>
+                      )}
+                      <span className={`min-w-0 text-sm ${r.color ? "font-semibold" : "font-normal"}`} style={{ color: "var(--color-bt-text)", lineHeight: `${NAME_LINE}px` }}>
+                        {r.label}
+                      </span>
                     </span>
-                  </span>
-                  <span
-                    className="shrink-0 text-right font-bold tabular-nums"
-                    style={{
-                      fontSize: isLeader ? 19 : 15,
-                      color: isLeader && r.color ? teamInk(r.color) : "var(--color-bt-text)",
-                    }}
-                    data-testid={`standings-points-${r.id}`}
-                  >
-                    {r.hasResult ? fmtPts(r.banked) : ""}
-                  </span>
-                </div>
-                <div className="mt-1" style={{ paddingLeft: RANK_SLOT + RANK_GAP + (r.color ? BADGE_SIZE + BADGE_GAP : 0) }}>
-                  {!r.hasResult && r.projected === 0 ? (
-                    <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid={`standings-waiting-${r.id}`}>
-                      No points yet
-                    </span>
-                  ) : (
                     <span
-                      className="flex h-2.5 min-w-0 overflow-hidden rounded-full"
-                      style={{ background: "var(--color-bt-card-raised)" }}
-                      data-testid={`standings-bar-${r.id}`}
+                      className="shrink-0 text-right font-bold tabular-nums"
+                      style={{
+                        fontSize: isLeader ? 19 : 15,
+                        lineHeight: `${NAME_LINE}px`,
+                        color: isLeader && r.color ? teamInk(r.color) : "var(--color-bt-text)",
+                      }}
+                      data-testid={`standings-points-${r.id}`}
                     >
-                      <span className="h-full" style={{ width: `${r.bankedPct}%`, background: color }} data-testid={`standings-banked-${r.id}`} />
-                      <span className="h-full" style={{ width: `${r.projectedPct}%`, background: hatch(color) }} data-testid={`standings-projected-${r.id}`} />
+                      {r.hasResult ? fmtPts(r.banked) : ""}
                     </span>
-                  )}
+                  </div>
+                  <div className="mt-1">
+                    {!r.hasResult && r.projected === 0 ? (
+                      <span className="block text-[12px]" style={{ color: "var(--color-bt-text-dim)" }} data-testid={`standings-waiting-${r.id}`}>
+                        No points yet
+                      </span>
+                    ) : (
+                      <span
+                        className="flex h-2.5 min-w-0 overflow-hidden rounded-full"
+                        style={{ background: "var(--color-bt-card-raised)" }}
+                        data-testid={`standings-bar-${r.id}`}
+                      >
+                        <span className="h-full" style={{ width: `${r.bankedPct}%`, background: color }} data-testid={`standings-banked-${r.id}`} />
+                        <span className="h-full" style={{ width: `${r.projectedPct}%`, background: hatch(color) }} data-testid={`standings-projected-${r.id}`} />
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
