@@ -145,6 +145,15 @@ describe("the story tier", () => {
     const sole = render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true);
     expect(tag(sole, "points-hero-unit-name-he")).toContain(`text-shadow:${TEXT_OVER_ART_SHADOW}`);
   });
+  it("one winner's 74px score at Final takes the same ink and halo as its name", () => {
+    const sole = render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true);
+    expect(tag(sole, "points-hero-headline")).toContain(`color:${teamInkOverArt("#3b82f6")};text-shadow:${TEXT_OVER_ART_SHADOW}`);
+  });
+  it("CONTROL: a shared 1st's score stays plain text with no halo", () => {
+    const tied = tag(render(watch({ place: null, gamesLeft: 0, leaderIds: [] }), true, teams, { he: 20, ba: 20, hs: 9 }), "points-hero-headline");
+    expect(tied).toContain("color:var(--color-bt-text)");
+    expect(tied).not.toContain("text-shadow");
+  });
   it("CONTROL: before Final the trophy is faint, so the name keeps the card's ink and no halo", () => {
     const tag0 = tag(render(watch()), "points-hero-unit-name-he");
     expect(tag0).toContain(`color:${teamInk("#3b82f6")}`);

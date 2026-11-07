@@ -159,7 +159,10 @@ export function PointsHeroTiers({
             fontSize: story.isScore ? 74 : 30,
             fontWeight: 700,
             lineHeight: story.isScore ? 1 : 1.1,
-            color: story.isScore ? subjectColor : "var(--color-bt-text)",
+            // One winner's score sits on the lit bowl in its own colour, which the
+            // bowl is tinted with: the same ink and halo as the names. A shared 1st's
+            // score is plain text and reads without one.
+            ...(story.isScore && final && sole ? nameStyle(sole) : { color: story.isScore ? subjectColor : "var(--color-bt-text)" }),
           }}
           data-testid="points-hero-headline"
         >
