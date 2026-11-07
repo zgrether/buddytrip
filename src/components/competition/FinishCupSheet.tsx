@@ -9,7 +9,8 @@ import { TYPE_SCALE } from "@/lib/typeScale";
 import { CLINCH_STORY_WORD as WORD } from "@/lib/vocabulary";
 import { SheetButton, TieFooter, TieOrderBody, tieSheetTitle, useTieOrders } from "./BreakTieSheet";
 
-export type FinishStep = "ask" | "ties";
+export type { FinishStep } from "@/lib/cupDecision";
+import type { FinishStep } from "@/lib/cupDecision";
 type Pending = "finish" | "use" | "keep" | null;
 
 /**

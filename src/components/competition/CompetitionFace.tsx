@@ -11,6 +11,7 @@ import { SideGamesBoard } from "./SideGamesBoard";
 import { CompetitionSetupPanel } from "./CompetitionSetupPanel";
 import { CompetitionSettingsModal } from "./CompetitionSettingsModal";
 import { BreakTieSheet } from "./BreakTieSheet";
+import { settingsTies } from "@/lib/cupDecision";
 import type { SharedTie } from "@/lib/needsAttention";
 import { RostersOverlay } from "./RostersOverlay";
 import { RosterChangeGateProvider } from "./RosterChangeGate";
@@ -280,7 +281,7 @@ export function CompetitionFace({
     { ...LEADERBOARD_QUERY, enabled: (settingsOpen || tiebreaksOpen) && scoringModel === "points" && !!competition }
   );
   // At Final only: before it the ties belong to the finish's own tie step (v2.8).
-  const ties = (boardForTies.data?.clinch?.final ? boardForTies.data.clinch.ties : []) as SharedTie[];
+  const ties = settingsTies(boardForTies.data?.clinch) as SharedTie[];
   return (
     /**
      * ONE COLUMN, at every width. This comment used to say "DESKTOP

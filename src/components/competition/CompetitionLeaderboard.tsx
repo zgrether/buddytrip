@@ -24,7 +24,8 @@ import { ReorderableSection } from "./ReorderableGames";
 import { SuggestedGames } from "./SuggestedGames";
 import { NeedsAttentionCard } from "./NeedsAttentionCard";
 import { BreakTieSheet } from "./BreakTieSheet";
-import { FinishCupSheet, type FinishStep } from "./FinishCupSheet";
+import { FinishCupSheet } from "./FinishCupSheet";
+import { finishSheetStep, type FinishStep } from "@/lib/cupDecision";
 import { invalidateGameBoards } from "@/lib/gameBoardInvalidation";
 import { HowScoringWorksCard } from "./HowScoringWorksCard";
 import { awardedSoFar } from "@/lib/howScoringWorks";
@@ -381,16 +382,21 @@ export function CompetitionLeaderboard({ competitionId, tripId, cupName, tagline
   //
   // Derived, not set from an effect: the ask is open while it is undecided, on
   // screen, and not yet closed this visit. Closing it (✕, Add another game) is
-  // what spends the visit; deciding ends it by emptying `awaitingDecision`.
+  // what spends the visit; deciding ends it, since the board stops waiting.
+  // `finishSheetStep` holds the gate, a Member included (src/lib/cupDecision.ts).
   const [boardRef, boardShown] = useShownOnScreen();
   const boardUncovered = useSurfaceVisible();
   const [closedThisVisit, setClosedThisVisit] = useState(false);
   // The card's own button opens the sheet at a step, whatever the visit holds.
   const [openedAt, setOpenedAt] = useState<FinishStep | null>(null);
-  const awaitingDecision = canEdit && data?.needsAttention?.finishCup === true;
-  const finishStep: FinishStep | null = !awaitingDecision
-    ? null
-    : openedAt ?? (!closedThisVisit && boardShown && boardUncovered ? "ask" : null);
+  const finishStep = finishSheetStep({
+    canEdit,
+    awaitingFinish: data?.needsAttention?.finishCup === true,
+    openedAt,
+    closedThisVisit,
+    boardShown,
+    boardUncovered,
+  });
   const closeFinish = () => {
     setOpenedAt(null);
     setClosedThisVisit(true);

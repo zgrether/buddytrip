@@ -3,6 +3,7 @@ import { TestContext, genId } from "../../__tests__/helpers/test-setup";
 import { claimClinchNotification, formatClinchMargin, notifyCupClinchedIfDecided, notifyCupSharedFirst, reconcileClinchClaim, releaseClinchClaim } from "./gameFinishNotify";
 import { computeCompetitionLeaderboard } from "./competitionLeaderboard";
 import { fmtPts } from "@/lib/vocabulary";
+import { settingsTies } from "@/lib/cupDecision";
 
 /**
  * The clinch push on a points cup (docs/CLINCH_AND_PODIUM.md §4), against the real
@@ -723,6 +724,16 @@ describe("ties are decided before declaring (v2.8)", () => {
     await ctx.caller().games.finish({ tripId: cup.tripId, gameId: g, placements: [{ entityId: a, position: 1 }, { entityId: b, position: 1 }, { entityId: c, position: 3 }] });
     return { ...cup, a, b, c };
   }
+
+  it("⚙ Tiebreaks on a tied cup: nothing before Final, though the board carries the tie; the tie at Final", async () => {
+    const cup = await level1st("Gear before Final");
+    const before = await board(cup);
+    expect(before.clinch?.ties.map((t) => t.place)).toEqual([1]);
+    expect(settingsTies(before.clinch)).toEqual([]);
+
+    await finish(cup, []);
+    expect(settingsTies((await board(cup)).clinch).map((t) => t.place)).toEqual([1]);
+  });
 
   it("a tied board cannot be declared without its order: refused, and the cup stays open", async () => {
     const cup = await level1st("No order");
