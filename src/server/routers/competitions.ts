@@ -695,10 +695,7 @@ export const competitionsRouter = router({
       // A tie for 1st broken here is the cup's first winner, so it announces, once.
       // `announced` is the "once": the claim takes a different unit as a new clincher,
       // so reordering a tie already broken would otherwise tell the crew twice.
-      const broke1st =
-        board.clinch.final &&
-        winnersOf(scored, board.unitTotals, null).length > 1 &&
-        winnersOf(scored, board.unitTotals, input.order).length === 1;
+      const broke1st = winnersOf(scored, board.unitTotals, null).length > 1 && winnersOf(scored, board.unitTotals, input.order).length === 1;
       if (broke1st && !board.clinch.announced) {
         await afterResponse(() =>
           notifyCupClinchedIfDecided({ tripId: input.tripId, competitionId: input.competitionId, actorUserId: ctx.user!.id })
