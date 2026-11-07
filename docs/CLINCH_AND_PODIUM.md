@@ -64,7 +64,7 @@ O(n²), bounded for any cup size, order-free (never names a "next game"). It has
 ## 2 · Standings (`StandingsRows`)
 
 - **Full names.** Long names wrap (34 max, so 2 lines at most).
-- **Row layout (v2.11): three columns.** (1) The rank slot (26px) is **vertically centred on the whole row**: name line plus bar. (2) An identity block: badge + name on the first line, and the bar on the second line **starting at the badge's left edge**, so badge, name and bar share one left edge. (3) The score, right-aligned and **pinned to the first name line** (a wrapped two-line name doesn't pull it down), with the bar running to the right edge under it. A person (no badge): the bar starts at the name.
+- **Row layout (v2.11): three columns.** (1) The rank slot (26px) is **vertically centred on the whole row**: name line plus bar. (2) An identity block: badge + name on the first line (the badge, like the score, **pinned to the first name line** when a name wraps), and the bar on the second line **starting at the badge's left edge**, so badge, name and bar share one left edge. (3) The score, right-aligned and **pinned to the first name line** (a wrapped two-line name doesn't pull it down), with the bar running to the right edge under it. A person (no badge): the bar starts at the name.
 - **Shared 1st:** every tied leader row uses the big leader number.
 - **Projection unchanged:** banked solid, live hatched, solid at finalize. "If today holds" legend only while something projects.
 - **Locked place (v2.10, place ribbons):** a locked place earns its ribbon.

@@ -152,9 +152,15 @@ export function StandingsRows({
                       wraps to two lines leaves the score on line one, so the scores
                       keep one steady column down the list (v2.11). */}
                   <div className="flex w-full items-start" style={{ gap: RANK_GAP }} data-testid={`standings-name-line-${r.id}`}>
-                    <span className="flex min-w-0 flex-1 items-center" style={{ gap: BADGE_GAP }}>
-                      {/* A team is a square (TeamBadge); a person in a teamless race carries no mark. */}
-                      {r.color && <TeamBadge teamId={r.id} name={r.label} shortName={r.shortName ?? r.label} color={r.color} size={BADGE_SIZE} />}
+                    <span className="flex min-w-0 flex-1 items-start" style={{ gap: BADGE_GAP }}>
+                      {/* A team is a square (TeamBadge); a person in a teamless race carries no mark.
+                          Its box is one name line high, like the score, so a wrapped name
+                          leaves the badge on line one. */}
+                      {r.color && (
+                        <span className="flex shrink-0 items-center" style={{ height: NAME_LINE }} data-testid={`standings-badge-${r.id}`}>
+                          <TeamBadge teamId={r.id} name={r.label} shortName={r.shortName ?? r.label} color={r.color} size={BADGE_SIZE} />
+                        </span>
+                      )}
                       <span className={`min-w-0 text-sm ${r.color ? "font-semibold" : "font-normal"}`} style={{ color: "var(--color-bt-text)", lineHeight: `${NAME_LINE}px` }}>
                         {r.label}
                       </span>

@@ -198,16 +198,21 @@ describe("the row's three columns (spec §2, v2.11)", () => {
     expect(c).toContain('data-testid="standings-bar-blue"');
     expect(c).not.toContain("padding-left");
   });
-  it("the score is pinned to the first name line: top-aligned, in a box exactly one name line high", () => {
+  it("the score and the badge are pinned to the first name line: top-aligned, each in a box one name line high", () => {
     const long = [{ id: "blue", label: "WOMBATS WITH MULLIGANS & MOMENTUM!", shortName: "WM", color: "#3b82f6", hasResult: true }];
     const html = render({ units: long, unitTotals: { blue: 6 }, projections: {} });
     const line = tag(html, "standings-name-line-blue");
     expect(line).toContain("items-start");
     expect(line).not.toContain("items-center");
-    // The name's line and the score's box are the same height, so a wrapped name
-    // adds lines below the score rather than centring it between them.
+    // The name's line, the score's box and the badge's box are the same height, so a
+    // wrapped name adds its second line below both rather than centring them on it.
     expect(html).toMatch(/line-height:20px">WOMBATS WITH MULLIGANS &amp; MOMENTUM!</);
     expect(tag(html, "standings-points-blue")).toContain("line-height:20px");
+    const badge = tag(html, "standings-badge-blue");
+    expect(badge).toContain("height:20px");
+    expect(badge).toContain("items-center");
+    // The badge's box sits in a top-aligned block, next to the name.
+    expect(html).toMatch(/<span class="flex min-w-0 flex-1 items-start"[^>]*><span class="flex shrink-0 items-center"[^>]*data-testid="standings-badge-blue"/);
   });
   it("a person has no badge, so the bar starts at the name's edge, in the same column", () => {
     const html = render({ kind: "players", units: [{ id: "ann", label: "Ann", color: null, hasResult: true }], unitTotals: { ann: 3 }, projections: {} });
