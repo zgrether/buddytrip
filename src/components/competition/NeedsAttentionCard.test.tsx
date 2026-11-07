@@ -34,8 +34,8 @@ describe("a points cup's two items (spec §5)", () => {
   it("the board asks once, with its two answers", () => {
     const html = render(finish);
     expect(html).toContain("Needs attention · 1");
-    expect(html).toContain("Every game on the board is done. Finish the cup?");
-    expect(html).toContain('data-testid="finish-cup"');
+    expect(html).toContain("All games are in. Head to the winner&#x27;s circle?");
+    expect(html).toMatch(/data-testid="finish-cup"[^>]*>To the winner&#x27;s circle</);
     expect(html).toContain('data-testid="finish-add-game"');
   });
 

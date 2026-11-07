@@ -251,7 +251,7 @@ describe("an empty board waits for a person (spec §5)", () => {
     expect(b0.clinch?.lockedUnitIds).toContain(a);
   });
 
-  it("Finish the cup goes Final and sends what the board held back, once", async () => {
+  it("To the winner's circle goes Final and sends what the board held back, once", async () => {
     const cup = await pointsCup("Finished", ["A", "B"]);
     const [a, b] = cup.teamIds;
     await game(cup, "Only", [10, 1], [a, b]);
@@ -529,8 +529,8 @@ describe("ties at Final (spec §5)", () => {
 
   it("refuses before Final, even a Keep it shared: there is nothing to decide yet", async () => {
     const cup = await tiedCup("Not final");
-    await expect(setOrder(cup, [cup.b, cup.c])).rejects.toThrow("Nothing is tied any more.");
-    await expect(setOrder(cup, [])).rejects.toThrow("Nothing is tied any more.");
+    await expect(setOrder(cup, [cup.b, cup.c])).rejects.toThrow("Nothing is tied anymore.");
+    await expect(setOrder(cup, [])).rejects.toThrow("Nothing is tied anymore.");
     expect((await board(cup)).clinch?.tiebreakOrder).toBeNull();
   });
 

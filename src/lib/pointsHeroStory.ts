@@ -80,11 +80,11 @@ export function pointsHeroStory(
   // place locked here, which is only true until someone adds a game, so the hero
   // claims no more than the banked lead. A clinch already announced stays said.
   if (cup.awaitingFinish) {
-    if (cup.announced && w.clincherId) return story(w.clincherId, WORD.clinchedHeadline, WORD.everyGameDone);
+    if (cup.announced && w.clincherId) return story(w.clincherId, WORD.clinchedHeadline, WORD.allGamesIn);
     const [first, second] = units.map((u) => totals[u.id] ?? 0).sort((a, b) => b - a);
     const leaders = units.filter((u) => (totals[u.id] ?? 0) === first);
-    if (leaders.length > 1) return story(null, WORD.tiedAtTop, WORD.everyGameDone);
-    return story(leaders[0].id, WORD.leadBy(fmtPts(first - (second ?? 0))), WORD.everyGameDone);
+    if (leaders.length > 1) return story(null, WORD.tiedAtTop, WORD.allGamesIn);
+    return story(leaders[0].id, WORD.leadBy(fmtPts(first - (second ?? 0))), WORD.allGamesIn);
   }
 
   if (w.bankedGames === 0) return story(null, WORD.anyonesCup, gamesLeft);

@@ -153,15 +153,15 @@ describe("a board waiting to be finished (spec §5)", () => {
 
   it("claims the banked lead and no more, though the math reads clinched", () => {
     const s = pointsHeroStory(done, us, { a: 9, b: 4.5 }, false, { awaitingFinish: true });
-    expect(s).toEqual({ unitIds: ["a"], headline: "Lead by 4.5", sub: "Every game on the board is done", isScore: false });
+    expect(s).toEqual({ unitIds: ["a"], headline: "Lead by 4.5", sub: "All games are in", isScore: false });
   });
   it("a clinch already announced stays said", () => {
     const s = pointsHeroStory(done, us, { a: 9, b: 4.5 }, false, { awaitingFinish: true, announced: true });
-    expect(s).toEqual({ unitIds: ["a"], headline: "Clinched the cup", sub: "Every game on the board is done", isScore: false });
+    expect(s).toEqual({ unitIds: ["a"], headline: "Clinched the cup", sub: "All games are in", isScore: false });
   });
   it("level at the top names nobody", () => {
     const s = pointsHeroStory(watch({ gamesLeft: 0, place: null, clincherId: null, leaderIds: ["a", "b"], bankedGames: 2 }), us, { a: 5, b: 5 }, false, { awaitingFinish: true });
-    expect(s).toEqual({ unitIds: [], headline: "Tied at the top", sub: "Every game on the board is done", isScore: false });
+    expect(s).toEqual({ unitIds: [], headline: "Tied at the top", sub: "All games are in", isScore: false });
   });
   it("CONTROL: without the wait the same watch reads clinched", () => {
     expect(pointsHeroStory(done, us, { a: 9, b: 4.5 }, false).headline).toBe("Clinched the cup");

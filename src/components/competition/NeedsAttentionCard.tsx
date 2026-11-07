@@ -28,7 +28,7 @@ import {
  * opens where it is fixed: Rosters for people and sizes, and an empty team's
  * own Edit Team sheet (Zach's look on #1691).
  *
- * A points cup adds two (docs/CLINCH_AND_PODIUM.md §5). Finish the cup is the one
+ * A points cup adds two (docs/CLINCH_AND_PODIUM.md §5). The empty board is the one
  * item that asks for a decision, so it carries its two answers rather than opening
  * anywhere. A shared place at Final opens its tiebreak sheet.
  */

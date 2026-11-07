@@ -650,7 +650,7 @@ export const competitionsRouter = router({
       const board = await computeCompetitionLeaderboard(ctx.supabase, input.competitionId, { viewerId: ctx.user!.id });
       const scored = board.units.filter((u) => u.hasResult).map((u) => u.id);
       if (!board.clinch?.ties.length) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Nothing is tied any more." });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nothing is tied anymore." });
       }
       if (!namesWholeTies(scored, board.unitTotals, input.order)) {
         throw new TRPCError({ code: "BAD_REQUEST", message: `That tie has changed. Open ${CLINCH_STORY_WORD.tiebreaks} again.` });
