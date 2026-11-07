@@ -1,4 +1,8 @@
-// Head-to-head hero team names: contrast against the pixels actually behind them (#1703).
+// Hero team names: contrast against the pixels actually behind them (#1703, #1704).
+//
+// RUN THIS WHENEVER THE HERO'S INK, HALO, GLOW OR TROPHY ART CHANGES. It is manual on
+// purpose (no CI job): nothing else measures these names, and a token change that
+// passes every unit test can still put a name back under the bar.
 //
 // The names sit across the trophy art, so their contrast cannot be computed from the
 // tokens: it has to be measured on a rendered page. This loads each cup page at 390px,
@@ -8,7 +12,12 @@
 // the worst single pixel can fall where neither glyph nor halo reaches.
 //
 // Needs a running app on :3000 and the e2e owner's login (e2e/.auth/owner.json, from
-// `npx playwright test --project=setup`). Pass head-to-head cup pages that owner can see.
+// `npx playwright test --project=setup`). Pass cup pages that owner can see. It measures
+// the head-to-head hero's two names and the points hero's story-tier names. The cases
+// to cover, each in several team colours (the winner's colour tints the lit trophy):
+//   - a head-to-head cup before Final, and a shared head-to-head Final (trophy not lit);
+//   - a DECIDED head-to-head Final (lit, tinted in the winner's colour);
+//   - a decided points Final with one winner (lit and tinted), and a tied one (lit).
 //
 //   node scripts/measure-hero-name-contrast.mjs [--theme dark|light|both] [--as-before] <cup path>...
 //   e.g. node scripts/measure-hero-name-contrast.mjs --theme both "/trips/<id>?view=cup"
@@ -19,6 +28,8 @@
 import { chromium } from "@playwright/test";
 
 const BAR = 4.5;
+/** Every hero team name: the head-to-head hero's two, and the points hero's at its story tier. */
+const NAMES = '[data-testid^="hero-team-name-"], [data-testid^="points-hero-unit-name-"]';
 const args = process.argv.slice(2);
 const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args.splice(i, 2)[1] : null; };
 const flag = (name) => { const i = args.indexOf(name); if (i >= 0) args.splice(i, 1); return i >= 0; };
@@ -36,7 +47,7 @@ let failed = false;
 for (const path of paths) {
   for (const theme of themes) {
     await page.goto("http://localhost:3000" + path);
-    await page.waitForSelector('[data-testid="hero-team-name-a"]', { timeout: 60000 });
+    await page.waitForSelector(NAMES, { timeout: 60000 });
     await page.evaluate((t) => document.documentElement.classList.toggle("dark", t === "dark"), theme);
     await page.addStyleTag({ content: ".cup-spark{display:none!important}" });
     if (asBefore) {
@@ -55,13 +66,13 @@ for (const path of paths) {
     await page.locator('[data-testid="competition-hero"]').scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
 
-    const names = await page.$$eval('[data-testid^="hero-team-name-"]', (els) =>
+    const names = await page.$$eval(NAMES, (els) =>
       els.map((e) => {
         const r = e.getBoundingClientRect();
         return { id: e.dataset.testid, text: e.textContent, color: getComputedStyle(e).color, box: { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height } };
       })
     );
-    const hide = await page.addStyleTag({ content: '[data-testid^="hero-team-name-"]{color:transparent!important}' });
+    const hide = await page.addStyleTag({ content: `${NAMES}{color:transparent!important}` });
     await page.waitForTimeout(200);
     for (const n of names) {
       const png = await page.screenshot({ clip: n.box });

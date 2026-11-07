@@ -105,3 +105,7 @@ export function teamInkOverArt(color: string): string {
 
 /** The halo for text over the lit trophy, in the card's own tone per theme. */
 export const TEXT_OVER_ART_SHADOW = "var(--shadow-text-over-art)";
+
+/** A denser halo for the WINNING name at a decided Final, where the lit trophy is
+ *  tinted in that team's own colour (#1703). Same ink; names only, never numerals. */
+export const TEXT_OVER_ART_SHADOW_STRONG = "var(--shadow-text-over-art-strong)";

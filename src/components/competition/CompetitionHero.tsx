@@ -7,7 +7,7 @@ import { ClinchCelebration } from "./ClinchCelebration";
 import { PointsHeroTiers, type PointsHeroUnit } from "./PointsHeroTiers";
 import type { ClinchWatch } from "@/lib/pointsClinch";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW } from "@/lib/teamTextColor";
+import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW, TEXT_OVER_ART_SHADOW_STRONG } from "@/lib/teamTextColor";
 import { useShrinkToFit } from "@/hooks/useShrinkToFit";
 
 /** The collapsed bar's ladder. Starts at its designed 14 (the expanded hero's
@@ -357,8 +357,8 @@ export function CompetitionHero({
                   bowl edge), so they always take the over-art ink and halo (#1703):
                   no glow value lets a name clear 4.5 there. The numerals are large
                   text (3 : 1), so they keep the over-art treatment for Final only. */}
-              <TeamName team={a} onEditTeam={onEditTeam} align="left" overArt />
-              <TeamName team={b} onEditTeam={onEditTeam} align="right" overArt />
+              <TeamName team={a} onEditTeam={onEditTeam} align="left" overArt won={cupComplete && clincher?.id === a.id} />
+              <TeamName team={b} onEditTeam={onEditTeam} align="right" overArt won={cupComplete && clincher?.id === b.id} />
             </div>
 
             {/* Scores — the two big team-colored numbers flanking the trophy.
@@ -1064,12 +1064,15 @@ function TeamName({
   onEditTeam,
   align,
   overArt = false,
+  won = false,
 }: {
   team: LBTeam;
   onEditTeam?: (teamId: string) => void;
   align: "left" | "right";
   /** The name sits over the trophy: the over-art ink and halo (#1700, #1703). */
   overArt?: boolean;
+  /** This team won a decided Final: the trophy is tinted in its colour, so the denser halo (#1703). */
+  won?: boolean;
 }) {
   const nameRef = useRef<HTMLSpanElement>(null);
   const nameSize = useShrinkToFit(nameRef, team.name);
@@ -1191,7 +1194,9 @@ function TeamName({
             fontSize: nameSize,
             fontWeight: 600,
             lineHeight: 1.2,
-            ...(overArt ? { color: teamInkOverArt(team.color), textShadow: TEXT_OVER_ART_SHADOW } : { color: teamInk(team.color) }),
+            ...(overArt
+              ? { color: teamInkOverArt(team.color), textShadow: won ? TEXT_OVER_ART_SHADOW_STRONG : TEXT_OVER_ART_SHADOW }
+              : { color: teamInk(team.color) }),
           }}
           data-testid={`hero-team-name-${align === "left" ? "a" : "b"}`}
           data-team-color={team.color}

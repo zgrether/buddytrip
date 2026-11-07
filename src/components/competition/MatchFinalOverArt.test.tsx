@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CompetitionHero } from "./CompetitionHero";
 import type { LBTeam } from "./CompetitionLeaderboard";
-import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW } from "@/lib/teamTextColor";
+import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW, TEXT_OVER_ART_SHADOW_STRONG } from "@/lib/teamTextColor";
 
 /**
  * The head-to-head Final's text over the lit trophy (#1700): both team names and
@@ -44,10 +44,21 @@ const overArt = (color: string) => `color:${teamInkOverArt(color)};text-shadow:$
 describe("at Final, over the lit trophy", () => {
   const final = () => hero({ clincher: teams[1], cupComplete: true });
 
-  it("both team names take the over-art ink and halo", () => {
+  it("both team names take the over-art ink; the winner's name the denser halo, the loser's the ordinary one", () => {
     const html = final();
+    // The trophy is lit and tinted in the winner's own colour, so its name needs more backdrop (#1703).
+    expect(tag(html, "hero-team-name-b")).toContain(`color:${teamInkOverArt("#3b82f6")};text-shadow:${TEXT_OVER_ART_SHADOW_STRONG}`);
     expect(tag(html, "hero-team-name-a")).toContain(overArt("#4ade80"));
-    expect(tag(html, "hero-team-name-b")).toContain(overArt("#3b82f6"));
+    expect(tag(html, "hero-team-name-a")).not.toContain(TEXT_OVER_ART_SHADOW_STRONG);
+  });
+  it("the denser halo is for names only: the winning score keeps the ordinary one", () => {
+    const score = tag(final(), "hero-score-b");
+    expect(score).toContain(`text-shadow:${TEXT_OVER_ART_SHADOW}`);
+    expect(score).not.toContain(TEXT_OVER_ART_SHADOW_STRONG);
+  });
+  it("CONTROL: clinched before Final, nobody's name takes the denser halo", () => {
+    const html = hero({ clincher: teams[1], cupComplete: false, gamesRemaining: 2 });
+    expect(html).not.toContain(TEXT_OVER_ART_SHADOW_STRONG);
   });
 
   it("both big scores take the over-art ink and halo, the loser's included", () => {
