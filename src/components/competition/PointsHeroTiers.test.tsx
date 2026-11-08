@@ -6,7 +6,7 @@ import { PointsHeroTiers, type PointsHeroUnit } from "./PointsHeroTiers";
 import { CompetitionHero } from "./CompetitionHero";
 import { ClinchCelebration } from "./ClinchCelebration";
 import type { ClinchWatch } from "@/lib/pointsClinch";
-import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW, TEXT_OVER_ART_SHADOW_STRONG } from "@/lib/teamTextColor";
+import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW, WINNER_NAME_PX, WINNER_NAME_WEIGHT } from "@/lib/teamTextColor";
 import type { LBTeam } from "./CompetitionLeaderboard";
 
 /**
@@ -137,18 +137,21 @@ describe("the story tier", () => {
     expect(tag(html, "points-hero-unit-name-ba")).toContain(`color:${teamInkOverArt("#22c55e")}`);
     expect(tag(html, "points-hero-headline")).toContain("color:var(--color-bt-text)");
   });
-  it("at Final the winners' names sit on the lit bowl: the over-art ink and the denser halo, for a tie and for one winner", () => {
+  it("at Final the winners' names sit on the lit bowl: over-art ink, the ordinary halo, 20px bold, for a tie and for one winner", () => {
     const tied = render(watch({ place: null, gamesLeft: 0, leaderIds: [] }), true, teams, { he: 20, ba: 20, hs: 9 });
     for (const [id, color] of [["he", "#3b82f6"], ["ba", "#22c55e"]] as const) {
-      expect(tag(tied, `points-hero-unit-name-${id}`)).toContain(`color:${teamInkOverArt(color)};text-shadow:${TEXT_OVER_ART_SHADOW_STRONG}`);
+      expect(tag(tied, `points-hero-unit-name-${id}`)).toContain(`color:${teamInkOverArt(color)};text-shadow:${TEXT_OVER_ART_SHADOW}`);
+      expect(tag(tied, `points-hero-unit-name-${id}`)).toContain('data-final-winner="true"');
     }
+    expect(tag(tied, "points-hero-unit")).toContain(`font-size:${WINNER_NAME_PX}px;font-weight:${WINNER_NAME_WEIGHT}`);
     const sole = render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true);
-    expect(tag(sole, "points-hero-unit-name-he")).toContain(`text-shadow:${TEXT_OVER_ART_SHADOW_STRONG}`);
+    expect(tag(sole, "points-hero-unit-name-he")).toContain(`text-shadow:${TEXT_OVER_ART_SHADOW}`);
+    expect(tag(sole, "points-hero-unit")).toContain(`font-size:${WINNER_NAME_PX}px;font-weight:${WINNER_NAME_WEIGHT}`);
   });
-  it("the denser halo is for names only: one winner's score keeps the ordinary one", () => {
-    const sole = render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true);
-    expect(tag(sole, "points-hero-headline")).toContain(`text-shadow:${TEXT_OVER_ART_SHADOW}`);
-    expect(tag(sole, "points-hero-headline")).not.toContain(TEXT_OVER_ART_SHADOW_STRONG);
+  it("CONTROL: before Final the names are the story size, 17 at 600, and nobody is a winner", () => {
+    const html = render(watch());
+    expect(tag(html, "points-hero-unit")).toContain("font-size:17px;font-weight:600");
+    expect(html).not.toContain("data-final-winner");
   });
   it("one winner's 74px score at Final takes the same ink and halo as its name", () => {
     const sole = render(watch({ place: null, gamesLeft: 0, clincherId: "he", leaderIds: [] }), true);

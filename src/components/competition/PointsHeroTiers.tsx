@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import { Avatar } from "@/components/Avatar";
 import { TeamBadge } from "@/components/TeamBadge";
-import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW, TEXT_OVER_ART_SHADOW_STRONG } from "@/lib/teamTextColor";
+import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW, WINNER_NAME_PX, WINNER_NAME_WEIGHT } from "@/lib/teamTextColor";
 import type { ClinchWatch } from "@/lib/pointsClinch";
 import { pointsHeroStory, type HeroCupState } from "@/lib/pointsHeroStory";
 import { CLINCH_STORY_WORD as WORD, fmtPts, ordinalShort } from "@/lib/vocabulary";
@@ -134,27 +134,24 @@ export function PointsHeroTiers({
   const inkOf = (u: PointsHeroUnit) => (u.color ? teamInk(u.color) : PERSON_COLOR);
   const subjectColor = sole ? inkOf(sole) : "var(--color-bt-text)";
   // At Final the names sit on the lit bowl, where the card ink cannot hold.
-  const nameStyle = (u: PointsHeroUnit, asName = false) =>
-    final
-      ? {
-          color: teamInkOverArt(u.color ?? PERSON_COLOR),
-          // At Final the names on the story tier are the winners', on the lit bowl
-          // (tinted in a sole winner's own colour): the denser halo (#1703). The score
-          // is large text and keeps the ordinary one.
-          textShadow: asName ? TEXT_OVER_ART_SHADOW_STRONG : TEXT_OVER_ART_SHADOW,
-        }
-      : { color: inkOf(u) };
+  const nameStyle = (u: PointsHeroUnit) =>
+    final ? { color: teamInkOverArt(u.color ?? PERSON_COLOR), textShadow: TEXT_OVER_ART_SHADOW } : { color: inkOf(u) };
 
   return (
     <>
       <div className="mt-5 flex flex-col items-center text-center" data-testid="points-hero-story">
         {/* A shared 1st names each unit in its own ink, joined in plain text (v2.8). */}
         {subjects.length > 0 && (
-          <span style={{ fontSize: 17, fontWeight: 600, color: "var(--color-bt-text)" }} data-testid="points-hero-unit">
+          // At Final the names here are the winners': 20px bold, large text (3 : 1), over
+          // the lit trophy with the normal halo (#1703). Before Final, the story size.
+          <span
+            style={{ fontSize: final ? WINNER_NAME_PX : 17, fontWeight: final ? WINNER_NAME_WEIGHT : 600, color: "var(--color-bt-text)" }}
+            data-testid="points-hero-unit"
+          >
             {subjects.map((u, i) => (
               <Fragment key={u.id}>
                 {i > 0 && WORD.levelJoiner}
-                <span style={nameStyle(u, true)} data-testid={`points-hero-unit-name-${u.id}`}>
+                <span style={nameStyle(u)} data-testid={`points-hero-unit-name-${u.id}`} data-final-winner={final ? "true" : undefined}>
                   {u.name}
                 </span>
               </Fragment>

@@ -123,12 +123,6 @@
   --color-bt-team-ink-over-art: 45%;
   --color-bt-team-ink-over-art-toward: black;
   --shadow-text-over-art: 0 0 8px rgba(255, 255, 255, 0.95), 0 0 3px rgba(255, 255, 255, 0.95), 0 0 1px rgba(255, 255, 255, 1);
-  /* A WINNING name at a Final (#1703): the trophy is lit (and, for one winner, tinted
-     in that team's own colour), so the name needs more backdrop than the ordinary halo
-     gives. Same ink; a denser halo, for names only. Light already clears the bar with
-     the ordinary halo, so here they are equal; dark is the dense stack below.
-     Measured with scripts/measure-hero-name-contrast.mjs (#1704). */
-  --shadow-text-over-art-strong: 0 0 8px rgba(255, 255, 255, 0.95), 0 0 3px rgba(255, 255, 255, 0.95), 0 0 1px rgba(255, 255, 255, 1);
 
   --color-bt-hero-neutral: linear-gradient(158deg, #ffffff 0%, #f4f7fa 100%);
 
@@ -362,9 +356,6 @@
   --color-bt-team-ink-over-art: 40%;
   --color-bt-team-ink-over-art-toward: white;
   --shadow-text-over-art: 0 0 8px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 1);
-  /* text-shadow has no spread, so density and reach come from stacking: tight layers
-     darken the glyph edge, the 10-24px ones reach the rest of the name's box. */
-  --shadow-text-over-art-strong: 0 0 1px rgba(0, 0, 0, 1), 0 0 2px rgba(0, 0, 0, 1), 0 0 3px rgba(0, 0, 0, 1), 0 0 4px rgba(0, 0, 0, 1), 0 0 6px rgba(0, 0, 0, 1), 0 0 8px rgba(0, 0, 0, 1), 0 0 10px rgba(0, 0, 0, 1), 0 0 12px rgba(0, 0, 0, 1), 0 0 14px rgba(0, 0, 0, 1), 0 0 18px rgba(0, 0, 0, 1), 0 0 24px rgba(0, 0, 0, 0.9);
   --color-bt-hero-neutral: linear-gradient(158deg, #222e44 0%, #1a2231 100%);
   /* Golf score colours — the pastels and tints these have always had. */
   --color-bt-zebra: rgba(255, 255, 255, 0.025);

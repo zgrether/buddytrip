@@ -106,6 +106,13 @@ export function teamInkOverArt(color: string): string {
 /** The halo for text over the lit trophy, in the card's own tone per theme. */
 export const TEXT_OVER_ART_SHADOW = "var(--shadow-text-over-art)";
 
-/** A denser halo for the WINNING name at a decided Final, where the lit trophy is
- *  tinted in that team's own colour (#1703). Same ink; names only, never numerals. */
-export const TEXT_OVER_ART_SHADOW_STRONG = "var(--shadow-text-over-art-strong)";
+/**
+ * A WINNING name at a Final sets at 20px bold (#1703, Zach). That is large text, so
+ * its bar is 3 : 1 rather than 4.5 : 1, which the normal over-art halo clears over the
+ * lit trophy. A denser halo was tried first and read as a dark band on device.
+ */
+export const WINNER_NAME_PX = 20;
+export const WINNER_NAME_WEIGHT = 700;
+/** The smallest a winning name may go: 14pt bold, the WCAG large-text line, so the
+ *  bar stays 3 : 1 at every size it lands on (#1703). */
+export const WINNER_NAME_FLOOR_PX = 18.67;

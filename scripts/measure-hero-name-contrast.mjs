@@ -17,17 +17,27 @@
 // to cover, each in several team colours (the winner's colour tints the lit trophy):
 //   - a head-to-head cup before Final, and a shared head-to-head Final (trophy not lit);
 //   - a DECIDED head-to-head Final (lit, tinted in the winner's colour);
-//   - a decided points Final with one winner (lit and tinted), and a tied one (lit).
+//   - a decided points Final with one winner (lit and tinted), and a tied one (lit);
+//   - a head-to-head Final with a long name (e.g. "Hammer Schlägerknockers"), where the
+//     winner's name drops toward its 14pt floor to fit the 48% column.
 //
 //   node scripts/measure-hero-name-contrast.mjs [--theme dark|light|both] [--as-before] <cup path>...
 //   e.g. node scripts/measure-hero-name-contrast.mjs --theme both "/trips/<id>?view=cup"
 //
-// Exits 1 if any name's 10th percentile is under 4.5. `--as-before` paints the names
-// as they were before #1703 (the card ink, no halo), which fails on a shared Final:
-// run it once to see the check can go red.
+// Exits 1 if any name's 10th percentile is under its bar. The bar is read off the size
+// and weight the name ACTUALLY renders at, not from which name it is: 3 : 1 for large
+// text (at least 14pt bold, or 18pt), 4.5 : 1 otherwise. A winning name at Final sets at
+// 20px bold and may shrink to its 18.67px floor (#1703), so it lands on 3; if it ever
+// rendered smaller, its bar would go back to 4.5 and this would say so.
+// `--as-before` paints the names as they were before #1703 (the card ink, no halo),
+// which fails on a shared Final: run it once to see the check can go red.
 import { chromium } from "@playwright/test";
 
 const BAR = 4.5;
+/** WCAG large text: 3 : 1. */
+const LARGE_BAR = 3;
+/** Large text is at least 14pt (18.66px) bold, or 18pt (24px) at any weight. */
+const isLarge = (px, weight) => (weight >= 700 && px >= 18.66) || px >= 24;
 /** Every hero team name: the head-to-head hero's two, and the points hero's at its story tier. */
 const NAMES = '[data-testid^="hero-team-name-"], [data-testid^="points-hero-unit-name-"]';
 const args = process.argv.slice(2);
@@ -69,7 +79,8 @@ for (const path of paths) {
     const names = await page.$$eval(NAMES, (els) =>
       els.map((e) => {
         const r = e.getBoundingClientRect();
-        return { id: e.dataset.testid, text: e.textContent, color: getComputedStyle(e).color, box: { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height } };
+        const cs = getComputedStyle(e);
+        return { id: e.dataset.testid, winner: e.dataset.finalWinner === "true", px: parseFloat(cs.fontSize), weight: Number(cs.fontWeight), text: e.textContent, color: getComputedStyle(e).color, box: { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height } };
       })
     );
     const hide = await page.addStyleTag({ content: `${NAMES}{color:transparent!important}` });
@@ -91,9 +102,10 @@ for (const path of paths) {
         all.sort((a, b) => a - b);
         return all[Math.floor(all.length * 0.1)];
       }, { b64: png.toString("base64"), ink });
-      const ok = p10 >= BAR;
+      const bar = isLarge(n.px, n.weight) ? LARGE_BAR : BAR;
+      const ok = p10 >= bar;
       if (!ok) failed = true;
-      console.log(`${ok ? "pass" : "FAIL"}  ${theme.padEnd(5)}  ${n.text.padEnd(24)}  p10 ${p10.toFixed(2)}  (${path})`);
+      console.log(`${ok ? "pass" : "FAIL"}  ${theme.padEnd(5)}  ${n.text.padEnd(24)}  p10 ${p10.toFixed(2)} vs ${bar}  (${n.px}px ${n.weight}${n.winner ? ", winner" : ""})  (${path})`);
     }
     await hide.evaluate((el) => el.remove());
   }
