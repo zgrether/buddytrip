@@ -52,7 +52,11 @@ export function ClinchCelebration({
   replayNonce = 0,
   onCelebrated,
   trophy: Trophy = CupTrophy,
+  litOpacity = 0.42,
 }: {
+  /** The trophy's opacity at Final. The head-to-head hero passes the per-theme
+   *  `--opacity-bt-trophy-lit` (#1705); the points hero keeps the 0.42 default. */
+  litOpacity?: number | string;
   /** Decided AND finished (`isCupComplete`). False → the resting watermark. */
   cupComplete: boolean;
   /** A points cup with 1st clinched and games still to play: the trophy tints and
@@ -264,8 +268,10 @@ export function ClinchCelebration({
             NAME was unreadable where it crossed the bowl. 0.42 is the point where
             the trophy is unmistakably present and the scoreline still wins the
             eye, which is the right order for a screen whose job is announcing a
-            result. (Measured by eye at 375px; see the PR's device note.) */}
-        <Trophy opacity={lit ? 0.42 : clinched ? 0.3 : 0.17} tint={lit || clinched ? winnerColor : null} />
+            result. (Measured by eye at 375px; see the PR's device note.) The
+            head-to-head hero overrides it per theme through `litOpacity`: light
+            sits at 0.30, where the losing name clears 4.5 : 1 (#1705). */}
+        <Trophy opacity={lit ? litOpacity : clinched ? 0.3 : 0.17} tint={lit || clinched ? winnerColor : null} />
 
         {/* The burst, anchored to the trophy's centre so the sparks read as
             coming off the cup rather than off the card.

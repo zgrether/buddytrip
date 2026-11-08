@@ -203,7 +203,7 @@ describe("people behave like teams", () => {
 
 describe("the trophy's three states", () => {
   /** The trophy's own opacity: the group the art hangs from. */
-  const opacity = (html: string) => html.match(/<g opacity="([\d.]+)"/)?.[1];
+  const opacity = (html: string) => html.match(/<g style="opacity:([0-9.]+)"/)?.[1];
   const trophy = (over: Partial<React.ComponentProps<typeof ClinchCelebration>>) =>
     renderToStaticMarkup(<ClinchCelebration cupComplete={false} winnerColor={null} celebrate={false} {...over} />);
 
@@ -276,11 +276,16 @@ describe("the hero", () => {
     const html = hero({ pointsHero: pointsCup({ winnerIds: ["he", "ba"] }), cupComplete: true });
     expect(html).toContain('data-testid="clinch-glow"');
   });
+  it("a points cup's lit trophy keeps 0.42 in both themes, not the head-to-head token (#1705)", () => {
+    const html = hero({ pointsHero: pointsCup({ winnerIds: ["he"] }), cupComplete: true });
+    expect(html).toContain('<g style="opacity:0.42"');
+    expect(html).not.toContain("--opacity-bt-trophy-lit");
+  });
   it("a board waiting to be finished keeps the trophy at rest, even with the math clinched", () => {
     const resting = hero({ pointsHero: pointsCup({ watch: watch({ clincherId: null }) }) });
     const waiting = hero({ pointsHero: pointsCup({ watch: watch({ clincherId: "he" }), awaitingFinish: true }) });
     const announced = hero({ pointsHero: pointsCup({ watch: watch({ clincherId: "he" }), awaitingFinish: true, announced: true }) });
-    const trophyOpacity = (html: string) => html.match(/<g opacity="([0-9.]+)"/)?.[1];
+    const trophyOpacity = (html: string) => html.match(/<g style="opacity:([0-9.]+)"/)?.[1];
     expect(trophyOpacity(resting)).toBe("0.17");
     expect(trophyOpacity(waiting)).toBe("0.17");
     expect(trophyOpacity(announced), "the control: an announced clinch does tint").toBe("0.3");
