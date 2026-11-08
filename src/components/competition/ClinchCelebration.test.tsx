@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { CompetitionHero, StickyCollapseHero } from "./CompetitionHero";
 import type { TrophySlotProps } from "./CupTrophy";
 import type { LBTeam } from "./CompetitionLeaderboard";
@@ -18,6 +20,11 @@ const team = (id: string, name: string, color: string): LBTeam => ({
   color,
 });
 const teams = [team("a", "Manhattans", "#4ade80"), team("b", "Centurions", "#fb923c")];
+
+/** The trophy group as each state emits it. The head-to-head hero's lit trophy reads
+ *  the per-theme token (#1705); the resting watermark is a plain number. */
+const LIT_TOKEN = '<g style="opacity:var(--opacity-bt-trophy-lit)"';
+const RESTING = '<g style="opacity:0.17"';
 
 function hero(props: Partial<React.ComponentProps<typeof CompetitionHero>>) {
   return renderToStaticMarkup(
@@ -91,7 +98,7 @@ describe("the burst belongs to the winners; the result belongs to everyone", () 
     const html = hero({ clincher: teams[1], cupComplete: true, celebrateFirstView: false });
     expect(html).toMatch(GLOW);
     expect(html).toContain("Final ·");
-    expect(html).toMatch(/<g opacity="0\.42"/); // trophy lit, not the watermark
+    expect(html).toContain(LIT_TOKEN); // trophy lit, not the watermark
     expect(html).not.toMatch(SPARKS); // …but no confetti fired at them
   });
 
@@ -191,8 +198,8 @@ describe("the trophy is a swappable slot", () => {
   it("a finished cup lights the trophy and mixes the winner's colour into its stops", () => {
     const html = hero({ clincher: teams[1], cupComplete: true });
     // Lifted off the 0.17 watermark…
-    expect(html).toMatch(/<g opacity="0\.42"/);
-    expect(html).not.toMatch(/<g opacity="0\.17"/);
+    expect(html).toContain(LIT_TOKEN);
+    expect(html).not.toContain(RESTING);
     // …and the winner's colour reaches the trophy's own gradient STOPS, not just
     // the wash behind it. Asserted on a stop-color specifically: the hero card's
     // `teamGlow` background uses `color-mix` too, so a bare "contains color-mix"
@@ -202,9 +209,26 @@ describe("the trophy is a swappable slot", () => {
 
   it("an unfinished cup keeps the plain 0.17 gold watermark", () => {
     const html = hero({ clincher: teams[1], cupComplete: false });
-    expect(html).toMatch(/<g opacity="0\.17"/);
+    expect(html).toContain(RESTING);
     // The raw reference golds survive untouched — no tint mixed in.
     expect(html).toMatch(/stop-color="#d9b350"/);
     expect(html).not.toMatch(/stop-color="color-mix/);
+  });
+});
+
+describe("the head-to-head lit trophy, per theme (#1705)", () => {
+  // Read from globals.css itself. Light sits lower because at 0.42 the losing name
+  // over the bowl measured under 4.5 : 1 for four winner colours; 0.30 clears all
+  // seven with the winner on either side. Dark sits lower still: with the winner on
+  // the right the losing name crosses the bowl's highlight, and amber needed 0.26.
+  const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
+  const block = (start: string) => {
+    const at = css.indexOf(`${start} {`);
+    return css.slice(at, css.indexOf("\n}", at));
+  };
+  const lit = (start: string) => block(start).match(/--opacity-bt-trophy-lit:\s*([^;]+);/)?.[1].trim();
+  it("light is 0.30, dark is 0.26", () => {
+    expect(lit(":root")).toBe("0.30");
+    expect(lit(".dark")).toBe("0.26");
   });
 });

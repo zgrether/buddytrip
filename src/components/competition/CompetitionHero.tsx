@@ -285,6 +285,7 @@ export function CompetitionHero({
              Derived from the same `clincher` the colour comes from, so the cup
              can never lean away from the team it is tinted for. */
           winnerSide={clincher ? (clincher.id === a?.id ? "A" : "B") : null}
+          litOpacity="var(--opacity-bt-trophy-lit)"
           celebrate={celebrateFirstView}
           replayNonce={replayNonce}
           onCelebrated={onCelebrated}

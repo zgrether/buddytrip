@@ -21,7 +21,7 @@ export interface TrophySlotProps {
    * cup. The consumer picks the value; the slot just applies it, so a
    * replacement doesn't have to know why.
    */
-  opacity: number;
+  opacity: number | string;
   /**
    * The winning team's colour, or null for the default gold. A slot is free to
    * ignore this (a mono artwork legitimately might) — the celebration's radial
@@ -184,7 +184,7 @@ export function CupTrophy({ opacity, tint }: TrophySlotProps) {
           <stop offset="1" stopColor={mix("#b9944a", 26)} />
         </linearGradient>
       </defs>
-      <g opacity={opacity}>
+      <g style={{ opacity }}>
         {/*
           Base (two tiers) + knop + narrow pedestal — ONE EYE LEVEL with the bowl.
 
