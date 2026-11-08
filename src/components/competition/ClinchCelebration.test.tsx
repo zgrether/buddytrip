@@ -219,15 +219,16 @@ describe("the trophy is a swappable slot", () => {
 describe("the head-to-head lit trophy, per theme (#1705)", () => {
   // Read from globals.css itself. Light sits lower because at 0.42 the losing name
   // over the bowl measured under 4.5 : 1 for four winner colours; 0.30 clears all
-  // seven with the winner on either side. Dark is unchanged pending its own sweep.
+  // seven with the winner on either side. Dark sits lower still: with the winner on
+  // the right the losing name crosses the bowl's highlight, and amber needed 0.26.
   const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
   const block = (start: string) => {
     const at = css.indexOf(`${start} {`);
     return css.slice(at, css.indexOf("\n}", at));
   };
   const lit = (start: string) => block(start).match(/--opacity-bt-trophy-lit:\s*([^;]+);/)?.[1].trim();
-  it("light is 0.30, dark is 0.42", () => {
+  it("light is 0.30, dark is 0.26", () => {
     expect(lit(":root")).toBe("0.30");
-    expect(lit(".dark")).toBe("0.42");
+    expect(lit(".dark")).toBe("0.26");
   });
 });

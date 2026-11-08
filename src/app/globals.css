@@ -360,7 +360,10 @@
   --color-bt-team-ink-over-art: 40%;
   --color-bt-team-ink-over-art-toward: white;
   --shadow-text-over-art: 0 0 8px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 1);
-  --opacity-bt-trophy-lit: 0.42;
+  /* The lit trophy, dark (#1705): with the winner on the right the losing name sat
+     over the bowl's highlight at 3.41 : 1 (amber) at 0.42, and amber still failed
+     at 0.30 (4.32). 0.26 clears all seven colours with the winner on either side. */
+  --opacity-bt-trophy-lit: 0.26;
   --color-bt-hero-neutral: linear-gradient(158deg, #222e44 0%, #1a2231 100%);
   /* Golf score colours — the pastels and tints these have always had. */
   --color-bt-zebra: rgba(255, 255, 255, 0.025);

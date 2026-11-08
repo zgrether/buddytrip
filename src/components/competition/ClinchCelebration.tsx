@@ -270,7 +270,8 @@ export function ClinchCelebration({
             eye, which is the right order for a screen whose job is announcing a
             result. (Measured by eye at 375px; see the PR's device note.) The
             head-to-head hero overrides it per theme through `litOpacity`: light
-            sits at 0.30, where the losing name clears 4.5 : 1 (#1705). */}
+            sits at 0.30 and dark at 0.26, where the losing name clears 4.5 : 1
+            for every winner colour (#1705). */}
         <Trophy opacity={lit ? litOpacity : clinched ? 0.3 : 0.17} tint={lit || clinched ? winnerColor : null} />
 
         {/* The burst, anchored to the trophy's centre so the sparks read as
