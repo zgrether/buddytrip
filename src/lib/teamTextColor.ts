@@ -75,17 +75,20 @@ export function teamTextColor(bgColor: string | null | undefined): string {
  * make sense on a dark card, and as ink on white it would erase the identity
  * entirely, which is the whole point of the colour. Do not reach for it.
  *
- * The darkening is CSS rather than arithmetic so it needs no theme hook and
- * cannot flash on hydration: `color-mix` scales toward black in sRGB, which
- * preserves hue exactly, and `--color-bt-team-ink` carries the amount —
- * **67% in light** (the weakest value that clears 4.5 : 1 for all eight, amber
- * landing at 4.53) and **100% in dark**, where `color-mix` returns the colour
- * untouched. There is no dark delta.
+ * The shift is CSS rather than arithmetic so it needs no theme hook and cannot
+ * flash on hydration: `color-mix` moves the colour toward a pole in sRGB, which
+ * preserves hue exactly. `--color-bt-team-ink` carries the share kept and
+ * `--color-bt-team-ink-toward` the pole: **63% toward black in light** and
+ * **77% toward white in dark** (#1703), the weakest values that clear 4.5 : 1
+ * for all eight on the card, raised surface, viewer row and hero gradient.
+ * Dark used to return the colour untouched, which left blue, red, purple and
+ * pink under 4.5. Only TEXT takes this: bars, badges and fills keep the raw
+ * colour, so a team is still recognisable at a glance.
  *
  * Pass any CSS colour; the result is a `color-mix()` expression.
  */
 export function teamInk(color: string): string {
-  return `color-mix(in srgb, ${color} var(--color-bt-team-ink), black)`;
+  return `color-mix(in srgb, ${color} var(--color-bt-team-ink), var(--color-bt-team-ink-toward))`;
 }
 
 /**
@@ -102,3 +105,14 @@ export function teamInkOverArt(color: string): string {
 
 /** The halo for text over the lit trophy, in the card's own tone per theme. */
 export const TEXT_OVER_ART_SHADOW = "var(--shadow-text-over-art)";
+
+/**
+ * A WINNING name at a Final sets at 20px bold (#1703, Zach). That is large text, so
+ * its bar is 3 : 1 rather than 4.5 : 1, which the normal over-art halo clears over the
+ * lit trophy. A denser halo was tried first and read as a dark band on device.
+ */
+export const WINNER_NAME_PX = 20;
+export const WINNER_NAME_WEIGHT = 700;
+/** The smallest a winning name may go: 14pt bold, the WCAG large-text line, so the
+ *  bar stays 3 : 1 at every size it lands on (#1703). */
+export const WINNER_NAME_FLOOR_PX = 18.67;

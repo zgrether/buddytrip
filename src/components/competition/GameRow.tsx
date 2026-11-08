@@ -20,6 +20,7 @@ import type { ScoringModel } from "@/lib/gameTypes";
 import type { CannotProjectReason } from "@/lib/gameProjection";
 import type { LBGame, LBTeam, LBCell } from "./CompetitionLeaderboard";
 import { EYEBROW, TYPE_SCALE } from "@/lib/typeScale";
+import { teamInk } from "@/lib/teamTextColor";
 import { setupReasonLine, type SetupReason } from "@/lib/gameReadiness";
 import { SETTINGS_ROW_PARAM, SETUP_REASON_ROW, type SettingsRow } from "@/lib/settingsRows";
 
@@ -804,12 +805,14 @@ export function GridColumnHeader({ teams }: { teams: LBTeam[] }) {
         <span
           key={t.id}
           className="relative shrink-0 pb-1 text-center text-[11px] font-extrabold uppercase tracking-wide"
-          style={{ width: GRID_COLW, color: t.color }}
+          // The label is text, so it takes the text ink (#1703); the underline is a
+          // mark, so it keeps the team's own colour, as bars and badges do.
+          style={{ width: GRID_COLW, color: teamInk(t.color) }}
         >
           {t.short_name}
           <span
             className="absolute bottom-0 left-1/2 h-[2px] w-5 -translate-x-1/2 rounded-full"
-            style={{ background: "currentColor", opacity: 0.9 }}
+            style={{ background: t.color, opacity: 0.9 }}
           />
         </span>
       ))}
@@ -1124,7 +1127,8 @@ function CompletedGridCells({ teams, cells, halves }: { teams: LBTeam[]; cells: 
             style={{
               width: GRID_COLW,
               padding: "3px 0",
-              color: t.color,
+              // Text ink (#1703); the winner's tint and ring are fills and stay raw.
+              color: teamInk(t.color),
               background: isWinner
                 ? `color-mix(in srgb, ${t.color} 14%, transparent)`
                 : undefined,

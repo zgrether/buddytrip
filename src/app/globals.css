@@ -107,11 +107,15 @@
    *
    * DERIVED, never stored — no column, following teamTextColor own "COMPUTED,
    * not per-color" pattern, so it works for any future team colour.
-   * color-mix scales toward black in sRGB, which preserves hue exactly; 67%
-   * is the weakest darkening that clears 4.5 for all eight (Amber, the worst,
-   * lands at 4.53). Dark is 100% — color-mix returns the colour untouched, so
-   * there is no dark delta at all. */
-  --color-bt-team-ink: 67%;
+   * color-mix scales toward a pole in sRGB, which preserves hue exactly. The
+   * share kept is the weakest that clears 4.5 : 1 for all eight on every surface
+   * team text sits on: the card, the raised surface, the viewer's accent row and
+   * the hero gradient (#1703, measured). Light: 63% toward black (Amber, the
+   * worst, 4.56). Dark: 77% toward white (Red, 4.55); it used to be the colour
+   * untouched, which left blue, red, purple and pink under 4.5. Text only: bars,
+   * badges and fills keep the raw team colour. */
+  --color-bt-team-ink: 63%;
+  --color-bt-team-ink-toward: black;
   /* A team colour as TEXT OVER THE LIT TROPHY (the points hero's Final names).
    * The bowl is mid-tone where the names sit, so no ink alone clears it: the
    * ink moves away from the bowl (darker here, lighter in dark) and a halo in
@@ -347,7 +351,8 @@
    * EXPLICITLY, not left to inherit: a token defined only in `:root` is
    * inherited by dark, so changing the light value silently changes dark too.
    * An absent override is not an absent change. */
-  --color-bt-team-ink: 100%;
+  --color-bt-team-ink: 77%;
+  --color-bt-team-ink-toward: white;
   --color-bt-team-ink-over-art: 40%;
   --color-bt-team-ink-over-art-toward: white;
   --shadow-text-over-art: 0 0 8px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 1);

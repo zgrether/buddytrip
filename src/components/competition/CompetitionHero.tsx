@@ -7,8 +7,10 @@ import { ClinchCelebration } from "./ClinchCelebration";
 import { PointsHeroTiers, type PointsHeroUnit } from "./PointsHeroTiers";
 import type { ClinchWatch } from "@/lib/pointsClinch";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW } from "@/lib/teamTextColor";
-import { useShrinkToFit } from "@/hooks/useShrinkToFit";
+import { teamInk, teamInkOverArt, TEXT_OVER_ART_SHADOW, WINNER_NAME_PX, WINNER_NAME_WEIGHT } from "@/lib/teamTextColor";
+import { useShrinkToFit, NAME_SIZES } from "@/hooks/useShrinkToFit";
+import { useWinnerNameFit } from "@/hooks/useWinnerNameFit";
+import { winnerNameStyle } from "@/lib/winnerNameFit";
 
 /** The collapsed bar's ladder. Starts at its designed 14 (the expanded hero's
  *  starts at 17, `NAME_SIZES`), floor 11 — below that a name in a sticky bar is
@@ -46,6 +48,12 @@ export function isRace(scoringModel: ScoringModel, teamCount: number): boolean {
 }
 
 const NEUTRAL_CARD = "var(--color-bt-hero-neutral)";
+
+/** A winning name never shrinks to fit: one size, so the hook measures only that. */
+const WINNER_NAME_SIZES = [WINNER_NAME_PX];
+/** ...and its column widens from 44% to 48% so it has room (#1703). The share is
+ *  the one `useWinnerNameFit` measures against, so the two cannot disagree. */
+const WINNER_COLUMN_SHARE = 0.48;
 
 /** A finished cup's losing score, as a share of the winner's size (#1700). */
 const LOSER_SCORE_SCALE = 0.72;
@@ -201,6 +209,8 @@ export function CompetitionHero({
   // Manual re-fire (winners only). A counter, not a boolean — see
   // `ClinchCelebration`'s `replayNonce` doc for why.
   const [replayNonce, setReplayNonce] = useState(0);
+  // The names row: a winning name's column is a share of it (`useWinnerNameFit`).
+  const namesRowRef = useRef<HTMLDivElement>(null);
   // The button is HIDDEN, not merely inert, under reduced motion: the CSS
   // suppresses the burst there, so the control would be tappable and do
   // visibly nothing. Offering nothing is better than offering a lie.
@@ -352,9 +362,17 @@ export function CompetitionHero({
                 `mt-4`) pay for most of the second reserved name line: 20px of
                 new height against 12px of reclaimed slack, so the panel grows
                 ~8px rather than ~20px. */}
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <TeamName team={a} onEditTeam={onEditTeam} align="left" overArt={cupComplete} />
-              <TeamName team={b} onEditTeam={onEditTeam} align="right" overArt={cupComplete} />
+            {/* `items-stretch`: both name blocks take the taller one's height, so the
+                ROSTER labels line up whatever each name's line count (#1703). A
+                grid row would do the same, but the columns' max-width is a share of
+                THIS row, and a grid would resolve it against a content-sized track. */}
+            <div ref={namesRowRef} className="mt-3 flex items-stretch justify-between gap-3">
+              {/* The names always sit across the trophy (team A over its handle and
+                  bowl edge), so they always take the over-art ink and halo (#1703):
+                  no glow value lets a name clear 4.5 there. The numerals are large
+                  text (3 : 1), so they keep the over-art treatment for Final only. */}
+              <TeamName team={a} onEditTeam={onEditTeam} align="left" overArt rowRef={namesRowRef} won={(cupComplete && clincher?.id === a.id) || !!cupShared} />
+              <TeamName team={b} onEditTeam={onEditTeam} align="right" overArt rowRef={namesRowRef} won={(cupComplete && clincher?.id === b.id) || !!cupShared} />
             </div>
 
             {/* Scores — the two big team-colored numbers flanking the trophy.
@@ -1060,15 +1078,26 @@ function TeamName({
   onEditTeam,
   align,
   overArt = false,
+  won = false,
+  rowRef,
 }: {
   team: LBTeam;
   onEditTeam?: (teamId: string) => void;
   align: "left" | "right";
-  /** At Final the name sits over the lit trophy: the over-art ink and halo (#1700). */
+  /** The name sits over the trophy: the over-art ink and halo (#1700, #1703). */
   overArt?: boolean;
+  /** This team won the Final, outright or sharing it: the name sets at 20px bold, large
+   *  text (3 : 1), with the normal halo, in a 48% column. A word too wide for that
+   *  column lowers the size to the 14pt floor, then breaks (`winnerNameFit`, #1703). */
+  won?: boolean;
+  /** The names row, which a winning name's column is a share of. */
+  rowRef?: React.RefObject<HTMLElement | null>;
 }) {
   const nameRef = useRef<HTMLSpanElement>(null);
-  const nameSize = useShrinkToFit(nameRef, team.name);
+  const noRow = useRef<HTMLElement | null>(null);
+  const fitted = useShrinkToFit(nameRef, team.name, won ? WINNER_NAME_SIZES : NAME_SIZES);
+  // Each name is sized on its own, so in a shared Final the two may differ.
+  const winnerFit = useWinnerNameFit(nameRef, rowRef ?? noRow, team.name, WINNER_COLUMN_SHARE, won);
 
   return (
     <button
@@ -1117,7 +1146,9 @@ function TeamName({
        * A name that no longer fits wraps to two lines, which is what the
        * unconditional two-line reserve above is for and costs nothing.
        */
-      style={{ maxWidth: "44%" }}
+      // A Final winner's name is 20px bold and never shrinks, so its column widens
+      // to 48% (#1703). At Final the centre holds the lit trophy, not the golfer.
+      style={{ maxWidth: won ? `${WINNER_COLUMN_SHARE * 100}%` : "44%" }}
       data-testid={`comp-team-name-${align === "left" ? "a" : "b"}`}
     >
       {/* 17 (was 15) — the name carries the block now that the icon is gone, and
@@ -1152,7 +1183,9 @@ function TeamName({
           content column up to 1280px, where nothing wraps and this leaves a
           quiet dead line. A panel that changes height across breakpoints is a
           thing you notice; 20px of desktop space is not. */}
-      <span className="flex w-full items-end" style={{ fontSize: 17, minHeight: "2.4em" }}>
+      {/* `flex-1`: when the row stretches this block to the other side's height,
+          the extra goes above the name, which stays against ROSTER (#1703). */}
+      <span className="flex w-full flex-1 items-end" style={{ fontSize: 17, minHeight: "2.4em" }}>
         {/* `break-normal`, was `break-words`.
 
             `break-words` (overflow-wrap: break-word) breaks INSIDE a word when
@@ -1180,16 +1213,22 @@ function TeamName({
             full two-line block and both sides keep their baselines. Putting the
             ref on the child and the reserve on the parent is what makes that
             true; do not merge them. */}
+        {/* A winner's name is never cut off: no clamp, and a word wider than the 48%
+            column even at the 14pt floor breaks where it must (`overflow-wrap:
+            anywhere`, the last resort, #1703). */}
         <span
           ref={nameRef}
-          className="line-clamp-2 w-full break-normal"
+          className={`w-full break-normal ${won ? "" : "line-clamp-2"}`}
           style={{
-            fontSize: nameSize,
-            fontWeight: 600,
+            ...(won ? winnerNameStyle(winnerFit) : { fontSize: fitted }),
+            fontWeight: won ? WINNER_NAME_WEIGHT : 600,
             lineHeight: 1.2,
             ...(overArt ? { color: teamInkOverArt(team.color), textShadow: TEXT_OVER_ART_SHADOW } : { color: teamInk(team.color) }),
           }}
           data-testid={`hero-team-name-${align === "left" ? "a" : "b"}`}
+          data-team-color={team.color}
+          data-final-winner={won ? "true" : undefined}
+          data-break-anywhere={won && winnerFit.breakAnywhere ? "true" : undefined}
         >
           {team.name}
         </span>
