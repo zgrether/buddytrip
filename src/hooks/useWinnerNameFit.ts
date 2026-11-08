@@ -59,10 +59,9 @@ export function useWinnerNameFit(
   }, [nameRef, rowRef, text, share, enabled]);
 
   useLayoutEffect(() => {
-    if (!enabled) {
-      setFit(FULL);
-      return;
-    }
+    // Off, the hook returns the full size whatever `fit` holds, and measures again
+    // when it is turned back on, so nothing needs resetting here.
+    if (!enabled) return;
     const row = rowRef.current;
     if (!row) return;
     lastWidth.current = -1;
