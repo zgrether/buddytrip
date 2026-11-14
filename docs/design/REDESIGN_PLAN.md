@@ -113,7 +113,7 @@ Zach's call · **[Draw]** design work, answer is clear · **[Proto]** prototype 
   (remove from crew and trip, or only off the trip). Decided 2026-11-08: Helpers can add
   people and approve suggestions; only the admin removes people. Anyone can leave a crew (the
   admin makes someone else admin first). An invite link joins directly and expires after 24 hours.
-- **d [Drawn 2026-11-14 → row 7]** Leave / delete a crew; make someone else admin. Copies today's trip versions (LeaveTripButton + DepartureWarning, ownerLeaveRefusal, Trip settings' transfer, Delete trip). Leaving a crew leaves its upcoming trips; the old admin becomes a Helper; deleting a crew keeps its games in each player's history; a crew with trips can't be deleted until they are (open question to Zach). Members see names only, no emails (D14).
+- **d [Drawn 2026-11-14 → row 7; decided → D16]** Leave, admins, archive, delete. Modelled on Microsoft Teams.
 - **e [Decided → D2]** The second role is **Helper**.
 
 ### J3 · Pick up a series
@@ -129,7 +129,7 @@ Zach's call · **[Draw]** design work, answer is clear · **[Proto]** prototype 
 - **b [Draw]** A first-timer's near-empty Home.
 
 ### J6 · Fix a past game — J2-a again; **[Draw]** the You page needs profile, settings,
-notifications, sign-out, delete account.
+notifications, sign-out, delete account. Plus **Help · Contact us** (needed by D16: a deleted crew is restored on request within 30 days).
 
 ### J7 · Make a crew your own — J2-b; **[Draw]** photo upload and crop.
 
@@ -182,10 +182,11 @@ notifications, sign-out, delete account.
 | D9 | Desktop | ✓ Placement approved 2026-11-14 (left rail, two-column Home, crew page, focus-mode sheet, finished game, trip control room, Show on TV). **Caution for the specs:** the trip's Today page is the one genuinely new desktop surface (itinerary + cup board + live games merged); its spec starts from an inventory of the detail today's ItineraryView, CompetitionFace and live game cards carry, so none of it is lost |
 | D10 | "Cancel game" / "Cancel series", never "abandon" | ✓ Agreed |
 | D11 | Competitions can stand alone in a crew; + offers Game · Competition · Trip | ✓ Agreed 2026-11-14 |
-| D12 | Roles are **Member · Helper · Admin** (not Owner). One admin per crew. Helpers add people and approve suggestions; only the admin removes people, sets roles, deletes the crew. UI words only: code can keep `owner_id` | ✓ Decided 2026-11-08 |
+| D12 | Roles are **Member · Helper · Admin** (not Owner). ~~One admin per crew~~ **A crew can have several admins** (revised 2026-11-14, D16: Teams' answer to orphaned teams). Helpers add people and approve suggestions; only admins remove people, set roles, archive or delete the crew. UI words only: code can keep `owner_id` | ✓ Decided 2026-11-08, revised 2026-11-14 |
 | D13 | A game in a crew shows to the whole crew by default, with no line saying so. A "Hide from the rest of the crew" switch on the finished game keeps it to the players' own histories (replaces "players see it; sharing widens it"). No Share button on games | ✓ Decided 2026-11-11 |
 | D14 | **Open crews** (a crew of people you don't all know, e.g. a 200-person pool) are Later. Phase 1's data model leaves room for them (see Phase 1 guardrails). Crews today are "people we know" | ✓ Agreed 2026-11-14 |
 | D15 | **Trip mode** = the trip's `now` status, which already exists (`trip_status()` / `getEffectiveStatus`, migration 020): on for everyone from 3 days before the start date, off 3 days after the end. While on, opening the app lands every trip member on the trip (incl. right after sign-up from the invite); ‹ Home lasts until the next open. **New:** the admin can start it early or end it early (two optional timestamps on the trip, not a stage column; 020 removed a manual stage and dates stay the default). A panel on the trip Home says what it is, why it waits, why start early. Receipts and money stay editable until end + 14 days rounded to Sunday (`isReadOnly`, as today), so trip mode can end at +3 | ✓ Decided 2026-11-14 |
+| D16 | **Crew lifecycle, modelled on Microsoft Teams.** Several admins allowed; only the last admin can't leave ("You're its only admin. Make someone else admin first."). Leaving or being removed takes the crew's games out of that person's own history; their scores stay in the crew's games; the confirm says so ("Its games leave your history."). Leaving a crew leaves its upcoming trips. **Archive** is the normal end: moves to Archived for everyone, nothing deleted, any admin can bring it back. **Delete** wipes its games, cups, trips and receipts for everyone; it's soft-deleted for 30 days and restored only by contacting us (the admin tool restores it), then gone. Needs: a Contact us page (You → Help), and restore-a-deleted-crew in the admin tool. Members see names only, never emails | ✓ Decided 2026-11-14 |
 
 **D5 options (in place of Activity):**
 - **Events** — every competition, trip and (later) league you're in: upcoming, live, past.
