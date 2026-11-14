@@ -138,7 +138,7 @@ notifications, sign-out, delete account.
   (or + New crew): "Everyone on the trip joins this crew, so your games stay together after
   you're home." Who's coming starts from the crew's people; anyone new joins the crew too, and
   the invite says "You'll join the BBMI crew."
-- **b [Decide]** When the app switches into trip mode (start date? the admin?) and back out.
+- **b [Decided → D15; drawn 2026-11-14 → row 9]** Trip mode: automatic by dates, the admin can start or end it early.
 
 ### J9 · On the trip, as the admin
 - **a [Decided → D6]** Out of trip mode: the title bar says **‹ Home** (or ‹ wherever you came
@@ -179,12 +179,13 @@ notifications, sign-out, delete account.
 | D6 | Leave trip mode with **‹ Home** in the title bar | ✓ Agreed |
 | D7 | Series chip on Who's playing + Run it back | ✓ Agreed |
 | D8 | Retire Quick Game once the no-account sheet ships | ✓ Agreed (it's the same idea, done properly) |
-| D9 | Desktop | Comps drawn 2026-11-08 (canvas page "Desktop"): left rail, two-column Home, crew page with head-to-head, focus-mode score sheet, trip control room, Show on TV. Awaiting review |
+| D9 | Desktop | ✓ Placement approved 2026-11-14 (left rail, two-column Home, crew page, focus-mode sheet, finished game, trip control room, Show on TV). **Caution for the specs:** the trip's Today page is the one genuinely new desktop surface (itinerary + cup board + live games merged); its spec starts from an inventory of the detail today's ItineraryView, CompetitionFace and live game cards carry, so none of it is lost |
 | D10 | "Cancel game" / "Cancel series", never "abandon" | ✓ Agreed |
 | D11 | Competitions can stand alone in a crew; + offers Game · Competition · Trip | ✓ Agreed 2026-11-14 |
 | D12 | Roles are **Member · Helper · Admin** (not Owner). One admin per crew. Helpers add people and approve suggestions; only the admin removes people, sets roles, deletes the crew. UI words only: code can keep `owner_id` | ✓ Decided 2026-11-08 |
 | D13 | A game in a crew shows to the whole crew by default, with no line saying so. A "Hide from the rest of the crew" switch on the finished game keeps it to the players' own histories (replaces "players see it; sharing widens it"). No Share button on games | ✓ Decided 2026-11-11 |
 | D14 | **Open crews** (a crew of people you don't all know, e.g. a 200-person pool) are Later. Phase 1's data model leaves room for them (see Phase 1 guardrails). Crews today are "people we know" | ✓ Agreed 2026-11-14 |
+| D15 | **Trip mode** = the trip's `now` status, which already exists (`trip_status()` / `getEffectiveStatus`, migration 020): on for everyone from 3 days before the start date, off 3 days after the end. While on, opening the app lands every trip member on the trip (incl. right after sign-up from the invite); ‹ Home lasts until the next open. **New:** the admin can start it early or end it early (two optional timestamps on the trip, not a stage column; 020 removed a manual stage and dates stay the default). A panel on the trip Home says what it is, why it waits, why start early. Receipts and money stay editable until end + 14 days rounded to Sunday (`isReadOnly`, as today), so trip mode can end at +3 | ✓ Decided 2026-11-14 |
 
 **D5 options (in place of Activity):**
 - **Events** — every competition, trip and (later) league you're in: upcoming, live, past.
