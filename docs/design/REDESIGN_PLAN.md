@@ -113,7 +113,7 @@ Zach's call · **[Draw]** design work, answer is clear · **[Proto]** prototype 
   (remove from crew and trip, or only off the trip). Decided 2026-11-08: Helpers can add
   people and approve suggestions; only the admin removes people. Anyone can leave a crew (the
   admin makes someone else admin first). An invite link joins directly and expires after 24 hours.
-- **d [Draw]** Leave / delete a crew; make someone else admin.
+- **d [Drawn 2026-11-14 → row 7]** Leave / delete a crew; make someone else admin. Copies today's trip versions (LeaveTripButton + DepartureWarning, ownerLeaveRefusal, Trip settings' transfer, Delete trip). Leaving a crew leaves its upcoming trips; the old admin becomes a Helper; deleting a crew keeps its games in each player's history; a crew with trips can't be deleted until they are (open question to Zach). Members see names only, no emails (D14).
 - **e [Decided → D2]** The second role is **Helper**.
 
 ### J3 · Pick up a series
