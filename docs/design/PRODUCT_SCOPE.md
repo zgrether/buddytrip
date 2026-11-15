@@ -25,7 +25,7 @@ Groups of people who already play together and argue about who's winning:
 Most of them are not tech-savvy. The person who sets things up is usually one organizer; everyone
 else just wants to tap a score and see who's ahead.
 
-**Not for:** strangers (a 200-person public pool is a later idea, not launch), betting or moving
+**Not for, at launch:** strangers (a 200-person open pool is a later idea; see below), betting or moving
 money (the app tracks who owes whom; it never handles payments), or pro/league sports admin.
 
 ## The words the app uses (the brand should use them too)
@@ -81,6 +81,40 @@ score sheet says TOTAL.
 - **Desktop:** a left rail with your crews, Home in two columns, a full-width score sheet.
 - **TV:** a read-only board for the room.
 
+## Where it's headed (later, but the brand has to fit it)
+
+The redesign is built so these can be added without starting over (`claude/FUTURE_PATTERNS.md`
+has the detail). None ship at launch; all of them should still sound right under the name.
+
+- **Judged and voted nights.** The idea started with the family's Thanksgiving blind wine
+  tasting: eight hidden bottles, 20–25 tasters, a card per person, and a reveal at the end. The
+  same shape covers a bourbon or beer flight, a chili or BBQ cook-off, a pie contest, trivia
+  night, and an awards ballot ("best shot of the trip", "MVP of the weekend"). The host picks a
+  template ("Help me host a wine night"), paces it ("Now pouring #3"), and everyone fills in
+  their own card on their phone, or on a printed card the host types in.
+- **Three kinds of winner from one night:** the people (who won), the things (the group's
+  favourite wine, the best chili), and who was closest to the truth (best palate, most trivia
+  right; pick'em already works this way).
+- **The reveal as the moment the night builds to,** using the same celebration as a cup's
+  winner's circle.
+- **Join in seconds:** a QR code or a 4-letter code at the table, a name, and you're in. No
+  account for the night; claim it later.
+- **The TV board:** the room watches the standings, the score sheet or the tasting reveal on
+  the big screen, paired with the same code.
+- **Leagues:** a season-long pick'em in a crew, ending in something like Super Bowl squares.
+- **Big open groups** (a 200-person pool where not everyone knows each other): a second kind of
+  crew, much later.
+- **Every year again:** "Thanksgiving tasting 2026, 2027…" becomes part of the crew's history,
+  the way BBMI's trips are.
+
+Voting already exists in a small way today: a trip's ideas and the date poll are voted on, and
+pick'em is picks scored against the results.
+
+**What this means for the name:** the app isn't only "keep score" between people. It also judges
+things, votes, ranks favourites and reveals answers. A name that only means a fight between
+people ("battle", "versus") or only a running count will fit the score sheet and fit a tasting
+badly. Test every candidate on "Thanksgiving wine tasting on ___" as well as "Scrabble on ___".
+
 ## What already exists vs. what's new
 
 Built and in use today (BBMI ran its 2026 cup on it): trips end to end, team cups and points
@@ -108,6 +142,7 @@ series, the new Home, Events, the finished-game screen, desktop, trip mode, arch
   default, scores in tiles, team colours as the only hues. It changes three standing style rules
   if chosen, so it needs Zach's ruling before any new screen is built.
 - **Tagline, icon, and the store listing.**
+- **Whether the name stretches to judging and voting** (see "Where it's headed").
 
 ## Where to read more
 
