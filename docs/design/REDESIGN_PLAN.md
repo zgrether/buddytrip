@@ -60,9 +60,7 @@ Three things you can start from **+**, each one sentence, in this order:
 - **Trip** — "Going somewhere together: dates, a place to stay, the plan." A trip can include
   a competition.
 
-A competition **doesn't need a trip.** The Thanksgiving cup lives in its crew, like a game
-does (`trip_id` is already nullable on competitions). It shows on the crew page and on Home
-like anything else. Inside a trip, "Add a competition" creates one that belongs to the trip.
+A competition **doesn't need a trip** (D11). **Correction 2026-11-16:** this said `trip_id` is already nullable on competitions. It isn't: `competitions.trip_id` is NOT NULL (migration 033), a trip holds at most one competition (`competitions_one_per_trip`, migration 195, Zach's ruling 2026-09-22), games are held to their competition's trip (migration 135), and the board loads everything by trip (`LiveFaceClient` → `useTripId`, `competitions.getByTrip`, `games.listByTrip`, trip realtime topics, trip roles). So a crew competition is model work in Phase 1 (`competitions.circle_id`, `trip_id` nullable, one-per-trip kept for trips) and plumbing work in Phase 5 (the board keyed by competition, permissions from crew roles). The board itself is reused unchanged; the only new screen is its shell: the crew's band and ‹ back to the crew instead of the trip header (Prototype row 7, "a crew competition, no trip"). It shows on the crew page and on Home like anything else. Inside a trip, "Add a competition" creates the trip's one competition.
 
 **The live card on Home** has one header and one featured thing:
 - The **header goes to the event** (the trip, or the competition when there's no trip).
