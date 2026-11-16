@@ -404,3 +404,26 @@ only a gap if the layer below is not already providing it. For anything that
 ends up in a phone's notification tray, the OS is that layer, and it is better
 positioned than we are — it knows the timezone, it follows travel, and the user
 has usually already configured it.
+
+## Redesign: what "Your move" pushes (decided 2026-11-16, NOT built)
+
+From `docs/design/REDESIGN_PLAN.md` D18. A plan for the crew-centric redesign; nothing below is
+wired, and no existing row above changes until a spec says so. Rule: push only when someone is
+waiting on you or a deadline is close. One push per item, at most one reminder.
+
+| Your move item | Push | Category | When |
+|---|---|---|---|
+| Invited to a crew, trip or game | yes | `invites` | at once; replaces the invite email when the person has the app, never both |
+| Make your picks | reminder only | `game_results` | once, ~3h before lock, only if no sheet |
+| Vote on dates or ideas | yes | `planning` | when the poll opens; one reminder a day before close if unvoted |
+| Approve a suggested person (admins, Helpers) | yes | `organizer` | when the suggestion arrives |
+| Results needed on a game you run | yes | `organizer` | as wired today (`pickem.setResult`) |
+| Trip mode starting (early or by date) | yes | `planning` | once |
+| Settle up after a trip | yes | `planning` | once, when the trip becomes its recap, only if you owe or are owed |
+| Made a Helper or admin | yes | `invites` | once |
+| "Make a crew?" suggestion | no | | |
+| Start game N of a series | no | | |
+| Removed from a crew; a crew archived | no | | |
+
+`chat` retires with chat (News replaces it). Settings then expose five categories: Games & cups
+(`game_results`), News, Trips (`planning`), Invites, Running things (`organizer`).
