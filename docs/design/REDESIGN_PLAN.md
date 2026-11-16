@@ -131,7 +131,7 @@ Zach's call · **[Draw]** design work, answer is clear · **[Proto]** prototype 
 ### J6 · Fix a past game — J2-a again; **[Draw]** the You page needs profile, settings,
 notifications, sign-out, delete account. Plus **Help · Contact us** (needed by D16: a deleted crew is restored on request within 30 days).
 
-### J7 · Make a crew your own — J2-b; **[Draw]** photo upload and crop.
+### J7 · Make a crew your own — J2-b; **[Drawn 2026-11-16 → row 7]** photo upload and crop: 📷 in Edit crew's Picture row → the phone's own picker → one square crop shaped like the crew tile (drag, pinch, slider on desktop) → the photo replaces the emoji everywhere; the crew color still drives the band. Admins and Helpers. Reuses the lodging-photo upload (`AddPropertySheet`: image check, 8 MB cap, public bucket); new are the crop, resizing to a small square on the phone before upload, and a crew-photos bucket whose write rule follows crew roles (today's `avatars` bucket is per-user folders and unused).
 
 ### J8 · Plan a trip, as the admin
 - **a [Decided → D4; drawn 2026-11-08 → prototype row 10]** + → Trip asks which crew first
