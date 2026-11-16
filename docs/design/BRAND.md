@@ -62,9 +62,12 @@ and word.
 | Palette tokens | **Adopted** |
 | Paper and Ink neutrals as the app's backgrounds | **Adopted now**, with the redesign (nobody is actively using the app, so no one is affected) |
 | Archivo, and scores in tiles (gold for the winner) | **Adopted on the score surfaces** Phase 2 builds. Condensed caps for scores, headlines and labels only; names and body text stay regular width |
-| Crests | **Out.** Not added unless a design needs them |
-| Custom game glyphs vs lucide | **Open** (Zach reopened it 16 Nov; `claude/GLYPH_STUDY.md`). Leading proposal: one glyph per game format on its tinted tile (drawn or lucide, to be ruled after the design), lucide for the tab bar and every utility icon |
+| Game glyphs | **Adopted** (16 Nov). Ten drawn glyphs, one per game type, Ink on a tinted tile; lucide for the tab bar and utility icons. `claude/GAME_GLYPHS.md` (source, stage table, build notes); how it was decided: `claude/GLYPH_STUDY.md` |
+| Crests | **Left out** unless the design needs them |
 | Light as the default theme | **Not ruled.** Both themes work today; dark is the default |
+
+Process (Zach, 16 Nov): design first, then work out the cost, then decide; cost is not a reason to skip
+the design step.
 
 People keep today's avatar (the icon each person picks; Google photos as an option later).
 `claude/BIG_BOARD_LOOK.md` is the source for tiles; where it says the brand has no hue, or that
@@ -89,7 +92,13 @@ Weak spots to watch on a phone: white cards separate less on the light ground (1
 
 ## What changes in the app (for the specs, not built)
 
-- **One standing rule reverses for sure:** "system fonts only" (Archivo for scores and headlines). Whether game types get drawn glyphs is open; lucide stays for the tab bar and utility icons either way.
+- **Two standing rules change:** "system fonts only" (now Archivo for scores and headlines) and game
+  icons (a drawn glyph per game type on a tinted tile, replacing `categoryIcon` / `CATEGORY_ICONS`). lucide
+  stays for the tab bar and every utility icon. An unknown game type falls back to the dice. Category tabs
+  are unchanged (Golf, Card, Yard, Bar, Other; Golf shows the stroke play glyph, Other the dice).
+- **Stage rule:** the game tile is grey until scoring is on and full tint after (today's "armed" signal,
+  moved from the icon to the tile). **Teal is not a status.** Live games carry the red Live badge. Stage
+  table in `claude/GAME_GLYPHS.md`.
 - **Neutrals map onto today's tokens:** `--color-bt-base` `#EDECE6` / `#10121F`, `-card` `#FFFFFF` /
   `#1A1D2E`, `-card-raised` `#E3E1DA` / `#272B40`, `-border` `#D5D2C9` / `#32374E`, `-text` Ink /
   Paper, `-text-dim` `#4B4D5C` / `#A5AAC0` (light / dark).
@@ -107,6 +116,8 @@ Weak spots to watch on a phone: white cards separate less on the light ground (1
 
 ## Still open
 
+- **The marketing kit still shows crests and the round 1 glyphs.**
+
 - **Status colors** (warning, danger, planning, ready, owner, Glorious) not reviewed; Danger red and
   Live red are now two reds with different jobs.
 - **Domains:** Zach buys them himself (`putmedownfor.com`, `putmedownfor.app`; `pmdf.app` for
@@ -114,4 +125,5 @@ Weak spots to watch on a phone: white cards separate less on the light ground (1
 - Trademark search (none done for Put Me Down For), App Store / Play names, social handles.
 - A say-it-aloud test; a device check in sunlight; a color-blindness check (Pen vs Green).
 - **Don't re-propose:** the Board logo with the ME tile lit, a rectangle blank, a pencil or check
-  mark, the line as an underline, a single in-between teal, near-black Ink, volt.
+  mark, the line as an underline, a single in-between teal, near-black Ink, volt, and the round 1
+  abstract game glyphs (two circles for skins, two triangles for match play, three bars for rack).
