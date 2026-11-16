@@ -47,17 +47,19 @@ status. A solid color is a team or a crew; chrome is Ink and Paper. Games get a 
 of the eight with an Ink glyph, never a new hue. A team may be red; Live is told apart by its dot
 and word.
 
-## Type and the look (as drawn in the marketing pieces)
+## Type and the look (Zach's rulings, 16 Nov 2026, in `claude/BRAND_HANDOFF.md`)
 
-- **Archivo**, one variable family: condensed caps (62% width, 800) for names, scores and
-  headlines; 78% width 700 caps with tracking for labels; regular width for anything longer than a
-  few words.
-- **Scores sit in tiles.** The winner's total is a gold tile; others are raised neutral tiles.
-- **People are roundels:** an initial in a ring of their team or crew color.
-- **Game types are tokens:** a solid glyph on a pale tile.
-- **Both themes:** Day (Paper) and Night (Ink). The app already supports both.
-- This is the "Big Board" direction (`claude/BIG_BOARD_LOOK.md`) recolored to PMDF. Where that doc
-  says the brand has no hue, or that today's app is dark-forced, PALETTE.md overrides it.
+| Part | Status |
+|---|---|
+| Palette tokens | **Adopted** |
+| Paper and Ink neutrals as the app's backgrounds | **Adopted now**, with the redesign (nobody is actively using the app, so no one is affected) |
+| Archivo, and scores in tiles (gold for the winner) | **Adopted on the score surfaces** Phase 2 builds. Condensed caps for scores, headlines and labels only; names and body text stay regular width |
+| Crests and the 32 custom glyphs | **Deferred. Keep lucide.** The marketing pieces show them; that is a known mismatch at launch |
+| Light as the default theme | **Not ruled.** Both themes work today; dark is the default |
+
+People keep today's avatar (the icon each person picks; Google photos as an option later).
+`claude/BIG_BOARD_LOOK.md` is the source for tiles; where it says the brand has no hue, or that
+today's app is dark-forced, `claude/PALETTE.md` and this doc override it.
 
 ## Copy rules
 
@@ -67,19 +69,34 @@ headline or the line. Money: "it tracks who owes whom; it never touches the mone
 
 ## What changes in the app (for the specs, not built)
 
-- `STYLE_GUIDE.md` and `CLAUDE.md` standing rules this reverses: system fonts only; lucide/tabler
-  icons only; the current surface colors (light `#d8e0e8`, dark `#0a0e1a`).
+- **One standing rule reverses:** "system fonts only" (Archivo for scores and headlines). lucide stays.
+- **Neutrals map onto today's tokens:** `--color-bt-base` `#EDECE6` / `#10121F`, `-card` `#FFFFFF` /
+  `#1A1D2E`, `-card-raised` `#E3E1DA` / `#272B40`, `-border` `#D5D2C9` / `#32374E`, `-text` Ink /
+  Paper, `-text-dim` `#4B4D5C` / `#A5AAC0` (light / dark).
 - `--color-bt-accent` splits into a fill token and a text token in light mode;
   `--color-bt-on-accent` becomes Ink.
-- Teams saved as cyan need a mapping before the swatch is removed.
+- **Team colors take the deeper values** wherever a score sits on a team fill (white on today's
+  green is about 2.3:1). Teams saved as cyan need a mapping; how team color is stored (name or hex)
+  decides how.
 - Archivo becomes the app's first web font: `font-display: swap` and a metric-matched fallback so
   scores don't jump.
-- The rename from BuddyTrip: domain, the home-screen name and icon, the email sender
-  (`DOMAIN_AND_EMAIL.md`), and `bbmi.app` redirecting to the new address.
+- **The rename from BuddyTrip** (which is taken: an App Store "Buddytrip" and both domains):
+  `name` Put Me Down For, `short_name` **PMDF** (never "Put Me Down"), the domain, icon files,
+  the email sender (`BuddyTrip <noreply@bbmi.app>` today) and a redirect from `bbmi.app`
+  (`DOMAIN_AND_EMAIL.md` section 4).
 
 ## Still open
 
-- Trademark search, App Store / Play names, social handles.
-- Registering `putmedownfor.com` (and `.app`).
-- Final logo artwork and final fonts.
-- A device check in real sunlight and a color-blindness check (Pen vs Green is the weakest pair).
+- **Undecided in the new neutrals:** the float surface (dialogs, sheets) and dark-mode chrome have
+  no value; white cards separate less on the new light ground (1.18:1), so borders may carry more;
+  the status colors (warning, danger, planning, ready, owner, Glorious) weren't reviewed, and
+  Danger red and Live red are now two reds with different jobs.
+- **Logo files:** no SVG, PNG icon set or maskable icon exists; the logo is canvas sketches. With
+  no outside designer, they are made from the sketches before the rename. Both fonts are SIL Open
+  Font License.
+- **Domains:** Zach buys them himself (`putmedownfor.com`, `putmedownfor.app`; `pmdf.app` for
+  short links). Nothing with the address on it is posted until then.
+- Trademark search (none done for Put Me Down For), App Store / Play names, social handles.
+- A say-it-aloud test; a device check in sunlight; a color-blindness check (Pen vs Green).
+- **Don't re-propose:** the Board logo with the ME tile lit, a rectangle blank, a pencil or check
+  mark, the line as an underline, a single in-between teal, near-black Ink, volt.
