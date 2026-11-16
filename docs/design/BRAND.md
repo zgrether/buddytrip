@@ -62,7 +62,7 @@ and word.
 | Palette tokens | **Adopted** |
 | Paper and Ink neutrals as the app's backgrounds | **Adopted now**, with the redesign (nobody is actively using the app, so no one is affected) |
 | Archivo, and scores in tiles (gold for the winner) | **Adopted on the score surfaces** Phase 2 builds. Condensed caps for scores, headlines and labels only; names and body text stay regular width |
-| Game glyphs | **Adopted** (16 Nov). Ten drawn glyphs, one per game type, Ink on a tinted tile; lucide for the tab bar and utility icons. `claude/GAME_GLYPHS.md` (source, stage table, build notes); how it was decided: `claude/GLYPH_STUDY.md` |
+| Game glyphs | **Adopted** (16 Nov). Ten drawn glyphs, one per game type, Ink on a tinted tile; lucide for the tab bar and utility icons. Files in `docs/design/glyphs/`; `claude/GAME_GLYPHS.md` (source, stage table, build notes); how it was decided: `claude/GLYPH_STUDY.md` |
 | Crests | **Left out** unless the design needs them |
 | Light as the default theme | **Not ruled.** Both themes work today; dark is the default |
 
