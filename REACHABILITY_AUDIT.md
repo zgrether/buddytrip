@@ -16,9 +16,9 @@ The spec says to stop and report if a route looks orphaned but something outside
    - **Bookmarks and shared links** from the days games were only reachable at their URL.
 2. **`/quick-game` (bare) and `/auth/reset-password` / `/auth/callback`.** `/quick-game` carries its own comment calling a bare URL "an old bookmark" (`src/app/quick-game/page.tsx:182`). The two auth routes are reached only from emails whose **templates live in the Supabase dashboard**, not in the repo (`LoginClient.tsx:312` sets `redirectTo`; the template text and the redirect allow-list are outside it).
 
-**What was not done, and is yours to decide:** I did not query production (news post bodies, sent notification payloads, email templates) and did not look at the Supabase dashboard. Both are reads you could authorise. Until then, treat every "by URL only" verdict below as "unreachable *from inside the app*", not "safe to delete".
+**Resolution (added 2026-11-16, after the audit text below was written).** Zach had the production check run read-only: **0 game links** in news posts (3), messages (362) and agenda items (30), and **0 pushes to side games before 2026-09-27**, since side games did not exist yet. So item 1 is settled: the standalone game routes are **URL only, no outside link found (production checked 2026-11-16)**. Not covered by that check, and unchanged: the auth routes (email templates live in the Supabase dashboard), bare `/quick-game` bookmarks, and personal bookmarks, which no database holds. I did not run the production check myself; the figures are as reported to me.
 
-The remaining sections are complete for what the repo can show. The verdicts in §6 that depend on this are marked **(needs outside check)**.
+The remaining sections are complete for what the repo can show. Verdicts that still depend on an unchecked source keep **(needs outside check)**; the game-route ones no longer do.
 
 ---
 
@@ -49,7 +49,7 @@ The remaining sections are complete for what the repo can show. The verdicts in 
 | `.../games/skins/new` | `.../games/skins/new/page.tsx` | Agenda chip. | reached with `?game=` |
 | `.../games/manual` | `.../games/manual/page.tsx` | Agenda chip (non-golf formats). | reached with `?game=` |
 | `.../games/pickem` | `.../games/pickem/page.tsx` | Agenda chip (pick'em). Bare URL renders nothing (`PickemGameView.tsx:1219`). | reached with `?game=` |
-| `.../games/scorecard` | `.../games/scorecard/page.tsx` | **Nothing navigates here.** `gameHref(..., { scorecard: true })` is called only as a yes/no gate (`competition/GameRow.tsx:333,348`; `games/course/CourseRowContent.tsx:59,100,133`), and the scorecard icon opens an overlay instead (`GameRow.tsx:555` → `openScorecardOverlay`). | **URL only** — **STOP item 1** |
+| `.../games/scorecard` | `.../games/scorecard/page.tsx` | **Nothing navigates here.** `gameHref(..., { scorecard: true })` is called only as a yes/no gate (`competition/GameRow.tsx:333,348`; `games/course/CourseRowContent.tsx:59,100,133`), and the scorecard icon opens an overlay instead (`GameRow.tsx:555` → `openScorecardOverlay`). | **URL only**; no outside link found (production checked 2026-11-16) |
 | *(game rows on the Games page)* | `competition/GameRow.tsx` | Not a route. For completeness: every registered format opens as a panel (`lib/gameRoutes.ts:171-181`), and the row's `<Link href>` branch (`GameRow.tsx:630`, `:975`) only runs for a format `opensAsPanel` rejects. Every registered format passes, and `gameHref` returns `null` for any other, so **that branch cannot render today**. | dead branch |
 | `not-found.tsx`, `manifest.ts`, `layout.tsx` (root + trips) | `src/app/` | Framework files. `/manifest.webmanifest` is read by the browser, not linked. | n/a |
 
@@ -202,11 +202,11 @@ From `docs/design/REDESIGN_PLAN.md` (read at `eae2b834`):
 
 | Orphan | Verdict | What has to change first |
 |---|---|---|
-| `/trips/[id]/games/scorecard` | **delete candidate (needs outside check)** | Nothing in-app navigates there. Drop the page, and decide whether `gameHref(…, {scorecard:true})` stays only as a boolean gate (rename it; today it is a URL builder used as a yes/no) and update `gameRoutes.test.ts:54`. Replaced by the scorecard overlay already in use (`GameRow.tsx:555`). |
-| `/games/new` bare (stroke create) | **delete candidate (needs outside check)** | Remove the create branch in `StrokeGameView.tsx:845-855` and the retired `games-stroke-play.spec.ts`. |
+| `/trips/[id]/games/scorecard` | **delete candidate** (URL only, no outside link found, production checked 2026-11-16) | Nothing in-app navigates there. Drop the page, and decide whether `gameHref(…, {scorecard:true})` stays only as a boolean gate (rename it; today it is a URL builder used as a yes/no) and update `gameRoutes.test.ts:54`. Replaced by the scorecard overlay already in use (`GameRow.tsx:555`). |
+| `/games/new` bare (stroke create) | **delete candidate** (URL only, no outside link found, production checked 2026-11-16) | Remove the create branch in `StrokeGameView.tsx:845-855` and the retired `games-stroke-play.spec.ts`. |
 | `/games/rack/new` bare (rack create) | **delete candidate** | Remove `startRack` and `createGame` in `RackGameView.tsx:198,564,1183`. |
 | `/games/match/new` bare | already redirects; **keep as-is** | None. (`MatchGameView.tsx:1103-1107`.) |
-| `/games/{new,match/new,rack/new,scramble/new,skins/new,manual,pickem}?game=` | **keep for now; replace in the redesign** with panels / the finished-game screen (Phase 2) | The Schedule tab's agenda chip links to them (`ScheduleTab.tsx:319`). Re-point it at `gamePanelHref` (the app's own panel URL, `gameRoutes.ts:158-160`), then the routes lose their only in-app caller. `match/new` also needs the gear-path E2E test (`match-play.spec.ts:186,293`) changed. **(needs outside check)** |
+| `/games/{new,match/new,rack/new,scramble/new,skins/new,manual,pickem}?game=` | **keep for now; replace in the redesign** with panels / the finished-game screen (Phase 2) | The Schedule tab's agenda chip links to them (`ScheduleTab.tsx:319`). Re-point it at `gamePanelHref` (the app's own panel URL, `gameRoutes.ts:158-160`), then the routes lose their only in-app caller. `match/new` also needs the gear-path E2E test (`match-play.spec.ts:186,293`) changed. No outside link found (production checked 2026-11-16). |
 | `GameRow` `<Link href>` branches | **delete candidate** | `GameRow.tsx:630-642`, `:975-984` cannot render (§1). Safe once `gameHref` loses its callers. |
 | `/trips/[id]/leaderboard` alias | **keep until the redesign** | 4 uses in merge-blocking E2E, the Schedule tab button (`ScheduleTab.tsx:1220` → `?tab=comp`), `TripIdProvider.test.ts:70`. Re-point the button at `gamesPageHref`, change the specs to `?view=cup`, then drop it. Possible old links (`?tab=comp`, bookmarks) — **needs outside check**. |
 | `/trips/new` | **keep; replace in the redesign** with the first-run flow | Only the signup redirect reaches it (`callback/route.ts:93`). Do not delete before the redirect moves. |
