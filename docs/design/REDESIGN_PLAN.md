@@ -211,6 +211,7 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
 - **Reuse before new:** each spec's Phase 0 audits StandardGrid, GolfCard, Sheet,
   ReorderableList, NeedsAttentionCard, CupTrophy/ribbons, ghost crew, invites, News,
   Quick Game.
+- **Fix a bottleneck by redesigning, not by buying headroom** (Zach, 2026-11-16). A bigger Supabase or Vercel plan is never the fix for a design that scales badly; refactor the query, the trigger or the model. A plan upgrade is recorded only as a stopgap with the redesign named beside it. Production is on Supabase **Pro** (org `bbmi`, checked 2026-11-16): Realtime 500 messages/s.
 - **Performance is a requirement in every spec:** what's computed on write, what's pushed,
   what each screen costs per open; load-tested where it matters.
 - House spec rules hold: Phase 0 report-and-STOP, DO NOT lists, a commit per task, STOPs
