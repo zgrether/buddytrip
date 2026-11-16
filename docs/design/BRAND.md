@@ -62,7 +62,8 @@ and word.
 | Palette tokens | **Adopted** |
 | Paper and Ink neutrals as the app's backgrounds | **Adopted now**, with the redesign (nobody is actively using the app, so no one is affected) |
 | Archivo, and scores in tiles (gold for the winner) | **Adopted on the score surfaces** Phase 2 builds. Condensed caps for scores, headlines and labels only; names and body text stay regular width |
-| Crests and the 32 custom glyphs | **Deferred. Keep lucide.** The marketing pieces show them; that is a known mismatch at launch |
+| Crests | **Out.** Not added unless a design needs them |
+| Custom game glyphs vs lucide | **Open** (Zach reopened it 16 Nov; `claude/GLYPH_STUDY.md`). Leading proposal: one glyph per game format on its tinted tile (drawn or lucide, to be ruled after the design), lucide for the tab bar and every utility icon |
 | Light as the default theme | **Not ruled.** Both themes work today; dark is the default |
 
 People keep today's avatar (the icon each person picks; Google photos as an option later).
@@ -88,7 +89,7 @@ Weak spots to watch on a phone: white cards separate less on the light ground (1
 
 ## What changes in the app (for the specs, not built)
 
-- **One standing rule reverses:** "system fonts only" (Archivo for scores and headlines). lucide stays.
+- **One standing rule reverses for sure:** "system fonts only" (Archivo for scores and headlines). Whether game types get drawn glyphs is open; lucide stays for the tab bar and utility icons either way.
 - **Neutrals map onto today's tokens:** `--color-bt-base` `#EDECE6` / `#10121F`, `-card` `#FFFFFF` /
   `#1A1D2E`, `-card-raised` `#E3E1DA` / `#272B40`, `-border` `#D5D2C9` / `#32374E`, `-text` Ink /
   Paper, `-text-dim` `#4B4D5C` / `#A5AAC0` (light / dark).
