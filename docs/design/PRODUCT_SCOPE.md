@@ -38,7 +38,7 @@ money (the app tracks who owes whom; it never handles payments), or pro/league s
 | **Competition** | Several games adding up to one winner, for teams or individuals. Built from stages: **Standings** (games add points), **Head to head** (two teams win, lose or halve each game, first to a number), **Bracket** (lose and you're out), **Series** (best of N). Give it any name: "The Turkey Cup". Seasons with playoffs come later, as their own release. |
 | **Trip** | Going somewhere together: where, when, where to stay, the plan, the money. A trip can hold a Cup. |
 | **Events** | One tab listing every competition and trip you're in, past and coming. |
-| **Member · Helper · Admin** | The three roles in a crew. A crew can have several admins. |
+| **Member · Admin · Organizer** | A crew has members and admins (several admins allowed). Whoever starts a trip, a competition or a game organizes it and can add co-organizers. |
 | **Live** | Happening right now. Always red **with its dot and the word Live**; a team may also be red. |
 
 Copy rules already set by Zach (keep them in marketing too): US spelling. Few words; show state by
