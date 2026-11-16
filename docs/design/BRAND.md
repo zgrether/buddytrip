@@ -21,8 +21,14 @@ Those docs stay in the claude.ai project as history.*
 - **Icon:** PM over DF, the blank after the F.
 - **Motion:** each letter opens into its word (P→PUT, M→ME, D→DOWN, F→FOR), pushing the blank along.
 - **Filled in:** a handwritten answer sits on the blank, which grows to the answer's width.
-- Lettering is Archivo condensed 800; the handwriting is Caveat Brush. Both are stand-ins for
-  final artwork.
+- Lettering is Archivo (width 62, weight 800); the handwriting is Caveat Brush. Both are SIL Open
+  Font License and are the working fonts (no outside designer for now).
+- **The files exist** (16 Nov): 13 SVGs (outlined, no font needed), 22 PNGs and `favicon.ico`, in
+  `docs/design/logo/` with their README (the project copy is `claude/LOGO_FILES.md`). Wiring them
+  into the app (manifest `name` Put Me Down For, `short_name` PMDF, icons, favicon) is part of the
+  rename; `public/` still holds the BuddyTrip icons.
+- **Favicon, your call:** the PM/DF icon blurs at 16 px; `option-favicon-p.svg` (a single P and the
+  blank) stays clear. `favicon.ico` is built from the full icon until you choose.
 
 ## Color
 
@@ -87,13 +93,13 @@ headline or the line. Money: "it tracks who owes whom; it never touches the mone
 
 ## Still open
 
-- **Undecided in the new neutrals:** the float surface (dialogs, sheets) and dark-mode chrome have
-  no value; white cards separate less on the new light ground (1.18:1), so borders may carry more;
-  the status colors (warning, danger, planning, ready, owner, Glorious) weren't reviewed, and
-  Danger red and Live red are now two reds with different jobs.
-- **Logo files:** no SVG, PNG icon set or maskable icon exists; the logo is canvas sketches. With
-  no outside designer, they are made from the sketches before the rename. Both fonts are SIL Open
-  Font License.
+- **Float and chrome, proposed, awaiting your review** (`claude/PALETTE.md` rev 5): float (dialogs,
+  sheets) light Paper `#F4F3EE` / dark `#30354D` with its own line `#474D69`; chrome white / `#151726`
+  with a Line border; translucent sticky nav `rgba(244,243,238,0.85)` / `rgba(16,18,31,0.85)`.
+  Weak spots: white cards separate less on the light ground (1.18:1) and insets in light dialogs
+  (1.11:1), so borders carry more; a Red fill on the dark float relies on its white text.
+- **Status colors** (warning, danger, planning, ready, owner, Glorious) not reviewed; Danger red and
+  Live red are now two reds with different jobs.
 - **Domains:** Zach buys them himself (`putmedownfor.com`, `putmedownfor.app`; `pmdf.app` for
   short links). Nothing with the address on it is posted until then.
 - Trademark search (none done for Put Me Down For), App Store / Play names, social handles.
