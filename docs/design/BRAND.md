@@ -27,8 +27,10 @@ Those docs stay in the claude.ai project as history.*
   `docs/design/logo/` with their README (the project copy is `claude/LOGO_FILES.md`). Wiring them
   into the app (manifest `name` Put Me Down For, `short_name` PMDF, icons, favicon) is part of the
   rename; `public/` still holds the BuddyTrip icons.
-- **Favicon, your call:** the PM/DF icon blurs at 16 px; `option-favicon-p.svg` (a single P and the
-  blank) stays clear. `favicon.ico` is built from the full icon until you choose.
+- **Favicon (approved 16 Nov):** the single **P** and the blank (`option-favicon-p.svg`) for the
+  browser tab, since PM/DF blurs at 16 px; the home-screen icons stay PM/DF. The `favicon.ico` in the
+  set is built from the full icon and has to be rebuilt from the P (16, 32 and 48 px PNGs of it are
+  already in `png/icons/`).
 
 ## Color
 
@@ -73,6 +75,17 @@ US spelling. "Won", never "takes". "Cancel", never "abandon". No real event name
 "awarded", never "paid". Every score sheet says TOTAL. No golf-only or betting words in a
 headline or the line. Money: "it tracks who owes whom; it never touches the money."
 
+## Dialogs and navigation surfaces (approved 16 Nov, `claude/PALETTE.md` rev 5)
+
+| Surface | Light | Dark |
+|---|---|---|
+| Float (dialogs, bottom sheets, popovers), `--color-bt-card-float` | Paper `#F4F3EE` | `#30354D` |
+| Line on a float | `#D5D2C9` | `#474D69` |
+| Chrome (navigation) | `#FFFFFF` with a Line border | `#151726` with a Line border |
+| Sticky nav, translucent, `--color-bt-nav-bg` | `rgba(244,243,238,0.85)` | `rgba(16,18,31,0.85)` |
+
+Weak spots to watch on a phone: white cards separate less on the light ground (1.18:1) and white insets in light dialogs (1.11:1), so borders carry the separation; a Red team fill on the dark float relies on its white text.
+
 ## What changes in the app (for the specs, not built)
 
 - **One standing rule reverses:** "system fonts only" (Archivo for scores and headlines). lucide stays.
@@ -93,11 +106,6 @@ headline or the line. Money: "it tracks who owes whom; it never touches the mone
 
 ## Still open
 
-- **Float and chrome, proposed, awaiting your review** (`claude/PALETTE.md` rev 5): float (dialogs,
-  sheets) light Paper `#F4F3EE` / dark `#30354D` with its own line `#474D69`; chrome white / `#151726`
-  with a Line border; translucent sticky nav `rgba(244,243,238,0.85)` / `rgba(16,18,31,0.85)`.
-  Weak spots: white cards separate less on the light ground (1.18:1) and insets in light dialogs
-  (1.11:1), so borders carry more; a Red fill on the dark float relies on its white text.
 - **Status colors** (warning, danger, planning, ready, owner, Glorious) not reviewed; Danger red and
   Live red are now two reds with different jobs.
 - **Domains:** Zach buys them himself (`putmedownfor.com`, `putmedownfor.app`; `pmdf.app` for
