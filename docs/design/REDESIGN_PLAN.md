@@ -33,8 +33,9 @@ already working today and moved over, not rebuilt.
 The table that was here was written from docs and was partly wrong (boards no longer poll every 30 s;
 the app reaches Postgres only through PostgREST, so there is no pooler to configure). The audit replaces
 it; `SCALE_AUDIT.md` has the evidence, the load test (`scripts/load/`) and a 15-item fix list by phase.
-Production: Supabase **Pro** (org `bbmi`). Rule: bottlenecks are fixed by redesign, never by a plan
-upgrade (Principles).
+Production: Supabase **Pro** (org `bbmi`). A bottleneck is a discussion with options, not a reflex to
+buy capacity (Principles). For the findings below, the design fixes win on the numbers: even with the
+spend cap off, one reset (6,140 messages) is over Pro's highest limit.
 
 **What breaks, in order of cost:**
 1. **A member's score read runs a permission function per score row and scans every game in the
@@ -224,7 +225,7 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
 - **Reuse before new:** each spec's Phase 0 audits StandardGrid, GolfCard, Sheet,
   ReorderableList, NeedsAttentionCard, CupTrophy/ribbons, ghost crew, invites, News,
   Quick Game.
-- **Fix a bottleneck by redesigning, not by buying headroom** (Zach, 2026-11-16). A bigger Supabase or Vercel plan is never the fix for a design that scales badly; refactor the query, the trigger or the model. A plan upgrade is recorded only as a stopgap with the redesign named beside it. Production is on Supabase **Pro** (org `bbmi`, checked 2026-11-16): Realtime 500 messages/s.
+- **A performance bottleneck is a discussion, not a reflex** (Zach, 2026-11-16). When a spec or an audit hits one, Claude Code stops and reports it with the options: the design change (query, trigger, model) and what more capacity would buy. We pick the fix together. More capacity is a legitimate option when it is the right one, never the default answer that skips looking at the design. Production is on Supabase **Pro** (org `bbmi`, checked 2026-11-16): Realtime 500 messages/s.
 - **Performance is a requirement in every spec:** what's computed on write, what's pushed,
   what each screen costs per open; load-tested where it matters.
 - House spec rules hold: Phase 0 report-and-STOP, DO NOT lists, a commit per task, STOPs
