@@ -24,7 +24,7 @@ point is the patterns, not wine.*
    screen.
 5. **Three kinds of result can come out of the same sheet:**
    - *Rank the people* — who won (every game today).
-   - *Rank the items* — the group's favourite wine, best chili (average of everyone's ratings).
+   - *Rank the items* — the group's favorite wine, best chili (average of everyone's ratings).
    - *Score against the truth* — best palate, most trivia right. Pick'em already works this way.
 6. **Join in seconds.** A QR code or link at the table; type your name and you're in. No
    account needed for the night; an email later claims the spot (the name-only → claimed

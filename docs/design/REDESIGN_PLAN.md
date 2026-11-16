@@ -94,7 +94,7 @@ Zach's call · **[Draw]** design work, answer is clear · **[Proto]** prototype 
   Who's playing (Single · Best of 3/5/7); Run it back at game over can also turn a game
   into a series.
 - **b [Draw] High or low wins:** catalog games carry it; a blank sheet asks once.
-- **c [Draw] The score sheet doesn't say which crew it's in:** crew colour band + name in the
+- **c [Draw] The score sheet doesn't say which crew it's in:** crew color band + name in the
   header; tap to change before the first score.
 - **d [Draw] Player-count limits:** Start greys out with the reason.
 - **e [Draw] Leaving a game unfinished:** it stays Live on Home; the sheet's menu offers
@@ -187,13 +187,14 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
 | D14 | **Open crews** (a crew of people you don't all know, e.g. a 200-person pool) are Later. Phase 1's data model leaves room for them (see Phase 1 guardrails). Crews today are "people we know" | ✓ Agreed 2026-11-14 |
 | D15 | **Trip mode** = the trip's `now` status, which already exists (`trip_status()` / `getEffectiveStatus`, migration 020): on for everyone from 3 days before the start date, off 3 days after the end. While on, opening the app lands every trip member on the trip (incl. right after sign-up from the invite); ‹ Home lasts until the next open. **New:** the admin can start it early or end it early (two optional timestamps on the trip, not a stage column; 020 removed a manual stage and dates stay the default). A panel on the trip Home says what it is, why it waits, why start early. Receipts and money stay editable until end + 14 days rounded to Sunday (`isReadOnly`, as today), so trip mode can end at +3 | ✓ Decided 2026-11-14 |
 | D16 | **Crew lifecycle, modelled on Microsoft Teams.** Several admins allowed; only the last admin can't leave ("You're its only admin. Make someone else admin first."). Leaving or being removed takes the crew's games out of that person's own history; their scores stay in the crew's games; the confirm says so ("Its games leave your history."). Leaving a crew leaves its upcoming trips. **Archive** is the normal end: moves to Archived for everyone, nothing deleted, any admin can bring it back. Where: the Crews tab ends with "Archived · N" (only when there are any) → the list → the crew page read only (grey look, "Archived Nov 14" banner, no Start buttons, no Who's playing); admins get **Bring it back** and **Delete crew** there, members can open it and leave. Archived games stay in everyone's Your games and record; Home's Recent skips them. **Delete** wipes its games, cups, trips and receipts for everyone; it's soft-deleted for 30 days and restored only by contacting us (the admin tool restores it), then gone. Needs: a Contact us page (You → Help), and restore-a-deleted-crew in the admin tool. Members see names only, never emails | ✓ Decided 2026-11-14 |
+| D17 | **Brand: Put Me Down For (PMDF)**, line "Same crew. Every game. Anywhere." Palette per `claude/PALETTE.md` rev 3: Ink `#10121F`, Paper `#F4F3EE`, **Pen** `#2DD4BF` (the one brand color: every fill, Ink text) with **Pen on Paper** `#0F766E` for thin lines and links on light grounds; Live red always with its dot and the word; gold only means won; a team may be red; team cyan is replaced by Lime. **Build impact:** split `--color-bt-accent` into a fill token and a text token in light mode; `--color-bt-on-accent` → Ink; map any team saved as cyan. **Open (Zach):** whether the Big Board look (Day default, score tiles, Archivo, crests, custom glyphs) and the Paper/Ink neutrals are adopted, or only the palette; the logo route; the domain | Name, line and palette decided 2026-11-16 |
 
 **D5 options (in place of Activity):**
 - **Events** — every competition, trip and (later) league you're in: upcoming, live, past.
-  Gives standalone competitions an obvious home, keeps the + centred with two tabs each side
+  Gives standalone competitions an obvious home, keeps the + centered with two tabs each side
   (Home · Crews · + · Events · You). *Recommended.*
 - **Games** — move Your games out of You into its own tab; You becomes record + settings.
-- **Nothing** — four tabs with an off-centre +.
+- **Nothing** — four tabs with an off-center +.
 
 ---
 
@@ -361,7 +362,7 @@ only what changes around it.
 | Trip planning | Trip tabs (Home, Crew, Lodging, Agenda, Receipts); destination ideas, voting and lock (`IdeaZonePanel`); date poll; setup guide (`FreshTripGuide`); lodging; agenda (`ScheduleTab`) and the read-only itinerary; quick-info tiles; receipts and splits |
 | Trip people | Crew tab roster; roles Owner / Organizer / Member; name-only (ghost) crew; email invites and invite blast; the `/invite` page with invite links and spent-link handling |
 | News | `NewsPanel`, composer, rich text, notifications |
-| Competitions | The starting-point picker ("What are you playing?", tiles with `StartingPointArt`, Build your own) and its review; the Head-to-Head Cup / Tournament chooser; `TeamsPanel` (up to 8 teams, colours); the competition board (`CompetitionFace`, hero, leaderboard, games panel, clinch celebration, podium, side games) |
+| Competitions | The starting-point picker ("What are you playing?", tiles with `StartingPointArt`, Build your own) and its review; the Head-to-Head Cup / Tournament chooser; `TeamsPanel` (up to 8 teams, colors); the competition board (`CompetitionFace`, hero, leaderboard, games panel, clinch celebration, podium, side games) |
 | Golf | Quick Games (setup sheet, `CoursePicker`, handicaps, side bets and settlement, finish screens); trip golf games (stroke, match, skins, rack-n-stack, scramble); `ScoreEntryView` + keypad; `StandardGrid` / `ScorecardSheet` |
 
 **What the specs do cover (new):** crews as the container (data, pages, people, look);

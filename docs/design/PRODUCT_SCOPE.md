@@ -39,7 +39,7 @@ money (the app tracks who owes whom; it never handles payments), or pro/league s
 | **Trip** | Going somewhere together: where, when, where to stay, the plan, the money. A trip can hold a Cup. |
 | **Events** | One tab listing every competition and trip you're in, past and coming. |
 | **Member · Helper · Admin** | The three roles in a crew. A crew can have several admins. |
-| **Live** | Happening right now. The one thing on Home that's coloured red. |
+| **Live** | Happening right now. Always red **with its dot and the word Live**; a team may also be red. |
 
 Copy rules already set by Zach (keep them in marketing too): US spelling. Few words; show state by
 styling, not sentences. "Won", never "takes". "Cancel", never "abandon". No real event names
@@ -93,7 +93,7 @@ has the detail). None ship at launch; all of them should still sound right under
   template ("Help me host a wine night"), paces it ("Now pouring #3"), and everyone fills in
   their own card on their phone, or on a printed card the host types in.
 - **Three kinds of winner from one night:** the people (who won), the things (the group's
-  favourite wine, the best chili), and who was closest to the truth (best palate, most trivia
+  favorite wine, the best chili), and who was closest to the truth (best palate, most trivia
   right; pick'em already works this way).
 - **The reveal as the moment the night builds to,** using the same celebration as a cup's
   winner's circle.
@@ -111,7 +111,7 @@ Voting already exists in a small way today: a trip's ideas and the date poll are
 pick'em is picks scored against the results.
 
 **What this means for the name:** the app isn't only "keep score" between people. It also judges
-things, votes, ranks favourites and reveals answers. A name that only means a fight between
+things, votes, ranks favorites and reveals answers. A name that only means a fight between
 people ("battle", "versus") or only a running count will fit the score sheet and fit a tasting
 badly. Test every candidate on "Thanksgiving wine tasting on ___" as well as "Scrabble on ___".
 
@@ -127,10 +127,10 @@ series, the new Home, Events, the finished-game screen, desktop, trip mode, arch
 
 - **It's a scoreboard.** Scores are the biggest thing on any screen they're on.
 - **Read in sunlight at arm's length** (a phone on a golf course is the hardest moment).
-- **Colour belongs to teams and crews.** Each crew picks a colour and an emoji or photo; teams have
-  colours. Brand colour has to sit alongside eight team colours without clashing.
-- **Each game wears its own look** (a token and colour per game type).
-- **Red means live.** Nothing else on Home is red.
+- **Color belongs to teams and crews.** Each crew picks a color and an emoji or photo; teams have
+  colors. Brand color has to sit alongside eight team colors without clashing.
+- **Each game wears its own look** (a token and color per game type).
+- **Live is red with its dot and the word.** A team can be red too (ruling in `claude/PALETTE.md`); gold only ever means won.
 - **It has to work for a family as well as a golf group.** Golf is the deepest feature but not
   the identity; no golf-only or betting vocabulary in the name or tagline.
 
@@ -139,7 +139,7 @@ series, the new Home, Events, the finished-game screen, desktop, trip mode, arch
 - **The name and address** (`claude/NAMING_DOMAIN_FIRST.md` is the latest round; nothing is
   registered).
 - **The look.** "The Big Board" (`claude/BIG_BOARD_LOOK.md`) is a proposal, not adopted: light by
-  default, scores in tiles, team colours as the only hues. It changes three standing style rules
+  default, scores in tiles, team colors as the only hues. It changes three standing style rules
   if chosen, so it needs Zach's ruling before any new screen is built.
 - **Tagline, icon, and the store listing.**
 - **Whether the name stretches to judging and voting** (see "Where it's headed").
