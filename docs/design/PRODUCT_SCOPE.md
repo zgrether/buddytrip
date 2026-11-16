@@ -134,15 +134,11 @@ series, the new Home, Events, the finished-game screen, desktop, trip mode, arch
 - **It has to work for a family as well as a golf group.** Golf is the deepest feature but not
   the identity; no golf-only or betting vocabulary in the name or tagline.
 
-## What the brand still has to decide
+## The brand (decided 2026-11-16)
 
-- **The name and address** (`claude/NAMING_DOMAIN_FIRST.md` is the latest round; nothing is
-  registered).
-- **The look.** "The Big Board" (`claude/BIG_BOARD_LOOK.md`) is a proposal, not adopted: light by
-  default, scores in tiles, team colors as the only hues. It changes three standing style rules
-  if chosen, so it needs Zach's ruling before any new screen is built.
-- **Tagline, icon, and the store listing.**
-- **Whether the name stretches to judging and voting** (see "Where it's headed").
+**Put Me Down For (PMDF)**, "Same crew. Every game. Anywhere." Name, logo, palette, type and copy
+rules are in `docs/design/BRAND.md` (in the project as `claude/BRAND.md`). Still open: trademark,
+the domain, final artwork.
 
 ## Where to read more
 

@@ -11,10 +11,11 @@ and from the Workflow Wireframes canvas (its Prototype page is the source of tru
 | `FUTURE_PATTERNS.md` | Leagues, the TV board, judged events (later) |
 | `ITINERARY_REDESIGN.md` | The one-tab itinerary (deferred) |
 | `LIMITS_AT_SETUP.md` | Player limits shown at setup |
+| `BRAND.md` | Put Me Down For: name, logo, palette, type, copy rules, what changes in the app |
 | `PRODUCT_SCOPE.md` | The finished app in plain words, for brand and marketing |
 
 `docs/CLINCH_AND_PODIUM.md` (one level up) is also a design doc and stays where it is.
-Brand and naming proposals arrive here as one `BRAND.md` once the brand is decided.
+
 
 ## Keeping these in sync
 
