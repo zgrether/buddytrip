@@ -1,6 +1,7 @@
 # Scale audit (Phase 0.5)
 
-**Status: stopped at a STOP point. The fix list is not written yet.** See "STOP" below.
+**Status: complete.** The audit stopped at a STOP point on 2026-11-16; Zach answered it the same day and the
+fix list was written after. See "The STOP, and how it was answered".
 
 - Spec: `docs/audits/SCALE_AUDIT_SPEC.md`. Read-only: no application code, schema, RLS or config changed.
 - Commit read: `eae2b834e` (`origin/main`, 2026-11-16).
@@ -15,39 +16,48 @@
 TIMES are local: no network between app and database, a fast uncapped machine. Production times will be
 higher; by how much is unmeasured.
 
-## STOP
+## The STOP, and how it was answered
 
 The spec says to stop before the fix list if "the current plan's Realtime or connection limits are below
-the target at a size BBMI could reach". That condition is met for messages per second, on the numbers of
-both the Free and Pro plans:
+the target at a size BBMI could reach". That condition was met for messages per second.
+
+**Production is on Supabase Pro (organisation `bbmi`), per Zach, 2026-11-16.** Whether the spend cap is on
+was not stated; it decides which Pro column applies, so both are shown.
+
+| Limit | Pro, spend cap on | Pro, spend cap off |
+|---|---|---|
+| Concurrent Realtime connections | 500 | 10,000 |
+| Messages per second | 500 | 2,500 |
+| Channel joins per second | 500 | 2,500 |
+| Channels per connection | 100 | 100 |
+
+Source: supabase.com/docs/guides/realtime/limits, read 2026-11-16.
 
 | Fact | Evidence |
 |---|---|
 | One scoring reset of one 16-player stroke game writes **307 broadcasts in 150 ms** | measured, `games.resetScoring`, count of `realtime.messages` rows before and after |
 | Finalizing that game writes **19 broadcasts** | measured, `games.finish` |
 | Each broadcast is delivered once per subscriber, and Supabase counts every delivered message | Realtime limits doc: "An event is a WebSocket message delivered to, or sent from a client" |
-| With 20 people on the board, one reset is 307 x 20 = **6,140 messages in under a second** | arithmetic |
-| Limit: Free 100 messages/s, Pro 500/s, Pro without spend cap or Team 2,500/s | supabase.com/docs/guides/realtime/limits, read 2026-11-16 |
-| The local Realtime tenant is configured with the Free numbers (200 connections, 100 events/s) | `_realtime.tenants` on the scratch stack |
-| At 20 watchers, 16 scores landing together (320 messages) tripped the limit: Realtime logged `MessagePerSecondRateLimitReached` 3 times and 3 of 18 such bursts reached **no watcher at all** (4,800 of 5,760 delivered) | measured |
+| With 20 people on the board, one reset is 307 x 20 = **6,140 messages in under a second**: 12 times the capped Pro limit, 2.5 times the uncapped one | arithmetic; not measured against a Pro-sized tenant |
+| A finalize is 19 x 20 = 380 messages: inside 500, but two games finalized in the same second are not | arithmetic |
+| The local Realtime tenant runs at 200 connections and 100 events/s (the Free numbers) | `_realtime.tenants` on the scratch stack |
+| There, at 20 watchers, 16 scores landing together (320 messages) tripped the limit: Realtime logged `MessagePerSecondRateLimitReached` 3 times and 3 of 18 such bursts reached **no watcher at all** (4,800 of 5,760 delivered) | measured, at the local limit of 100/s. On Pro's 500/s this burst fits |
 | The same reset burst was delivered in full on another run (5,760 of 5,760) | measured: the limiter is not deterministic at this size |
 
-So a board with 20 people on it can already lose live updates on the Free numbers. Nothing is lost for
-good: the 20 s game polls and the 5 minute board poll recover it (CLAUDE.md #19, #20), which is why those
-polls must stay.
+So on Pro, a 20-person board is inside the limit for ordinary scoring and outside it for a reset. Nothing is
+lost for good when it is exceeded: the 20 s game polls and the 5 minute board poll recover it (CLAUDE.md
+#19, #20), which is why those polls stay.
 
-Two things I could not settle, and need from Zach:
+**Zach's rulings on the STOP (2026-11-16):**
 
-1. **Which Supabase plan production is on.** Unconfirmed. The Supabase connector in this session is attached
-   to a different organisation (it lists `parcelscreen` and `repcoach` only), and the repo does not say. The
-   2026-09-17 load test asked whether Free-sized compute could serve BBMI (`TRACKER.md`), but I found no
-   record of whether the downgrade happened. Reading it needs the Supabase dashboard.
-2. **The spec's output rule contradicts itself.** It asks for "a PR containing only" `SCALE_AUDIT.md` and
-   also for a load script "committed under `scripts/load/`". I have committed both on `audit/scale` and
-   opened no PR.
-
-A second finding is bigger than the Realtime one and is not a plan limit: see "RLS at scale". It is
-reported here because it changes what the fix list should lead with.
+1. A bottleneck is fixed by redesign, never by a plan upgrade. A bigger plan may appear only as a stopgap
+   with the redesign named beside it. (Zach cites `docs/design/REDESIGN_PLAN.md`, Principles. At
+   `eae2b834e` that section says "Performance is a requirement in every spec" and does not state this rule
+   in these words, so it is recorded here as his ruling; the plan should say it.)
+2. The 307 broadcasts per reset are a trigger design problem, not a plan problem.
+3. The spec's output rule contradicted itself ("a PR containing only" this file, and a load script
+   "committed under `scripts/load/`"). One PR holding both is right.
+4. The fix list leads with the score-visibility RLS finding (section 6), tagged Phase 1.
 
 ## 1. Every poll and subscription
 
@@ -191,7 +201,9 @@ read p95 under 2 s, 99% of broadcasts delivered. 60 s per run.
 
 Limits by plan (supabase.com/docs/guides/realtime/limits): concurrent connections 200 Free, 500 Pro, 10,000
 Pro without spend cap or Team; messages per second 100, 500, 2,500; channel joins per second 100, 500, 2,500;
-channels per connection 100. Production's plan: unconfirmed (see STOP).
+channels per connection 100. Production is on Pro. Against the target of thousands at once, capped Pro's 500
+connections is one socket per open tab, so 500 open tabs; that is a spend-cap setting, and the redesign
+question is messages per viewer, which sections 4 and 6 address.
 
 What the script does not model: the 20 s polls, chat, the other nine topics a tab joins, browser batching,
 network latency, and Vercel running many function instances where this ran one Node process. The single
@@ -343,8 +355,145 @@ inside the request at seven call sites.
 - The hot paths were taken once each, as Owner. They are counts with one timing, not distributions.
 - Two observers polling `games.configHash`, and Match's two 20 s polls sharing a batch: read from code, not
   measured.
-- No production number was taken: plan, compute size, PostgREST pool, current row counts, indexes.
+- No production number was taken: compute size, PostgREST pool, spend-cap setting, current row counts,
+  indexes. The plan name is Zach's word, not a reading.
 
 ## Fix list
 
-Not written. Held at the STOP point above.
+A list, not code. Each item: the problem, the evidence, the proposed change, and the spec it belongs to.
+Phases are the plan's: 1 foundation, 2 game loop, 4 Home, 5 competitions, 6 trips.
+
+No item proposes a plan change. Turning the Pro spend cap off would not cover the one burst that exceeds
+the limit (6,140 messages against 2,500), so it is not offered even as a stopgap; item 3 is the fix.
+
+### Phase 1: foundation (`CREWS_FOUNDATION.md`)
+
+**1. A member's score read runs a function per score row and scans every game. Lead item.**
+- Evidence: section 6. `game_started` for an 11-game cup: 0.85 ms without RLS, 320 to 816 ms as a Member.
+  For a 408-game container: 15,954 ms, past the app's 8 s abort. 92% of database time in the load test.
+- Why Phase 1: under D13 a crew's games are visible to the whole crew by default, and a crew keeps its
+  games, so every member's read grows with the crew's whole history. The model has to rule this out before
+  anything is built on it.
+- Proposed shape:
+  - **Visibility is decided once per game, never once per score row.** A read of scores, results,
+    outcomes or participants asks one question, "which of these games may I see?", and the answer is a set
+    of game ids found once per query. Score rows are then filtered by `game_id` against that set through
+    the existing `game_id` indexes.
+  - **That set comes from membership rows, by index.** Games in crews I belong to and that are not hidden
+    from the crew, plus games I am playing in. It starts from my own membership rows (a handful), not from
+    `games`. No plan may read all of `games`.
+  - **Read rules and write rules are separate.** Today the write policies are `FOR ALL`, so "may I score
+    this unit?" (`can_score_unit`) runs on every row a member reads. Who may write is asked only on a
+    write, where it is one row.
+  - **One answer for "can I see this game"**, used by every game-scoped table, so trips and crews do not
+    each grow their own arm on 40 tables.
+- Done when: on the seeded volume (`scripts/load/seed-bulk.sql`), `EXPLAIN ANALYZE` of the section 2
+  reads as a Member shows no sub-plan looping once per score row and no sequential scan of `games`; a
+  Member's read is within 2x of the same read without RLS plus one membership lookup; the 408-game
+  container's board loads; `load.mjs` passes at 4 scorers and 20 watchers.
+- Related: issue #1153 (the `auth.uid()` initplan rewrite). Still worth doing, and not enough on its own:
+  the per-row cost here is the scoring function and the `games` scan, neither of which that rewrite moves.
+
+**2. "Has this game started?" is answered by reading every score row.**
+- Evidence: the `game_started` view is 78% of the cold board's database time and runs on every board load,
+  leaderboard compute and game-panel open (section 2).
+- Proposed change: store the answer on the game, written by the first score (any of the two score shapes,
+  CLAUDE.md #27) and cleared by a reset. Compute on write, read one column.
+
+**3. One reset sends 307 broadcasts; a finalize sends 19.**
+- Evidence: "The STOP, and how it was answered". The trigger fires per row with no condition on four tables.
+- Proposed change: **one signal per game per statement**, or debounced per game in the database. A
+  statement that touches 288 score rows of one game says "this game changed" once. The payload stays a
+  signal (ids and a kind, never scores, CLAUDE.md #20). The 20 s and 5 minute backstop polls stay
+  (#19, #20). The client's 2 s coalescing stays as the second line: it protects the refetch, and this
+  protects the message count, which the client cannot.
+- Done when: a reset and a finalize each write one row to `realtime.messages` per game per topic.
+
+**4. Every watcher recomputes the standings on every score.**
+- Evidence: `competitions.leaderboard` is 18.4 PostgREST reads and a full recompute per call; with W people
+  on a board, each 2 s window costs W of them. Leaderboard throughput capped at 3 to 5 calls a second.
+- Proposed change: store standings when a result changes (the plan's "compute on write"), so a viewer's
+  refetch is one indexed read of a stored row. The live projection is the hard part: it changes per score,
+  so it is computed once per event for the board, not once per viewer. The model lands in Phase 1; the
+  board that reads it is Phase 5.
+
+**5. The per-user "home items" index, and its topic.**
+- Evidence: section 5. About 230 PostgREST reads per Home open from today's queries, against 1.
+- Proposed change: build the stored index in Phase 1 as the plan says, keyed on `user_id`, written when
+  something a person can see changes state; signal `user_events:{userId}` on change. Measure the write
+  cost per change (one row per person who can see the item) in the spec's Phase 0, at a 200-member crew.
+
+**6. Membership helpers are trip-only.**
+- Evidence: section 6 table. `is_trip_member`, `has_trip_role` and `is_trip_planner` sit in 125 policies;
+  four more helpers reach membership through `games.trip_id`, which the redesign makes optional.
+- Proposed change: crew membership answered from `circle_members (circle_id, user_id)`, its existing
+  primary key; item 1's single "can I see this game" answer replaces the per-table `EXISTS` on `games`.
+  Add the three missing indexes named in section 6 when the tables they serve are touched.
+
+**7. Work done inside the request that grows with the audience.**
+- Evidence: section 7. News push and all email are awaited in the request; the invitation blast awaits one
+  send per recipient in a loop; every push is one outbound call per device with no cap.
+- Proposed change: the plan's event queue. The request records the event; a background job sends, in
+  bounded batches. Chat's in-request push goes when chat does.
+
+**8. No list assumes a small container.**
+- Evidence: `competitions.faceBootstrap` and `games.listByTrip` select every game of the trip, all columns
+  (`src/server/routers/competitions.ts`, the `games` read in `faceBootstrap`). Fast at 408 rows (15 ms), but
+  the payload and every list built on it grow with the crew's history.
+- Proposed change: crew-scoped game lists are paged and filtered by state (live, upcoming, recent) in the
+  query, per the Phase 1 guardrail.
+
+**9. Correct the documents this audit replaces.**
+- `docs/design/REDESIGN_PLAN.md` section 2: replace the table of today's problems with a pointer here; add
+  the rule "a bottleneck is fixed by redesign, never by a plan upgrade" to Principles, where Zach cites it
+  from.
+- `CLAUDE.md`: the rows in "Docs that are wrong".
+
+### Phase 2: the game loop (`GAME_LOOP.md`)
+
+**10. Game config still arrives by `postgres_changes`, on a hook that is not ref-counted and does not
+report a dead channel.**
+- Evidence: section 1. `useRealtimeGame` binds seven tables; each change is checked against RLS once per
+  subscriber. Three tables are signalled twice (published and broadcast).
+- Proposed change: the live game gets one broadcast topic, `game_events:{gameId}`, carrying scores, config
+  and lifecycle as kinds; the hook follows CLAUDE.md #22 (ref-counted, dead channel reported). The
+  `configHash` poll stays as the backstop.
+
+**11. The backstop polls fetch more than a backstop needs.**
+- Evidence: 360 to 552 polled calls per open game view per hour; a four-hour round on 16 phones is 23,040
+  calls before a score is entered. Match polls `matchOutcomes.listByGame` for score-mode games, where it is
+  always empty. Two observers poll `games.configHash` in five of six views (unmeasured whether they share
+  a request).
+- Proposed change: keep every poll, and make the 20 s tick one cheap "has anything changed?" answer
+  (config and scores) that triggers the full refetch only on a change, as `configHash` already does for
+  config. Poll outcomes only for outcome-mode games. One `configHash` observer per view.
+
+**12. The load test becomes the gate for this phase.**
+- Evidence: no run passed the bar (section 3).
+- Proposed change: `GAME_LOOP.md` names the bar and re-runs `scripts/load/load.mjs`. Before then, extend
+  the seed to match play (so `game_matches` and `match_hole_outcomes` are measured at size) and take the
+  hot paths as a Member.
+
+### Phase 4: Home (`HOME_AND_NAV.md`)
+
+**13. Home reads the index and joins one topic.**
+- Proposed change: Home is one read of item 5's index and one subscription, `user_events:{userId}`, with
+  refetch on open and focus and a 5 minute poll. It joins no per-crew topics, so a tab's channel count
+  does not grow with the number of crews (today: 9 to 11 topics for one trip).
+
+### Phase 5: competitions (`COMPETITIONS_STANDALONE.md`)
+
+**14. The board reads stored standings and fetches each thing once.**
+- Evidence: item 4; and on a cold board `competitions.leaderboard`, `competitions.faceBootstrap` and
+  `games.sideBoard` each run twice (section 2).
+- Proposed change: the board reads item 4's stored standings; one fetch per query on open.
+  `useRealtimeCompetition` (competition row, `postgres_changes`, mounted twice without a ref-count) moves
+  onto the board's broadcast topic as a `kind`.
+
+### Phase 6: trips (`TRIPS_IN_CREWS.md`)
+
+**15. Trip pages hold five `postgres_changes` channels.**
+- Evidence: section 1. `members:{tripId}`, three `tripdata:*` topics and the trip chat room; the three
+  `tripdata` channels are not ref-counted and ignore a dead channel.
+- Proposed change: one broadcast topic per trip carrying a `kind` (itinerary, logistics, tiles, members),
+  refetch on signal. Trip chat's channel goes with chat.
