@@ -4,6 +4,8 @@
 truth; Explorations page = archive). This is the "Circle Era" in DEFERRED.md /
 COMPETITION_ENGINE.md: in the UI a Circle is a **Crew**; in code it stays `circles`.*
 
+**Progress board:** [PMDF Rebuild Board](https://claude.ai/artifact/5ERP9VQXyezWxqkeW4yyKU), every item by phase and status, kept by Claude as work lands or turns up (items added after the plan are counted separately).
+
 ---
 
 ## 1. What the app does — features, ranked
@@ -28,27 +30,41 @@ already working today and moved over, not rebuilt.
 
 ---
 
-## 2. Scale — built for thousands at once
+## 2. Scale: measured (SCALE_AUDIT.md, PR #1708, 2026-11-16)
 
-Target: thousands of people at the same time setting up games, scoring, and watching. The
-redesign is the moment to fix anything that won't hold up. What's known today (CLAUDE.md,
-AUDIT_REPORT.md), and what the redesign should do instead:
+The table that was here was written from docs and was partly wrong (boards no longer poll every 30 s;
+the app reaches Postgres only through PostgREST, so there is no pooler to configure). The audit replaces
+it; `SCALE_AUDIT.md` has the evidence, the load test (`scripts/load/`) and a 15-item fix list by phase.
+Production: Supabase **Pro** (org `bbmi`). A bottleneck is a discussion with options, not a reflex to
+buy capacity (Principles). For the findings below, the design fixes win on the numbers: even with the
+spend cap off, one reset (6,140 messages) is over Pro's highest limit.
 
-| Today | Problem at scale | Redesign |
-|---|---|---|
-| Live games **poll every ~20s** per open device; boards **poll every 30s**, and a board load computes standings (sometimes twice, per DEFERRED). | Load grows with every viewer, even when nothing changed. A cup with 100 people watching = 100 standings computations every 30s. | **Compute on write, push on change.** Standings and results are stored when a score is posted (they mostly are: `game_results`); viewers subscribe to a per-game / per-competition **Realtime broadcast** channel and refetch only when told something changed. Keep a cheap "has anything changed?" check as the fallback, not a full refetch. |
-| **Chat** uses Realtime `postgres_changes`, which checks RLS for every subscriber on every message. | The known Supabase scaling limit. | **Chat goes away** (News replaces it). News is low-write; any live updates use broadcast, not `postgres_changes`. |
-| Home (new) would gather games, series, cups, trips and leagues across every crew. | Many queries per Home load, for every user, every open. | A **per-user index of what's going on** ("home items"), kept up to date when things change, read with one indexed query. |
-| The visibility rule (players see a game; sharing widens it; crew members see crew things) runs in RLS on every row. | Row-by-row `EXISTS` checks on big tables get slow. | Indexed membership tables and small `stable`, `security definer` helper functions; check plans with EXPLAIN on realistic volumes before shipping. |
-| Notifications (e.g. game finished) are sent inside the request. | Slow requests and timeouts when one action notifies many people. | A **queue**: the request records the event; a background job sends. |
-| Serverless functions talking to Postgres. | Too many connections under load. | Confirm everything goes through the **connection pooler**; check the Supabase plan's Realtime and connection limits against the target. |
-| The future TV board / share links. | Many anonymous viewers. | A **read-only, cacheable snapshot** plus broadcast; no per-viewer queries. |
+**What breaks, in order of cost:**
+1. **A member's score read runs a permission function per score row and scans every game in the
+   database** (the `FOR ALL` write policies apply to reads; a sub-plan reads all of `games`). An 11-game
+   cup: 0.85 ms without RLS, 320–816 ms as a Member. A 408-game container (a long-lived crew): 16 s, past
+   the app's 8 s abort. 92% of database time in the load test. D13 (crew games visible to the crew) makes
+   it grow with a crew's whole history. Extends issue #1153 (measured at 558 rows).
+2. **"Has this game started?" reads every score row** (`game_started` view): 78% of a cold board.
+3. **One scoring reset sends 307 broadcasts** (one per row) and each is delivered per watcher: about 6,140
+   messages in under a second for 20 watchers, against Pro's 500/s. Backstop polls recover the loss.
+4. **Every watcher recomputes the standings on every score** (18.4 reads each).
+5. **Home from today's queries:** about 230 reads per open for someone in 5 crews.
 
-**Before Phase 1, a scale audit (CC, no product change):** measure today's hot paths, write a
-load test (k6 or similar) for N people scoring and M watching, and decide the Realtime design.
-Output: `SCALE_AUDIT.md` with numbers and a fix list that feeds the specs below.
+**What the foundation must do (fix list items 1–8, all Phase 1):** decide visibility **once per game,
+never per score row**, from the member's own membership rows by index, never by scanning `games`; keep
+read rules separate from write rules; one "can I see this game" answer for every game-scoped table;
+store "started" on the game; **one broadcast per game per statement**, payload a signal, backstop polls
+kept; store standings on write; build the per-user home-items index with a `user_events:{userId}` topic;
+crew-aware membership helpers; the event queue for pushes and email; paged, state-filtered crew game lists.
 
----
+**Later phases:** one broadcast topic per live game (Phase 2) with cheaper backstop polls and the load
+test as the phase gate; Home reads the index and joins one topic (Phase 4); the board reads stored
+standings (Phase 5); one broadcast topic per trip (Phase 6). The six remaining `postgres_changes`
+subscriptions move to broadcast as their screens are rebuilt.
+
+**Unknown:** the Pro spend-cap setting (500 vs 2,500 messages/s, 500 vs 10,000 connections), compute size
+and PostgREST pool. None changes the fix list.
 
 ## 3. Games, competitions and trips — how people tell them apart
 
@@ -160,7 +176,7 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
 - **X4 [Decided → D8]** Quick Game is retired once the no-account score sheet ships.
 - **X5 [Blocks]** Moving today's data: BBMI's trips into one crew; trip members → crew
   members; ghost crew → name-only people.
-- **X6 [Blocks]** Scale (section 2): scale audit before Phase 1.
+- **X6 [Measured → section 2]** Scale audit done (PR #1708); its Phase 1 items go into `CREWS_FOUNDATION.md`.
 - **X8 [Drawn 2026-11-16 → row 8]** Golf course library: You → Golf courses (played, nearby, + Add a course); search the library first, then the online lookup with today's count (`courses.apiUsage`); a course page (tees, rating and slope, par and index, rounds played there). Builder is today's `/courses/new` (`CourseEntryFlow`), opened from the library and returning to it. **Entry points:** the You row only once you've played a round or added a course; + → Golf has "Golf courses ›" under the formats; a course name is a link wherever it shows. **New in code:** editing a saved course (no update procedure or policy exists). **Decided (Zach, 16 Nov): anyone can edit a shared course.** Keep an edit history (who changed what, when) so a bad edit can be undone from the admin page; finished games are safe because a game snapshots its course once scores exist.
 - **X9 [Scope approved 2026-11-16]** Admin page (desktop, app admins only; needs an app-admin flag, which doesn't exist; a flag on the user, set for Zach only for now): feature flags and a user lookup first (Phase 1–2, since the redesign ships behind a flag); then crews (restore a deleted crew, D16), courses (fix, merge duplicates), help and feedback inbox, and a health panel of counts and links out (Vercel errors, Supabase advisors, an uptime monitor, golf lookups used today, push failures).
 - **X7 [Later]** Leagues, the TV board, judged events (FUTURE_PATTERNS.md).
@@ -187,8 +203,13 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
 | D14 | **Open crews** (a crew of people you don't all know, e.g. a 200-person pool) are Later. Phase 1's data model leaves room for them (see Phase 1 guardrails). Crews today are "people we know" | ✓ Agreed 2026-11-14 |
 | D15 | **Trip mode** = the trip's `now` status, which already exists (`trip_status()` / `getEffectiveStatus`, migration 020): on for everyone from 3 days before the start date, off 3 days after the end. While on, opening the app lands every trip member on the trip (incl. right after sign-up from the invite); ‹ Home lasts until the next open. **New:** the admin can start it early or end it early (two optional timestamps on the trip, not a stage column; 020 removed a manual stage and dates stay the default). A panel on the trip Home says what it is, why it waits, why start early. Receipts and money stay editable until end + 14 days rounded to Sunday (`isReadOnly`, as today), so trip mode can end at +3 | ✓ Decided 2026-11-14 |
 | D16 | **Crew lifecycle, modelled on Microsoft Teams.** Several admins allowed; only the last admin can't leave ("You're its only admin. Make someone else admin first."). Leaving or being removed takes the crew's games out of that person's own history; their scores stay in the crew's games; the confirm says so ("Its games leave your history."). Leaving a crew leaves its upcoming trips. **Archive** is the normal end: moves to Archived for everyone, nothing deleted, any admin can bring it back. Where: the Crews tab ends with "Archived · N" (only when there are any) → the list → the crew page read only (grey look, "Archived Nov 14" banner, no Start buttons, no Who's playing); admins get **Bring it back** and **Delete crew** there, members can open it and leave. Archived games stay in everyone's Your games and record; Home's Recent skips them. **Delete** wipes its games, cups, trips and receipts for everyone; it's soft-deleted for 30 days and restored only by contacting us (the admin tool restores it), then gone. Needs: a Contact us page (You → Help), and restore-a-deleted-crew in the admin tool. Members see names only, never emails | ✓ Decided 2026-11-14 |
-| D17 | **Brand: Put Me Down For (PMDF)**, "Same crew. Every game. Anywhere." Logo Route A (the Pen line as the last character, `PMDF ___`). Palette Ink / Paper / Pen with Pen on Paper; Live red with dot and word; gold only means won; Lime replaces cyan. Rulings 2026-11-16: palette and the Paper/Ink neutrals adopted now; Archivo and score tiles on the score surfaces Phase 2 builds; crests out; game glyphs in progress with Zach (`claude/GLYPH_STUDY.md`: one glyph per format, drawn or lucide), lucide for the tab bar and utility icons; light-as-default not ruled. Everything in `docs/design/BRAND.md`. **Open:** float and chrome surfaces, status colors, logo files, domains (Zach buys), trademark | ✓ Decided 2026-11-16 |
+| D17 | **Brand: Put Me Down For (PMDF)**, "Same crew. Every game. Anywhere." Logo Route A (the Pen line as the last character, `PMDF ___`). Palette Ink / Paper / Pen with Pen on Paper; Live red with dot and word; gold only means won; Lime replaces cyan. Rulings 2026-11-16: palette and the Paper/Ink neutrals adopted now; Archivo and score tiles on the score surfaces Phase 2 builds; ten drawn game glyphs adopted (one per game type, on a tinted tile; `claude/GAME_GLYPHS.md`), lucide for everything else, crests left out; light-as-default not ruled. Everything in `docs/design/BRAND.md`. **Open:** float and chrome surfaces, status colors, logo files, domains (Zach buys), trademark | ✓ Decided 2026-11-16 |
 | D18 | **Your move pushes only when someone is waiting on you or a deadline is close;** everything else waits on Home. One push per item, at most one reminder. Yes: invited to a crew/trip/game (invites; replaces the email when they have the app, never both) · make your picks, one reminder ~3h before lock if unpicked (game results) · vote on dates or ideas, when the poll opens + one reminder a day before close if unvoted (planning) · approve a suggested person (organizer) · results needed on a game you run (organizer, already wired) · trip mode starting, early or by date (planning) · settle up, once when the trip becomes its recap, only if you owe or are owed (planning) · made a Helper or admin (invites). No: "make a crew?" suggestions · Start game N of a series · removed from a crew or a crew archived. The `chat` category retires with chat (News replaces it); settings show five: Games & cups, News, Trips, Invites, Running things | ✓ Decided 2026-11-16 |
+| D19 | **Rebuild the database, keep the repo and the engine.** Cut a frozen `v1` branch from `main` before the first rebuild PR merges; the existing Vercel project serves bbmi.app from `v1` against today's Supabase, untouched (a real BBMI bug is the only change that may land on `v1`). A second Vercel project serves `main` on the new domain against the new Supabase project, so nothing built on `main` can reach v1's data. A new Supabase project for PMDF with a designed schema (one clean baseline; the 228 old migrations archived); `main` becomes the new app. Carry over the pure scoring and competition engine and the persistence-agnostic game screens with their tests; rewrite the data-access layer. Production data (13 trips, 27 accounts, 97 guests, 71 games, 1,481 score rows on 16 Nov) moves by one rehearsed script, checked by recomputing every result against v1. Launch on putmedownfor.com. **Cutover:** a quiet week with no trip or game in progress; run the move script, check BBMI and Clemson in the new app, send everyone the new link to re-add the app; bbmi.app stays up a few weeks with a banner pointing to the new app (the one v1 change), then is turned off. **No redirect** from bbmi.app (Zach, 16 Nov: people re-add the app). Login accounts move between the two Supabase projects as part of the script (spec item); everyone signs in again. The schema is designed or reviewed on Fable | ✓ Approved 2026-11-16 |
+| D20 | **UUID primary and foreign keys** in the new schema (today every id is `text`; 96 guest ids are `ghost-<uuid>`). People link to `auth.users`. ~~Deleting an account cascades~~ **Corrected 16 Nov** (it contradicted D16): deleting an account removes the login and its link; the crew person stays, by name, with their scores in the crew's games, as today (migration 132) | ✓ Approved 2026-11-16 |
+| D21 | **Who can organize a trip** (open). A: crew role, but only on trips you're on (admins on every trip). B: each trip has its own organizers; crew admins manage every trip; whoever starts a trip organizes it and adds co-organizers from the people going (may make crew Helper unnecessary). Raised by Zach: a 20-year crew would otherwise give every past helper rights on this year's trip. Zach and Claude both lean B (the planner changes each trip: BBMI 2026 was Brad's, Clemson is JD's). **Next:** list what a trip organizer can do today, and mark what suggestions and voting make unnecessary; what's left defines the organizer. Must be settled before the schema is written; the move script keeps each person's old role per trip so either works | Open, leaning B |
+| D22 | **Placeholders belong to one crew.** No linking across crews. An admin can merge a placeholder into a person already in the crew (today's link refuses an account already on the trip, so this is new) and two placeholders into one; signing up with the placeholder's email still links automatically. Deleting a crew deletes its placeholders (today deleting a trip leaves its guests behind: the cause of the 65 loose guests) | ✓ Decided 2026-11-16 |
+| D23 | **What the move carries** (data-move audit, PR #1710). BBMI 2023–2026 → one crew (Zach and Brad admins); Clemson Fall Golf Trip → its own crew (JD admin). Everything else is test data and stays in v1 only, Test Apparatus included. The three BBMI "Frank" placeholders become one; no placeholder is linked to an account (Bob ≠ Bobby Steiner, Billy ≠ Bill Giesler). Teams stay per cup (new every year). Chat is not moved. Dropped: the 65 guests on no trip and one never-confirmed signup with no account | ✓ Decided 2026-11-16 |
 
 **D5 options (in place of Activity):**
 - **Events** — every competition, trip and (later) league you're in: upcoming, live, past.
@@ -211,6 +232,8 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
 - **Reuse before new:** each spec's Phase 0 audits StandardGrid, GolfCard, Sheet,
   ReorderableList, NeedsAttentionCard, CupTrophy/ribbons, ghost crew, invites, News,
   Quick Game.
+- **The database speaks the code's language** (Zach, 2026-11-16). Every stored value, column and table uses the same word the code and the screen use; no enum that maps to a differently named key. With no active users, the redesign is the time to do these renames, and we come out of it with a codebase and schema that follow good practice throughout. (This overrides the old habit of keeping a stored value and renaming only the display, e.g. `cancelled` / "Canceled", `Organizer` / "Helper".)
+- **A performance bottleneck is a discussion, not a reflex** (Zach, 2026-11-16). When a spec or an audit hits one, Claude Code stops and reports it with the options: the design change (query, trigger, model) and what more capacity would buy. We pick the fix together. More capacity is a legitimate option when it is the right one, never the default answer that skips looking at the design. Production is on Supabase **Pro** (org `bbmi`, checked 2026-11-16): Realtime 500 messages/s.
 - **Performance is a requirement in every spec:** what's computed on write, what's pushed,
   what each screen costs per open; load-tested where it matters.
 - House spec rules hold: Phase 0 report-and-STOP, DO NOT lists, a commit per task, STOPs
@@ -238,7 +261,7 @@ flows; the + chooser (Game · Competition · Trip); a standalone competition's s
 invite → crew explanation; ‹ Home title bar; opening an agenda slot; golf mini card; series
 chip; Cancel game. Update the Prototype.
 
-**Phase 0 also: the look pass (design).** Once the grey boards are approved, redraw the key screens in the PMDF look (Home, the score sheet, the finished game, a crew page, the cup board, desktop Home) so every spec has a visual reference, and write `BRAND_TOKENS.md` for Claude Code: the token split, the neutrals, the eight team colors and the cyan mapping, Archivo with its fallback, and the score tile component, and the game glyphs once ruled (GLYPH_STUDY.md). It lands before Phase 2, which is the first phase that builds new screens.
+**Phase 0 also: the look pass (design).** Once the grey boards are approved, redraw the key screens in the PMDF look (Home, the score sheet, the finished game, a crew page, the cup board, desktop Home) so every spec has a visual reference, and write `BRAND_TOKENS.md` for Claude Code: the token split, the neutrals, the eight team colors and the cyan mapping, Archivo with its fallback, and the score tile component; `BRAND_TOKENS.md` also covers the game glyph map (an exhaustive `Record` by game type id, dice as the fallback), the tinted tile component and the stage table (grey tile until scoring is on; teal is not a status). It lands before Phase 2, which is the first phase that builds new screens.
 
 **Phase 0.5 — Scale audit (CC, no product change).** Specs written 2026-11-16 in `docs/audits/`: `SCALE_AUDIT_SPEC.md` (Fable), `DATA_MOVE_AUDIT_SPEC.md` (Fable, X5), `REACHABILITY_AUDIT_SPEC.md` (Sonnet; refreshes GAME_ROUTES_AUDIT app-wide). Each is read-only and ends in a report PR. `SCALE_AUDIT.md`: today's hot paths,
 a load test, the Realtime design, the fix list.
@@ -315,7 +338,7 @@ Home; standings computed on write and pushed (fixes today's polling).
 trip mode in and out (‹ Home), News replaces chat (chat hidden, not deleted), agenda slots
 with ideas, team pages, the trip live card.
 
-**Phase 7 — Later.** Moving games between crews, leagues, open crews and pools (D14), the TV board, join with a code,
+**Phase 7 — Later.** Start from a previous trip or cup (Zach, 16 Nov: "reuse parts of a previous trip? Same crew? Are the teams the same too?"), moving games between crews, leagues, open crews and pools (D14), the TV board, join with a code,
 judged events, crew photos (J7), Google profile photos as an option instead of the app avatar, pins in the desktop rail (see below), the past-trip recap (see below), the
 one-tab Itinerary (ITINERARY_REDESIGN.md: deferred; today's Agenda/Lodging fit as they are).
 
