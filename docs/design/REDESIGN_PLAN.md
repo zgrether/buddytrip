@@ -4,6 +4,8 @@
 truth; Explorations page = archive). This is the "Circle Era" in DEFERRED.md /
 COMPETITION_ENGINE.md: in the UI a Circle is a **Crew**; in code it stays `circles`.*
 
+**Progress board:** [PMDF Rebuild Board](https://claude.ai/artifact/5ERP9VQXyezWxqkeW4yyKU), every item by phase and status, kept by Claude as work lands or turns up (items added after the plan are counted separately).
+
 ---
 
 ## 1. What the app does — features, ranked
