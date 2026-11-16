@@ -225,6 +225,7 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
 - **Reuse before new:** each spec's Phase 0 audits StandardGrid, GolfCard, Sheet,
   ReorderableList, NeedsAttentionCard, CupTrophy/ribbons, ghost crew, invites, News,
   Quick Game.
+- **The database speaks the code's language** (Zach, 2026-11-16). Every stored value, column and table uses the same word the code and the screen use; no enum that maps to a differently named key. With no active users, the redesign is the time to do these renames, and we come out of it with a codebase and schema that follow good practice throughout. (This overrides the old habit of keeping a stored value and renaming only the display, e.g. `cancelled` / "Canceled", `Organizer` / "Helper".)
 - **A performance bottleneck is a discussion, not a reflex** (Zach, 2026-11-16). When a spec or an audit hits one, Claude Code stops and reports it with the options: the design change (query, trigger, model) and what more capacity would buy. We pick the fix together. More capacity is a legitimate option when it is the right one, never the default answer that skips looking at the design. Production is on Supabase **Pro** (org `bbmi`, checked 2026-11-16): Realtime 500 messages/s.
 - **Performance is a requirement in every spec:** what's computed on write, what's pushed,
   what each screen costs per open; load-tested where it matters.
