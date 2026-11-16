@@ -28,27 +28,40 @@ already working today and moved over, not rebuilt.
 
 ---
 
-## 2. Scale — built for thousands at once
+## 2. Scale: measured (SCALE_AUDIT.md, PR #1708, 2026-11-16)
 
-Target: thousands of people at the same time setting up games, scoring, and watching. The
-redesign is the moment to fix anything that won't hold up. What's known today (CLAUDE.md,
-AUDIT_REPORT.md), and what the redesign should do instead:
+The table that was here was written from docs and was partly wrong (boards no longer poll every 30 s;
+the app reaches Postgres only through PostgREST, so there is no pooler to configure). The audit replaces
+it; `SCALE_AUDIT.md` has the evidence, the load test (`scripts/load/`) and a 15-item fix list by phase.
+Production: Supabase **Pro** (org `bbmi`). Rule: bottlenecks are fixed by redesign, never by a plan
+upgrade (Principles).
 
-| Today | Problem at scale | Redesign |
-|---|---|---|
-| Live games **poll every ~20s** per open device; boards **poll every 30s**, and a board load computes standings (sometimes twice, per DEFERRED). | Load grows with every viewer, even when nothing changed. A cup with 100 people watching = 100 standings computations every 30s. | **Compute on write, push on change.** Standings and results are stored when a score is posted (they mostly are: `game_results`); viewers subscribe to a per-game / per-competition **Realtime broadcast** channel and refetch only when told something changed. Keep a cheap "has anything changed?" check as the fallback, not a full refetch. |
-| **Chat** uses Realtime `postgres_changes`, which checks RLS for every subscriber on every message. | The known Supabase scaling limit. | **Chat goes away** (News replaces it). News is low-write; any live updates use broadcast, not `postgres_changes`. |
-| Home (new) would gather games, series, cups, trips and leagues across every crew. | Many queries per Home load, for every user, every open. | A **per-user index of what's going on** ("home items"), kept up to date when things change, read with one indexed query. |
-| The visibility rule (players see a game; sharing widens it; crew members see crew things) runs in RLS on every row. | Row-by-row `EXISTS` checks on big tables get slow. | Indexed membership tables and small `stable`, `security definer` helper functions; check plans with EXPLAIN on realistic volumes before shipping. |
-| Notifications (e.g. game finished) are sent inside the request. | Slow requests and timeouts when one action notifies many people. | A **queue**: the request records the event; a background job sends. |
-| Serverless functions talking to Postgres. | Too many connections under load. | Confirm everything goes through the **connection pooler**; check the Supabase plan's Realtime and connection limits against the target. |
-| The future TV board / share links. | Many anonymous viewers. | A **read-only, cacheable snapshot** plus broadcast; no per-viewer queries. |
+**What breaks, in order of cost:**
+1. **A member's score read runs a permission function per score row and scans every game in the
+   database** (the `FOR ALL` write policies apply to reads; a sub-plan reads all of `games`). An 11-game
+   cup: 0.85 ms without RLS, 320–816 ms as a Member. A 408-game container (a long-lived crew): 16 s, past
+   the app's 8 s abort. 92% of database time in the load test. D13 (crew games visible to the crew) makes
+   it grow with a crew's whole history. Extends issue #1153 (measured at 558 rows).
+2. **"Has this game started?" reads every score row** (`game_started` view): 78% of a cold board.
+3. **One scoring reset sends 307 broadcasts** (one per row) and each is delivered per watcher: about 6,140
+   messages in under a second for 20 watchers, against Pro's 500/s. Backstop polls recover the loss.
+4. **Every watcher recomputes the standings on every score** (18.4 reads each).
+5. **Home from today's queries:** about 230 reads per open for someone in 5 crews.
 
-**Before Phase 1, a scale audit (CC, no product change):** measure today's hot paths, write a
-load test (k6 or similar) for N people scoring and M watching, and decide the Realtime design.
-Output: `SCALE_AUDIT.md` with numbers and a fix list that feeds the specs below.
+**What the foundation must do (fix list items 1–8, all Phase 1):** decide visibility **once per game,
+never per score row**, from the member's own membership rows by index, never by scanning `games`; keep
+read rules separate from write rules; one "can I see this game" answer for every game-scoped table;
+store "started" on the game; **one broadcast per game per statement**, payload a signal, backstop polls
+kept; store standings on write; build the per-user home-items index with a `user_events:{userId}` topic;
+crew-aware membership helpers; the event queue for pushes and email; paged, state-filtered crew game lists.
 
----
+**Later phases:** one broadcast topic per live game (Phase 2) with cheaper backstop polls and the load
+test as the phase gate; Home reads the index and joins one topic (Phase 4); the board reads stored
+standings (Phase 5); one broadcast topic per trip (Phase 6). The six remaining `postgres_changes`
+subscriptions move to broadcast as their screens are rebuilt.
+
+**Unknown:** the Pro spend-cap setting (500 vs 2,500 messages/s, 500 vs 10,000 connections), compute size
+and PostgREST pool. None changes the fix list.
 
 ## 3. Games, competitions and trips — how people tell them apart
 
@@ -160,7 +173,7 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
 - **X4 [Decided → D8]** Quick Game is retired once the no-account score sheet ships.
 - **X5 [Blocks]** Moving today's data: BBMI's trips into one crew; trip members → crew
   members; ghost crew → name-only people.
-- **X6 [Blocks]** Scale (section 2): scale audit before Phase 1.
+- **X6 [Measured → section 2]** Scale audit done (PR #1708); its Phase 1 items go into `CREWS_FOUNDATION.md`.
 - **X8 [Drawn 2026-11-16 → row 8]** Golf course library: You → Golf courses (played, nearby, + Add a course); search the library first, then the online lookup with today's count (`courses.apiUsage`); a course page (tees, rating and slope, par and index, rounds played there). Builder is today's `/courses/new` (`CourseEntryFlow`), opened from the library and returning to it. **Entry points:** the You row only once you've played a round or added a course; + → Golf has "Golf courses ›" under the formats; a course name is a link wherever it shows. **New in code:** editing a saved course (no update procedure or policy exists). **Decided (Zach, 16 Nov): anyone can edit a shared course.** Keep an edit history (who changed what, when) so a bad edit can be undone from the admin page; finished games are safe because a game snapshots its course once scores exist.
 - **X9 [Scope approved 2026-11-16]** Admin page (desktop, app admins only; needs an app-admin flag, which doesn't exist; a flag on the user, set for Zach only for now): feature flags and a user lookup first (Phase 1–2, since the redesign ships behind a flag); then crews (restore a deleted crew, D16), courses (fix, merge duplicates), help and feedback inbox, and a health panel of counts and links out (Vercel errors, Supabase advisors, an uptime monitor, golf lookups used today, push failures).
 - **X7 [Later]** Leagues, the TV board, judged events (FUTURE_PATTERNS.md).
