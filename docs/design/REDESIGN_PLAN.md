@@ -1,8 +1,10 @@
 # Redesign — features, scale, journey audit and build plan
 
-*Updated 2026-11-14. Companion to the Workflow Wireframes canvas (Prototype page = source of
-truth; Explorations page = archive). This is the "Circle Era" in DEFERRED.md /
-COMPETITION_ENGINE.md: in the UI a Circle is a **Crew**; in code it stays `circles`.*
+*Updated 2026-11-16: recalibrated around the rebuild (D19). Companion to the Workflow Wireframes
+canvas (Prototype page = source of truth; Explorations page = archive). This is the "Circle Era"
+in DEFERRED.md / COMPETITION_ENGINE.md. A Circle is a **Crew** everywhere: under "the database
+speaks the code's language", the new schema calls it `crews` (the empty `circles` tables are not
+carried).*
 
 **Progress board:** [PMDF Rebuild Board](https://claude.ai/artifact/5ERP9VQXyezWxqkeW4yyKU), every item by phase and status, kept by Claude as work lands or turns up (items added after the plan are counted separately).
 
@@ -25,8 +27,9 @@ to people choosing and keeping the app (how often it's used × how much it sets 
 | 8 | **Money** | Split trip receipts, see who owes whom. | Expected on trips; not a reason to choose the app. |
 | — | Later | Leagues (pick'em), judged events (tastings, cook-offs), the TV board, join with a code. | See FUTURE_PATTERNS.md. |
 
-**What this means for the roadmap:** the build order should follow #1 → #2 → #3, with #4 and #5
-already working today and moved over, not rebuilt.
+**What this means for the roadmap:** the build order follows #1 → #2 → #3. #4 and #5 already
+work today and are carried over: their screens and the scoring engine move to the new app with
+their tests, and only the data access under them is rewritten for the new schema (D19).
 
 ---
 
@@ -71,12 +74,13 @@ and PostgREST pool. None changes the fix list.
 Three things you can start from **+**, each one sentence, in this order:
 
 - **Game** — "Keep score of a game (or a best-of series)." The default, the biggest button.
-- **Competition** — "Several games with teams or a bracket, and one overall winner." A cup,
-  a bracket, later a league with a season.
+- **Competition** — "Any mix of games, teams if you want them, standings, and an awards
+  ceremony at the end." (D24.) Built from stages (D25): standings, head to head, a bracket, a
+  series; seasons with playoffs come later as their own milestone.
 - **Trip** — "Going somewhere together: dates, a place to stay, the plan." A trip can include
   a competition.
 
-A competition **doesn't need a trip** (D11). **Correction 2026-11-16:** this said `trip_id` is already nullable on competitions. It isn't: `competitions.trip_id` is NOT NULL (migration 033), a trip holds at most one competition (`competitions_one_per_trip`, migration 195, Zach's ruling 2026-09-22), games are held to their competition's trip (migration 135), and the board loads everything by trip (`LiveFaceClient` → `useTripId`, `competitions.getByTrip`, `games.listByTrip`, trip realtime topics, trip roles). So a crew competition is model work in Phase 1 (`competitions.circle_id`, `trip_id` nullable, one-per-trip kept for trips) and plumbing work in Phase 5 (the board keyed by competition, permissions from crew roles). The board itself is reused unchanged; the only new screen is its shell: the crew's band and ‹ back to the crew instead of the trip header (Prototype row 7, "a crew competition, no trip"). It shows on the crew page and on Home like anything else. Inside a trip, "Add a competition" creates the trip's one competition.
+A competition **doesn't need a trip** (D11). In the new schema a competition belongs to a crew and may belong to a trip; a trip holds at most one competition (today's `competitions_one_per_trip`, Zach's ruling 2026-09-22, kept). Today's v1 can't do this (`competitions.trip_id` is NOT NULL since migration 033, and the board loads everything by trip), which is one of the reasons for the rebuild. The board's screens are carried over; what's new is its shell for a crew competition: the crew's band and ‹ back to the crew instead of the trip header (Prototype row 7). It shows on the crew page and on Home like anything else. Inside a trip, "Add a competition" creates the trip's one competition.
 
 **The live card on Home** has one header and one featured thing:
 - The **header goes to the event** (the trip, or the competition when there's no trip).
@@ -230,7 +234,13 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
 - **Every spec covers phone and desktop.** Desktop is designed alongside each phase, not
   bolted on after.
 - **Model first, then vertical slices,** each shippable end to end.
-- **The live app keeps working:** new navigation behind a flag for testers until Phase 4.
+- **v1 keeps running untouched on bbmi.app** (D19): a frozen `v1` branch, today's Supabase. `main`
+  is the new app on its own Vercel and Supabase projects, seen only by Zach until the cutover, so
+  nothing needs a feature flag.
+- **Carry over, don't rebuild, what works:** the scoring engine and the persistence-agnostic game
+  screens (rule #7) move with their tests; the data access under them is rewritten for the new
+  schema. A bug that lives in carried code comes with it (#1699) and is fixed in the phase that
+  carries it.
 - **Design one phase ahead of the build.**
 - **Reuse before new:** each spec's Phase 0 audits StandardGrid, GolfCard, Sheet,
   ReorderableList, NeedsAttentionCard, CupTrophy/ribbons, ghost crew, invites, News,
@@ -241,6 +251,7 @@ notifications, sign-out, delete account. Plus **Help · Contact us** (needed by 
   what each screen costs per open; load-tested where it matters.
 - House spec rules hold: Phase 0 report-and-STOP, DO NOT lists, a commit per task, STOPs
   for on-device looks; Zach runs production migrations.
+- **The board is the status of record.** Every item lives on the [PMDF Rebuild Board](https://claude.ai/artifact/5ERP9VQXyezWxqkeW4yyKU); work found mid-phase (an audit, a look, a STOP, an issue) is added there the same day with where it came from, so growth shows. Folded GitHub issues are named on the item that owns them, and its spec reads them.
 
 ### Which model when
 Opus 5.5 is the default. Switch only where the work changes shape:
@@ -248,8 +259,8 @@ Opus 5.5 is the default. Switch only where the work changes shape:
 | Work | Model | Why |
 |---|---|---|
 | Design sessions, reviewing boards, writing specs, ruling on copy | **Opus 5.5** | Judgment over a lot of context; the default |
-| The data model and RLS for Phase 1 (`CREWS_FOUNDATION.md`), the scale audit's Realtime design, the data-move map (X5) | **Fable 5.1** | The few problems where a wrong call is expensive and hard to undo. One deep pass, then back to Opus |
-| An independent check of high-stakes work (a migration, an RLS change, a finished spec) by a model that didn't write it | **Fable 5.1** | A fresh reviewer that isn't grading its own work |
+| The data model and RLS for Phase 1 (`CREWS_FOUNDATION.md`), the live-update design (D26), the move script (D23) | **Fable** | The few problems where a wrong call is expensive and hard to undo. One deep pass, then back to Opus |
+| An independent check of high-stakes work (the schema, an RLS change, the move, a finished spec) by a model that didn't write it | **Fable** | A fresh reviewer that isn't grading its own work |
 | Claude Code carrying out a reviewed spec task by task; refreshing audits; copy renames (Owner → Admin); tests; doc mirroring | **Sonnet 5.5** | The thinking is already in the spec; this is careful execution, faster and cheaper |
 | Claude Code's Phase 0 report-and-STOP on a new spec | **Opus 5.5** | It decides what the spec got wrong about the code |
 
@@ -258,21 +269,53 @@ Opus before work continues.
 
 ### Phases
 
-**Phase 0 — Close the holes (design).** D5, D9 (desktop comps), D11. Draw: finished-game
-screen; You page; first-run and sign-up (incl. from an invite and "sign up to save"); people
-flows; the + chooser (Game · Competition · Trip); a standalone competition's start; trip
-invite → crew explanation; ‹ Home title bar; opening an agenda slot; golf mini card; series
-chip; Cancel game. Update the Prototype.
+**Phase 0 — Design and decisions.** Done: J1–J10, desktop comps (D9), trip mode (D15), crew
+lifecycle (D16), course library (X8), admin scope (X9), pushes (D18), brand (D17), glyphs, and
+decisions D19–D26. Left:
+- **Redraw for 16 Nov's decisions:** drop Helper from role choices (D21); + → Competition with its
+  explainer, reusing today's picker (D24, D25); Pending people on a trip (D21).
+- **Check the crew add / invite / plan-a-trip workflow end to end** (Zach, 16 Nov: "some holes
+  there… or the first part of trip planning is weak and is missing a lot of what we've already
+  built"). Walk it against today's trip planning (ideas and votes, the date poll, the setup guide,
+  lodging, invites and the invite blast) and redraw what's missing before `TRIPS_IN_CREWS.md`.
+- **The look pass:** once the grey boards are approved, redraw the key screens in the PMDF look
+  (Home, the score sheet, the finished game, a crew page, the competition board, desktop Home) so
+  every spec has a visual reference.
+- **`BRAND_TOKENS.md`** for Claude Code: the token split, the neutrals, the eight team colors and
+  the cyan mapping, Archivo with its fallback, the score tile, the game glyph map (an exhaustive
+  `Record` by game type id, dice as the fallback), the tinted tile and the stage table (grey until
+  scoring is on; teal is not a status). Lands before Phase 2, the first phase that builds screens.
+- **The rules update:** CLAUDE.md and STYLE_GUIDE in one docs commit, the first step of the
+  foundation spec. Includes the glossary (Cup and Tournament retire as type words, D25; Helper
+  retired and delegate becomes organizer, D21), rule #20 relaxed for private channels (D26),
+  system fonts (Archivo), game icons (glyphs), trip-only hooks and rule #29 (a game's container is
+  a crew), and retiring the chat rules and the chat-action E2E spec.
 
-**Phase 0 also: the look pass (design).** Once the grey boards are approved, redraw the key screens in the PMDF look (Home, the score sheet, the finished game, a crew page, the cup board, desktop Home) so every spec has a visual reference, and write `BRAND_TOKENS.md` for Claude Code: the token split, the neutrals, the eight team colors and the cyan mapping, Archivo with its fallback, and the score tile component; `BRAND_TOKENS.md` also covers the game glyph map (an exhaustive `Record` by game type id, dice as the fallback), the tinted tile component and the stage table (grey tile until scoring is on; teal is not a status). It lands before Phase 2, which is the first phase that builds new screens.
+**Phase 0.5 — Audits (done).** Read-only, each a report PR, all merged 16 Nov: `SCALE_AUDIT.md`
+(#1708: today's hot paths, a load test, the 15-item fix list), `DATA_MOVE_AUDIT.md` (#1710: what
+moves and how; D22, D23), `REACHABILITY_AUDIT.md` (#1711: what's reachable, what's orphaned).
+The open-issue list was triaged the same day: 16 kept open, 67 folded into board items and closed, 27 closed as obsolete or already fixed.
 
-**Phase 0.5 — Scale audit (CC, no product change).** Specs written 2026-11-16 in `docs/audits/`: `SCALE_AUDIT_SPEC.md` (Fable), `DATA_MOVE_AUDIT_SPEC.md` (Fable, X5), `REACHABILITY_AUDIT_SPEC.md` (Sonnet; refreshes GAME_ROUTES_AUDIT app-wide). Each is read-only and ends in a report PR. `SCALE_AUDIT.md`: today's hot paths,
-a load test, the Realtime design, the fix list.
-
-**Phase 1 — Foundation (ships dark).** Crews in the data model (membership, Admin and Member roles, organizers per trip, competition and game (D21),
-person records absorbing ghost crew, `games.circle_id`, `trips.circle_id`,
-`competitions.circle_id`, visibility rule) **plus the scale groundwork** it needs (indexes,
-RLS helpers, the per-user "home items" index, event queue). Backfill BBMI.
+**Phase 1 — Foundation.** Spec: `CREWS_FOUNDATION.md` (Opus writes; Fable designs the schema
+and RLS, then a fresh Fable reviews).
+- **Freeze v1:** cut the `v1` branch from `main` before the first rebuild PR merges; the bbmi.app
+  Vercel project serves `v1`; a new Supabase project and a new Vercel project serve `main` (D19).
+- **One clean baseline migration** for the new schema, with UUID keys (D20) and every table's
+  grants stated; the 228 old migrations are archived, not replayed.
+- **The model:** crews, members and roles (Admin, Member; organizers per trip, competition and
+  game, D21); people and placeholders keyed to a crew (D22; merging a placeholder into a member;
+  deleting an account keeps the crew person and their scores); competitions with ordered stages
+  (D25) belonging to a crew and optionally a trip; games belonging to a crew, a competition or
+  neither; the visibility rule (D13).
+- **The scale groundwork, designed in rather than added later** (SCALE_AUDIT.md): visibility
+  checked once per game; separate read and write rules; "started" stored on the game; one
+  broadcast per game per statement; standings stored on write; a home-items index and a per-user
+  live topic; crew-aware permission helpers; an event queue for pushes and follow-up work; paged
+  lists; private channels that carry the change itself (D26). Load-tested before Phase 2.
+- **Carry over** the scoring engine and the game screens with their tests; write the data access
+  for people and crews; the app-admin flag (X9).
+- **The move script, part 1:** crews, people, placeholders (D23), with the local-only
+  possible-match list. Part 2 is in Phase 7.
 
 **Phase 1 guardrails for open crews (D14).** Not built now, but nothing in Phase 1 may rule
 them out. Each is cheap now and a migration later:
@@ -295,9 +338,9 @@ them out. Each is cheap now and a migration later:
 - **Crews can end** (`archived_at`): out of the rail and the Crews list, history kept.
 - **Competitions have ordered stages** (D25): a competition holds one or more stages (standings, head to head, bracket, series), each game belongs to a stage, and a stage can take its field from the one before. Launch may offer one stage at a time; the schema must not.
 
-**Phase 2 — The everyday game loop (behind a flag).** + → Game → Who's playing → score sheet
+**Phase 2 — The everyday game loop.** Spec: `GAME_LOOP.md`. + → Game → Who's playing → score sheet
 → game over → finished-game screen → Your games → add a past game to a crew. Works with no
-account (local), "sign up to save" moves it to the account. Live updates by broadcast.
+account (local), "sign up to save" moves it to the account. Live updates on one private topic per live game (D26).
 Retires Quick Game.
 Golf inside this loop reuses today's Quick Games screens unchanged (setup sheet, CoursePicker,
 ScoreEntryView + keypad, side bets, finish/settlement). New for golf: + → Golf lists the formats
@@ -330,21 +373,45 @@ Two standard screens (prototype row 12), used by every game type including golf:
   Phase 2 builds the shell with count-up only, but must not hard-code it.
   Every "play again" in the app continues an open series between the same people.
 
-**Phase 3 — Crews.** Crews tab, crew page, Edit crew, people flows, invites.
+**Phase 3 — Crews.** Spec: `CREW_PAGES.md`. Crews tab, crew page, Edit crew (Lime replaces
+cyan), people flows (admins add and remove, members suggest, D21; merging placeholders, D22),
+crew invites (a link with expiry and uses), leave / archive / delete and the Archived list (D16),
+and the Contact us page D16 needs.
 
-**Phase 4 — Home, navigation and the desktop shell (flag comes off).** Home by urgency,
-mini score sheet, the decided tab bar (D5), You page, desktop layout.
+**Phase 4 — Home, navigation and the desktop shell.** Spec: `HOME_AND_NAV.md`. Home by urgency,
+the mini score sheet, the tab bar (D5), Events, the You page, the desktop shell, the golf course
+library with editing and history (X8), the five push settings (D18), the admin page v1 (X9).
 
-**Phase 5 — Competitions on their own.** Start a competition from + in a crew; live card on
-Home; standings computed on write and pushed (fixes today's polling).
+**Phase 5 — Competitions.** Spec: `COMPETITIONS_STANDALONE.md`. Today's cups and tournaments on
+the new schema (teams, rosters, the board, brackets, pick'em, clinch, podium, re-credit); the
+builder (D25: who plays, stages, what you win; presets first, each tile drawing its shape; two
+teams ask head to head or points with head to head preselected); start one from + in a crew;
+standings computed on write and pushed; the live card on Home; Series as a stage. Fixes the false
+clinch that comes with the engine (#1699).
 
-**Phase 6 — Trips inside crews.** Trips belong to crews (with the new-crew-on-invite flow),
-trip mode in and out (‹ Home), News replaces chat (chat hidden, not deleted), agenda slots
-with ideas, team pages, the trip live card.
+**Phase 6 — Trips inside crews.** Spec: `TRIPS_IN_CREWS.md` (may split), written after Phase 0's
+trip-workflow check. Trips belong to crews (anyone can start one and organizes it; newcomers are
+suggested and Pending until an admin approves, D21); planning on the new schema (ideas and votes,
+the date poll, lodging, the agenda, quick info); receipts and splits; News (chat is not moved,
+D23); trip mode in and out (D15, ‹ Home); team pages with results; the trip live card.
 
-**Phase 7 — Later.** Start from a previous trip or cup (Zach, 16 Nov: "reuse parts of a previous trip? Same crew? Are the teams the same too?"), moving games between crews, leagues, open crews and pools (D14), the TV board, join with a code,
-judged events, crew photos (J7), Google profile photos as an option instead of the app avatar, pins in the desktop rail (see below), the past-trip recap (see below), the
-one-tab Itinerary (ITINERARY_REDESIGN.md: deferred; today's Agenda/Lodging fit as they are).
+**Phase 7 — Launch and cutover.** Spec: `LAUNCH.md` (Fable reviews the move).
+- **The rename to Put Me Down For:** app name, icons, the favicon from the P, the email sender,
+  auth emails and reset pages in the new project. No bbmi.app redirect: people re-add the app.
+- **The move script, part 2:** games, competitions, trips, money, lodging photos and login
+  accounts (everyone signs in again); recompute every moved result and compare it with v1 (the
+  BBMI replay, #419); rehearse the whole move end to end.
+- **Cutover:** a quiet week with no trip or game in progress; run the move; check BBMI and
+  Clemson in the new app; send everyone the new link to re-add the app; a banner on bbmi.app
+  points to the new app (the one v1 change) for a few weeks, then v1 is turned off.
+- Zach: buy the domains; a trademark search.
+
+**Later (after launch).** Joined stages: a season, then playoffs, released as its own milestone
+(D25); start from a previous trip or cup (Zach, 16 Nov: "reuse parts of a previous trip? Same
+crew? Are the teams the same too?"); moving games between crews; leagues; open crews and pools
+(D14); the TV board; join with a code; judged events; crew photos (J7); Google profile photos;
+pins in the desktop rail (see below); the past-trip recap (see below); the one-tab Itinerary
+(ITINERARY_REDESIGN.md); the feature ideas kept as GitHub issues.
 
 ### Desktop rail: events under their crew (decided 2026-11-08)
 A crew in the rail always opens its crew page. While a trip or competition is live or about
@@ -383,9 +450,11 @@ Always this order; a section shows only when it has something:
   there are fewer than 3 recent games.
 A first game and a busy week are the same Home; there is no separate new-user mode.
 
-### Already built: reuse it, never re-spec it (checked against main @ bbc3bcc)
+### Already built: carry it over, never re-spec it (checked against main @ bbc3bcc)
 Prototype boards titled **Exists ·** stand in for these. Specs reference the component and say
-only what changes around it.
+only what changes around it. Under the rebuild (D19) the screens move as they are; the data
+access under them is rewritten for the new schema, so a spec names the component and the new
+procedure it reads from.
 
 | Area | What exists today |
 |---|---|
@@ -399,13 +468,14 @@ only what changes around it.
 + / Home / tabs / desktop shell; How to score, Who's playing, the everyday score sheet shell and
 the finished-game screen; Your games and You; Events; crew-scoped competition creation (the
 picker's new "For which crew?" step and the standalone wiring); trips belonging to crews (who
-joins the crew, ‹ Home); team pages with results; the scale work. Renames (Owner → Admin) are copy changes on existing screens; Organizer keeps its word, now scoped to one trip, competition or game (D21).
+joins the crew, ‹ Home); team pages with results; the scale work; the move. Renames happen at every layer at once in the new schema (the database speaks the code's language): Owner → Admin, Helper never exists, delegate → organizer, Circle → Crew, Cup and Tournament as types → stages (D21, D25).
 
 ### Spec list
-1. `SCALE_AUDIT.md` — Phase 0.5 (CC writes it)
-2. `CREWS_FOUNDATION.md` — Phase 1
+1. ~~`SCALE_AUDIT.md`~~, ~~`DATA_MOVE_AUDIT.md`~~, ~~`REACHABILITY_AUDIT.md`~~ — Phase 0.5, merged
+2. `CREWS_FOUNDATION.md` — Phase 1 (Fable designs the schema and RLS)
 3. `GAME_LOOP.md` — Phase 2 (may split: start · sheet & game over · Your games & sign-up)
 4. `CREW_PAGES.md` — Phase 3
-5. `HOME_AND_NAV.md` — Phase 4 (incl. desktop shell, and the rename to PMDF: domain, home-screen name and icon, email sender, bbmi.app redirect)
+5. `HOME_AND_NAV.md` — Phase 4 (incl. desktop shell, course library, pushes, admin page)
 6. `COMPETITIONS_STANDALONE.md` — Phase 5
 7. `TRIPS_IN_CREWS.md` — Phase 6 (may split)
+8. `LAUNCH.md` — Phase 7 (the rename, the move, the cutover)
